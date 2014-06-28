@@ -104,36 +104,37 @@ bool DOSDEF::DefineAM(PGLOBAL g, LPCSTR am, int poff)
              : (am && (*am == 'B' || *am == 'b')) ? "B"
              : (am && !stricmp(am, "DBF"))        ? "D" : "V";
 
-  Desc = Fn = Cat->GetStringCatInfo(g, "Filename", NULL);
-  Ofn = Cat->GetStringCatInfo(g, "Optname", Fn);
-  Cat->GetCharCatInfo("Recfm", (PSZ)dfm, buf, sizeof(buf));
+  Desc = Fn = GetStringCatInfo(g, "Filename", NULL);
+  Ofn = GetStringCatInfo(g, "Optname", Fn);
+  GetCharCatInfo("Recfm", (PSZ)dfm, buf, sizeof(buf));
   Recfm = (toupper(*buf) == 'F') ? RECFM_FIX :
           (toupper(*buf) == 'B') ? RECFM_BIN :
           (toupper(*buf) == 'D') ? RECFM_DBF : RECFM_VAR;
-  Lrecl = Cat->GetIntCatInfo("Lrecl", 0);
+  Lrecl = GetIntCatInfo("Lrecl", 0);
 
   if (Recfm != RECFM_DBF)
-    Compressed = Cat->GetIntCatInfo("Compressed", 0);
+    Compressed = GetIntCatInfo("Compressed", 0);
 
-  Mapped = Cat->GetBoolCatInfo("Mapped", map);
-  Block = Cat->GetIntCatInfo("Blocks", 0);
-  Last = Cat->GetIntCatInfo("Last", 0);
-  Ending = Cat->GetIntCatInfo("Ending", CRLF);
+  Mapped = GetBoolCatInfo("Mapped", map);
+  Block = GetIntCatInfo("Blocks", 0);
+  Last = GetIntCatInfo("Last", 0);
+  Ending = GetIntCatInfo("Ending", CRLF);
 
   if (Recfm == RECFM_FIX || Recfm == RECFM_BIN) {
-    Huge = Cat->GetBoolCatInfo("Huge", Cat->GetDefHuge());
-    Padded = Cat->GetBoolCatInfo("Padded", false);
-    Blksize = Cat->GetIntCatInfo("Blksize", 0);
-    Eof = (Cat->GetIntCatInfo("EOF", 0) != 0);
+    Huge = GetBoolCatInfo("Huge", Cat->GetDefHuge());
+    Padded = GetBoolCatInfo("Padded", false);
+    Blksize = GetIntCatInfo("Blksize", 0);
+    Eof = (GetIntCatInfo("EOF", 0) != 0);
   } else if (Recfm == RECFM_DBF) {
-    Maxerr = Cat->GetIntCatInfo("Maxerr", 0);
-    Accept = (Cat->GetIntCatInfo("Accept", 0) != 0);
-    ReadMode = Cat->GetIntCatInfo("Readmode", 0);
+    Maxerr = GetIntCatInfo("Maxerr", 0);
+    Accept = (GetIntCatInfo("Accept", 0) != 0);
+    ReadMode = GetIntCatInfo("Readmode", 0);
   } else // (Recfm == RECFM_VAR)
-    AvgLen = Cat->GetIntCatInfo("Avglen", 0);
+    AvgLen = GetIntCatInfo("Avglen", 0);
 
   // Ignore wrong Index definitions for catalog commands
-  return (Cat->GetIndexInfo(g, this) /*&& !Cat->GetCatFnc()*/);
+  SetIndexInfo();
+  return false;
   } // end of DefineAM
 
 #if 0
@@ -190,7 +191,7 @@ bool DOSDEF::DeleteIndexFile(PGLOBAL g, PIXDEF pxdf)
     return false;           // No index
 
   // If true indexes are in separate files
-  sep = Cat->GetBoolCatInfo("SepIndex", false); 
+  sep = GetBoolCatInfo("SepIndex", false); 
 
   if (!sep && pxdf) {
     strcpy(g->Message, MSG(NO_RECOV_SPACE));
@@ -449,7 +450,6 @@ int TDBDOS::MakeIndex(PGLOBAL g, PIXDEF pxdf, bool add)
 //PCOLDEF cdp;
   PXINDEX x;
   PXLOAD  pxp;
-  PCATLG  cat = PlgGetCatalog(g);
 
   Mode = MODE_READ;
   Use = USE_READY;
@@ -494,11 +494,11 @@ int TDBDOS::MakeIndex(PGLOBAL g, PIXDEF pxdf, bool add)
       } // endif Type
 
       colp->InitValue(g);
-      n = max(n, xdp->GetNparts());
+      n = MY_MAX(n, xdp->GetNparts());
       } // endfor kdp
 
   keycols = (PCOL*)PlugSubAlloc(g, NULL, n * sizeof(PCOL));
-  sep = cat->GetBoolCatInfo("SepIndex", false);
+  sep = dfp->GetBoolCatInfo("SepIndex", false);
 
   /*********************************************************************/
   /*  Construct and save the defined indexes.                          */
@@ -687,7 +687,7 @@ int TDBDOS::EstimatedLength(PGLOBAL g)
     // result if we set dep to 1
     dep = 1 + cdp->GetLong() / 20;           // Why 20 ?????
   } else for (; cdp; cdp = cdp->GetNext())
-    dep = max(dep, cdp->GetOffset());
+    dep = MY_MAX(dep, cdp->GetOffset());
 
   return (int)dep;
   } // end of Estimated Length
@@ -924,10 +924,12 @@ DOSCOL::DOSCOL(PGLOBAL g, PCOLDEF cdp, PTDB tp, PCOL cp, int i, PSZ am)
   Long = cdp->GetLong();
   To_Val = NULL;
   OldVal = NULL;                  // Currently used only in MinMax
+  Dsp = 0;
   Ldz = false;
   Nod = false;
   Dcm = -1;
   p = cdp->GetFmt();
+  Buf = NULL;
 
   if (p && IsTypeNum(Buf_Type)) {
     // Formatted numeric value
@@ -938,6 +940,9 @@ DOSCOL::DOSCOL(PGLOBAL g, PCOLDEF cdp, PTDB tp, PCOL cp, int i, PSZ am)
           break;
         case 'N':                 // Have no decimal point
           Nod = true;
+          break;
+        case 'D':                 // Decimal separator
+          Dsp = *(++p);
           break;
         } // endswitch p
 
@@ -960,6 +965,7 @@ DOSCOL::DOSCOL(DOSCOL *col1, PTDB tdbp) : COLBLK(col1, tdbp)
   Long = col1->Long;
   To_Val = col1->To_Val;
   Ldz = col1->Ldz;
+  Dsp = col1->Dsp;
   Nod = col1->Nod;
   Dcm = col1->Dcm;
   OldVal = col1->OldVal;
@@ -1003,8 +1009,8 @@ bool DOSCOL::SetBuffer(PGLOBAL g, PVAL value, bool ok, bool check)
   } // endif's Value, Buf_Type
 
   // Allocate the buffer used in WriteColumn for numeric columns
-  if (IsTypeNum(Buf_Type))
-    Buf = (char*)PlugSubAlloc(g, NULL, max(32, Long + Dcm + 1));
+  if (!Buf && IsTypeNum(Buf_Type))
+    Buf = (char*)PlugSubAlloc(g, NULL, MY_MAX(32, Long + Dcm + 1));
 
   // Because Colblk's have been made from a copy of the original TDB in
   // case of Update, we must reset them to point to the original one.
@@ -1048,14 +1054,18 @@ void DOSCOL::ReadColumn(PGLOBAL g)
   p = tdbp->To_Line + Deplac;
   field = Long;
 
+  /*********************************************************************/
+  /*  For a variable length file, check if the field exists.           */
+  /*********************************************************************/
+  if (tdbp->Ftype == RECFM_VAR && strlen(tdbp->To_Line) < (unsigned)Deplac)
+    field = 0;
+  else if (Dsp)
+    for(i = 0; i < field; i++)
+      if (p[i] == Dsp)
+        p[i] = '.';
+
   switch (tdbp->Ftype) {
     case RECFM_VAR:
-      /*****************************************************************/
-      /*  For a variable length file, check if the field exists.       */
-      /*****************************************************************/
-      if (strlen(tdbp->To_Line) < (unsigned)Deplac)
-        field = 0;
-
     case RECFM_FIX:            // Fixed length text file
     case RECFM_DBF:            // Fixed length DBase file
       if (Nod) switch (Buf_Type) {
@@ -1133,7 +1143,7 @@ void DOSCOL::WriteColumn(PGLOBAL g)
       memset(tdbp->To_Line + len, ' ', tdbp->Lrecl - len);
     else
       // The size actually available must be recalculated
-      field = min(len - Deplac, Long);
+      field = MY_MIN(len - Deplac, Long);
 
     } // endif Ftype
 
@@ -1184,6 +1194,7 @@ void DOSCOL::WriteColumn(PGLOBAL g)
           len = sprintf(Buf, fmt, field - i, Value->GetTinyValue());
           break;
         case TYPE_DOUBLE:
+        case TYPE_DECIM:
           strcpy(fmt, (Ldz) ? "%0*.*lf" : "%*.*lf");
           sprintf(Buf, fmt, field + ((Nod && Dcm) ? 1 : 0),
                   Dcm, Value->GetFloatValue());
@@ -1192,7 +1203,7 @@ void DOSCOL::WriteColumn(PGLOBAL g)
           if (Nod && Dcm)
             for (i = k = 0; i < len; i++, k++)
               if (Buf[i] != ' ') {
-                if (Buf[i] == '.' || Buf[i] == ',')
+                if (Buf[i] == '.')
                   k++;
 
                 Buf[i] = Buf[k];
@@ -1200,10 +1211,13 @@ void DOSCOL::WriteColumn(PGLOBAL g)
 
           len = strlen(Buf);
           break;
+        default:
+          sprintf(g->Message, "Invalid field format for column %s", Name);
+          longjmp(g->jumper[g->jump_level], 31);
         } // endswitch BufType
 
       p2 = Buf;
-    } else                 // Standard PlugDB format
+    } else                 // Standard CONNECT format
       p2 = Value->ShowValue(Buf, field);
 
     if (trace)
@@ -1212,7 +1226,10 @@ void DOSCOL::WriteColumn(PGLOBAL g)
     if ((len = strlen(p2)) > field) {
       sprintf(g->Message, MSG(VALUE_TOO_LONG), p2, Name, field);
       longjmp(g->jumper[g->jump_level], 31);
-      } // endif
+    } else if (Dsp)
+      for (i = 0; i < len; i++)
+        if (p2[i] == '.')
+          p2[i] = Dsp; 
 
     if (trace > 1)
       htrc("buffer=%s\n", p2);

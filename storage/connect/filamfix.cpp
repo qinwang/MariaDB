@@ -367,7 +367,7 @@ int FIXFAM::DeleteRecords(PGLOBAL g, int irc)
 
     } else {
       /*****************************************************************/
-      /*  Move of eventual preceeding lines is not required here.      */
+      /*  Move of eventual preceding lines is not required here.      */
       /*  Set the target file as being the source file itself.         */
       /*  Set the future Tpos, and give Spos a value to block moving.  */
       /*****************************************************************/
@@ -476,7 +476,7 @@ bool FIXFAM::MoveIntermediateLines(PGLOBAL g, bool *b)
         return true;
         } // endif
 
-    req = (size_t)min(n, Dbflen);
+    req = (size_t)MY_MIN(n, Dbflen);
     len = fread(DelBuf, Lrecl, req, Stream);
 
     if (trace > 1)
@@ -1165,7 +1165,7 @@ int BGXFAM::DeleteRecords(PGLOBAL g, int irc)
 
   if (Tpos == Spos) {
     /*******************************************************************/
-    /*  First line to delete. Move of eventual preceeding lines is     */
+    /*  First line to delete. Move of eventual preceding lines is     */
     /*  not required here if a temporary file is not used, just the    */
     /*  setting of future Spos and Tpos.                               */
     /*******************************************************************/
@@ -1178,7 +1178,7 @@ int BGXFAM::DeleteRecords(PGLOBAL g, int irc)
 
     } else {
       /*****************************************************************/
-      /*  Move of eventual preceeding lines is not required here.      */
+      /*  Move of eventual preceding lines is not required here.      */
       /*  Set the target file as being the source file itself.         */
       /*  Set the future Tpos, and give Spos a value to block copying. */
       /*****************************************************************/
@@ -1322,7 +1322,7 @@ bool BGXFAM::MoveIntermediateLines(PGLOBAL g, bool *b)
       if (BigSeek(g, Hfile, (BIGINT)Spos * (BIGINT)Lrecl))
         return true;
 
-    req = min(n, Dbflen) * Lrecl;
+    req = MY_MIN(n, Dbflen) * Lrecl;
 
     if ((nbr = BigRead(g, Hfile, DelBuf, req)) != req) {
       sprintf(g->Message, MSG(DEL_READ_ERROR), req, nbr);

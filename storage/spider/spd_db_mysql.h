@@ -1,4 +1,4 @@
-/* Copyright (C) 2012-2013 Kentoku Shiba
+/* Copyright (C) 2012-2014 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -214,6 +214,11 @@ public:
     spider_string *str,
     CHARSET_INFO *access_charset
   );
+  int fetch_table_for_discover_table_structure(
+    spider_string *str,
+    SPIDER_SHARE *spider_share,
+    CHARSET_INFO *access_charset
+  );
 #endif
 };
 
@@ -270,6 +275,9 @@ public:
   );
   bool is_xa_nota_error(
     int error_num
+  );
+  void print_warnings(
+    struct tm *l_time
   );
   spider_db_result *store_result(
     spider_db_result_buffer **spider_res_buf,
@@ -539,6 +547,7 @@ class spider_mysql_handler: public spider_db_handler
 public:
   spider_mysql_share      *mysql_share;
   SPIDER_LINK_FOR_HASH    *link_for_hash;
+  uchar                   *minimum_select_bitmap;
   spider_mysql_handler(
     ha_spider *spider,
     spider_mysql_share *share
@@ -787,7 +796,8 @@ public:
     KEY_PART_INFO *key_part,
     const key_range *key,
     const uchar **ptr,
-    bool key_eq
+    bool key_eq,
+    bool tgt_final
   );
   int append_is_null(
     ulong sql_type,
@@ -797,7 +807,8 @@ public:
     KEY_PART_INFO *key_part,
     const key_range *key,
     const uchar **ptr,
-    bool key_eq
+    bool key_eq,
+    bool tgt_final
   );
   int append_where_terminator_part(
     ulong sql_type,
@@ -877,6 +888,11 @@ public:
     ulong sql_type
   );
 #ifdef HANDLER_HAS_DIRECT_AGGREGATE
+  int append_group_by_part(
+    const char *alias,
+    uint alias_length,
+    ulong sql_type
+  );
   int append_group_by(
     spider_string *str,
     const char *alias,
@@ -1277,6 +1293,7 @@ public:
   bool support_use_handler(
     int use_handler
   );
+  void minimum_select_bitmap_create();
   bool minimum_select_bit_is_set(
     uint field_index
   );

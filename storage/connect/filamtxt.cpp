@@ -714,7 +714,7 @@ int DOSFAM::DeleteRecords(PGLOBAL g, int irc)
 
     } else {
       /*****************************************************************/
-      /*  Move of eventual preceeding lines is not required here.      */
+      /*  Move of eventual preceding lines is not required here.      */
       /*  Set the target file as being the source file itself.         */
       /*  Set the future Tpos, and give Spos a value to block copying. */
       /*****************************************************************/
@@ -836,7 +836,7 @@ bool DOSFAM::MoveIntermediateLines(PGLOBAL g, bool *b)
         return true;
         } // endif
 
-    req = (size_t)min(n, Dbflen);
+    req = (size_t)MY_MIN(n, Dbflen);
     len = fread(DelBuf, 1, req, Stream);
 
     if (trace)

@@ -78,7 +78,7 @@ SET (SQL_SOURCE
                sql_profile.cc event_parse_data.cc sql_alter.cc
                sql_signal.cc rpl_handler.cc mdl.cc sql_admin.cc
                transaction.cc sys_vars.cc sql_truncate.cc datadict.cc
-               sql_reload.cc sql_cmd.h
+               sql_reload.cc sql_cmd.h item_inetfunc.cc
 
                # added in MariaDB:
                sql_explain.h sql_explain.cc
@@ -279,7 +279,7 @@ ADD_CUSTOM_TARGET(distclean
 IF(INSTALL_LAYOUT STREQUAL "STANDALONE")
 
 # Copy db.opt into data/test/
-SET(DBOPT_FILE ${CMAKE_CURRENT_SOURCE_DIR}/db.opt ) 
+SET(DBOPT_FILE ${CMAKE_SOURCE_DIR}/support-files/db.opt ) 
 INSTALL(FILES ${DBOPT_FILE} DESTINATION data/test COMPONENT DataFiles)
 
 # Install initial database on windows

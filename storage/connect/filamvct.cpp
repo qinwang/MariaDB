@@ -477,7 +477,7 @@ bool VCTFAM::AllocateBuffer(PGLOBAL g)
         Clens[i] = cdp->GetClen();
         Deplac[i] = Headlen + cdp->GetPoff() * n * Nrec;
         Isnum[i] = IsTypeNum(cdp->GetType());
-        Buflen = max(Buflen, cdp->GetClen());
+        Buflen = MY_MAX(Buflen, cdp->GetClen());
         } // endfor cdp
 
       if (!UseTemp || MaxBlk) {
@@ -712,7 +712,7 @@ int VCTFAM::DeleteRecords(PGLOBAL g, int irc)
 
     } else {
       /*****************************************************************/
-      /*  First line to delete. Move of eventual preceeding lines is   */
+      /*  First line to delete. Move of eventual preceding lines is   */
       /*  not required here, just the setting of future Spos and Tpos. */
       /*****************************************************************/
       T_Stream = Stream;
@@ -852,9 +852,9 @@ bool VCTFAM::MoveIntermediateLines(PGLOBAL g, bool *b)
     /*  Non consecutive line to delete. Move intermediate lines.       */
     /*******************************************************************/
     if (!MaxBlk)
-      req = (size_t)min(n, Nrec - max(Spos % Nrec, Tpos % Nrec));
+      req = (size_t)MY_MIN(n, Nrec - MY_MAX(Spos % Nrec, Tpos % Nrec));
     else
-      req = (size_t)min(n, Nrec);
+      req = (size_t)MY_MIN(n, Nrec);
 
     if (req) for (i = 0; i < Ncol; i++) {
       if (MaxBlk) {
@@ -985,7 +985,7 @@ bool VCTFAM::CleanUnusedSpace(PGLOBAL g)
     /*  Note: this seems to work even column blocks have been made     */
     /*  with Blanks = true. Perhaps should it be set to false for VEC. */
     /*******************************************************************/
-    req = (size_t)min(n, Nrec);
+    req = (size_t)MY_MIN(n, Nrec);
     memset(To_Buf, 0, Buflen);
 
     for (i = 0; i < Ncol; i++) {
@@ -1093,13 +1093,12 @@ bool VCTFAM::ResetTableSize(PGLOBAL g, int block, int last)
       // Update catalog values for Block and Last
       PVCTDEF defp = (PVCTDEF)Tdbp->GetDef();
       LPCSTR  name = Tdbp->GetName();
-      PCATLG  cat = PlgGetCatalog(g);
   
       defp->SetBlock(Block);
       defp->SetLast(Last);
   
-      if (!cat->SetIntCatInfo("Blocks", Block) ||
-          !cat->SetIntCatInfo("Last", Last)) {
+      if (!defp->SetIntCatInfo("Blocks", Block) ||
+          !defp->SetIntCatInfo("Last", Last)) {
         sprintf(g->Message, MSG(UPDATE_ERROR), "Header");
         rc = true;
         } // endif
@@ -1460,7 +1459,7 @@ bool VCMFAM::AllocateBuffer(PGLOBAL g)
 bool VCMFAM::InitInsert(PGLOBAL g)
   {
   int     rc;
-  PVCTCOL cp = (PVCTCOL)Tdbp->GetColumns();
+  volatile PVCTCOL cp = (PVCTCOL)Tdbp->GetColumns();
 
   // We come here in MODE_INSERT only
   if (Last == Nrec) {
@@ -1559,7 +1558,7 @@ int VCMFAM::DeleteRecords(PGLOBAL g, int irc)
 
   if (Tpos == Spos)
     /*******************************************************************/
-    /*  First line to delete. Move of eventual preceeding lines is     */
+    /*  First line to delete. Move of eventual preceding lines is     */
     /*  not required here, just setting of future Spos and Tpos.       */
     /*******************************************************************/
     Tpos = Fpos;                               // Spos is set below
@@ -1575,7 +1574,7 @@ int VCMFAM::DeleteRecords(PGLOBAL g, int irc)
       for (n = Fpos - Spos; n > 0; n -= req) {
         soff = Spos % Nrec;
         toff = Tpos % Nrec;
-        req = (size_t)min(n, Nrec - max(soff, toff));
+        req = (size_t)MY_MIN(n, Nrec - MY_MAX(soff, toff));
 
         for (i = 0; i < Ncol; i++) {
           ps = Memcol[i] + (Spos / Nrec) * Blksize + soff * Clens[i];
@@ -2006,7 +2005,7 @@ bool VECFAM::AllocateBuffer(PGLOBAL g)
 
         for (i = 0; cdp && i < Ncol; i++, cdp = cdp->GetNext()) {
           Clens[i] = cdp->GetClen();
-          Buflen = max(Buflen, cdp->GetClen());
+          Buflen = MY_MAX(Buflen, cdp->GetClen());
           } // endfor cdp
 
       } else {  // Mode Update, only some columns are updated
@@ -2017,7 +2016,7 @@ bool VECFAM::AllocateBuffer(PGLOBAL g)
             T_Streams[i] = NULL;   // Mark the streams to open
 
           Clens[i] = cp->Clen;
-          Buflen = max(Buflen, cp->Clen);
+          Buflen = MY_MAX(Buflen, cp->Clen);
           } // endfor cp
 
         InitUpdate = true;         // To be initialized
@@ -2154,7 +2153,7 @@ int VECFAM::DeleteRecords(PGLOBAL g, int irc)
 
     } else
       /*****************************************************************/
-      /*  Move of eventual preceeding lines is not required here.      */
+      /*  Move of eventual preceding lines is not required here.      */
       /*  Set the future Tpos, and give Spos a value to block copying. */
       /*****************************************************************/
       Spos = Tpos = Fpos;
@@ -2298,7 +2297,7 @@ bool VECFAM::MoveIntermediateLines(PGLOBAL g, bool *bn)
     /*******************************************************************/
     /*  Non consecutive line to delete. Move intermediate lines.       */
     /*******************************************************************/
-    req = (size_t)min(n, Nrec);
+    req = (size_t)MY_MIN(n, Nrec);
 
     for (i = 0; i < Ncol; i++) {
       if (!T_Streams[i])
@@ -2835,7 +2834,7 @@ int VMPFAM::DeleteRecords(PGLOBAL g, int irc)
 
   if (Tpos == Spos)
     /*******************************************************************/
-    /*  First line to delete. Move of eventual preceeding lines is     */
+    /*  First line to delete. Move of eventual preceding lines is     */
     /*  not required here, just setting of future Spos and Tpos.       */
     /*******************************************************************/
     Tpos = Fpos;                               // Spos is set below
@@ -3604,7 +3603,7 @@ bool BGVFAM::AllocateBuffer(PGLOBAL g)
 
         Clens[i] = cdp->GetClen();
         Isnum[i] = IsTypeNum(cdp->GetType());
-        Buflen = max(Buflen, cdp->GetClen());
+        Buflen = MY_MAX(Buflen, cdp->GetClen());
         } // endfor cdp
 
       if (!UseTemp || MaxBlk) {
@@ -3757,7 +3756,7 @@ int BGVFAM::DeleteRecords(PGLOBAL g, int irc)
 
     } else {
       /*****************************************************************/
-      /*  Move of eventual preceeding lines is not required here.      */
+      /*  Move of eventual preceding lines is not required here.      */
       /*  Set the target file as being the source file itself.         */
       /*  Set the future Tpos, and give Spos a value to block copying. */
       /*****************************************************************/
@@ -3908,9 +3907,9 @@ bool BGVFAM::MoveIntermediateLines(PGLOBAL g, bool *b)
     /*  Non consecutive line to delete. Move intermediate lines.       */
     /*******************************************************************/
     if (!MaxBlk)
-      req = (DWORD)min(n, Nrec - max(Spos % Nrec, Tpos % Nrec));
+      req = (DWORD)MY_MIN(n, Nrec - MY_MAX(Spos % Nrec, Tpos % Nrec));
     else
-      req = (DWORD)min(n, Nrec);
+      req = (DWORD)MY_MIN(n, Nrec);
 
     if (req) for (i = 0; i < Ncol; i++) {
       if (!MaxBlk) {
@@ -4017,7 +4016,7 @@ bool BGVFAM::CleanUnusedSpace(PGLOBAL g)
       /*  This seems to work even column blocks have been made with    */
       /*  Blanks = true. Perhaps should it be set to false for VEC.    */
       /*****************************************************************/
-      req = min(n, Nrec);
+      req = MY_MIN(n, Nrec);
 
       for (i = 0; i < Ncol; i++) {
         pos = BigDep[i] + (BIGINT)Tpos * (BIGINT)Clens[i];

@@ -1,6 +1,6 @@
 /***********************************************************************
 
-Copyright (c) 1995, 2012, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2013, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2009, Percona Inc.
 Copyright (c) 2013, SkySQL Ab. All Rights Reserved.
 
@@ -156,6 +156,7 @@ enum os_file_create_t {
 #define	OS_FILE_INSUFFICIENT_RESOURCE	78
 #define	OS_FILE_AIO_INTERRUPTED		79
 #define	OS_FILE_OPERATION_ABORTED	80
+#define	OS_FILE_ACCESS_VIOLATION	81
 #define	OS_FILE_OPERATION_NOT_SUPPORTED	125
 #define	OS_FILE_ERROR_MAX		200
 /* @} */
@@ -408,7 +409,8 @@ enum os_file_type_t {
 	OS_FILE_TYPE_UNKNOWN = 0,
 	OS_FILE_TYPE_FILE,			/* regular file */
 	OS_FILE_TYPE_DIR,			/* directory */
-	OS_FILE_TYPE_LINK			/* symbolic link */
+	OS_FILE_TYPE_LINK,			/* symbolic link */
+	OS_FILE_TYPE_BLOCK			/* block device */
 };
 
 /* Maximum path string length in bytes when referring to tables with in the

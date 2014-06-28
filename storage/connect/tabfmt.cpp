@@ -118,7 +118,7 @@ PQRYRES CSVColumns(PGLOBAL g, const char *fn, char sep, char q,
     } // endif fn
 
   imax = hmax = nerr = 0;
-  mxr = max(0, mxr);
+  mxr = MY_MAX(0, mxr);
 
   for (i = 0; i < MAXCOL; i++) {
     colname[i] = NULL;
@@ -190,7 +190,7 @@ PQRYRES CSVColumns(PGLOBAL g, const char *fn, char sep, char q,
     imax = hmax = i;
 
     for (i = 0; i < hmax; i++)
-      length[0] = max(length[0], strlen(colname[i]));
+      length[0] = MY_MAX(length[0], strlen(colname[i]));
 
     } // endif hdr
 
@@ -228,11 +228,11 @@ PQRYRES CSVColumns(PGLOBAL g, const char *fn, char sep, char q,
             } // endif i
 
           if (n) {
-            len[i] = max(len[i], n);
+            len[i] = MY_MAX(len[i], n);
             type = (digit || (dec && n == 1)) ? TYPE_STRING
                  : (dec) ? TYPE_DOUBLE : TYPE_INT;
-            typ[i] = min(type, typ[i]);
-            prc[i] = max((typ[i] == TYPE_DOUBLE) ? (dec - 1) : 0, prc[i]);
+            typ[i] = MY_MIN(type, typ[i]);
+            prc[i] = MY_MAX((typ[i] == TYPE_DOUBLE) ? (dec - 1) : 0, prc[i]);
             } // endif n
 
           i++;
@@ -308,14 +308,14 @@ PQRYRES CSVColumns(PGLOBAL g, const char *fn, char sep, char q,
         goto skip;
 
     if (n) {
-      len[i] = max(len[i], n);
+      len[i] = MY_MAX(len[i], n);
       type = (digit || n == 0 || (dec && n == 1)) ? TYPE_STRING
            : (dec) ? TYPE_DOUBLE : TYPE_INT;
-      typ[i] = min(type, typ[i]);
-      prc[i]  = max((typ[i] == TYPE_DOUBLE) ? (dec - 1) : 0, prc[i]);
+      typ[i] = MY_MIN(type, typ[i]);
+      prc[i]  = MY_MAX((typ[i] == TYPE_DOUBLE) ? (dec - 1) : 0, prc[i]);
       } // endif n
 
-    imax = max(imax, i+1);
+    imax = MY_MAX(imax, i+1);
    skip: ;                  // Skip erroneous line
     } // endfor num_read
 
@@ -406,7 +406,7 @@ bool CSVDEF::DefineAM(PGLOBAL g, LPCSTR am, int poff)
   // Double check correctness of offset values
   if (Catfunc == FNC_NO)
     for (PCOLDEF cdp = To_Cols; cdp; cdp = cdp->GetNext())
-      if (cdp->GetOffset() < 1) {
+      if (cdp->GetOffset() < 1 && !cdp->IsSpecial()) {
         strcpy(g->Message, MSG(BAD_OFFSET_VAL));
         return true;
         } // endif Offset
@@ -415,10 +415,10 @@ bool CSVDEF::DefineAM(PGLOBAL g, LPCSTR am, int poff)
   if (DOSDEF::DefineAM(g, "CSV", poff))
     return true;
 
-  Cat->GetCharCatInfo("Separator", ",", buf, sizeof(buf));
+  GetCharCatInfo("Separator", ",", buf, sizeof(buf));
   Sep = (strlen(buf) == 2 && buf[0] == '\\' && buf[1] == 't') ? '\t' : *buf;
-  Quoted = Cat->GetIntCatInfo("Quoted", -1);
-  Cat->GetCharCatInfo("Qchar", "", buf, sizeof(buf));
+  Quoted = GetIntCatInfo("Quoted", -1);
+  GetCharCatInfo("Qchar", "", buf, sizeof(buf));
   Qot = *buf;
 
   if (Qot && Quoted < 0)
@@ -427,9 +427,9 @@ bool CSVDEF::DefineAM(PGLOBAL g, LPCSTR am, int poff)
     Qot = '"';
 
   Fmtd = (!Sep || (am && (*am == 'F' || *am == 'f')));
-  Header = (Cat->GetIntCatInfo("Header", 0) != 0);
-  Maxerr = Cat->GetIntCatInfo("Maxerr", 0);
-  Accept = (Cat->GetIntCatInfo("Accept", 0) != 0);
+  Header = (GetIntCatInfo("Header", 0) != 0);
+  Maxerr = GetIntCatInfo("Maxerr", 0);
+  Accept = (GetIntCatInfo("Accept", 0) != 0);
   return false;
   } // end of DefineAM
 
@@ -598,8 +598,8 @@ int TDBCSV::EstimatedLength(PGLOBAL g)
     PCSVCOL colp;
 
     for (colp = (PCSVCOL)Columns; colp; colp = (PCSVCOL)colp->Next)
-      if (!colp->IsSpecial())  // Not a pseudo column
-        Fields = max(Fields, (int)colp->Fldnum);
+      if (!colp->IsSpecial() && !colp->IsVirtual())  // A true column
+        Fields = MY_MAX(Fields, (int)colp->Fldnum);
 
     if (Columns)
       Fields++;           // Fldnum was 0 based
@@ -641,15 +641,16 @@ bool TDBCSV::OpenDB(PGLOBAL g)
     if (!Fields)              // May have been set in TABFMT::OpenDB
       if (Mode != MODE_UPDATE && Mode != MODE_INSERT) {
         for (colp = (PCSVCOL)Columns; colp; colp = (PCSVCOL)colp->Next)
-          if (!colp->IsSpecial())  // Not a pseudo column
-            Fields = max(Fields, (int)colp->Fldnum);
+          if (!colp->IsSpecial() && !colp->IsVirtual())
+            Fields = MY_MAX(Fields, (int)colp->Fldnum);
 
         if (Columns)
           Fields++;           // Fldnum was 0 based
 
       } else
         for (cdp = tdp->GetCols(); cdp; cdp = cdp->GetNext())
-          Fields++;
+          if (!cdp->IsVirtual())
+            Fields++;
 
     Offset = (int*)PlugSubAlloc(g, NULL, sizeof(int) * Fields);
     Fldlen = (int*)PlugSubAlloc(g, NULL, sizeof(int) * Fields);
@@ -672,25 +673,27 @@ bool TDBCSV::OpenDB(PGLOBAL g)
 
     if (Field)
       // Prepare writing fields
-      if (Mode != MODE_UPDATE)
-        for (colp = (PCSVCOL)Columns; colp; colp = (PCSVCOL)colp->Next) {
-          i = colp->Fldnum;
-          len = colp->GetLength();
-          Field[i] = (PSZ)PlugSubAlloc(g, NULL, len + 1);
-          Field[i][len] = '\0';
-          Fldlen[i] = len;
-          Fldtyp[i] = IsTypeNum(colp->GetResultType());
-          } // endfor colp
+      if (Mode != MODE_UPDATE) {
+        for (colp = (PCSVCOL)Columns; colp; colp = (PCSVCOL)colp->Next)
+          if (!colp->IsSpecial() && !colp->IsVirtual()) {
+            i = colp->Fldnum;
+            len = colp->GetLength();
+            Field[i] = (PSZ)PlugSubAlloc(g, NULL, len + 1);
+            Field[i][len] = '\0';
+            Fldlen[i] = len;
+            Fldtyp[i] = IsTypeNum(colp->GetResultType());
+            } // endif colp
 
-      else     // MODE_UPDATE
-        for (cdp = tdp->GetCols(); cdp; cdp = cdp->GetNext()) {
-          i = cdp->GetOffset() - 1;
-          len = cdp->GetLength();
-          Field[i] = (PSZ)PlugSubAlloc(g, NULL, len + 1);
-          Field[i][len] = '\0';
-          Fldlen[i] = len;
-          Fldtyp[i] = IsTypeNum(cdp->GetType());
-          } // endfor colp
+      } else     // MODE_UPDATE
+        for (cdp = tdp->GetCols(); cdp; cdp = cdp->GetNext())
+          if (!cdp->IsVirtual()) {
+            i = cdp->GetOffset() - 1;
+            len = cdp->GetLength();
+            Field[i] = (PSZ)PlugSubAlloc(g, NULL, len + 1);
+            Field[i][len] = '\0';
+            Fldlen[i] = len;
+            Fldtyp[i] = IsTypeNum(cdp->GetType());
+            } // endif cdp
 
     } // endif Use
 
@@ -1101,8 +1104,8 @@ bool TDBFMT::OpenDB(PGLOBAL g)
     PDOSDEF tdp = (PDOSDEF)To_Def;
 
     for (colp = (PCSVCOL)Columns; colp; colp = (PCSVCOL)colp->Next)
-      if (!colp->IsSpecial())  // Not a pseudo column
-        Fields = max(Fields, (int)colp->Fldnum);
+      if (!colp->IsSpecial() && !colp->IsVirtual())  // a true column
+        Fields = MY_MAX(Fields, (int)colp->Fldnum);
 
     if (Columns)
       Fields++;                // Fldnum was 0 based
@@ -1115,7 +1118,7 @@ bool TDBFMT::OpenDB(PGLOBAL g)
 
     // Get the column formats
     for (cdp = tdp->GetCols(); cdp; cdp = cdp->GetNext())
-      if ((i = cdp->GetOffset() - 1) < Fields) {
+      if (!cdp->IsVirtual() && (i = cdp->GetOffset() - 1) < Fields) {
         if (!(pfm = cdp->GetFmt())) {
           sprintf(g->Message, MSG(NO_FLD_FORMAT), i + 1, Name);
           return true;
@@ -1318,6 +1321,11 @@ void CSVCOL::ReadColumn(PGLOBAL g)
     // Field have been copied in TDB Field array
     PSZ fp = tdbp->Field[Fldnum];
 
+    if (Dsp)
+      for (int i = 0; fp[i]; i++)
+        if (fp[i] == Dsp)
+          fp[i] = '.';
+
     Value->SetValue_psz(fp);
 
     // Set null when applicable
@@ -1365,7 +1373,10 @@ void CSVCOL::WriteColumn(PGLOBAL g)
     sprintf(g->Message, MSG(BAD_FLD_LENGTH), Name, p, flen,
                         tdbp->RowNumber(g), tdbp->GetFile(g));
     longjmp(g->jumper[g->jump_level], 34);
-    } // endif
+  } else if (Dsp)
+    for (int i = 0; p[i]; i++)
+      if (p[i] == '.')
+        p[i] = Dsp; 
 
   if (trace > 1)
     htrc("buffer=%s\n", p);
