@@ -810,7 +810,9 @@ fil_node_open_file(
 		set */
 		page = static_cast<byte*>(ut_align(buf2, UNIV_PAGE_SIZE));
 
-		success = os_file_read(node->handle, page, 0, UNIV_PAGE_SIZE);
+		success = os_file_read(node->handle, page, 0, UNIV_PAGE_SIZE,
+			               space->flags);
+
 		space_id = fsp_header_get_space_id(page);
 		flags = fsp_header_get_flags(page);
 		page_size = fsp_flags_get_page_size(flags);
@@ -2116,8 +2118,10 @@ fil_read_first_page(
 	ulint*		space_id,		/*!< out: tablespace ID */
 	lsn_t*		min_flushed_lsn,	/*!< out: min of flushed
 						lsn values in data files */
-	lsn_t*		max_flushed_lsn)	/*!< out: max of flushed
+	lsn_t*		max_flushed_lsn,	/*!< out: max of flushed
 						lsn values in data files */
+	ulint		orig_space_id)		/*!< in: original file space
+						id */
 {
 	byte*		buf;
 	byte*		page;
@@ -2130,9 +2134,19 @@ fil_read_first_page(
 
 	page = static_cast<byte*>(ut_align(buf, UNIV_PAGE_SIZE));
 
-	os_file_read(data_file, page, 0, UNIV_PAGE_SIZE);
+	os_file_read(data_file, page, 0, UNIV_PAGE_SIZE,
+		orig_space_id != ULINT_UNDEFINED ?
+		fil_space_is_page_compressed(orig_space_id) :
+		FALSE);
 
 	*flags = fsp_header_get_flags(page);
+
+	/* Page is page compressed page, need to decompress, before
+	continue. */
+	if (fsp_flags_is_page_compressed(*flags)) {
+		ulint write_size=0;
+		fil_decompress_page(NULL, page, UNIV_PAGE_SIZE, &write_size);
+	}
 
 	*space_id = fsp_header_get_space_id(page);
 
@@ -3293,7 +3307,7 @@ fil_create_link_file(
 	}
 
 	if (!os_file_write(link_filepath, file, filepath, 0,
-			    strlen(filepath))) {
+			   strlen(filepath))) {
 		err = DB_ERROR;
 	}
 
@@ -3817,7 +3831,7 @@ fil_open_single_table_tablespace(
 	if (def.success) {
 		def.check_msg = fil_read_first_page(
 			def.file, FALSE, &def.flags, &def.id,
-			&def.lsn, &def.lsn);
+			&def.lsn, &def.lsn, id);
 		def.valid = !def.check_msg;
 
 		/* Validate this single-table-tablespace with SYS_TABLES,
@@ -3839,7 +3853,7 @@ fil_open_single_table_tablespace(
 	if (remote.success) {
 		remote.check_msg = fil_read_first_page(
 			remote.file, FALSE, &remote.flags, &remote.id,
-			&remote.lsn, &remote.lsn);
+			&remote.lsn, &remote.lsn, id);
 		remote.valid = !remote.check_msg;
 
 		/* Validate this single-table-tablespace with SYS_TABLES,
@@ -3862,7 +3876,7 @@ fil_open_single_table_tablespace(
 	if (dict.success) {
 		dict.check_msg = fil_read_first_page(
 			dict.file, FALSE, &dict.flags, &dict.id,
-			&dict.lsn, &dict.lsn);
+			&dict.lsn, &dict.lsn, id);
 		dict.valid = !dict.check_msg;
 
 		/* Validate this single-table-tablespace with SYS_TABLES,
@@ -4126,7 +4140,8 @@ fil_user_tablespace_find_space_id(
 
 		for (ulint j = 0; j < page_count; ++j) {
 
-			st = os_file_read(fsp->file, page, (j* page_size), page_size);
+			st = os_file_read(fsp->file, page, (j* page_size), page_size,
+				          fsp_flags_is_page_compressed(fsp->flags));
 
 			if (!st) {
 				ib_logf(IB_LOG_LEVEL_INFO,
@@ -4239,7 +4254,7 @@ fil_user_tablespace_restore_page(
 
 	err = os_file_write(fsp->filepath, fsp->file, page,
 			    (zip_size ? zip_size : page_size) * page_no,
-			    buflen);
+		            buflen);
 
 	os_file_flush(fsp->file);
 out:
@@ -4263,7 +4278,7 @@ check_first_page:
 	fsp->success = TRUE;
 	if (const char* check_msg = fil_read_first_page(
 		    fsp->file, FALSE, &fsp->flags, &fsp->id,
-		    &fsp->lsn, &fsp->lsn)) {
+		    &fsp->lsn, &fsp->lsn, ULINT_UNDEFINED)) {
 		ib_logf(IB_LOG_LEVEL_ERROR,
 			"%s in tablespace %s (table %s)",
 			check_msg, fsp->filepath, tablename);
@@ -4336,9 +4351,7 @@ fil_load_single_table_tablespace(
 	fsp_open_info	def;
 	fsp_open_info	remote;
 	os_offset_t	size;
-#ifdef UNIV_HOTBACKUP
 	fil_space_t*	space;
-#endif
 
 	memset(&def, 0, sizeof(def));
 	memset(&remote, 0, sizeof(remote));
@@ -4360,7 +4373,8 @@ fil_load_single_table_tablespace(
 	one of them is sent to this function.  So if this table has
 	already been loaded, there is nothing to do.*/
 	mutex_enter(&fil_system->mutex);
-	if (fil_space_get_by_name(tablename)) {
+	space = fil_space_get_by_name(tablename);
+	if (space) {
 		mem_free(tablename);
 		mutex_exit(&fil_system->mutex);
 		return;
@@ -6378,7 +6392,8 @@ fil_iterate(
 		ut_ad(!(n_bytes % iter.page_size));
 
 		if (!os_file_read(iter.file, io_buffer, offset,
-				  (ulint) n_bytes)) {
+				  (ulint) n_bytes,
+				  fil_space_is_page_compressed(space_id))) {
 
 			ib_logf(IB_LOG_LEVEL_ERROR, "os_file_read() failed");
 
@@ -6517,7 +6532,8 @@ fil_tablespace_iterate(
 
 	/* Read the first page and determine the page and zip size. */
 
-	if (!os_file_read(file, page, 0, UNIV_PAGE_SIZE)) {
+	if (!os_file_read(file, page, 0, UNIV_PAGE_SIZE,
+			  dict_tf_get_page_compression(table->flags))) {
 
 		err = DB_IO_ERROR;
 
@@ -6781,4 +6797,47 @@ fil_space_name(
 	fil_space_t*	space)	/*!< in: space */
 {
 	return (space->name);
+}
+
+/*******************************************************************//**
+Return page type name */
+char*
+fil_get_page_type_name(
+/*===================*/
+	ulint	page_type)	/*!< in: FIL_PAGE_TYPE */
+{
+	switch(page_type) {
+	case FIL_PAGE_PAGE_COMPRESSED:
+		return "PAGE_COMPRESSED";
+	case FIL_PAGE_INDEX:
+		return "INDEX";
+	case FIL_PAGE_UNDO_LOG:
+		return "UNDO LOG";
+	case FIL_PAGE_INODE:
+		return "INODE";
+	case FIL_PAGE_IBUF_FREE_LIST:
+		return "IBUF_FREE_LIST";
+	case FIL_PAGE_TYPE_ALLOCATED:
+		return "ALLOCATED";
+	case FIL_PAGE_IBUF_BITMAP:
+		return "IBUF_BITMAP";
+	case FIL_PAGE_TYPE_SYS:
+		return "SYS";
+	case FIL_PAGE_TYPE_TRX_SYS:
+		return "TRX_SYS";
+	case FIL_PAGE_TYPE_FSP_HDR:
+		return "FSP_HDR";
+	case FIL_PAGE_TYPE_XDES:
+		return "XDES";
+	case FIL_PAGE_TYPE_BLOB:
+		return "BLOB";
+	case FIL_PAGE_TYPE_ZBLOB:
+		return "ZBLOB";
+	case FIL_PAGE_TYPE_ZBLOB2:
+		return "ZBLOB2";
+	case FIL_PAGE_TYPE_COMPRESSED:
+		return "ORACLE PAGE COMPRESSED";
+	default:
+		return "PAGE TYPE CORRUPTED";
+	}
 }

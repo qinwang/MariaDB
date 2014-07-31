@@ -2393,6 +2393,7 @@ os_file_set_size(
 		}
 
 		ret = os_file_write(name, file, buf, current_size, n_bytes);
+
 		if (!ret) {
 			ut_free(buf2);
 			goto error_handling;
@@ -2817,7 +2818,9 @@ os_file_read_func(
 	os_file_t	file,	/*!< in: handle to a file */
 	void*		buf,	/*!< in: buffer where to read */
 	os_offset_t	offset,	/*!< in: file offset where to read */
-	ulint		n)	/*!< in: number of bytes to read */
+	ulint		n,	/*!< in: number of bytes to read */
+	ibool		compressed) /*!< in: is this file space
+				    compressed ? */
 {
 #ifdef __WIN__
 	BOOL		ret;
@@ -2886,7 +2889,13 @@ try_again:
 	os_mutex_exit(os_file_count_mutex);
 
 	if (ret && len == n) {
-		fil_decompress_page(NULL, (byte *)buf, len, NULL);
+		/* Note that InnoDB writes files that are not formated
+		as file spaces and they do not have FIL_PAGE_TYPE
+		field, thus we must use here information is the actual
+		file space compressed. */
+		if (compressed && fil_page_is_compressed((byte *)buf)) {
+			fil_decompress_page(NULL, (byte *)buf, len, NULL);
+		}
 
 		return(TRUE);
 	}
@@ -2900,7 +2909,13 @@ try_again:
 	ret = os_file_pread(file, buf, n, offset);
 
 	if ((ulint) ret == n) {
-		fil_decompress_page(NULL, (byte *)buf, n, NULL);
+		/* Note that InnoDB writes files that are not formated
+		as file spaces and they do not have FIL_PAGE_TYPE
+		field, thus we must use here information is the actual
+		file space compressed. */
+		if (compressed && fil_page_is_compressed((byte *)buf)) {
+			fil_decompress_page(NULL, (byte *)buf, n, NULL);
+		}
 
 		return(TRUE);
 	}
@@ -2947,7 +2962,9 @@ os_file_read_no_error_handling_func(
 	os_file_t	file,	/*!< in: handle to a file */
 	void*		buf,	/*!< in: buffer where to read */
 	os_offset_t	offset,	/*!< in: file offset where to read */
-	ulint		n)	/*!< in: number of bytes to read */
+	ulint		n,	/*!< in: number of bytes to read */
+	ibool		compressed) /*!< in: is this file space
+				     compressed ? */
 {
 #ifdef __WIN__
 	BOOL		ret;
@@ -3016,6 +3033,15 @@ try_again:
 	os_mutex_exit(os_file_count_mutex);
 
 	if (ret && len == n) {
+
+		/* Note that InnoDB writes files that are not formated
+		as file spaces and they do not have FIL_PAGE_TYPE
+		field, thus we must use here information is the actual
+		file space compressed. */
+		if (compressed && fil_page_is_compressed((byte *)buf)) {
+			fil_decompress_page(NULL, (byte *)buf, n, NULL);
+		}
+
 		return(TRUE);
 	}
 #else /* __WIN__ */
@@ -3028,6 +3054,13 @@ try_again:
 	ret = os_file_pread(file, buf, n, offset);
 
 	if ((ulint) ret == n) {
+		/* Note that InnoDB writes files that are not formated
+		as file spaces and they do not have FIL_PAGE_TYPE
+		field, thus we must use here information is the actual
+		file space compressed. */
+		if (compressed && fil_page_is_compressed((byte *)buf)) {
+			fil_decompress_page(NULL, (byte *)buf, n, NULL);
+		}
 
 		return(TRUE);
 	}
@@ -3106,6 +3139,7 @@ os_file_write_func(
 	ut_ad(file);
 	ut_ad(buf);
 	ut_ad(n > 0);
+
 retry:
 	low = (DWORD) offset & 0xFFFFFFFF;
 	high = (DWORD) (offset >> 32);
@@ -4921,7 +4955,8 @@ os_aio_func(
 		and os_file_write_func() */
 
 		if (type == OS_FILE_READ) {
-			return(os_file_read_func(file, buf, offset, n));
+			return(os_file_read_func(file, buf, offset, n,
+					         page_compression));
 		}
 
 		ut_ad(!srv_read_only_mode);
@@ -5819,7 +5854,8 @@ consecutive_loop:
 	} else {
 		ret = os_file_read(
 			aio_slot->file, combined_buf,
-			aio_slot->offset, total_len);
+			aio_slot->offset, total_len,
+			aio_slot->page_compression);
 	}
 
 	ut_a(ret);
