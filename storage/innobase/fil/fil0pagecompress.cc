@@ -648,7 +648,7 @@ fil_decompress_page(
 				"InnoDB: Corruption: Page is marked as compressed\n"
 				"InnoDB: but decompression read only %ld bytes.\n"
 				"InnoDB: size %lu len %lu\n",
-				olen, actual_size, len);
+				dst_pos, actual_size, len);
 			fflush(stderr);
 
 			ut_error;
