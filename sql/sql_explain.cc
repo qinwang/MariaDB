@@ -23,10 +23,11 @@
 #include "sql_select.h"
 
 
-Explain_query::Explain_query(THD *thd_arg) : 
-  upd_del_plan(NULL), insert_plan(NULL), thd(thd_arg), apc_enabled(false)
+Explain_query::Explain_query(THD *thd_arg, MEM_ROOT *root) : 
+  mem_root(root), upd_del_plan(NULL),  insert_plan(NULL),
+  unions(root), selects(root),  thd(thd_arg), apc_enabled(false),
+  operations(0)
 {
-  operations= 0;
 }
 
 
@@ -136,7 +137,7 @@ int Explain_query::send_explain(THD *thd)
   select_result *result;
   LEX *lex= thd->lex;
  
-  if (!(result= new select_send()) || 
+  if (!(result= new (thd->mem_root) select_send()) || 
       thd->send_explain_fields(result))
     return 1;
 
@@ -334,10 +335,23 @@ Explain_select::~Explain_select()
   {
     for (uint i= 0; i< n_join_tabs; i++)
       delete join_tabs[i];
-    my_free(join_tabs);
   }
 } 
 
+bool Explain_select::add_table(Explain_table_access *tab, Explain_query *query)
+{
+  if (!join_tabs)
+  {
+    n_join_tabs= 0;
+    if (!(join_tabs= ((Explain_table_access**)
+                      alloc_root(query->mem_root,
+                                 sizeof(Explain_table_access*) *
+                                 MAX_TABLES))))
+      return true;
+  }
+  join_tabs[n_join_tabs++]= tab;
+  return false;
+}
 
 int Explain_select::print_explain(Explain_query *query, 
                                   select_result_sink *output,
@@ -937,9 +951,12 @@ void delete_explain_query(LEX *lex)
 void create_explain_query(LEX *lex, MEM_ROOT *mem_root)
 {
   DBUG_ASSERT(!lex->explain);
-  lex->explain= new Explain_query(lex->thd);
+  DBUG_ENTER("create_explain_query");
+
+  lex->explain= new (mem_root) Explain_query(lex->thd, mem_root);
   DBUG_ASSERT(mem_root == current_thd->mem_root);
-  lex->explain->mem_root= mem_root;
+
+  DBUG_VOID_RETURN;
 }
 
 void create_explain_query_if_not_exists(LEX *lex, MEM_ROOT *mem_root)
