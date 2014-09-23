@@ -704,6 +704,7 @@ typedef struct system_status_var
   ulong filesort_range_count_;
   ulong filesort_rows_;
   ulong filesort_scan_count_;
+  ulong filesort_pq_sorts_;
   /* Prepared statements and binary protocol */
   ulong com_stmt_prepare;
   ulong com_stmt_reprepare;
@@ -756,6 +757,13 @@ typedef struct system_status_var
 
 #define last_system_status_var questions
 #define last_cleared_system_status_var memory_used
+
+/*
+  Global status variables
+*/
+
+extern ulong feature_files_opened_with_delayed_keys;
+
 
 void add_to_status(STATUS_VAR *to_var, STATUS_VAR *from_var);
 
@@ -1357,7 +1365,8 @@ enum enum_thread_type
   SYSTEM_THREAD_NDBCLUSTER_BINLOG= 8,
   SYSTEM_THREAD_EVENT_SCHEDULER= 16,
   SYSTEM_THREAD_EVENT_WORKER= 32,
-  SYSTEM_THREAD_BINLOG_BACKGROUND= 64
+  SYSTEM_THREAD_BINLOG_BACKGROUND= 64,
+  SYSTEM_THREAD_SLAVE_INIT= 128,
 };
 
 inline char const *
@@ -1740,6 +1749,8 @@ struct wait_for_commit
   {
     if (waitee)
       unregister_wait_for_prior_commit2();
+    else
+      wakeup_error= 0;
   }
   /*
     Remove a waiter from the list in the waitee. Used to unregister a wait.
@@ -2497,8 +2508,6 @@ public:
   /** Idle instrumentation state. */
   PSI_idle_locker_state m_idle_state;
 #endif /* HAVE_PSI_IDLE_INTERFACE */
-  /** True if the server code is IDLE for this connection. */
-  bool m_server_idle;
 
   /*
     Id of current query. Statement can be reused to execute several queries
@@ -2885,6 +2894,11 @@ public:
 
   // End implementation of MDL_context_owner interface.
 
+  inline bool use_cond_push(handler *file)
+  {
+    return (variables.optimizer_switch & OPTIMIZER_SWITCH_ENGINE_CONDITION_PUSHDOWN)
+        || (file->ha_table_flags() & HA_MUST_USE_TABLE_CONDITION_PUSHDOWN);
+  }
   inline bool is_strict_mode() const
   {
     return (bool) (variables.sql_mode & (MODE_STRICT_TRANS_TABLES |

@@ -487,6 +487,9 @@ current_time % 5 != 0. */
 #endif /* MEM_PERIODIC_CHECK */
 # define	SRV_MASTER_DICT_LRU_INTERVAL		(47)
 
+/** Simulate compression failures. */
+UNIV_INTERN uint srv_simulate_comp_failures = 0;
+
 /** Acquire the system_mutex. */
 #define srv_sys_mutex_enter() do {			\
 	mutex_enter(&srv_sys->mutex);			\

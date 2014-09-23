@@ -1,5 +1,5 @@
 /* Copyright (c) 2000, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2008, 2013, Monty Program Ab
+   Copyright (c) 2008, 2014, SkySQL Ab.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -934,9 +934,7 @@ bool do_command(THD *thd)
   */
   DEBUG_SYNC(thd, "before_do_command_net_read");
 
-  thd->m_server_idle= TRUE;
-  packet_length= my_net_read(net);
-  thd->m_server_idle= FALSE;
+  packet_length= my_net_read_packet(net, 1);
 
   if (packet_length == packet_error)
   {
@@ -2945,7 +2943,11 @@ case SQLCOM_PREPARE:
         goto end_with_restore_list;
       }
 
+      /* Copy temporarily the statement flags to thd for lock_table_names() */
+      uint save_thd_create_info_options= thd->lex->create_info.options;
+      thd->lex->create_info.options|= create_info.options;
       res= open_and_lock_tables(thd, lex->query_tables, TRUE, 0);
+      thd->lex->create_info.options= save_thd_create_info_options;
       if (res)
       {
         /* Got error or warning. Set res to 1 if error */
@@ -7388,7 +7390,7 @@ static uint kill_threads_for_user(THD *thd, LEX_USER *user,
   I_List_iterator<THD> it(threads);
   while ((tmp=it++))
   {
-    if (tmp->get_command() == COM_DAEMON)
+    if (!tmp->security_ctx->user)
       continue;
     /*
       Check that hostname (if given) and user name matches.
