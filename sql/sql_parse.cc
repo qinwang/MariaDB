@@ -281,7 +281,7 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_CREATE_TABLE]=   CF_CHANGES_DATA | CF_REEXECUTION_FRAGILE |
                                             CF_AUTO_COMMIT_TRANS | CF_REPORT_PROGRESS |
                                             CF_CAN_GENERATE_ROW_EVENTS;
-  sql_command_flags[SQLCOM_CREATE_INDEX]=   CF_CHANGES_DATA | CF_AUTO_COMMIT_TRANS;
+  sql_command_flags[SQLCOM_CREATE_INDEX]=   CF_CHANGES_DATA | CF_AUTO_COMMIT_TRANS | CF_REPORT_PROGRESS;
   sql_command_flags[SQLCOM_ALTER_TABLE]=    CF_CHANGES_DATA | CF_WRITE_LOGS_COMMAND |
                                             CF_AUTO_COMMIT_TRANS | CF_REPORT_PROGRESS |
                                             CF_INSERTS_DATA;
@@ -2693,6 +2693,9 @@ case SQLCOM_PREPARE:
       goto error;
     mysql_mutex_lock(&LOCK_active_mi);
 
+    if (!master_info_index)
+      goto error;
+
     mi= master_info_index->get_master_info(&lex_mi->connection_name,
                                            Sql_condition::WARN_LEVEL_NOTE);
 
@@ -3150,7 +3153,7 @@ end_with_restore_list:
   case SQLCOM_SLAVE_ALL_START:
   {
     mysql_mutex_lock(&LOCK_active_mi);
-    if (!master_info_index->start_all_slaves(thd))
+    if (master_info_index && !master_info_index->start_all_slaves(thd))
       my_ok(thd);
     mysql_mutex_unlock(&LOCK_active_mi);
     break;
@@ -3166,7 +3169,7 @@ end_with_restore_list:
       goto error;
     }
     mysql_mutex_lock(&LOCK_active_mi);
-    if (!master_info_index->stop_all_slaves(thd))
+    if (master_info_index && !master_info_index->stop_all_slaves(thd))
       my_ok(thd);      
     mysql_mutex_unlock(&LOCK_active_mi);
     break;
@@ -4332,11 +4335,12 @@ end_with_restore_list:
   case SQLCOM_SHOW_GRANTS:
   {
     LEX_USER *grant_user= lex->grant_user;
+    Security_context *sctx= thd->security_ctx;
     if (!grant_user)
       goto error;
 
-    if (grant_user->user.str &&
-        !strcmp(thd->security_ctx->priv_user, grant_user->user.str))
+    if (grant_user->user.str && !strcmp(sctx->priv_user, grant_user->user.str) &&
+        grant_user->host.str && !strcmp(sctx->priv_host, grant_user->host.str))
       grant_user->user= current_user;
 
     if (grant_user->user.str == current_user.str ||

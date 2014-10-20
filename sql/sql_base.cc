@@ -2925,6 +2925,7 @@ Locked_tables_list::reopen_tables(THD *thd)
   size_t reopen_count= 0;
   MYSQL_LOCK *lock;
   MYSQL_LOCK *merged_lock;
+  DBUG_ENTER("Locked_tables_list::reopen_tables");
 
   for (TABLE_LIST *table_list= m_locked_tables;
        table_list; table_list= table_list->next_global)
@@ -2936,7 +2937,7 @@ Locked_tables_list::reopen_tables(THD *thd)
     if (open_table(thd, table_list, thd->mem_root, &ot_ctx))
     {
       unlink_all_closed_tables(thd, 0, reopen_count);
-      return TRUE;
+      DBUG_RETURN(TRUE);
     }
     table_list->table->pos_in_locked_tables= table_list;
     /* See also the comment on lock type in init_locked_tables(). */
@@ -2968,11 +2969,11 @@ Locked_tables_list::reopen_tables(THD *thd)
       unlink_all_closed_tables(thd, lock, reopen_count);
       if (! thd->killed)
         my_error(ER_LOCK_DEADLOCK, MYF(0));
-      return TRUE;
+      DBUG_RETURN(TRUE);
     }
     thd->lock= merged_lock;
   }
-  return FALSE;
+  DBUG_RETURN(FALSE);
 }
 
 /**
@@ -5303,6 +5304,7 @@ bool lock_tables(THD *thd, TABLE_LIST *tables, uint count,
         thd->lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_AUTOINC_NOT_FIRST);
     }
 
+#ifdef NOT_USED_IN_MARIADB
     /* 
      INSERT...ON DUPLICATE KEY UPDATE on a table with more than one unique keys
      can be unsafe.
@@ -5328,6 +5330,7 @@ bool lock_tables(THD *thd, TABLE_LIST *tables, uint count,
             thd->lex->duplicates == DUP_UPDATE)
           thd->lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_INSERT_TWO_KEYS);
       }
+#endif
  
     /* We have to emulate LOCK TABLES if we are statement needs prelocking. */
     if (thd->lex->requires_prelocking())

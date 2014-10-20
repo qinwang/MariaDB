@@ -103,6 +103,7 @@ static buf_page_desc_t	i_s_page_type[] = {
 	{"COMPRESSED_BLOB", FIL_PAGE_TYPE_ZBLOB},
 	{"COMPRESSED_BLOB2", FIL_PAGE_TYPE_ZBLOB2},
 	{"IBUF_INDEX", I_S_PAGE_TYPE_IBUF},
+	{"PAGE COMPRESSED", FIL_PAGE_PAGE_COMPRESSED},
 	{"UNKNOWN", I_S_PAGE_TYPE_UNKNOWN}
 };
 
@@ -8286,6 +8287,15 @@ i_s_innodb_changed_pages_fill(
 	if (cond) {
 		limit_lsn_range_from_condition(table, cond, &min_lsn,
 					       &max_lsn);
+	}
+	
+	/* If the log tracker is running and our max_lsn > current tracked LSN,
+	cap the max lsn so that we don't try to read any partial runs as the
+	tracked LSN advances. */
+	if (srv_track_changed_pages) {
+		ib_uint64_t		tracked_lsn = log_get_tracked_lsn();
+		if (max_lsn > tracked_lsn)
+			max_lsn = tracked_lsn;
 	}
 
 	if (!log_online_bitmap_iterator_init(&i, min_lsn, max_lsn)) {
