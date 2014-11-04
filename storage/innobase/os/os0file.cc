@@ -6333,6 +6333,11 @@ os_file_trim(
 	ut_ad((len % bsize) == 0);
 	ut_ad(bsize != 0);
 
+#ifdef UNIV_TRIM_DEBUG
+	fprintf(stderr, "Note: TRIM: write_size %lu trim_len %lu len %lu off %lu\n",
+		*slot->write_size, trim_len, len, off);
+#endif
+
 	// Nothing to do if trim length is zero or if actual write
 	// size is initialized and it is smaller than current write size.
 	// In first write if we trim we set write_size to actual bytes
