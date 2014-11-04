@@ -6329,14 +6329,13 @@ os_file_trim(
 	size_t bsize = slot->file_block_size;
 
 	// len here should be alligned to sector size
-	ut_ad((trim_len % bsize) == 0);
-	ut_ad((len % bsize) == 0);
-	ut_ad(bsize != 0);
+	ut_a((trim_len % bsize) == 0);
+	ut_a((len % bsize) == 0);
+	ut_a(bsize != 0);
+	ut_a((off % bsize) == 0);
 
-#ifdef UNIV_TRIM_DEBUG
-	fprintf(stderr, "Note: TRIM: write_size %lu trim_len %lu len %lu off %lu\n",
-		*slot->write_size, trim_len, len, off);
-#endif
+	fprintf(stderr, "Note: TRIM: write_size %lu trim_len %lu len %lu off %lu block_size %lu\n",
+		*slot->write_size, trim_len, len, off, bsize);
 
 	// Nothing to do if trim length is zero or if actual write
 	// size is initialized and it is smaller than current write size.
@@ -6374,8 +6373,8 @@ os_file_trim(
 		ut_print_timestamp(stderr);
 		fprintf(stderr,
 			"  InnoDB: [Warning] fallocate call failed with error code %d.\n"
-			"  InnoDB: start: %lx len: %lu payload: %lu\n"
-			"  InnoDB: Disabling fallocate for now.\n", ret, (slot->offset+len), trim_len, len);
+			"  InnoDB: start: %lu len: %lu payload: %lu\n"
+			"  InnoDB: Disabling fallocate for now.\n", ret, off, trim_len, len);
 
 		os_file_handle_error_no_exit(slot->name,
 			" fallocate(FALLOC_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE) ",

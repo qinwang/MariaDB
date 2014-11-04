@@ -6433,6 +6433,7 @@ os_file_trim(
 	ut_ad((trim_len % bsize) == 0);
 	ut_ad((len % bsize) == 0);
 	ut_ad(bsize != 0);
+	ut_ad((off % bsize) == 0);
 
 #ifdef UNIV_TRIM_DEBUG
 	fprintf(stderr, "Note: TRIM: write_size %lu trim_len %lu len %lu off %lu\n",
@@ -6475,8 +6476,8 @@ os_file_trim(
 		ut_print_timestamp(stderr);
 		fprintf(stderr,
 			"  InnoDB: [Warning] fallocate call failed with error code %d.\n"
-			"  InnoDB: start: %lx len: %lu payload: %lu\n"
-			"  InnoDB: Disabling fallocate for now.\n", ret, (slot->offset+len), trim_len, len);
+			"  InnoDB: start: %lu len: %lu payload: %lu\n"
+			"  InnoDB: Disabling fallocate for now.\n", ret, off, trim_len, len);
 
 		os_file_handle_error_no_exit(slot->name,
 			" fallocate(FALLOC_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE) ",
