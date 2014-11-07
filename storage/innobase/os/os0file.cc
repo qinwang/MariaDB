@@ -6334,8 +6334,10 @@ os_file_trim(
 	ut_a(bsize != 0);
 	ut_a((off % bsize) == 0);
 
+#ifdef UNIV_DEBUG
 	fprintf(stderr, "Note: TRIM: write_size %lu trim_len %lu len %lu off %lu block_size %lu\n",
 		*slot->write_size, trim_len, len, off, bsize);
+#endif
 
 	// Nothing to do if trim length is zero or if actual write
 	// size is initialized and it is smaller than current write size.
