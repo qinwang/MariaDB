@@ -5242,9 +5242,17 @@ os_aio_windows_handle(
 	if (ret && len == slot->len) {
 
 		ret_val = TRUE;
-	} else if (os_file_handle_error(slot->name, "Windows aio", __FILE__, __LINE__)) {
+	} else if (!ret || (len != slot->len)) {
 
-		retry = TRUE;
+		if (!ret) {
+			if (os_file_handle_error(slot->name, "Windows aio", __FILE__, __LINE__)) {
+				retry = TRUE;
+			} else {
+				ret_val = FALSE;
+			}
+		} else {
+			retry = TRUE;
+		}
 	} else {
 
 		ret_val = FALSE;
@@ -6372,6 +6380,7 @@ os_file_trim(
 	if (ret) {
 		/* After first failure do not try to trim again */
 		os_fallocate_failed = TRUE;
+		srv_use_trim = FALSE;
 		ut_print_timestamp(stderr);
 		fprintf(stderr,
 			"  InnoDB: [Warning] fallocate call failed with error code %d.\n"
@@ -6398,6 +6407,7 @@ os_file_trim(
 		"  InnoDB: [Warning] fallocate not supported on this installation."
 		"  InnoDB: Disabling fallocate for now.");
 	os_fallocate_failed = TRUE;
+	srv_use_trim = FALSE;
 	if (slot->write_size) {
 		*slot->write_size = 0;
 	}
@@ -6417,6 +6427,7 @@ os_file_trim(
 	if (!ret) {
 		/* After first failure do not try to trim again */
 		os_fallocate_failed = TRUE;
+		srv_use_trim=FALSE;
 		ut_print_timestamp(stderr);
 		fprintf(stderr,
 			"  InnoDB: [Warning] fallocate call failed with error.\n"
