@@ -611,6 +611,8 @@ os_file_get_last_error_low(
 		return(OS_FILE_OPERATION_ABORTED);
 	} else if (err == ERROR_ACCESS_DENIED) {
 		return(OS_FILE_ACCESS_VIOLATION);
+	} else if (err == ERROR_BUFFER_OVERFLOW) {
+		return(OS_FILE_NAME_TOO_LONG);
 	} else {
 		return(OS_FILE_ERROR_MAX + err);
 	}
@@ -685,6 +687,8 @@ os_file_get_last_error_low(
 		return(OS_FILE_NOT_FOUND);
 	case EEXIST:
 		return(OS_FILE_ALREADY_EXISTS);
+	case ENAMETOOLONG:
+		return(OS_FILE_NAME_TOO_LONG);
 	case EXDEV:
 	case ENOTDIR:
 	case EISDIR:
@@ -3336,7 +3340,7 @@ os_file_status(
 	struct _stat64	statinfo;
 
 	ret = _stat64(path, &statinfo);
-	if (ret && (errno == ENOENT || errno == ENOTDIR)) {
+	if (ret && (errno == ENOENT || errno == ENOTDIR || errno == ENAMETOOLONG)) {
 		/* file does not exist */
 		*exists = FALSE;
 		return(TRUE);
@@ -3364,7 +3368,7 @@ os_file_status(
 	struct stat	statinfo;
 
 	ret = stat(path, &statinfo);
-	if (ret && (errno == ENOENT || errno == ENOTDIR)) {
+	if (ret && (errno == ENOENT || errno == ENOTDIR || errno == ENAMETOOLONG)) {
 		/* file does not exist */
 		*exists = FALSE;
 		return(TRUE);
@@ -5906,12 +5910,12 @@ consecutive_loop:
 			aio_slot->page_compression);
 	}
 
-	DBUG_EXECUTE_IF("ib_os_aio_func_io_failure_28_2",
-		os_has_said_disk_full = FALSE;);
-	DBUG_EXECUTE_IF("ib_os_aio_func_io_failure_28_2",
-			ret = 0;);
-	DBUG_EXECUTE_IF("ib_os_aio_func_io_failure_28_2",
+	if (aio_slot->type == OS_FILE_WRITE) {
+		DBUG_EXECUTE_IF("ib_os_aio_func_io_failure_28",
+			os_has_said_disk_full = FALSE;
+			ret = 0;
 			errno = 28;);
+	}
 
 	srv_set_io_thread_op_info(global_segment, "file i/o done");
 

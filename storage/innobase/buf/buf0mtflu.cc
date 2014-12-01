@@ -180,6 +180,7 @@ buf_mtflu_flush_pool_instance(
 /*==========================*/
 	wrk_t	*work_item)	/*!< inout: work item to be flushed */
 {
+	flush_counters_t n;
 	ut_a(work_item != NULL);
 	ut_a(work_item->wr.buf_pool != NULL);
 
@@ -211,12 +212,13 @@ buf_mtflu_flush_pool_instance(
         	work_item->wr.min = ut_min(srv_LRU_scan_depth,work_item->wr.min);
     	}
 
-	work_item->n_flushed = buf_flush_batch(work_item->wr.buf_pool,
-                                    		work_item->wr.flush_type,
-                                    		work_item->wr.min,
-						work_item->wr.lsn_limit);
+	buf_flush_batch(work_item->wr.buf_pool,
+		        work_item->wr.flush_type,
+		        work_item->wr.min,
+		        work_item->wr.lsn_limit,
+		        &n);
 
-
+	work_item->n_flushed = n.flushed;
 	buf_flush_end(work_item->wr.buf_pool, work_item->wr.flush_type);
 	buf_flush_common(work_item->wr.flush_type, work_item->n_flushed);
 
