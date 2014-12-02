@@ -6378,7 +6378,7 @@ os_file_trim(
 	}
 
 #ifdef __linux__
-#if defined(FALLOC_FL_PUNCH_HOLE) && defined (FALLOC_FL_KEEP_SIZE)
+#if defined(HAVE_POSIX_FALLOCATE)
 	int ret = fallocate(slot->file, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, off, trim_len);
 
 	if (ret) {
@@ -6416,7 +6416,7 @@ os_file_trim(
 		*slot->write_size = 0;
 	}
 
-#endif /* HAVE_FALLOCATE ... */
+#endif /* HAVE_POSIX_FALLOCATE ... */
 
 #elif defined(_WIN32)
 	FILE_LEVEL_TRIM flt;
@@ -6504,6 +6504,7 @@ os_slot_alloc_page_buf(
 	cbuf = static_cast<byte *>(ut_align(cbuf2, UNIV_PAGE_SIZE));
 	slot->page_compression_page = static_cast<byte *>(cbuf2);
 	slot->page_buf = static_cast<byte *>(cbuf);
+	memset(slot->page_buf, 0, UNIV_PAGE_SIZE);
 	ut_a(slot->page_buf != NULL);
 }
 
@@ -6519,6 +6520,7 @@ os_slot_alloc_lzo_mem(
 {
 	ut_a(slot != NULL);
 	slot->lzo_mem = static_cast<byte *>(ut_malloc(LZO1X_1_15_MEM_COMPRESS));
+	memset(slot->lzo_mem, 0, LZO1X_1_15_MEM_COMPRESS);
 	ut_a(slot->lzo_mem != NULL);
 }
 #endif
