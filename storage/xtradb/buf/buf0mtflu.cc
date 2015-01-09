@@ -379,9 +379,6 @@ buf_mtflu_io_thread_exit(void)
 
 	mtflush_io->gwt_status = WTHR_KILL_IT;
 
-	fprintf(stderr, "InnoDB: [Note]: Signal mtflush_io_threads to exit [%lu]\n",
-		srv_mtflush_threads);
-
 	/* This lock is to safequard against timing bug: flush request take
 	this mutex before sending work items to be processed by flush
 	threads. Inside flush thread we assume that work queue contains only
