@@ -96,23 +96,3 @@ IF(UNIX)
   MYSQL_ADD_EXECUTABLE(mysql_waitpid mysql_waitpid.c COMPONENT Client)
   TARGET_LINK_LIBRARIES(mysql_waitpid mysys)
 ENDIF()
-
-
-  # Add path to the InnoDB headers
-  INCLUDE_DIRECTORIES(
-    ${CMAKE_SOURCE_DIR}/storage/innobase/include
-    ${CMAKE_SOURCE_DIR}/sql)
-
-  # We use the InnoDB code directly in case the code changes.
-  ADD_DEFINITIONS("-DUNIV_INNOCHECKSUM")
-  SET(INNOBASE_SOURCES
-      ../storage/innobase/buf/buf0checksum.cc
-      ../storage/innobase/ut/ut0crc32.cc
-      ../storage/innobase/ut/ut0ut.cc
-      ../storage/innobase/page/page0zip.cc
-      )
-
-  MYSQL_ADD_EXECUTABLE(innochecksum innochecksum.cc ${INNOBASE_SOURCES})
-  TARGET_LINK_LIBRARIES(innochecksum mysys mysys_ssl)
-  ADD_DEPENDENCIES(innochecksum GenError)
-
