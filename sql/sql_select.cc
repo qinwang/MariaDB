@@ -9016,9 +9016,7 @@ make_join_select(JOIN *join,SQL_SELECT *select,COND *cond)
               !sel->needed_reg.is_subset(tab->checked_keys))
 	  {
 	    tab->use_quick= (!sel->needed_reg.is_clear_all() &&
-			     (sel->quick_keys.is_clear_all() ||
-			      (sel->quick &&
-			       (sel->quick->records >= 100L)))) ?
+			     sel->quick_keys.is_clear_all()) ?
 	      2 : 1;
 	    sel->read_tables= used_tables & ~current_map;
             sel->quick_keys.clear_all();
