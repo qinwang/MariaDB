@@ -53,6 +53,77 @@
 #include "table.h"
 #include "sql_base.h"
 
+
+/**
+  Table definition hash lock.
+
+  Lock consists of multiple rw-locks (8 by default). Lock is write locked
+  when all instances are write locked. Lock is read locked when any instance
+  is read locked.
+
+  This class was implemented to workaround scalability bottleneck of table
+  definition hash rw-lock.
+
+  To be replaced with lock-free hash when we understand how to solve the
+  following problems:
+  - lock-free hash iterator (can be workarounded by introducing global
+    all_tables list);
+  - lf_hash_search() may fail because of OOM. It is rather complex to handle
+    it properly.
+*/
+
+class TDC_lock
+{
+  uint m_instances;
+  bool m_write_locked;
+  char pad[128];
+  struct st_locks
+  {
+    mysql_rwlock_t lock;
+    char pad[128];
+  } *locks;
+public:
+  int init(PSI_rwlock_key key, uint instances)
+  {
+    m_instances= instances;
+    m_write_locked= false;
+    locks= (st_locks *) my_malloc(sizeof(struct st_locks) * m_instances, MYF(MY_WME));
+    if (!locks)
+      return 1;
+    for (uint i= 0; i < m_instances; i++)
+      mysql_rwlock_init(key, &locks[i].lock);
+    return 0;
+  }
+  void destroy(void)
+  {
+    for (uint i= 0; i < m_instances; i++)
+      mysql_rwlock_destroy(&locks[i].lock);
+    my_free(locks);
+  }
+  void wrlock(void)
+  {
+    for (uint i= 0; i < m_instances; i++)
+      mysql_rwlock_wrlock(&locks[i].lock);
+    m_write_locked= true;
+  }
+  void rdlock(THD *thd= 0)
+  {
+    mysql_rwlock_rdlock(&locks[thd ? thd->thread_id % m_instances : 0].lock);
+  }
+  void unlock(THD *thd= 0)
+  {
+    if (m_write_locked)
+    {
+      m_write_locked= false;
+      for (uint i= 0; i < m_instances; i++)
+        mysql_rwlock_unlock(&locks[i].lock);
+    }
+    else
+      mysql_rwlock_unlock(&locks[thd ? thd->thread_id % m_instances : 0].lock);
+  }
+};
+
+
 /** Configuration. */
 ulong tdc_size; /**< Table definition cache threshold for LRU eviction. */
 ulong tc_size; /**< Table cache threshold for LRU eviction. */
@@ -79,7 +150,7 @@ static int32 tc_count; /**< Number of TABLE objects in table cache. */
 */
 
 static mysql_mutex_t LOCK_unused_shares;
-static mysql_rwlock_t LOCK_tdc; /**< Protects tdc_hash. */
+static TDC_lock LOCK_tdc; /**< Protects tdc_hash. */
 my_atomic_rwlock_t LOCK_tdc_atomics; /**< Protects tdc_version. */
 
 #ifdef HAVE_PSI_INTERFACE
@@ -93,7 +164,7 @@ static PSI_mutex_info all_tc_mutexes[]=
 static PSI_rwlock_key key_rwlock_LOCK_tdc;
 static PSI_rwlock_info all_tc_rwlocks[]=
 {
-  { &key_rwlock_LOCK_tdc, "LOCK_tdc", PSI_FLAG_GLOBAL }
+  { &key_rwlock_LOCK_tdc, "LOCK_tdc", 0 }
 };
 
 
@@ -431,20 +502,20 @@ extern "C" uchar *tdc_key(const uchar *record, size_t *length,
 static int tdc_delete_share_from_hash(TABLE_SHARE *share)
 {
   DBUG_ENTER("tdc_delete_share_from_hash");
-  mysql_rwlock_wrlock(&LOCK_tdc);
+  LOCK_tdc.wrlock();
   mysql_mutex_lock(&share->tdc.LOCK_table_share);
   if (--share->tdc.ref_count)
   {
     mysql_cond_broadcast(&share->tdc.COND_release);
     mysql_mutex_unlock(&share->tdc.LOCK_table_share);
-    mysql_rwlock_unlock(&LOCK_tdc);
+    LOCK_tdc.unlock();
     DBUG_RETURN(1);
   }
   my_hash_delete(&tdc_hash, (uchar*) share);
   /* Notify PFS early, while still locked. */
   PSI_CALL_release_table_share(share->m_psi);
   share->m_psi= 0;
-  mysql_rwlock_unlock(&LOCK_tdc);
+  LOCK_tdc.unlock();
 
   if (share->tdc.m_flush_tickets.is_empty())
   {
@@ -487,12 +558,12 @@ int tdc_init(void)
   tdc_inited= true;
   mysql_mutex_init(key_LOCK_unused_shares, &LOCK_unused_shares,
                    MY_MUTEX_INIT_FAST);
-  mysql_rwlock_init(key_rwlock_LOCK_tdc, &LOCK_tdc);
   my_atomic_rwlock_init(&LOCK_tdc_atomics);
   oldest_unused_share= &end_of_unused_share;
   end_of_unused_share.tdc.prev= &oldest_unused_share;
   tdc_version= 1L;  /* Increments on each reload */
-  DBUG_RETURN(my_hash_init(&tdc_hash, &my_charset_bin, tdc_size, 0, 0, tdc_key,
+  DBUG_RETURN(LOCK_tdc.init(key_rwlock_LOCK_tdc, 8) ||
+              my_hash_init(&tdc_hash, &my_charset_bin, tdc_size, 0, 0, tdc_key,
                            0, 0));
 }
 
@@ -535,7 +606,7 @@ void tdc_deinit(void)
     tdc_inited= false;
     my_hash_free(&tdc_hash);
     my_atomic_rwlock_destroy(&LOCK_tdc_atomics);
-    mysql_rwlock_destroy(&LOCK_tdc);
+    LOCK_tdc.destroy();
     mysql_mutex_destroy(&LOCK_unused_shares);
   }
   DBUG_VOID_RETURN;
@@ -552,9 +623,9 @@ ulong tdc_records(void)
 {
   ulong records;
   DBUG_ENTER("tdc_records");
-  mysql_rwlock_rdlock(&LOCK_tdc);
+  LOCK_tdc.rdlock();
   records= tdc_hash.records;
-  mysql_rwlock_unlock(&LOCK_tdc);
+  LOCK_tdc.unlock();
   DBUG_RETURN(records);
 }
 
@@ -653,14 +724,14 @@ TABLE_SHARE *tdc_lock_share(const char *db, const char *table_name)
   DBUG_ENTER("tdc_lock_share");
   key_length= tdc_create_key(key, db, table_name);
 
-  mysql_rwlock_rdlock(&LOCK_tdc);
+  LOCK_tdc.rdlock();
   TABLE_SHARE* share= (TABLE_SHARE*) my_hash_search(&tdc_hash,
                                                     (uchar*) key, key_length);
   if (share && !share->error)
     mysql_mutex_lock(&share->tdc.LOCK_table_share);
   else
     share= 0;
-  mysql_rwlock_unlock(&LOCK_tdc);
+  LOCK_tdc.unlock();
   DBUG_RETURN(share);
 }
 
@@ -705,20 +776,20 @@ TABLE_SHARE *tdc_acquire_share(THD *thd, const char *db, const char *table_name,
   bool was_unused;
   DBUG_ENTER("tdc_acquire_share");
 
-  mysql_rwlock_rdlock(&LOCK_tdc);
+  LOCK_tdc.rdlock(thd);
   share= (TABLE_SHARE*) my_hash_search_using_hash_value(&tdc_hash, hash_value,
                                                         (uchar*) key,
                                                         key_length);
   if (!share)
   {
     TABLE_SHARE *new_share;
-    mysql_rwlock_unlock(&LOCK_tdc);
+    LOCK_tdc.unlock(thd);
 
     if (!(new_share= alloc_table_share(db, table_name, key, key_length)))
       DBUG_RETURN(0);
     new_share->error= OPEN_FRM_OPEN_ERROR;
 
-    mysql_rwlock_wrlock(&LOCK_tdc);
+    LOCK_tdc.wrlock();
     share= (TABLE_SHARE*) my_hash_search_using_hash_value(&tdc_hash, hash_value,
                                                           (uchar*) key,
                                                           key_length);
@@ -731,12 +802,12 @@ TABLE_SHARE *tdc_acquire_share(THD *thd, const char *db, const char *table_name,
       if (my_hash_insert(&tdc_hash, (uchar*) share))
       {
         mysql_mutex_unlock(&share->tdc.LOCK_table_share);
-        mysql_rwlock_unlock(&LOCK_tdc);
+        LOCK_tdc.unlock();
         free_table_share(share);
         DBUG_RETURN(0);
       }
       need_purge= tdc_hash.records > tdc_size;
-      mysql_rwlock_unlock(&LOCK_tdc);
+      LOCK_tdc.unlock();
 
       /* note that tdc_acquire_share() *always* uses discovery */
       open_table_def(thd, share, flags | GTS_USE_DISCOVERY);
@@ -765,7 +836,7 @@ TABLE_SHARE *tdc_acquire_share(THD *thd, const char *db, const char *table_name,
   {
     if ((*out_table= tc_acquire_table(thd, share)))
     {
-      mysql_rwlock_unlock(&LOCK_tdc);
+      LOCK_tdc.unlock(thd);
       DBUG_ASSERT(!(flags & GTS_NOLOCK));
       DBUG_ASSERT(!share->error);
       DBUG_ASSERT(!share->is_view);
@@ -774,7 +845,7 @@ TABLE_SHARE *tdc_acquire_share(THD *thd, const char *db, const char *table_name,
   }
 
   mysql_mutex_lock(&share->tdc.LOCK_table_share);
-  mysql_rwlock_unlock(&LOCK_tdc);
+  LOCK_tdc.unlock(thd);
 
   /*
      We found an existing table definition. Return it if we didn't get
@@ -1126,7 +1197,7 @@ void TDC_iterator::init(void)
 {
   DBUG_ENTER("TDC_iterator::init");
   idx= 0;
-  mysql_rwlock_rdlock(&LOCK_tdc);
+  LOCK_tdc.rdlock();
   DBUG_VOID_RETURN;
 }
 
@@ -1138,7 +1209,7 @@ void TDC_iterator::init(void)
 void TDC_iterator::deinit(void)
 {
   DBUG_ENTER("TDC_iterator::deinit");
-  mysql_rwlock_unlock(&LOCK_tdc);
+  LOCK_tdc.unlock();
   DBUG_VOID_RETURN;
 }
 
