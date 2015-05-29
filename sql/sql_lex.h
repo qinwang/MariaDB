@@ -28,6 +28,7 @@
 #include "mem_root_array.h"
 #include "sql_cmd.h"
 #include "sql_alter.h"                // Alter_info
+#include "sql_window.h"
 
 /* YACC and LEX Definitions */
 
@@ -1065,6 +1066,11 @@ public:
 
   void set_non_agg_field_used(bool val) { m_non_agg_field_used= val; }
   void set_agg_func_used(bool val)      { m_agg_func_used= val; }
+
+  List<Window_spec> window_specs;
+  void prepare_add_window_spec(THD *thd);
+  bool add_window_def(THD *thd, LEX_STRING *win_name);
+  bool add_window_spec(THD *thd);
 
 private:
   bool m_non_agg_field_used;
@@ -2689,6 +2695,14 @@ public:
       limit_rows_examined_cnt= ULONGLONG_MAX;
   }
 
+
+  SQL_I_List<ORDER> save_group_list;
+  SQL_I_List<ORDER> save_order_list;
+  LEX_STRING *win_ref;
+  Window_frame *win_frame;
+  Window_frame_bound *frame_upper_bound;
+  Window_frame_bound *frame_lower_bound;
+  Window_spec *win_spec;
 
   inline void free_set_stmt_mem_root()
   {

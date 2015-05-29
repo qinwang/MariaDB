@@ -7688,6 +7688,43 @@ TABLE_LIST *st_select_lex::convert_right_join()
   DBUG_RETURN(tab1);
 }
 
+
+void st_select_lex::prepare_add_window_spec(THD *thd)
+{
+  thd->lex->save_group_list= group_list;
+  thd->lex->save_order_list= order_list;
+  thd->lex->frame_upper_bound= 0;
+  thd->lex->frame_lower_bound= 0;
+  group_list.empty();
+  order_list.empty();
+}
+
+bool st_select_lex::add_window_def(THD *thd, LEX_STRING *win_name)
+{
+  Window_def *win_def= new (thd->mem_root) Window_def(win_name,
+                                                      thd->lex->win_ref,
+                                                      group_list,
+                                                      order_list,
+                                                      thd->lex->win_frame);
+  group_list= thd->lex->save_group_list;
+  order_list= thd->lex->save_order_list;
+  thd->lex->win_ref= 0;
+  thd->lex->win_frame= 0;
+  return (win_def == NULL || window_specs.push_back(win_def));
+}
+
+bool st_select_lex::add_window_spec(THD *thd)
+{
+  Window_spec *win_spec= new (thd->mem_root) Window_spec(thd->lex->win_ref,
+                                                         group_list,
+                                                         order_list,
+                                                         thd->lex->win_frame);
+  group_list= thd->lex->save_group_list;
+  order_list= thd->lex->save_order_list;
+  thd->lex->win_spec= win_spec;
+  return (win_spec == NULL || window_specs.push_back(win_spec));
+}
+
 /**
   Set lock for all tables in current select level.
 

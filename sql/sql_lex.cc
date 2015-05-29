@@ -532,6 +532,12 @@ void lex_start(THD *thd)
   lex->limit_rows_examined_cnt= ULONGLONG_MAX;
   lex->var_list.empty();
   lex->stmt_var_list.empty();
+
+  lex->save_group_list.empty();
+  lex->save_order_list.empty();
+  lex->win_ref= 0;
+  lex->win_frame= 0;
+
   DBUG_VOID_RETURN;
 }
 
