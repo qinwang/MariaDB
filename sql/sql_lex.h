@@ -1069,8 +1069,14 @@ public:
 
   List<Window_spec> window_specs;
   void prepare_add_window_spec(THD *thd);
-  bool add_window_def(THD *thd, LEX_STRING *win_name);
-  bool add_window_spec(THD *thd);
+  bool add_window_def(THD *thd, LEX_STRING *win_name, LEX_STRING *win_ref,
+                      SQL_I_List<ORDER> win_partition_list,
+                      SQL_I_List<ORDER> win_order_list,
+                      Window_frame *win_frame);
+  bool add_window_spec(THD *thd, LEX_STRING *win_ref,
+                       SQL_I_List<ORDER> win_partition_list,
+                       SQL_I_List<ORDER> win_order_list,
+                       Window_frame *win_frame);
 
 private:
   bool m_non_agg_field_used;
@@ -2700,8 +2706,8 @@ public:
   SQL_I_List<ORDER> save_order_list;
   LEX_STRING *win_ref;
   Window_frame *win_frame;
-  Window_frame_bound *frame_upper_bound;
-  Window_frame_bound *frame_lower_bound;
+  Window_frame_bound *frame_top_bound;
+  Window_frame_bound *frame_bottom_bound;
   Window_spec *win_spec;
 
   inline void free_set_stmt_mem_root()

@@ -535,8 +535,11 @@ void lex_start(THD *thd)
 
   lex->save_group_list.empty();
   lex->save_order_list.empty();
-  lex->win_ref= 0;
-  lex->win_frame= 0;
+  lex->win_ref= NULL;
+  lex->win_frame= NULL;
+  lex->frame_top_bound= NULL;
+  lex->frame_bottom_bound= NULL;
+  lex->win_spec= NULL;
 
   DBUG_VOID_RETURN;
 }
