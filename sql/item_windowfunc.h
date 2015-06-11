@@ -2,7 +2,7 @@
 #define ITEM_WINDOWFUNC_INCLUDED
 
 #include "my_global.h"
-#include "item_sum.h"
+#include "item.h"
 
 class Window_spec;
 
@@ -161,6 +161,8 @@ public:
   void fix_length_and_dec() { }
 
   const char* func_name() const { return "WF"; }
+
+  bool fix_fields(THD *thd, Item **ref);
 };
 
 

@@ -101,7 +101,7 @@ SET (SQL_SOURCE
                sql_profile.cc event_parse_data.cc sql_alter.cc
                sql_signal.cc rpl_handler.cc mdl.cc sql_admin.cc
                transaction.cc sys_vars.cc sql_truncate.cc datadict.cc
-               sql_reload.cc sql_cmd.h item_inetfunc.cc
+               sql_reload.cc sql_cmd.h item_inetfunc.cc 
 
                # added in MariaDB:
                sql_explain.h sql_explain.cc
@@ -115,6 +115,7 @@ SET (SQL_SOURCE
                my_apc.cc my_apc.h
                my_json_writer.cc my_json_writer.h
                rpl_gtid.cc rpl_parallel.cc
+               item_windowfunc.cc sql_window.cc
 	       ${WSREP_SOURCES}
                table_cache.cc encryption_keys.cc
                ${CMAKE_CURRENT_BINARY_DIR}/sql_builtin.cc

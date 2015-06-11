@@ -53,6 +53,7 @@
 #include "log_slow.h"
 #include "sql_derived.h"
 #include "sql_statistics.h"
+#include "sql_window.h"
 
 #include "debug_sync.h"          // DEBUG_SYNC
 #include <m_ctype.h>
@@ -616,6 +617,7 @@ inline int setup_without_group(THD *thd, Item **ref_pointer_array,
 			       COND **conds,
 			       ORDER *order,
 			       ORDER *group,
+                               List<Window_spec> &win_specs,
                                bool *hidden_group_fields,
                                uint *reserved)
 {
@@ -649,6 +651,8 @@ inline int setup_without_group(THD *thd, Item **ref_pointer_array,
   res= res || setup_group(thd, ref_pointer_array, tables, fields, all_fields,
                           group, hidden_group_fields);
   thd->lex->allow_sum_func= save_allow_sum_func;
+  res= res || setup_windows(thd, ref_pointer_array, tables, fields, all_fields,
+                            win_specs);
   DBUG_RETURN(res);
 }
 
@@ -787,6 +791,7 @@ JOIN::prepare(Item ***rref_pointer_array,
       setup_without_group(thd, (*rref_pointer_array), tables_list,
 			  select_lex->leaf_tables, fields_list,
 			  all_fields, &conds, order, group_list,
+                          select_lex->window_specs,
 			  &hidden_group_fields, &select_lex->select_n_reserved))
     DBUG_RETURN(-1);				/* purecov: inspected */
 

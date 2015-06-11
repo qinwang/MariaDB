@@ -2,6 +2,9 @@
 #ifndef SQL_WINDOW_INCLUDED
 #define SQL_WINDOW_INCLUDED
 
+#include "my_global.h"
+#include "item.h"
+
 class Window_frame_bound : public Sql_alloc
 {
 
@@ -91,5 +94,9 @@ class Window_def : public Window_spec
       window_name(win_name) {}
 
 };
+
+int setup_windows(THD *thd, Item **ref_pointer_array, TABLE_LIST *tables,
+	          List<Item> &fields, List<Item> &all_fields, 
+                  List<Window_spec> win_specs);
 
 #endif /* SQL_WINDOW_INCLUDED */
