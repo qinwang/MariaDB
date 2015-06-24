@@ -26,7 +26,7 @@ ENDIF()
 
 ############################################
 SET(TOKUDB_VERSION "tokudb-7.5.7")
-SET(TOKUDB_DEB_FILES "usr/lib/mysql/plugin/ha_tokudb.so\netc/mysql/conf.d/tokudb.cnf\nusr/bin/tokuftdump\nusr/share/doc/mariadb-server-10.0/README-TOKUDB\nusr/share/doc/mariadb-server-10.0/README.md" PARENT_SCOPE)
+SET(TOKUDB_DEB_FILES "usr/lib/mysql/plugin/ha_tokudb.so\netc/mysql/conf.d/tokudb.cnf\nusr/bin/tokuftdump\nusr/share/doc/mariadb-galera-server-10.0/README-TOKUDB\nusr/share/doc/mariadb-galera-server-10.0/README.md" PARENT_SCOPE)
 SET(USE_BDB OFF CACHE BOOL "")
 MARK_AS_ADVANCED(BUILDNAME)
 MARK_AS_ADVANCED(BUILD_TESTING)

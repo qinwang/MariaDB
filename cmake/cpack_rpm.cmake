@@ -24,11 +24,8 @@ SET(CPACK_COMPONENT_COMMON_GROUP "common")
 SET(CPACK_COMPONENT_CLIENTPLUGINS_GROUP "common")
 SET(CPACK_COMPONENT_COMPAT_GROUP "compat")
 SET(CPACK_COMPONENTS_ALL Server ManPagesServer IniFiles Server_Scripts
-                         SupportFiles Development ManPagesDevelopment
-                         ManPagesTest Readme ManPagesClient Test 
-                         Common Client SharedLibraries ClientPlugins)
-
-SET(CPACK_RPM_PACKAGE_NAME "MariaDB")
+                         SupportFiles Readme Test)
+SET(CPACK_RPM_PACKAGE_NAME "MariaDB-Galera")
 SET(CPACK_PACKAGE_FILE_NAME "${CPACK_RPM_PACKAGE_NAME}-${VERSION}-${RPM}-${CMAKE_SYSTEM_PROCESSOR}")
 
 SET(CPACK_RPM_PACKAGE_RELEASE "1%{?dist}")
@@ -125,9 +122,15 @@ SETA(CPACK_RPM_server_PACKAGE_OBSOLETES
 SETA(CPACK_RPM_server_PACKAGE_PROVIDES
   "MariaDB"
   "MySQL"
+  "MariaDB-server"
+  "mariadb-server"
   "MySQL-server"
   "msqlormysql"
   "mysql-server")
+SETA(CPACK_RPM_server_PACKAGE_REQUIRES
+  "${CPACK_RPM_PACKAGE_REQUIRES}"
+  "MariaDB-client" "galera" "rsync" "lsof" "grep" "gawk" "iproute"
+  "coreutils" "findutils" "tar")
 
 SETA(CPACK_RPM_shared_PACKAGE_OBSOLETES
   "mysql-shared"
@@ -147,10 +150,8 @@ SETA(CPACK_RPM_test_PACKAGE_OBSOLETES
   "MySQL-OurDelta-test")
 SETA(CPACK_RPM_test_PACKAGE_PROVIDES
   "MySQL-test")
-
-SETA(CPACK_RPM_server_PACKAGE_REQUIRES 
-   ${CPACK_RPM_PACKAGE_REQUIRES}
-   "MariaDB-client")
+SET(CPACK_RPM_test_PACKAGE_CONFLICTS
+  "MariaDB-test")
 
 SET(CPACK_RPM_server_PRE_INSTALL_SCRIPT_FILE ${CMAKE_SOURCE_DIR}/support-files/rpm/server-prein.sh)
 SET(CPACK_RPM_server_PRE_UNINSTALL_SCRIPT_FILE ${CMAKE_SOURCE_DIR}/support-files/rpm/server-preun.sh)

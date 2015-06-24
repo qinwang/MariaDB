@@ -137,6 +137,8 @@ my $opt_start_dirty;
 my $opt_start_exit;
 my $start_only;
 
+our @global_suppressions;
+
 END {
   if ( defined $opt_tmpdir_pid and $opt_tmpdir_pid == $$ )
   {
@@ -188,6 +190,8 @@ my @DEFAULT_SUITES= qw(
     sys_vars-
     unit-
     vcol-
+    wsrep-
+    galera-
   );
 my $opt_suites;
 
@@ -3188,7 +3192,6 @@ sub ndbcluster_start ($) {
   return 0;
 }
 
-
 sub mysql_server_start($) {
   my ($mysqld, $tinfo) = @_;
 
@@ -4797,6 +4800,7 @@ sub extract_warning_lines ($$) {
   # Perl code.
   my @antipatterns =
     (
+     @global_suppressions,
      qr/error .*connecting to master/,
      qr/Plugin 'ndbcluster' will be forced to shutdown/,
      qr/InnoDB: Error: in ALTER TABLE `test`.`t[12]`/,

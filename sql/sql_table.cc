@@ -5262,7 +5262,63 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table,
   bool do_logging= FALSE;
   uint not_used;
   int create_res;
+  uint save_thd_create_info_options;
   DBUG_ENTER("mysql_create_like_table");
+
+#ifdef WITH_WSREP
+  if (WSREP(thd) && !thd->wsrep_applier)
+  {
+    TABLE *tmp_table;
+    bool is_tmp_table= FALSE;
+
+    for (tmp_table= thd->temporary_tables; tmp_table; tmp_table=tmp_table->next)
+    {
+      if (!strcmp(src_table->db, tmp_table->s->db.str)     &&
+          !strcmp(src_table->table_name, tmp_table->s->table_name.str))
+      {
+        is_tmp_table= TRUE;
+        break;
+      }
+    }
+    if (create_info->options & HA_LEX_CREATE_TMP_TABLE)
+    {
+      /* CREATE TEMPORARY TABLE LIKE must be skipped from replication */
+      WSREP_DEBUG("CREATE TEMPORARY TABLE LIKE... skipped replication\n %s", 
+                  thd->query());
+    } 
+    else if (!is_tmp_table)
+    {
+      /* this is straight CREATE TABLE LIKE... eith no tmp tables */
+      WSREP_TO_ISOLATION_BEGIN(table->db, table->table_name, NULL);
+    }
+    else
+    {
+      /* here we have CREATE TABLE LIKE <temporary table> 
+         the temporary table definition will be needed in slaves to
+         enable the create to succeed
+       */
+      TABLE_LIST tbl;
+      bzero((void*) &tbl, sizeof(tbl));
+      tbl.db= src_table->db;
+      tbl.table_name= tbl.alias= src_table->table_name;
+      tbl.table= tmp_table;
+      char buf[2048];
+      String query(buf, sizeof(buf), system_charset_info);
+      query.length(0);  // Have to zero it since constructor doesn't
+
+      (void)  show_create_table(thd, &tbl, &query, NULL, WITH_DB_NAME);
+      WSREP_DEBUG("TMP TABLE: %s", query.ptr());
+
+      thd->wsrep_TOI_pre_query=     query.ptr();
+      thd->wsrep_TOI_pre_query_len= query.length();
+      
+      WSREP_TO_ISOLATION_BEGIN(table->db, table->table_name, NULL);
+
+      thd->wsrep_TOI_pre_query=      NULL;
+      thd->wsrep_TOI_pre_query_len= 0;
+    }
+  }
+#endif
 
   /*
     We the open source table to get its description in HA_CREATE_INFO
@@ -5277,7 +5333,7 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table,
   */
 
   /* Copy temporarily the statement flags to thd for lock_table_names() */
-  uint save_thd_create_info_options= thd->lex->create_info.options;
+  save_thd_create_info_options= thd->lex->create_info.options;
   thd->lex->create_info.options|= create_info->options;
   res= open_tables(thd, &thd->lex->query_tables, &not_used, 0);
   thd->lex->create_info.options= save_thd_create_info_options;
@@ -5533,6 +5589,13 @@ err:
       res= 1;
   }
   DBUG_RETURN(res);
+
+#ifdef WITH_WSREP
+ error:
+  thd->wsrep_TOI_pre_query= NULL;
+  DBUG_RETURN(TRUE);
+#endif /* WITH_WSREP */
+
 }
 
 
@@ -8069,6 +8132,10 @@ simple_rename_or_index_change(THD *thd, TABLE_LIST *table_list,
                                        : HA_EXTRA_FORCE_REOPEN;
   DBUG_ENTER("simple_rename_or_index_change");
 
+#ifdef WITH_WSREP
+    bool do_log_write(true);
+#endif /* WITH_WSREP */
+
   if (keys_onoff != Alter_info::LEAVE_AS_IS)
   {
     if (wait_while_table_is_used(thd, table, extra_func))
@@ -8128,7 +8195,14 @@ simple_rename_or_index_change(THD *thd, TABLE_LIST *table_list,
 
   if (!error)
   {
-    error= write_bin_log(thd, TRUE, thd->query(), thd->query_length());
+#ifdef WITH_WSREP
+      if (!WSREP(thd) || do_log_write) {
+#endif /* WITH_WSREP */
+        error= write_bin_log(thd, TRUE, thd->query(), thd->query_length());
+#ifdef WITH_WSREP
+      }
+#endif /* !WITH_WSREP */
+
     if (!error)
       my_ok(thd);
   }
@@ -8254,6 +8328,17 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
   thd->open_options&= ~HA_OPEN_FOR_ALTER;
 
   DEBUG_SYNC(thd, "alter_opened_table");
+
+#ifdef WITH_WSREP
+  DBUG_EXECUTE_IF("sync.alter_opened_table",
+                  {
+                    const char act[]=
+                      "now "
+                      "wait_for signal.alter_opened_table";
+                    DBUG_ASSERT(!debug_sync_set_action(thd,
+                                                       STRING_WITH_LEN(act)));
+                  };);
+#endif // WITH_WSREP
 
   if (error)
     DBUG_RETURN(true);

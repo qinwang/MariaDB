@@ -1282,7 +1282,9 @@ public:
       DBUG_ASSERT(h == m_file[i]->ht);
     return h;
   }
-
+#ifdef WITH_WSREP
+  virtual int wsrep_db_type() const;
+#endif /* WITH_WSREP */
 
   friend int cmp_key_rowid_part_id(void *ptr, uchar *ref1, uchar *ref2);
 };

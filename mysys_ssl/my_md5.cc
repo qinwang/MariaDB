@@ -72,3 +72,4 @@ void compute_md5_hash(char *digest, const char *buf, int len)
   my_md5_hash((unsigned char*)digest, (unsigned const char*)buf, len);
 #endif /* HAVE_YASSL */
 }
+

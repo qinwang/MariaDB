@@ -1,0 +1,49 @@
+--source include/have_wsrep.inc
+
+--echo #
+--echo # wsrep_data_home_dir (readonly)
+--echo #
+
+--echo # default
+SELECT COUNT(@@global.wsrep_data_home_dir);
+
+--echo
+--echo # scope
+--error ER_INCORRECT_GLOBAL_LOCAL_VAR
+SELECT @@session.wsrep_data_home_dir;
+--error ER_INCORRECT_GLOBAL_LOCAL_VAR
+SET @@global.wsrep_data_home_dir='/tmp/data';
+SELECT COUNT(@@global.wsrep_data_home_dir);
+
+--echo
+--echo # valid values
+--error ER_INCORRECT_GLOBAL_LOCAL_VAR
+SET @@global.wsrep_data_home_dir='/tmp/data';
+SELECT COUNT(@@global.wsrep_data_home_dir);
+--error ER_INCORRECT_GLOBAL_LOCAL_VAR
+SET @@global.wsrep_data_home_dir=junk-dir;
+SELECT COUNT(@@global.wsrep_data_home_dir);
+--error ER_INCORRECT_GLOBAL_LOCAL_VAR
+SET @@global.wsrep_data_home_dir=junk/dir;
+SELECT COUNT(@@global.wsrep_data_home_dir);
+--error ER_INCORRECT_GLOBAL_LOCAL_VAR
+SET @@global.wsrep_data_home_dir=OFF;
+SELECT COUNT(@@global.wsrep_data_home_dir);
+--error ER_INCORRECT_GLOBAL_LOCAL_VAR
+SET @@global.wsrep_data_home_dir=default;
+SELECT COUNT(@@global.wsrep_data_home_dir);
+
+--echo
+--echo # invalid values
+--error ER_INCORRECT_GLOBAL_LOCAL_VAR
+SET @@global.wsrep_data_home_dir=NULL;
+
+--echo #
+--echo # MDEV-6717 : wsrep_data_home_dir should default to @@datadir
+--echo #
+SELECT @@GLOBAL.wsrep_data_home_dir = VARIABLE_VALUE FROM
+INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME='datadir';
+SELECT @@GLOBAL.wsrep_data_home_dir = VARIABLE_VALUE FROM
+INFORMATION_SCHEMA.GLOBAL_VARIABLES WHERE VARIABLE_NAME='wsrep_data_home_dir';
+
+--echo # End of test

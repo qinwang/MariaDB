@@ -13,8 +13,33 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA 
 
+if(APPLE)
+ LIST(APPEND CMAKE_CXX_LINK_EXECUTABLE "dsymutil <TARGET>")
+ LIST(APPEND CMAKE_C_LINK_EXECUTABLE "dsymutil <TARGET>")
+ LIST(APPEND CMAKE_CXX_CREATE_SHARED_LIBRARY "dsymutil <TARGET>")
+ LIST(APPEND CMAKE_C_CREATE_SHARED_LIBRARY "dsymutil <TARGET>")
+ LIST(APPEND CMAKE_CXX_CREATE_SHARED_MODULE "dsymutil <TARGET>")
+ LIST(APPEND CMAKE_C_CREATE_SHARED_MODULE "dsymutil <TARGET>")
+ENDIF()
+
 GET_FILENAME_COMPONENT(MYSQL_CMAKE_SCRIPT_DIR ${CMAKE_CURRENT_LIST_FILE} PATH)
 INCLUDE(${MYSQL_CMAKE_SCRIPT_DIR}/cmake_parse_arguments.cmake)
+MACRO (INSTALL_DSYM_DIRECTORIES targets)
+  IF(APPLE)
+    FOREACH(target ${targets})
+      GET_TARGET_PROPERTY(location ${target} LOCATION)
+      GET_TARGET_PROPERTY(type ${target} TYPE)
+      # It's a dirty hack, but cmake too stupid and mysql cmake files too buggy */
+      STRING(REPLACE "liblibmysql.dylib" "libmysqlclient.${SHARED_LIB_MAJOR_VERSION}.dylib" location ${location})
+      IF(DEBUG_EXTNAME)
+        STRING(REGEX REPLACE "/mysqld$" "/mysqld-debug" location ${location})
+      ENDIF()
+      IF(type MATCHES "EXECUTABLE" OR type MATCHES "MODULE" OR type MATCHES "SHARED_LIBRARY")
+        INSTALL(DIRECTORY "${location}.dSYM" DESTINATION ${ARG_DESTINATION} COMPONENT Debuginfo)
+      ENDIF()
+    ENDFOREACH()
+  ENDIF()
+ENDMACRO()
 
 FUNCTION (INSTALL_DEBUG_SYMBOLS)
  IF(MSVC)
@@ -157,9 +182,9 @@ FUNCTION(INSTALL_DOCUMENTATION)
   ENDIF()
 
   IF(RPM)
-    SET(destination "${destination}/MariaDB-${group}-${VERSION}")
+    SET(destination "${destination}/MariaDB-Galera-${group}-${VERSION}")
   ELSEIF(DEB)
-    SET(destination "${destination}/mariadb-${group}-${MAJOR_VERSION}.${MINOR_VERSION}")
+    SET(destination "${destination}/mariadb-galera-${group}-${MAJOR_VERSION}.${MINOR_VERSION}")
   ENDIF()
 
   INSTALL(FILES ${files} DESTINATION ${destination} COMPONENT ${ARG_COMPONENT})
@@ -288,6 +313,7 @@ FUNCTION(MYSQL_INSTALL_TARGETS)
 
   INSTALL(TARGETS ${TARGETS} DESTINATION ${ARG_DESTINATION} ${COMP})
   INSTALL_DEBUG_SYMBOLS(${TARGETS} ${COMP} INSTALL_LOCATION ${ARG_DESTINATION})
+  INSTALL_DSYM_DIRECTORIES("${TARGETS}")
 
 ENDFUNCTION()
 
