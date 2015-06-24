@@ -1,5 +1,5 @@
-/* Copyright (c) 2000, 2012, Oracle and/or its affiliates.
-   Copyright (c) 2008, 2014, SkySQL Ab.
+/* Copyright (c) 2000, 2014, Oracle and/or its affiliates.
+   Copyright (c) 2008, 2015, MariaDB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -2927,7 +2927,9 @@ partititon_err:
     outparam->no_replicate= FALSE;
   }
 
-  thd->status_var.opened_tables++;
+  /* Increment the opened_tables counter, only when open flags set. */
+  if (db_stat)
+    thd->status_var.opened_tables++;
 
   thd->lex->context_analysis_only= save_context_analysis_only;
   DBUG_RETURN (OPEN_FRM_OK);
@@ -4728,23 +4730,26 @@ bool TABLE_LIST::check_single_table(TABLE_LIST **table_arg,
 
 bool TABLE_LIST::set_insert_values(MEM_ROOT *mem_root)
 {
+  DBUG_ENTER("set_insert_values");
   if (table)
   {
+    DBUG_PRINT("info", ("setting insert_value for table"));
     if (!table->insert_values &&
         !(table->insert_values= (uchar *)alloc_root(mem_root,
                                                    table->s->rec_buff_length)))
-      return TRUE;
+      DBUG_RETURN(TRUE);
   }
   else
   {
+    DBUG_PRINT("info", ("setting insert_value for view"));
     DBUG_ASSERT(is_view_or_derived() && is_merged_derived());
     for (TABLE_LIST *tbl= (TABLE_LIST*)view->select_lex.table_list.first;
          tbl;
          tbl= tbl->next_local)
       if (tbl->set_insert_values(mem_root))
-        return TRUE;
+        DBUG_RETURN(TRUE);
   }
-  return FALSE;
+  DBUG_RETURN(FALSE);
 }
 
 
@@ -5106,7 +5111,8 @@ TABLE *TABLE_LIST::get_real_join_table()
   TABLE_LIST *tbl= this;
   while (tbl->table == NULL || tbl->table->reginfo.join_tab == NULL)
   {
-    if (tbl->view == NULL && tbl->derived == NULL)
+    if ((tbl->view == NULL && tbl->derived == NULL) ||
+        tbl->is_materialized_derived())
       break;
     /* we do not support merging of union yet */
     DBUG_ASSERT(tbl->view == NULL ||
@@ -5115,28 +5121,25 @@ TABLE *TABLE_LIST::get_real_join_table()
                tbl->derived->first_select()->next_select() == NULL);
 
     {
-      List_iterator_fast<TABLE_LIST> ti;
+      List_iterator_fast<TABLE_LIST>
+        ti(tbl->view != NULL ?
+           tbl->view->select_lex.top_join_list :
+           tbl->derived->first_select()->top_join_list);
+      for (;;)
       {
-        List_iterator_fast<TABLE_LIST>
-          ti(tbl->view != NULL ?
-             tbl->view->select_lex.top_join_list :
-             tbl->derived->first_select()->top_join_list);
-        for (;;)
-        {
-          tbl= NULL;
-          /*
-            Find left table in outer join on this level
-            (the list is reverted).
-          */
-          for (TABLE_LIST *t= ti++; t; t= ti++)
-            tbl= t;
-          if (!tbl)
-            return NULL; // view/derived with no tables
-          if (!tbl->nested_join)
-            break;
-          /* go deeper if we've found nested join */
-          ti= tbl->nested_join->join_list;
-        }
+        tbl= NULL;
+        /*
+          Find left table in outer join on this level
+          (the list is reverted).
+        */
+        for (TABLE_LIST *t= ti++; t; t= ti++)
+          tbl= t;
+        if (!tbl)
+          return NULL; // view/derived with no tables
+        if (!tbl->nested_join)
+          break;
+        /* go deeper if we've found nested join */
+        ti= tbl->nested_join->join_list;
       }
     }
   }
@@ -6085,16 +6088,19 @@ bool TABLE::alloc_keys(uint key_count)
 }
 
 
-/*
-  Given a field, fill key_part_info
-    @param keyinfo             Key to where key part is added (we will
-                               only adjust key_length there)
-    @param field           IN  Table field for which key part is needed
-    @param key_part_info  OUT  key part structure to be filled.
-    @param fieldnr             Field's number.
+/**
+  @brief
+  Populate a KEY_PART_INFO structure with the data related to a field entry.
+
+  @param key_part_info  The structure to fill.
+  @param field          The field entry that represents the key part.
+  @param fleldnr        The number of the field, count starting from 1.
+
+  TODO: This method does not make use of any table specific fields. It
+  could be refactored to act as a constructor for KEY_PART_INFO instead.
 */
-void TABLE::create_key_part_by_field(KEY *keyinfo,
-                                     KEY_PART_INFO *key_part_info,
+
+void TABLE::create_key_part_by_field(KEY_PART_INFO *key_part_info,
                                      Field *field, uint fieldnr)
 {
   DBUG_ASSERT(field->field_index + 1 == (int)fieldnr);
@@ -6104,8 +6110,11 @@ void TABLE::create_key_part_by_field(KEY *keyinfo,
   key_part_info->field= field;
   key_part_info->fieldnr= fieldnr;
   key_part_info->offset= field->offset(record[0]);
-  key_part_info->length=   (uint16) field->pack_length();
-  keyinfo->key_length+= key_part_info->length;
+  /*
+     field->key_length() accounts for the raw length of the field, excluding
+     any metadata such as length of field or the NULL flag.
+  */
+  key_part_info->length= (uint16) field->key_length();
   key_part_info->key_part_flag= 0;
   /* TODO:
     The below method of computing the key format length of the
@@ -6117,17 +6126,20 @@ void TABLE::create_key_part_by_field(KEY *keyinfo,
   */
   key_part_info->store_length= key_part_info->length;
 
+  /*
+     The total store length of the key part is the raw length of the field +
+     any metadata information, such as its length for strings and/or the null
+     flag.
+  */
   if (field->real_maybe_null())
   {
     key_part_info->store_length+= HA_KEY_NULL_LENGTH;
-    keyinfo->key_length+= HA_KEY_NULL_LENGTH;
   }
   if (field->type() == MYSQL_TYPE_BLOB || 
       field->type() == MYSQL_TYPE_GEOMETRY ||
       field->real_type() == MYSQL_TYPE_VARCHAR)
   {
     key_part_info->store_length+= HA_KEY_BLOB_LENGTH;
-    keyinfo->key_length+= HA_KEY_BLOB_LENGTH; // ???
     key_part_info->key_part_flag|=
       field->type() == MYSQL_TYPE_BLOB ? HA_BLOB_PART: HA_VAR_LENGTH_PART;
   }
@@ -6253,7 +6265,8 @@ bool TABLE::add_tmp_key(uint key, uint key_parts,
     if (key_start)
       (*reg_field)->key_start.set_bit(key);
     (*reg_field)->part_of_key.set_bit(key);
-    create_key_part_by_field(keyinfo, key_part_info, *reg_field, fld_idx+1);
+    create_key_part_by_field(key_part_info, *reg_field, fld_idx+1);
+    keyinfo->key_length += key_part_info->store_length;
     (*reg_field)->flags|= PART_KEY_FLAG;
     key_start= FALSE;
     key_part_info++;
@@ -6897,15 +6910,16 @@ void TABLE_LIST::reset_const_table()
 
 bool TABLE_LIST::handle_derived(LEX *lex, uint phases)
 {
-  SELECT_LEX_UNIT *unit= get_unit();
-  if (unit)
+  SELECT_LEX_UNIT *unit;
+  DBUG_ENTER("handle_derived");
+  if ((unit= get_unit()))
   {
     for (SELECT_LEX *sl= unit->first_select(); sl; sl= sl->next_select())
       if (sl->handle_derived(lex, phases))
-        return TRUE;
-    return mysql_handle_single_derived(lex, this, phases);
+        DBUG_RETURN(TRUE);
+    DBUG_RETURN(mysql_handle_single_derived(lex, this, phases));
   }
-  return FALSE;
+  DBUG_RETURN(FALSE);
 }
 
 

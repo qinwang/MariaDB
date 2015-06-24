@@ -1,4 +1,5 @@
-# Copyright (c) 2006, 2013, Oracle and/or its affiliates.
+# Copyright (c) 2006, 2014, Oracle and/or its affiliates.
+# Copyright (c) 2010, 2015, MariaDB
 # 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -27,8 +28,26 @@ ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc.h
 ${CMAKE_CURRENT_BINARY_DIR}/sql_yacc.cc
 ${CMAKE_CURRENT_BINARY_DIR}/lex_hash.h 
 )
+SET(GEN_DIGEST_SOURCES
+  ${CMAKE_CURRENT_BINARY_DIR}/lex_token.h 
+)
 
-SET_SOURCE_FILES_PROPERTIES(${GEN_SOURCES} PROPERTIES GENERATED 1)
+SET_SOURCE_FILES_PROPERTIES(${GEN_SOURCES}
+                            ${GEN_DIGEST_SOURCES}
+                            PROPERTIES GENERATED 1)
+
+# Gen_lex_token
+# Make sure sql_yacc.h is generated before compiling gen_lex_token
+IF(NOT CMAKE_CROSSCOMPILING)
+  ADD_EXECUTABLE(gen_lex_token gen_lex_token.cc)
+  ADD_DEPENDENCIES(gen_lex_token GenServerSource)
+ENDIF()
+
+ADD_CUSTOM_COMMAND(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/lex_token.h
+  COMMAND gen_lex_token > lex_token.h
+  DEPENDS gen_lex_token
+)
 
 ADD_DEFINITIONS(-DMYSQL_SERVER -DHAVE_EVENT_SCHEDULER) 
 
@@ -58,7 +77,8 @@ SET (SQL_SOURCE
                slave.cc sp.cc sp_cache.cc sp_head.cc sp_pcontext.cc 
                sp_rcontext.cc spatial.cc sql_acl.cc sql_analyse.cc sql_base.cc 
                sql_cache.cc sql_class.cc sql_client.cc sql_crypt.cc sql_crypt.h 
-               sql_cursor.cc sql_db.cc sql_delete.cc sql_derived.cc sql_do.cc 
+               sql_cursor.cc sql_db.cc sql_delete.cc sql_derived.cc
+               sql_digest.cc sql_do.cc 
                sql_error.cc sql_handler.cc sql_get_diagnostics.cc
                sql_help.cc sql_insert.cc sql_lex.cc 
                sql_list.cc sql_load.cc sql_manager.cc
@@ -95,6 +115,7 @@ SET (SQL_SOURCE
                table_cache.cc
                ${CMAKE_CURRENT_BINARY_DIR}/sql_builtin.cc
                ${GEN_SOURCES}
+               ${GEN_DIGEST_SOURCES}
                ${MYSYS_LIBWRAP_SOURCE}
 			   )
   
@@ -115,6 +136,7 @@ RECOMPILE_FOR_EMBEDDED)
 
 ADD_LIBRARY(sql STATIC ${SQL_SOURCE})
 ADD_DEPENDENCIES(sql GenServerSource)
+ADD_DEPENDENCIES(sql GenDigestServerSource)
 DTRACE_INSTRUMENT(sql)
 TARGET_LINK_LIBRARIES(sql ${MYSQLD_STATIC_PLUGIN_LIBS} 
   mysys mysys_ssl dbug strings vio pcre ${LIBJEMALLOC}
@@ -244,6 +266,11 @@ ADD_CUSTOM_TARGET(
         DEPENDS ${GEN_SOURCES}
 )
 
+ADD_CUSTOM_TARGET( 
+        GenDigestServerSource
+        DEPENDS ${GEN_DIGEST_SOURCES}
+)
+
 #Need this only for embedded
 SET_TARGET_PROPERTIES(GenServerSource PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
@@ -263,14 +290,15 @@ IF(WIN32 OR HAVE_DLOPEN AND NOT DISABLE_SHARED)
 ENDIF()
 
 FOREACH(tool glibtoolize libtoolize aclocal autoconf autoheader automake gtar 
- tar bzr)
+ tar git)
  STRING(TOUPPER ${tool}  TOOL)
  FIND_PROGRAM(${TOOL}_EXECUTABLE ${tool} DOC "path to the executable")
  MARK_AS_ADVANCED(${TOOL}_EXECUTABLE)
 ENDFOREACH()
 
 CONFIGURE_FILE(
-  ${CMAKE_SOURCE_DIR}/cmake/make_dist.cmake.in ${CMAKE_BINARY_DIR}/make_dist.cmake @ONLY)
+  ${CMAKE_SOURCE_DIR}/cmake/make_dist.cmake.in
+  ${CMAKE_BINARY_DIR}/make_dist.cmake @ONLY)
 
 ADD_CUSTOM_TARGET(dist 
   COMMAND ${CMAKE_COMMAND} -P ${CMAKE_BINARY_DIR}/make_dist.cmake
@@ -280,8 +308,7 @@ ADD_CUSTOM_TARGET(dist
 
 ADD_CUSTOM_TARGET(distclean
   COMMAND ${CMAKE_COMMAND} -E echo  WARNING: distclean target is not functional
-  COMMAND ${CMAKE_COMMAND} -E echo  Use 'bzr clean-tree' with --unknown and/or
-    --ignored parameter instead
+  COMMAND ${CMAKE_COMMAND} -E echo  Use 'git clean -fdx' instead
   VERBATIM
   )
 

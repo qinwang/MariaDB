@@ -734,6 +734,11 @@ public:
   void fix_length_and_dec();
   const char *func_name() const { return "interval"; }
   uint decimal_precision() const { return 2; }
+  void print(String *str, enum_query_type query_type)
+  {
+    str->append(func_name());
+    print_args(str, 0, query_type);
+  }
 };
 
 
@@ -1544,6 +1549,10 @@ class Regexp_processor_pcre
   int m_pcre_exec_rc;
   int m_SubStrVec[30];
   uint m_subpatterns_needed;
+  void pcre_exec_warn(int rc) const;
+  int pcre_exec_with_warn(const pcre *code, const pcre_extra *extra,
+                          const char *subject, int length, int startoffset,
+                          int options, int *ovector, int ovecsize);
 public:
   String *convert_if_needed(String *src, String *converter);
   String subject_converter;

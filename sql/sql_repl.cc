@@ -943,7 +943,7 @@ give_error_start_pos_missing_in_binlog(int *err, const char **errormsg,
       binlog_gtid.seq_no >= error_gtid->seq_no)
   {
     *errormsg= "Requested slave GTID state not found in binlog. The slave has "
-      "probably diverged due to executing errorneous transactions";
+      "probably diverged due to executing erroneous transactions";
     *err= ER_GTID_POSITION_NOT_FOUND_IN_BINLOG2;
   }
   else
@@ -1948,6 +1948,7 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
   slave_connection_state until_gtid_state_obj;
   rpl_gtid error_gtid;
   binlog_send_info info(thd, packet, flags, log_file_name);
+  bool has_transmit_started= false;
 
   int old_max_allowed_packet= thd->variables.max_allowed_packet;
 
@@ -2006,16 +2007,6 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
                     DBUG_SET("-d,corrupt_read_log_event2_set");
                     DBUG_SET("+d,corrupt_read_log_event2");
                   });
-
-  if (global_system_variables.log_warnings > 1)
-    sql_print_information("Start binlog_dump to slave_server(%lu), pos(%s, %lu)",
-                          thd->variables.server_id, log_ident, (ulong)pos);
-  if (RUN_HOOK(binlog_transmit, transmit_start, (thd, flags, log_ident, pos)))
-  {
-    errmsg= "Failed to run hook 'transmit_start'";
-    my_errno= ER_UNKNOWN_ERROR;
-    goto err;
-  }
 
 #ifndef DBUG_OFF
   if (opt_sporadic_binlog_dump_fail && (binlog_dump_count++ % 2))
@@ -2112,6 +2103,17 @@ impossible position";
     my_errno= ER_MASTER_FATAL_ERROR_READING_BINLOG;
     goto err;
   }
+
+  if (global_system_variables.log_warnings > 1)
+    sql_print_information("Start binlog_dump to slave_server(%lu), pos(%s, %lu)",
+                          thd->variables.server_id, log_ident, (ulong)pos);
+  if (RUN_HOOK(binlog_transmit, transmit_start, (thd, flags, log_ident, pos)))
+  {
+    errmsg= "Failed to run hook 'transmit_start'";
+    my_errno= ER_UNKNOWN_ERROR;
+    goto err;
+  }
+  has_transmit_started= true;
 
   /* reset transmit packet for the fake rotate event below */
   if (reset_transmit_packet(thd, flags, &ev_offset, &errmsg))
@@ -2375,6 +2377,31 @@ impossible position";
         info.fdev= tmp;
 
         (*packet)[FLAGS_OFFSET+ev_offset] &= ~LOG_EVENT_BINLOG_IN_USE_F;
+
+        if (info.using_gtid_state)
+        {
+          /*
+            If this event has the field `created' set, then it will cause the
+            slave to delete all active temporary tables. This must not happen
+            if the slave received any later GTIDs in a previous connect, as
+            those GTIDs might have created new temporary tables that are still
+            needed.
+
+            So here, we check if the starting GTID position was already
+            reached before this format description event. If not, we clear the
+            `created' flag to preserve temporary tables on the slave. (If the
+            slave connects at a position past this event, it means that it
+            already received and handled it in a previous connect).
+          */
+          if (!info.gtid_state.is_pos_reached())
+          {
+            int4store((char*) packet->ptr()+LOG_EVENT_MINIMAL_HEADER_LEN+
+                      ST_CREATED_OFFSET+ev_offset, (ulong) 0);
+            if (info.current_checksum_alg != BINLOG_CHECKSUM_ALG_OFF &&
+                info.current_checksum_alg != BINLOG_CHECKSUM_ALG_UNDEF)
+              fix_checksum(packet, ev_offset);
+          }
+        }
       }
 
 #ifndef DBUG_OFF
@@ -2680,7 +2707,8 @@ end:
   end_io_cache(&log);
   mysql_file_close(file, MYF(MY_WME));
 
-  RUN_HOOK(binlog_transmit, transmit_stop, (thd, flags));
+  if (has_transmit_started)
+    RUN_HOOK(binlog_transmit, transmit_stop, (thd, flags));
   my_eof(thd);
   THD_STAGE_INFO(thd, stage_waiting_to_finalize_termination);
   mysql_mutex_lock(&LOCK_thread_count);
@@ -2723,7 +2751,7 @@ err:
                 "%u-%u-%llu, which is not in the master's binlog. Since the "
                 "master's binlog contains GTIDs with higher sequence numbers, "
                 "it probably means that the slave has diverged due to "
-                "executing extra errorneous transactions",
+                "executing extra erroneous transactions",
                 error_gtid.domain_id, error_gtid.server_id, error_gtid.seq_no);
     /* Use this error code so slave will know not to try reconnect. */
     my_errno = ER_MASTER_FATAL_ERROR_READING_BINLOG;
@@ -2749,7 +2777,8 @@ err:
   else
     strcpy(error_text, errmsg);
   end_io_cache(&log);
-  RUN_HOOK(binlog_transmit, transmit_stop, (thd, flags));
+  if (has_transmit_started)
+    RUN_HOOK(binlog_transmit, transmit_stop, (thd, flags));
   /*
     Exclude  iteration through thread list
     this is needed for purge_logs() - it will iterate through

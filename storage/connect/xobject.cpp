@@ -11,6 +11,7 @@
 /*  Include mariaDB header file.                                       */
 /***********************************************************************/
 #include "my_global.h"
+#include "m_string.h"
 
 /***********************************************************************/
 /*  Include required application header files                          */
@@ -290,6 +291,34 @@ bool STRING::Set(char *s, uint n)
 } // end of Set
 
 /***********************************************************************/
+/*  Append a char* to a STRING.                                          */
+/***********************************************************************/
+bool STRING::Append(const char *s, uint ln)
+{
+  if (!s)
+    return false;
+
+  uint len = Length + ln + 1;
+
+  if (len > Size) {
+    char *p = Realloc(len);
+    
+    if (!p)
+      return true;
+    else if (p != Strp) {
+      strcpy(p, Strp);
+      Strp = p;
+      } // endif p
+
+    } // endif n
+
+  strncpy(Strp + Length, s, ln);
+  Length = len - 1;
+  Strp[Length] = 0;
+  return false;
+} // end of Append
+
+/***********************************************************************/
 /*  Append a PSZ to a STRING.                                          */
 /***********************************************************************/
 bool STRING::Append(PSZ s)
@@ -345,6 +374,31 @@ bool STRING::Append(char c)
   Strp[Length] = 0;
   return false;
 } // end of Append
+
+/***********************************************************************/
+/*  Append a quoted PSZ to a STRING.                                   */
+/***********************************************************************/
+bool STRING::Append_quoted(PSZ s)
+{
+  bool b = Append('\'');
+
+  if (s) for (char *p = s; !b && *p; p++)
+    switch (*p) {
+      case '\'':
+      case '\\':
+      case '\t':
+      case '\n':
+      case '\r':
+      case '\b':
+      case '\f': b |= Append('\\');
+        // passthru
+      default:
+        b |= Append(*p);
+        break;
+      } // endswitch *p
+
+  return (b |= Append('\''));
+} // end of Append_quoted
 
 /***********************************************************************/
 /*  Resize to given length but only when last suballocated.            */

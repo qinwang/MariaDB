@@ -1,5 +1,6 @@
 /*
    Copyright (c) 2000, 2010, Oracle and/or its affiliates.
+   Copyright (c) 2010, 2015, MariaDB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -850,7 +851,7 @@ int mysql_multi_delete_prepare(THD *thd)
   */
   lex->select_lex.exclude_from_table_unique_test= FALSE;
   
-  if (lex->select_lex.save_prep_leaf_tables(thd))
+  if (lex->save_prep_leaf_tables())
     DBUG_RETURN(TRUE);
   
   DBUG_RETURN(FALSE);
@@ -897,9 +898,10 @@ multi_delete::initialize_tables(JOIN *join)
   delete_while_scanning= 1;
   for (walk= delete_tables; walk; walk= walk->next_local)
   {
-    tables_to_delete_from|= walk->table->map;
+    TABLE_LIST *tbl= walk->correspondent_table->find_table_for_update();
+    tables_to_delete_from|= tbl->table->map;
     if (delete_while_scanning &&
-        unique_table(thd, walk, join->tables_list, false))
+        unique_table(thd, tbl, join->tables_list, false))
     {
       /*
         If the table we are going to delete from appears

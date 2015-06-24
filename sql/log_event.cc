@@ -49,8 +49,11 @@
 #include <base64.h>
 #include <my_bitmap.h>
 #include "rpl_utility.h"
+#include "sql_digest.h"
 
 #define my_b_write_string(A, B) my_b_write((A), (B), (uint) (sizeof(B) - 1))
+
+using std::max;
 
 /**
   BINLOG_CHECKSUM variable.
@@ -334,10 +337,6 @@ private:
   FILE *m_file;
   flag_set m_flags;
 };
-
-#ifndef DBUG_OFF
-uint debug_not_change_ts_if_art_event= 1; // bug#29309 simulation
-#endif
 
 /*
   pretty_print_str()
@@ -877,7 +876,7 @@ Log_event::Log_event()
 
 Log_event::Log_event(const char* buf,
                      const Format_description_log_event* description_event)
-  :temp_buf(0), cache_type(Log_event::EVENT_INVALID_CACHE),
+  :temp_buf(0), exec_time(0), cache_type(Log_event::EVENT_INVALID_CACHE),
     crc(0), checksum_alg(BINLOG_CHECKSUM_ALG_UNDEF)
 {
 #ifndef MYSQL_CLIENT
@@ -968,29 +967,12 @@ int Log_event::do_update_pos(rpl_group_info *rgi)
   if (rli)
   {
     /*
-      bug#29309 simulation: resetting the flag to force
-      wrong behaviour of artificial event to update
-      rli->last_master_timestamp for only one time -
-      the first FLUSH LOGS in the test.
-    */
-    DBUG_EXECUTE_IF("let_first_flush_log_change_timestamp",
-                    if (debug_not_change_ts_if_art_event == 1
-                        && is_artificial_event())
-                      debug_not_change_ts_if_art_event= 0; );
-    /*
       In parallel execution, delay position update for the events that are
       not part of event groups (format description, rotate, and such) until
       the actual event execution reaches that point.
     */
     if (!rgi->is_parallel_exec || is_group_event(get_type_code()))
-      rli->stmt_done(log_pos,
-                     (is_artificial_event() &&
-                      IF_DBUG(debug_not_change_ts_if_art_event > 0, 1) ?
-                      0 : when),
-                     thd, rgi);
-    DBUG_EXECUTE_IF("let_first_flush_log_change_timestamp",
-                    if (debug_not_change_ts_if_art_event == 0)
-                      debug_not_change_ts_if_art_event= 2; );
+      rli->stmt_done(log_pos, thd, rgi);
   }
   DBUG_RETURN(0);                                  // Cannot fail currently
 }
@@ -1326,9 +1308,10 @@ int Log_event::read_log_event(IO_CACHE* file, String* packet,
   }
   data_len= uint4korr(buf + EVENT_LEN_OFFSET);
   if (data_len < LOG_EVENT_MINIMAL_HEADER_LEN ||
-      data_len > current_thd->variables.max_allowed_packet)
+      data_len > max(current_thd->variables.max_allowed_packet,
+                     opt_binlog_rows_event_max_size + MAX_LOG_EVENT_HEADER))
   {
-    DBUG_PRINT("error",("data_len: %ld", data_len));
+    DBUG_PRINT("error",("data_len: %lu", data_len));
     result= ((data_len < LOG_EVENT_MINIMAL_HEADER_LEN) ? LOG_READ_BOGUS :
 	     LOG_READ_TOO_LARGE);
     goto end;
@@ -1449,7 +1432,7 @@ failed my_b_read"));
     */
     DBUG_RETURN(0);
   }
-  uint data_len = uint4korr(head + EVENT_LEN_OFFSET);
+  ulong data_len = uint4korr(head + EVENT_LEN_OFFSET);
   char *buf= 0;
   const char *error= 0;
   Log_event *res=  0;
@@ -1458,7 +1441,8 @@ failed my_b_read"));
   uint max_allowed_packet= thd ? slave_max_allowed_packet:~(uint)0;
 #endif
 
-  if (data_len > max_allowed_packet)
+  if (data_len > max<ulong>(max_allowed_packet,
+                        opt_binlog_rows_event_max_size + MAX_LOG_EVENT_HEADER))
   {
     error = "Event too big";
     goto err;
@@ -1492,7 +1476,7 @@ err:
   {
     DBUG_ASSERT(error != 0);
     sql_print_error("Error in Log_event::read_log_event(): "
-                    "'%s', data_len: %d, event_type: %d",
+                    "'%s', data_len: %lu, event_type: %d",
 		    error,data_len,(uchar)(head[EVENT_TYPE_OFFSET]));
     my_free(buf);
     /*
@@ -2421,6 +2405,12 @@ log_event_print_value(IO_CACHE *file, const uchar *ptr,
   case MYSQL_TYPE_STRING:
     my_snprintf(typestr, typestr_length, "STRING(%d)", length);
     return my_b_write_quoted_with_length(file, ptr, length);
+
+  case MYSQL_TYPE_DECIMAL:
+    my_b_printf(file,
+                "!! Old DECIMAL (mysql-4.1 or earlier). "
+                "Not enough metadata to display the value. ");
+    break;
 
   default:
     {
@@ -4299,12 +4289,17 @@ int Query_log_event::do_apply_event(rpl_group_info *rgi,
       Parser_state parser_state;
       if (!parser_state.init(thd, thd->query(), thd->query_length()))
       {
+        DBUG_ASSERT(thd->m_digest == NULL);
+        thd->m_digest= & thd->m_digest_state;
+        DBUG_ASSERT(thd->m_statement_psi == NULL);
         thd->m_statement_psi= MYSQL_START_STATEMENT(&thd->m_statement_state,
                                                     stmt_info_rpl.m_key,
                                                     thd->db, thd->db_length,
                                                     thd->charset());
         THD_STAGE_INFO(thd, stage_init);
         MYSQL_SET_STATEMENT_TEXT(thd->m_statement_psi, thd->query(), thd->query_length());
+        if (thd->m_digest != NULL)
+          thd->m_digest->reset(thd->m_token_array, max_digest_length);
 
         mysql_parse(thd, thd->query(), thd->query_length(), &parser_state);
         /* Finalize server status flags after executing a statement. */
@@ -4396,11 +4391,10 @@ compare_errors:
         !ignored_error_code(expected_error))
     {
       rli->report(ERROR_LEVEL, 0, rgi->gtid_info(),
-                      "\
-Query caused different errors on master and slave.     \
-Error on master: message (format)='%s' error code=%d ; \
-Error on slave: actual message='%s', error code=%d. \
-Default database: '%s'. Query: '%s'",
+                      "Query caused different errors on master and slave.     "
+                      "Error on master: message (format)='%s' error code=%d ; "
+                      "Error on slave: actual message='%s', error code=%d. "
+                      "Default database: '%s'. Query: '%s'",
                       ER_SAFE(expected_error),
                       expected_error,
                       actual_error ? thd->get_stmt_da()->message() : "no error",
@@ -4496,6 +4490,7 @@ end:
   /* Mark the statement completed. */
   MYSQL_END_STATEMENT(thd->m_statement_psi, thd->get_stmt_da());
   thd->m_statement_psi= NULL;
+  thd->m_digest= NULL;
 
   /*
     As a disk space optimization, future masters will not log an event for
@@ -10103,7 +10098,7 @@ Rows_log_event::do_update_pos(rpl_group_info *rgi)
       Step the group log position if we are not in a transaction,
       otherwise increase the event log position.
     */
-    rli->stmt_done(log_pos, when, thd, rgi);
+    rli->stmt_done(log_pos, thd, rgi);
     /*
       Clear any errors in thd->net.last_err*. It is not known if this is
       needed or not. It is believed that any errors that may exist in

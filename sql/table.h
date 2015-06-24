@@ -1340,7 +1340,7 @@ public:
   bool add_tmp_key(uint key, uint key_parts,
                    uint (*next_field_no) (uchar *), uchar *arg,
                    bool unique);
-  void create_key_part_by_field(KEY *keyinfo, KEY_PART_INFO *key_part_info,
+  void create_key_part_by_field(KEY_PART_INFO *key_part_info,
                                 Field *field, uint fieldnr);
   void use_index(int key_to_save);
   void set_table_map(table_map map_arg, uint tablenr_arg)
@@ -1374,6 +1374,10 @@ public:
   }
 
   bool update_const_key_parts(COND *conds);
+
+  my_ptrdiff_t default_values_offset() const
+  { return (my_ptrdiff_t) (s->default_values - record[0]); }
+
   uint actual_n_key_parts(KEY *keyinfo);
   ulong actual_key_flags(KEY *keyinfo);
   int update_default_fields();
@@ -1537,6 +1541,8 @@ typedef struct st_schema_table
 #define DT_PHASES_MATERIALIZE (DT_COMMON | DT_MATERIALIZE)
 
 #define VIEW_ALGORITHM_UNDEFINED 0
+/* Special value for ALTER VIEW: inherit original algorithm. */
+#define VIEW_ALGORITHM_INHERIT   DTYPE_VIEW
 #define VIEW_ALGORITHM_MERGE    (DTYPE_VIEW | DTYPE_MERGE)
 #define VIEW_ALGORITHM_TMPTABLE (DTYPE_VIEW | DTYPE_MATERIALIZE)
 
@@ -2079,6 +2085,24 @@ struct TABLE_LIST
   TABLE_LIST *find_underlying_table(TABLE *table);
   TABLE_LIST *first_leaf_for_name_resolution();
   TABLE_LIST *last_leaf_for_name_resolution();
+  /**
+     @brief
+       Find the bottom in the chain of embedded table VIEWs.
+
+     @detail
+       This is used for single-table UPDATE/DELETE when they are modifying a
+       single-table VIEW.
+  */
+  TABLE_LIST *find_table_for_update()
+  {
+    TABLE_LIST *tbl= this;
+    while(!tbl->is_multitable() && tbl->single_table_updatable() &&
+        tbl->merge_underlying_list)
+    {
+      tbl= tbl->merge_underlying_list;
+    }
+    return tbl;
+  }
   TABLE *get_real_join_table();
   bool is_leaf_for_name_resolution();
   inline TABLE_LIST *top_table()

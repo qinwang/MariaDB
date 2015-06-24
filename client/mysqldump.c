@@ -97,7 +97,7 @@ static ulong find_set(TYPELIB *lib, const char *x, uint length,
 static char *alloc_query_str(ulong size);
 
 static void field_escape(DYNAMIC_STRING* in, const char *from);
-static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0,
+static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0, opt_no_data_med= 1,
                 quick= 1, extended_insert= 1,
                 lock_tables=1,ignore_errors=0,flush_logs=0,flush_privileges=0,
                 opt_drop=1,opt_keywords=0,opt_lock=1,opt_compress=0,
@@ -114,7 +114,6 @@ static my_bool  verbose= 0, opt_no_create_info= 0, opt_no_data= 0,
                 opt_slave_apply= 0, 
                 opt_include_master_host_port= 0,
                 opt_events= 0, opt_comments_used= 0,
-                opt_galera_sst_mode= 0,
                 opt_alltspcs=0, opt_notspcs= 0;
 static my_bool insert_pat_inited= 0, debug_info_flag= 0, debug_check_flag= 0;
 static ulong opt_max_allowed_packet, opt_net_buffer_length;
@@ -203,6 +202,8 @@ const char *compatible_mode_names[]=
 )
 TYPELIB compatible_mode_typelib= {array_elements(compatible_mode_names) - 1,
                                   "", compatible_mode_names, NULL};
+
+#define MED_ENGINES "MRG_MyISAM, MRG_ISAM, CONNECT, OQGRAPH, SPIDER, VP, FEDERATED"
 
 HASH ignore_table;
 
@@ -351,14 +352,6 @@ static struct my_option my_long_options[] =
   {"force", 'f', "Continue even if we get an SQL error.",
    &ignore_errors, &ignore_errors, 0, GET_BOOL, NO_ARG,
    0, 0, 0, 0, 0, 0},
-  {"galera-sst-mode", OPT_GALERA_SST_MODE,
-   "This mode should normally be used in mysqldump snapshot state transfer "
-   "(SST) in a Galera cluster. If enabled, mysqldump additionally dumps "
-   "commands to turn off binary logging and SET global gtid_binlog_state "
-   "with the current value. Note: RESET MASTER needs to be executed on the "
-   "server receiving the resulting dump.",
-   &opt_galera_sst_mode, &opt_galera_sst_mode, 0, GET_BOOL, NO_ARG, 0, 0, 0,
-   0, 0, 0},
   {"gtid", OPT_USE_GTID, "Used together with --master-data=1 or --dump-slave=1."
    "When enabled, the output from those options will set the GTID position "
    "instead of the binlog file and offset; the file/offset will appear only as "
@@ -438,6 +431,9 @@ static struct my_option my_long_options[] =
    NO_ARG, 0, 0, 0, 0, 0, 0},
   {"no-data", 'd', "No row information.", &opt_no_data,
    &opt_no_data, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+  {"no-data-med", 0, "No row information for engines that "
+   "Manage External Data (" MED_ENGINES ").", &opt_no_data_med,
+   &opt_no_data_med, 0, GET_BOOL, NO_ARG, 1, 0, 0, 0, 0, 0},
   {"no-set-names", 'N', "Same as --skip-set-charset.",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"opt", OPT_OPTIMIZE,
@@ -4903,43 +4899,6 @@ static int dump_selected_tables(char *db, char **table_names, int tables)
 } /* dump_selected_tables */
 
 
-/**
-  Add the following statements to the generated dump:
-  a) SET @@session.sql_log_bin=OFF;
-  b) SET @@global.gtid_binlog_state='[N-N-N,...]'
-*/
-static int wsrep_set_sst_cmds(MYSQL *mysql) {
-  MYSQL_RES *res;
-  MYSQL_ROW row;
-
-  if (mysql_get_server_version(mysql) < 100005) {
-    /* @@gtid_binlog_state does not exist. */
-    return 0;
-  }
-
-  if (mysql_query_with_error_report(mysql, &res, "SELECT "
-                                    "@@global.gtid_binlog_state"))
-    return 1;
-
-  if (mysql_num_rows(res) != 1)
-    /* No entry for @@global.gtid_binlog_state, nothing needs to be done. */
-    return 0;
-
-  if (!(row= mysql_fetch_row(res)) || !(char *)row[0])
-    return 1;
-
-  /* first, add a command to turn off binary logging, */
-  fprintf(md_result_file, "SET @@session.sql_log_bin=OFF;\n");
-
-  /* followed by, a command to set global gtid_binlog_state. */
-  fprintf(md_result_file, "SET @@global.gtid_binlog_state='%s';\n",
-          (char*)row[0]);
-
-  mysql_free_result(res);
-  return 0;
-}
-
-
 static int do_show_master_status(MYSQL *mysql_con, int consistent_binlog_pos,
                                  int have_mariadb_gtid, int use_gtid)
 {
@@ -5452,12 +5411,12 @@ char check_if_ignore_table(const char *table_name, char *table_type)
     /*
       If these two types, we do want to skip dumping the table
     */
-    if (!opt_no_data &&
-        (!my_strcasecmp(&my_charset_latin1, table_type, "MRG_MyISAM") ||
-         !strcmp(table_type,"MRG_ISAM") ||
-         !strcmp(table_type,"CONNECT") ||
-         !strcmp(table_type,"FEDERATED")))
-      result= IGNORE_DATA;
+    if (!opt_no_data && opt_no_data_med)
+    {
+      const char *found= strstr(" " MED_ENGINES ",", table_type);
+      if (found && found[-1] == ' ' && found[strlen(table_type)] == ',')
+        result= IGNORE_DATA;
+    }
   }
   mysql_free_result(res);
   DBUG_RETURN(result);
@@ -5934,9 +5893,6 @@ int main(int argc, char **argv)
 
   /* Add 'STOP SLAVE to beginning of dump */
   if (opt_slave_apply && add_stop_slave())
-    goto err;
-
-  if (opt_galera_sst_mode && wsrep_set_sst_cmds(mysql))
     goto err;
 
   if (opt_master_data && do_show_master_status(mysql, consistent_binlog_pos,

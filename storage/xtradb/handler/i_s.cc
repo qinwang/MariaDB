@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 2007, 2013, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2007, 2015, Oracle and/or its affiliates. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -170,9 +170,12 @@ do {									\
 	}								\
 } while (0)
 
-#if !defined __STRICT_ANSI__ && defined __GNUC__ && (__GNUC__) > 2 &&	\
-	!defined __INTEL_COMPILER && !defined __clang__
+#if !defined __STRICT_ANSI__ && defined __GNUC__ && (__GNUC__) > 2 && !defined __INTEL_COMPILER && !defined __clang__
+#ifdef HAVE_C99_INITIALIZERS
+#define STRUCT_FLD(name, value)	.name = value
+#else
 #define STRUCT_FLD(name, value)	name: value
+#endif /* HAVE_C99_INITIALIZERS */
 #else
 #define STRUCT_FLD(name, value)	value
 #endif
@@ -3254,8 +3257,6 @@ i_s_fts_index_cache_fill_one_index(
 	for (rbt_node = rbt_first(index_cache->words);
 	     rbt_node;
 	     rbt_node = rbt_next(index_cache->words, rbt_node)) {
-		doc_id_t	doc_id = 0;
-
 		fts_tokenizer_word_t* word;
 
 		word = rbt_value(fts_tokenizer_word_t, rbt_node);
@@ -3281,6 +3282,7 @@ i_s_fts_index_cache_fill_one_index(
 			fts_node_t*	node;
 			byte*		ptr;
 			ulint		decoded = 0;
+			doc_id_t	doc_id = 0;
 
 			node = static_cast<fts_node_t*> (ib_vector_get(
 				word->nodes, i));
@@ -3952,10 +3954,14 @@ i_s_fts_config_fill(
 
 	if (!user_table) {
 		DBUG_RETURN(0);
+	} else if (!dict_table_has_fts_index(user_table)) {
+		dict_table_close(user_table, FALSE, FALSE);
+
+		DBUG_RETURN(0);
 	}
 
 	trx = trx_allocate_for_background();
-	trx->op_info = "Select for FTS DELETE TABLE";
+	trx->op_info = "Select for FTS CONFIG TABLE";
 
 	FTS_INIT_FTS_TABLE(&fts_table, "CONFIG", FTS_COMMON_TABLE, user_table);
 
@@ -5187,11 +5193,6 @@ i_s_innodb_fill_buffer_pool(
 			the buffer pool. Doing so before obtain any mutex */
 			info_buffer = (buf_page_info_t*) mem_heap_zalloc(
 				heap, mem_size);
-
-			/* Obtain appropriate mutexes. Since this is diagnostic
-			buffer pool info printout, we are not required to
-			preserve the overall consistency, so we can
-			release mutex periodically */
 
 			/* GO through each block in the chunk */
 			for (n_blocks = num_to_process; n_blocks--; block++) {

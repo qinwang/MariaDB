@@ -95,17 +95,17 @@ class VALBLK : public BLOCK {
   virtual bool   IsCi(void) {return false;}
 
   // Methods
-  virtual void   SetValue(short sval, int n) {assert(false);}
-  virtual void   SetValue(ushort sval, int n) {assert(false);}
-  virtual void   SetValue(int lval, int n) {assert(false);}
-  virtual void   SetValue(uint lval, int n) {assert(false);}
-  virtual void   SetValue(longlong lval, int n) {assert(false);}
-  virtual void   SetValue(ulonglong lval, int n) {assert(false);}
-  virtual void   SetValue(double fval, int n) {assert(false);}
-  virtual void   SetValue(char cval, int n) {assert(false);}
-  virtual void   SetValue(uchar cval, int n) {assert(false);}
-  virtual void   SetValue(PSZ sp, int n) {assert(false);}
-  virtual void   SetValue(char *sp, uint len, int n) {assert(false);}
+  virtual void   SetValue(short, int) {assert(false);}
+  virtual void   SetValue(ushort, int) {assert(false);}
+  virtual void   SetValue(int, int) {assert(false);}
+  virtual void   SetValue(uint, int) {assert(false);}
+  virtual void   SetValue(longlong, int) {assert(false);}
+  virtual void   SetValue(ulonglong, int) {assert(false);}
+  virtual void   SetValue(double, int) {assert(false);}
+  virtual void   SetValue(char, int) {assert(false);}
+  virtual void   SetValue(uchar, int) {assert(false);}
+  virtual void   SetValue(PSZ, int) {assert(false);}
+  virtual void   SetValue(char *, uint, int) {assert(false);}
   virtual void   SetValue(PVAL valp, int n) = 0;
   virtual void   SetValue(PVBLK pv, int n1, int n2) = 0;
   virtual void   SetMin(PVAL valp, int n) = 0;
@@ -163,6 +163,7 @@ class TYPBLK : public VALBLK {
   virtual void   Reset(int n) {Typp[n] = 0;}
 
   // Methods
+  using VALBLK::SetValue;
   virtual void   SetValue(PSZ sp, int n);
   virtual void   SetValue(char *sp, uint len, int n);
   virtual void   SetValue(short sval, int n)
@@ -233,6 +234,7 @@ class CHRBLK : public VALBLK {
   virtual bool   IsCi(void) {return Ci;}
 
   // Methods
+  using VALBLK::SetValue;
   virtual void   SetValue(PSZ sp, int n);
   virtual void   SetValue(char *sp, uint len, int n);
   virtual void   SetValue(PVAL valp, int n);
@@ -269,7 +271,7 @@ class STRBLK : public VALBLK {
   // Implementation
   virtual void   SetNull(int n, bool b) {if (b) {Strp[n] = NULL;}}
   virtual bool   IsNull(int n) {return Strp[n] == NULL;}
-  virtual void   SetNullable(bool b) {}    // Always nullable
+  virtual void   SetNullable(bool) {}      // Always nullable
   virtual bool   Init(PGLOBAL g, bool check);
   virtual int    GetVlen(void) {return sizeof(PSZ);}
   virtual PSZ    GetCharValue(int n) {return Strp[n];}
@@ -282,10 +284,11 @@ class STRBLK : public VALBLK {
   virtual longlong GetBigintValue(int n);
   virtual ulonglong GetUBigintValue(int n);
   virtual double GetFloatValue(int n) {return atof(Strp[n]);}
-  virtual char  *GetCharString(char *p, int n) {return Strp[n];}
+  virtual char  *GetCharString(char *, int n) {return Strp[n];}
   virtual void   Reset(int n) {Strp[n] = NULL;}
 
   // Methods
+  using VALBLK::SetValue;
   virtual void   SetValue(PSZ sp, int n);
   virtual void   SetValue(char *sp, uint len, int n);
   virtual void   SetValue(PVAL valp, int n);
@@ -322,6 +325,7 @@ class DATBLK : public TYPBLK<int> {
   virtual char *GetCharString(char *p, int n);
 
   // Methods
+  using TYPBLK<int>::SetValue;
   virtual void  SetValue(PSZ sp, int n);
 
  protected:
@@ -345,6 +349,8 @@ class PTRBLK : public STRBLK {
   // Implementation
 
   // Methods
+  using STRBLK::SetValue;
+  using STRBLK::CompVal;
   virtual void   SetValue(PSZ p, int n) {Strp[n] = p;}
   virtual int    CompVal(int i1, int i2);
 
