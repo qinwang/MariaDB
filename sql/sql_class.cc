@@ -4309,6 +4309,14 @@ thd_report_wait_for(MYSQL_THD thd, MYSQL_THD other_thd)
     cause replication to rollback (and later re-try) the other transaction,
     releasing the lock for this transaction so replication can proceed.
   */
+  fprintf(stderr, "MDEV8302: Deadlock kill GTID %u-%u-%lu (subid %lu "
+          "in_commit=%d) due to blocking GTID %u-%u-%lu (subid %lu "
+          "in_commit=%d)\n", other_rgi->current_gtid.domain_id,
+          other_rgi->current_gtid.server_id,
+          (ulong)other_rgi->current_gtid.seq_no, (ulong)other_rgi->gtid_sub_id,
+          (int)other_rgi->did_mark_start_commit, rgi->current_gtid.domain_id,
+          rgi->current_gtid.server_id, (ulong)rgi->current_gtid.seq_no,
+          (ulong)rgi->gtid_sub_id, (int)rgi->did_mark_start_commit);
   other_rgi->killed_for_retry= true;
   mysql_mutex_lock(&other_thd->LOCK_thd_data);
   other_thd->awake(KILL_CONNECTION);

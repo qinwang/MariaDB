@@ -190,6 +190,17 @@ finish_event_group(rpl_parallel_thread *rpt, uint64 sub_id,
         fact trigger.
       */
       DBUG_ASSERT(!tmp_gco->next_gco || tmp_gco->last_sub_id > sub_id);
+      if (!(!tmp_gco->next_gco || tmp_gco->last_sub_id > sub_id))
+        fprintf(stderr, "MDEV8302: GTID %u-%u-%lu subid=%lu skipping free of "
+                "GCO(wait_count=%lu prior=%lu last=%lu installed=%d) due to "
+                "next->wait_count %lu > count_committing %lu\n",
+                rgi->current_gtid.domain_id, rgi->current_gtid.server_id,
+                (ulong)rgi->current_gtid.seq_no, (ulong)rgi->gtid_sub_id,
+                (ulong)tmp_gco->wait_count, (ulong)tmp_gco->prior_sub_id,
+                (ulong)tmp_gco->last_sub_id, (int)tmp_gco->installed,
+                (ulong)tmp_gco->next_gco->wait_count,
+                (ulong)entry->count_committing_event_groups);
+
       tmp_gco= tmp_gco->prev_gco;
     }
     while (tmp_gco)
@@ -304,6 +315,11 @@ convert_kill_to_deadlock_error(rpl_group_info *rgi)
   if ((err_code == ER_QUERY_INTERRUPTED || err_code == ER_CONNECTION_KILLED) &&
       rgi->killed_for_retry)
   {
+    fprintf(stderr, "MDEV8302: Got deadlock kill in GTID %u-%u-%lu "
+            "(subid %lu in_commit=%d)\n", rgi->current_gtid.domain_id,
+            rgi->current_gtid.server_id,
+            (ulong)rgi->current_gtid.seq_no, (ulong)rgi->gtid_sub_id,
+            (int)rgi->did_mark_start_commit);
     thd->clear_error();
     my_error(ER_LOCK_DEADLOCK, MYF(0));
     rgi->killed_for_retry= false;
@@ -343,6 +359,9 @@ retry_event_group(rpl_group_info *rgi, rpl_parallel_thread *rpt,
   Format_description_log_event *description_event= NULL;
 
 do_retry:
+  fprintf(stderr, "MDEV8302: Retry #%lu of GTID %u-%u-%lu\n", retries+1,
+          rgi->current_gtid.domain_id, rgi->current_gtid.server_id,
+          (ulong)rgi->current_gtid.seq_no);
   event_count= 0;
   err= 0;
   errmsg= NULL;
@@ -884,9 +903,28 @@ handle_rpl_parallel_thread(void *arg)
       group_ending= is_group_ending(qev->ev, event_type);
       if (group_ending && likely(!rgi->worker_error))
       {
-        DEBUG_SYNC(thd, "rpl_parallel_before_mark_start_commit");
-        rgi->mark_start_commit();
-        DEBUG_SYNC(thd, "rpl_parallel_after_mark_start_commit");
+        /*
+          Do an extra check for (deadlock) kill here. This helps prevent a
+          lingering deadlock kill that occured during normal DML processing to
+          propagate past the mark_start_commit(). If we detect a deadlock only
+          after mark_start_commit(), we have to unmark, which has at least a
+          theoretical possibility of leaving a window where it looks like all
+          transactions in a GCO have started committing, while in fact one
+          will need to rollback and retry. This is not supposed to be possible
+          (since there is a deadlock, at least one transaction should be
+          blocked from reaching commit), but this seems a fragile ensurance,
+          and there were historically a number of subtle bugs in this area.
+        */
+        if (!thd->killed)
+        {
+          DEBUG_SYNC(thd, "rpl_parallel_before_mark_start_commit");
+          rgi->mark_start_commit();
+          DEBUG_SYNC(thd, "rpl_parallel_after_mark_start_commit");
+        }
+        else
+          fprintf(stderr, "MDEV8302: Skip mark_start_commit(GTID %u-%u-%lu) "
+                  "due to killed\n", rgi->current_gtid.domain_id,
+                  rgi->current_gtid.server_id, (ulong)rgi->current_gtid.seq_no);
       }
 
       /*
@@ -911,7 +949,17 @@ handle_rpl_parallel_thread(void *arg)
           });
         if (!err)
 #endif
-        err= rpt_handle_event(qev, rpt);
+        {
+          if (thd->check_killed())
+          {
+            thd->clear_error();
+            thd->get_stmt_da()->reset_diagnostics_area();
+            thd->send_kill_message();
+            err= 1;
+          }
+          else
+            err= rpt_handle_event(qev, rpt);
+        }
         delete_or_keep_event_post_apply(rgi, event_type, qev->ev);
         DBUG_EXECUTE_IF("rpl_parallel_simulate_temp_err_gtid_0_x_100",
                         err= dbug_simulate_tmp_error(rgi, thd););
