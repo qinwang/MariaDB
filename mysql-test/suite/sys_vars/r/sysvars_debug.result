@@ -1,4 +1,4 @@
-select * from information_schema.system_variables
+select <full field list with substitutions> from information_schema.system_variables
 where variable_name like 'debug%'
   order by variable_name;
 VARIABLE_NAME	DEBUG
@@ -21,7 +21,7 @@ GLOBAL_VALUE	314
 GLOBAL_VALUE_ORIGIN	CONFIG
 DEFAULT_VALUE	0
 VARIABLE_SCOPE	GLOBAL
-VARIABLE_TYPE	BIGINT UNSIGNED
+VARIABLE_TYPE	<[BIG]INT UNSIGNED>
 VARIABLE_COMMENT	Extra sleep (in microseconds) to add to binlog fsync(), for debugging
 NUMERIC_MIN_VALUE	0
 NUMERIC_MAX_VALUE	4294967295
@@ -35,10 +35,10 @@ GLOBAL_VALUE	0
 GLOBAL_VALUE_ORIGIN	COMPILE-TIME
 DEFAULT_VALUE	0
 VARIABLE_SCOPE	GLOBAL
-VARIABLE_TYPE	BIGINT UNSIGNED
+VARIABLE_TYPE	<[BIG]INT UNSIGNED>
 VARIABLE_COMMENT	Call my_debug_put_break_here() if crc matches this number (for debug)
 NUMERIC_MIN_VALUE	0
-NUMERIC_MAX_VALUE	18446744073709551615
+NUMERIC_MAX_VALUE	<MAX UNSIGNED>
 NUMERIC_BLOCK_SIZE	1
 ENUM_VALUE_LIST	NULL
 READ_ONLY	NO

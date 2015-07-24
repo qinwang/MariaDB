@@ -1,7 +1,65 @@
 --source include/have_aria.inc
---source include/word_size.inc
+
+# In 32bit vs 64bit builds, some variables can have different type (INT vs BIGINT),
+# and/or different max/default values (e.g. 2^32-1 vs 2^64-1 etc.).
+# To avoid the trouble with maintaining rdiff files, we'll do the masking here.
+
+let $wordsize_specific_types = 
+  'ARIA_BLOCK_SIZE', 
+  'ARIA_CHECKPOINT_INTERVAL', 
+  'ARIA_CHECKPOINT_LOG_ACTIVITY', 
+  'ARIA_FORCE_START_AFTER_RECOVERY_FAILURES', 
+  'ARIA_GROUP_COMMIT_INTERVAL', 
+  'ARIA_LOG_FILE_SIZE', 
+  'ARIA_PAGECACHE_AGE_THRESHOLD', 
+  'ARIA_PAGECACHE_DIVISION_LIMIT', 
+  'ARIA_PAGECACHE_FILE_HASH_SIZE', 
+  'ARIA_REPAIR_THREADS'
+;
+
+let $wordsize_specific_values = 
+  'ARIA_PAGECACHE_AGE_THRESHOLD', 
+  'ARIA_SORT_BUFFER_SIZE'
+;
 
 --vertical_results
-select * from information_schema.system_variables
+--replace_regex /select.*from/select <full field list with substitutions> from/
+eval
+select
+  VARIABLE_NAME,
+  SESSION_VALUE,
+  GLOBAL_VALUE,
+  GLOBAL_VALUE_ORIGIN,
+  DEFAULT_VALUE,
+  VARIABLE_SCOPE,
+  if (variable_name in ($wordsize_specific_types),
+      case
+        when variable_type = 'BIGINT' then '<[BIG]INT>'
+        when variable_type = 'BIGINT UNSIGNED' then '<[BIG]INT UNSIGNED>'
+        when ($MTR_word_size = 32 or $MTR_is_windows) and variable_type = 'INT' then '<[BIG]INT>'
+        when ($MTR_word_size = 32 or $MTR_is_windows) and variable_type = 'INT UNSIGNED' then '<[BIG]INT UNSIGNED>'
+        else variable_type
+      end,
+      variable_type) as VARIABLE_TYPE,
+  VARIABLE_COMMENT,
+  NUMERIC_MIN_VALUE,
+  if (variable_name in ($wordsize_specific_values),
+      case
+        when numeric_max_value = 18446744073709551615 then '<MAX UNSIGNED>'
+        when numeric_max_value = 9223372036854775807 then '<MAX SIGNED>'
+        when numeric_max_value = 18446744073709547520 then '<MAX UNSIGNED ADJUSTED>'
+        when numeric_max_value = 9223372036853727232 then '<MAX SIGNED ADJUSTED>'
+        when ($MTR_word_size = 32 or $MTR_is_windows) and numeric_max_value = 4294967295 then '<MAX UNSIGNED>'
+        when ($MTR_word_size = 32 or $MTR_is_windows) and numeric_max_value = 2147483647 then '<MAX SIGNED>'
+        when ($MTR_word_size = 32 or $MTR_is_windows) and numeric_max_value = 4294963200 then '<MAX UNSIGNED ADJUSTED>'
+        when ($MTR_word_size = 32 or $MTR_is_windows) and numeric_max_value = 2146435072 then '<MAX SIGNED ADJUSTED>'
+        else numeric_max_value
+      end,
+      numeric_max_value) as NUMERIC_MAX_VALUE,
+  NUMERIC_BLOCK_SIZE,
+  ENUM_VALUE_LIST,
+  READ_ONLY,
+  COMMAND_LINE_ARGUMENT
+from information_schema.system_variables
   where variable_name like 'aria%'
   order by variable_name;

@@ -22,6 +22,7 @@ sub skip_combinations {
 
   # don't run tests for the wrong platform
   $skip{'include/platform.combinations'} = [ (IS_WINDOWS) ? 'unix' : 'win' ];
+  $ENV{MTR_is_windows} = IS_WINDOWS;
 
   # and for the wrong word size
   # check for exact values, in case the default changes to be small everywhere
@@ -31,6 +32,7 @@ sub skip_combinations {
     '18446744073709547520' => '32bit'
   );
   die "unknown value max-binlog-stmt-cache-size=$longsysvar" unless $val_map{$longsysvar};
+  $ENV{MTR_word_size} = ( $longsysvar == 18446744073709547520 ? '64' : ( $longsysvar == 4294963200 ? '32' : '' ) );
   $skip{'include/word_size.combinations'} = [ $val_map{$longsysvar} ];
 
   # as a special case, disable certain include files as a whole
