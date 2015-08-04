@@ -3,207 +3,31 @@
 --source include/not_valgrind.inc
 --source include/platform.inc
 
-# In 32bit vs 64bit builds, some variables can have different type (INT vs BIGINT),
-# and/or different max/default values (e.g. 2^32-1 vs 2^64-1 etc.).
-# To avoid the trouble with maintaining rdiff files, we'll do the masking here.
-
-let $wordsize_specific_types =
-  'INNODB_ADAPTIVE_HASH_INDEX_PARTITIONS',
-  'INNODB_ADAPTIVE_MAX_SLEEP_DELAY',
-  'INNODB_ADDITIONAL_MEM_POOL_SIZE',
-  'INNODB_API_BK_COMMIT_INTERVAL',
-  'INNODB_API_TRX_LEVEL',
-  'INNODB_AUTOEXTEND_INCREMENT',
-  'INNODB_AUTOINC_LOCK_MODE',
-  'INNODB_BUFFER_POOL_INSTANCES',
-  'INNODB_BUF_DUMP_STATUS_FREQUENCY',
-  'INNODB_CLEANER_FLUSH_CHUNK_SIZE',
-  'INNODB_CLEANER_FREE_LIST_LWM',
-  'INNODB_CLEANER_LRU_CHUNK_SIZE',
-  'INNODB_CLEANER_MAX_FLUSH_TIME',
-  'INNODB_CLEANER_MAX_LRU_TIME',
-  'INNODB_COMMIT_CONCURRENCY',
-  'INNODB_COMPRESSION_FAILURE_THRESHOLD_PCT',
-  'INNODB_COMPRESSION_PAD_PCT_MAX',
-  'INNODB_CONCURRENCY_TICKETS',
-  'INNODB_DOUBLEWRITE_BATCH_SIZE',
-  'INNODB_FAST_SHUTDOWN',
-  'INNODB_FATAL_SEMAPHORE_WAIT_THRESHOLD',
-  'INNODB_FIL_MAKE_PAGE_DIRTY_DEBUG',
-  'INNODB_FLUSHING_AVG_LOOPS',
-  'INNODB_FLUSH_LOG_AT_TRX_COMMIT',
-  'INNODB_FLUSH_NEIGHBORS',
-  'INNODB_FORCE_RECOVERY',
-  'INNODB_FORCE_RECOVERY_CRASH',
-  'INNODB_FT_CACHE_SIZE',
-  'INNODB_FT_MAX_TOKEN_SIZE',
-  'INNODB_FT_MIN_TOKEN_SIZE',
-  'INNODB_FT_NUM_WORD_OPTIMIZE',
-  'INNODB_FT_RESULT_CACHE_LIMIT',
-  'INNODB_FT_SORT_PLL_DEGREE',
-  'INNODB_FT_TOTAL_CACHE_SIZE',
-  'INNODB_IDLE_FLUSH_PCT',
-  'INNODB_IO_CAPACITY',
-  'INNODB_IO_CAPACITY_MAX',
-  'INNODB_LOCK_WAIT_TIMEOUT',
-  'INNODB_LOG_ARCH_EXPIRE_SEC',
-  'INNODB_LOG_BUFFER_SIZE',
-  'INNODB_LOG_BLOCK_SIZE',
-  'INNODB_LOG_FILES_IN_GROUP',
-  'INNODB_LRU_SCAN_DEPTH',
-  'INNODB_MAX_PURGE_LAG',
-  'INNODB_MAX_PURGE_LAG_DELAY',
-  'INNODB_MIRRORED_LOG_GROUPS',
-  'INNODB_MTFLUSH_THREADS',
-  'INNODB_OPEN_FILES',
-  'INNODB_PAGE_HASH_LOCKS',
-  'INNODB_PAGE_SIZE',
-  'INNODB_PURGE_BATCH_SIZE',
-  'INNODB_PURGE_THREADS',
-  'INNODB_READ_AHEAD_THRESHOLD',
-  'INNODB_READ_IO_THREADS',
-  'INNODB_REPLICATION_DELAY',
-  'INNODB_ROLLBACK_SEGMENTS',
-  'INNODB_SAVED_PAGE_NUMBER_DEBUG',
-  'INNODB_SCHED_PRIORITY_CLEANER',
-  'INNODB_SCHED_PRIORITY_IO',
-  'INNODB_SCHED_PRIORITY_MASTER',
-  'INNODB_SCHED_PRIORITY_PURGE',
-  'INNODB_SHOW_LOCKS_HELD',
-  'INNODB_SHOW_VERBOSE_LOCKS',
-  'INNODB_SORT_BUFFER_SIZE',
-  'INNODB_SPIN_WAIT_DELAY',
-  'INNODB_SYNC_ARRAY_SIZE',
-  'INNODB_SYNC_SPIN_LOOPS',
-  'INNODB_THREAD_CONCURRENCY',
-  'INNODB_THREAD_SLEEP_DELAY',
-  'INNODB_UNDO_LOGS',
-  'INNODB_UNDO_TABLESPACES',
-  'INNODB_WRITE_IO_THREADS'
-;
-
-let $wordsize_specific_values =
-  'INNODB_ADAPTIVE_HASH_INDEX_PARTITIONS',
-  'INNODB_ADDITIONAL_MEM_POOL_SIZE',
-  'INNODB_CLEANER_FLUSH_CHUNK_SIZE',
-  'INNODB_CLEANER_LRU_CHUNK_SIZE',
-  'INNODB_CLEANER_MAX_FLUSH_TIME',
-  'INNODB_CLEANER_MAX_LRU_TIME',
-  'INNODB_CONCURRENCY_TICKETS',
-  'INNODB_IO_CAPACITY',
-  'INNODB_IO_CAPACITY_MAX',
-  'INNODB_KILL_IDLE_TRANSACTION',
-  'INNODB_LOG_ARCH_EXPIRE_SEC',
-  'INNODB_LOG_BUFFER_SIZE',
-  'INNODB_LRU_SCAN_DEPTH',
-  'INNODB_MAX_PURGE_LAG',
-  'INNODB_OPEN_FILES',
-  'INNODB_REPLICATION_DELAY',
-  'INNODB_SPIN_WAIT_DELAY',
-  'INNODB_SYNC_SPIN_LOOPS'
-;
+# The version changes every release, so we will mask the value
+--let $innodb_version=`SELECT @@innodb_version`
 
 --vertical_results
---replace_regex /^[\/\\]\S+/PATH/ /\.[\/\\]/PATH/ /select.*from/select <full field list with substitutions> from/
-eval
-select
-  VARIABLE_NAME,
-  SESSION_VALUE,
-  GLOBAL_VALUE,
-  GLOBAL_VALUE_ORIGIN,
-  if (variable_name in ($wordsize_specific_values),
-      case
-        when default_value = 18446744073709551615 then '<MAX UNSIGNED>'
-        when default_value = 9223372036854775807 then '<MAX SIGNED>'
-        when default_value = 18446744073709547520 then '<MAX UNSIGNED ADJUSTED>'
-        when default_value = 9223372036853727232 then '<MAX SIGNED ADJUSTED>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and default_value = 4294967295 then '<MAX UNSIGNED>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and default_value = 2147483647 then '<MAX SIGNED>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and default_value = 4294963200 then '<MAX UNSIGNED ADJUSTED>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and default_value = 2146435072 then '<MAX SIGNED ADJUSTED>'
-        else default_value
-      end,
-      default_value) as DEFAULT_VALUE,
-  VARIABLE_SCOPE,
-  if (variable_name in ($wordsize_specific_types),
-      case
-        when variable_type = 'BIGINT' then '<[BIG]INT>'
-        when variable_type = 'BIGINT UNSIGNED' then '<[BIG]INT UNSIGNED>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and variable_type = 'INT' then '<[BIG]INT>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and variable_type = 'INT UNSIGNED' then '<[BIG]INT UNSIGNED>'
-        else variable_type
-      end,
-      variable_type) as VARIABLE_TYPE,
-  VARIABLE_COMMENT,
-  NUMERIC_MIN_VALUE,
-  if (variable_name in ($wordsize_specific_values),
-      case
-        when numeric_max_value = 18446744073709551615 then '<MAX UNSIGNED>'
-        when numeric_max_value = 9223372036854775807 then '<MAX SIGNED>'
-        when numeric_max_value = 18446744073709547520 then '<MAX UNSIGNED ADJUSTED>'
-        when numeric_max_value = 9223372036853727232 then '<MAX SIGNED ADJUSTED>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and numeric_max_value = 4294967295 then '<MAX UNSIGNED>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and numeric_max_value = 2147483647 then '<MAX SIGNED>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and numeric_max_value = 4294963200 then '<MAX UNSIGNED ADJUSTED>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and numeric_max_value = 2146435072 then '<MAX SIGNED ADJUSTED>'
-        else numeric_max_value
-      end,
-      numeric_max_value) as NUMERIC_MAX_VALUE,
-  NUMERIC_BLOCK_SIZE,
-  ENUM_VALUE_LIST,
-  READ_ONLY,
-  COMMAND_LINE_ARGUMENT
-from information_schema.system_variables
+--replace_result $innodb_version '<InnoDB version>'
+select * from information_schema.system_variables
+  where variable_name = 'innodb_version';
+
+--echo 
+
+--vertical_results
+--replace_regex /^[\/\\]\S+/PATH/ /\.[\/\\]/PATH/
+--source inc/sysvars_wordsize_adjustments.inc
+select * from information_schema.system_variables
   where variable_name like 'innodb%' and
   variable_name not in (
     'innodb_adaptive_hash_index_partitions',  # max value is 32/64 depending on the word_size, see below
     'innodb_disallow_writes',                 # only available WITH_WSREP
     'innodb_use_native_aio',                  # default value depends on OS
-    'innodb_version')                         # the value changes with every version, see below
+    'innodb_version')                         # the value changes with every version, see above
   order by variable_name;
 
-select
-  VARIABLE_NAME,
-  SESSION_VALUE,
-  GLOBAL_VALUE_ORIGIN,
-  DEFAULT_VALUE,
-  VARIABLE_SCOPE,
-  VARIABLE_TYPE,
-  VARIABLE_COMMENT,
-  NUMERIC_MIN_VALUE,
-  NUMERIC_MAX_VALUE,
-  NUMERIC_BLOCK_SIZE,
-  ENUM_VALUE_LIST,
-  READ_ONLY,
-  COMMAND_LINE_ARGUMENT
-from information_schema.system_variables
-  where variable_name = 'innodb_version';
+--echo 
 
---replace_regex /select.*from/select <full field list with substitutions> from/
---replace_result $MTR_word_size "<VALUE EQUALS THE WORD SIZE>"
+--replace_result $MTR_word_size "<value equals the word size>"
 eval
-select
-  VARIABLE_NAME,
-  SESSION_VALUE,
-  GLOBAL_VALUE,
-  GLOBAL_VALUE_ORIGIN,
-  DEFAULT_VALUE,
-  VARIABLE_SCOPE,
-  if (variable_name in ($wordsize_specific_types),
-      case
-        when variable_type = 'BIGINT' then '<[BIG]INT>'
-        when variable_type = 'BIGINT UNSIGNED' then '<[BIG]INT UNSIGNED>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and variable_type = 'INT' then '<[BIG]INT>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and variable_type = 'INT UNSIGNED' then '<[BIG]INT UNSIGNED>'
-        else variable_type
-      end,
-      variable_type) as VARIABLE_TYPE,
-  VARIABLE_COMMENT,
-  NUMERIC_MIN_VALUE,
-  NUMERIC_MAX_VALUE,
-  NUMERIC_BLOCK_SIZE,
-  ENUM_VALUE_LIST,
-  READ_ONLY,
-  COMMAND_LINE_ARGUMENT
-from information_schema.system_variables
+select * from information_schema.system_variables
   where variable_name = 'innodb_adaptive_hash_index_partitions';
