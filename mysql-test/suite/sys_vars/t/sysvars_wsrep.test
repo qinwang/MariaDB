@@ -1,45 +1,12 @@
 --source include/have_wsrep.inc
 --let $datadir = `SELECT @@datadir`
 
-# In 32bit vs 64bit builds, some variables can have different type (INT vs BIGINT).
-# To avoid the trouble with maintaining rdiff files, we'll do the substitution here. 
-
-let $wordsize_specific_types = 
-  'WSREP_MAX_WS_ROWS',
-  'WSREP_MAX_WS_SIZE',
-  'WSREP_MYSQL_REPLICATION_BUNDLE',
-  'WSREP_RETRY_AUTOCOMMIT',
-  'WSREP_SLAVE_THREADS'
-;
-
---replace_regex /select.*from/select <full field list with substitutions> from/
---replace_result $datadir DATADIR
 --vertical_results
-eval
-select
-  VARIABLE_NAME,
-  SESSION_VALUE,
-  GLOBAL_VALUE,
-  GLOBAL_VALUE_ORIGIN,
-  DEFAULT_VALUE,
-  VARIABLE_SCOPE,
-  if (variable_name in ($wordsize_specific_types),
-      case
-        when variable_type = 'BIGINT' then '<[BIG]INT>'
-        when variable_type = 'BIGINT UNSIGNED' then '<[BIG]INT UNSIGNED>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and variable_type = 'INT' then '<[BIG]INT>'
-        when ($MTR_word_size = 32 or $MTR_is_windows) and variable_type = 'INT UNSIGNED' then '<[BIG]INT UNSIGNED>'
-        else variable_type
-      end,
-      variable_type) as VARIABLE_TYPE,
-  VARIABLE_COMMENT,
-  NUMERIC_MIN_VALUE,
-  NUMERIC_MAX_VALUE,
-  NUMERIC_BLOCK_SIZE,
-  ENUM_VALUE_LIST,
-  READ_ONLY,
-  COMMAND_LINE_ARGUMENT
-from information_schema.system_variables
+
+--replace_regex /^BIGINT\b/<INT or BIGINT>/ /^INT\b/<INT or BIGINT>/ /^(?:18446744073709551615\b|4294967295\b)/<32-bit or 64-bit MAX UNSIGNED>/ /^(?:9223372036854775807\b|2147483647\b)/<32-bit or 64-bit MAX SIGNED>/ /^(?:18446744073709547520\b|4294963200\b)/<32-bit or 64-bit MAX UNSIGNED ADJUSTED>/ /^(?:9223372036853727232\b|2146435072\b)/<32-bit or 64-bit MAX SIGNED ADJUSTED>/
+--replace_result $datadir DATADIR
+
+select * from information_schema.system_variables
   where variable_name like 'wsrep%'
   order by variable_name;
 
