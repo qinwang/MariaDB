@@ -7,27 +7,19 @@
 --let $innodb_version=`SELECT @@innodb_version`
 
 --vertical_results
+--replace_regex /^[\/\\]\S+/PATH/ /\.[\/\\]/PATH/ /^BIGINT/<INT or BIGINT>/ /^INT/<INT or BIGINT>/ /(?:18446744073709551615|4294967295)/<32-bit or 64-bit MAX UNSIGNED>/ /(?:9223372036854775807|2147483647)/<32-bit or 64-bit MAX SIGNED>/ /(?:18446744073709547520|4294963200)/<32-bit or 64-bit MAX UNSIGNED ADJUSTED>/ /(?:9223372036853727232|2146435072)/<32-bit or 64-bit MAX SIGNED ADJUSTED>/
 --replace_result $innodb_version '<InnoDB version>'
-select * from information_schema.system_variables
-  where variable_name = 'innodb_version';
 
---echo 
-
---vertical_results
---replace_regex /^[\/\\]\S+/PATH/ /\.[\/\\]/PATH/
---source inc/sysvars_wordsize_adjustments.inc
 select * from information_schema.system_variables
   where variable_name like 'innodb%' and
   variable_name not in (
     'innodb_adaptive_hash_index_partitions',  # max value is 32/64 depending on the word_size, see below
     'innodb_disallow_writes',                 # only available WITH_WSREP
-    'innodb_use_native_aio',                  # default value depends on OS
-    'innodb_version')                         # the value changes with every version, see above
+    'innodb_use_native_aio')                  # default value depends on OS
   order by variable_name;
 
 --echo 
 
 --replace_result $MTR_word_size "<value equals the word size>"
-eval
 select * from information_schema.system_variables
   where variable_name = 'innodb_adaptive_hash_index_partitions';
