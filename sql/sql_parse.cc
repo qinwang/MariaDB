@@ -4076,7 +4076,7 @@ end_with_restore_list:
       result= new multi_delete(aux_tables, lex->table_count);
       if (result)
       {
-        res= mysql_select(thd, &select_lex->ref_pointer_array,
+        res= mysql_select(thd,
                           select_lex->get_table_list(),
                           select_lex->with_wild,
                           select_lex->item_list,
@@ -7252,7 +7252,6 @@ add_proc_to_list(THD* thd, Item *item)
   item_ptr = (Item**) (order+1);
   *item_ptr= item;
   order->item=item_ptr;
-  order->free_me=0;
   thd->lex->proc_list.link_in_list(order, &order->next);
   return 0;
 }
@@ -7270,8 +7269,7 @@ bool add_to_list(THD *thd, SQL_I_List<ORDER> &list, Item *item,bool asc)
     DBUG_RETURN(1);
   order->item_ptr= item;
   order->item= &order->item_ptr;
-  order->asc = asc;
-  order->free_me=0;
+  order->direction= (asc ? ORDER::ORDER_ASC : ORDER::ORDER_DESC);
   order->used=0;
   order->counter_used= 0;
   order->fast_field_copier_setup= 0; 

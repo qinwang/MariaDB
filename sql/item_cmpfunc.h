@@ -1764,7 +1764,8 @@ public:
   table_map used_tables() const;
   void update_used_tables();
   virtual void print(String *str, enum_query_type query_type);
-  void split_sum_func(THD *thd, Item **ref_pointer_array, List<Item> &fields);
+  void split_sum_func(THD *thd, Ref_ptr_array ref_pointer_array,
+                      List<Item> &fields);
   friend int setup_conds(THD *thd, TABLE_LIST *tables, TABLE_LIST *leaves,
                          COND **conds);
   void top_level_item() { abort_on_null=1; }
@@ -1791,7 +1792,7 @@ template <template<class> class LI, class T> class Item_equal_iterator;
   All equality predicates of the form field1=field2 contained in a
   conjunction are substituted for a sequence of items of this class.
   An item of this class Item_equal(f1,f2,...fk) represents a
-  multiple equality f1=f2=...=fk.
+  multiple equality f1=f2=...=fk.l
 
   If a conjunction contains predicates f1=f2 and f2=f3, a new item of
   this class is created Item_equal(f1,f2,f3) representing the multiple

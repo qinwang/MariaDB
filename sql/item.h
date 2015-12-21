@@ -61,6 +61,8 @@ class Item_field;
 class user_var_entry;
 
 
+typedef Bounds_checked_array<Item*> Ref_ptr_array;
+
 static inline uint32
 char_to_byte_length_safe(uint32 char_length_arg, uint32 mbmaxlen_arg)
 {
@@ -1094,10 +1096,11 @@ public:
   void print_item_w_name(String *, enum_query_type query_type);
   void print_value(String *);
   virtual void update_used_tables() {}
-  virtual void split_sum_func(THD *thd, Item **ref_pointer_array,
+  virtual void split_sum_func(THD *thd, Ref_ptr_array ref_pointer_array,
                               List<Item> &fields) {}
   /* Called for items that really have to be split */
-  void split_sum_func2(THD *thd, Item **ref_pointer_array, List<Item> &fields,
+  void split_sum_func2(THD *thd, Ref_ptr_array ref_pointer_array,
+                       List<Item> &fields,
                        Item **ref, bool skip_registered);
   virtual bool get_date(MYSQL_TIME *ltime, ulonglong fuzzydate);
   bool get_time(MYSQL_TIME *ltime)
