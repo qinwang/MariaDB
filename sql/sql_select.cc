@@ -17700,7 +17700,7 @@ sub_select_cache(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
            without it. If it's not the case remove it.
   */ 
   rc= cache->join_records(TRUE);
-  if (rc == NESTED_LOOP_OK || rc == NESTED_LOOP_NO_MORE_ROWS || )
+  if (rc == NESTED_LOOP_OK || rc == NESTED_LOOP_NO_MORE_ROWS ||
       rc == NESTED_LOOP_QUERY_LIMIT)
     rc= sub_select(join, join_tab, end_of_records);
   DBUG_RETURN(rc);
