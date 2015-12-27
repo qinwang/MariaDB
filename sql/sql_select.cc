@@ -23792,7 +23792,7 @@ void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tab
         eta->push_extra(ET_USING_MRR);
     }
 
-    if (distinct & test_all_bits(prefix_tables, join->select_list_used_tables))
+    if (tab->shortcut_for_distinct)
       eta->push_extra(ET_DISTINCT);
     if (tab->loosescan_match_tab)
     {
