@@ -1960,12 +1960,6 @@ TODO: make view to decide if it is possible to write to WHERE directly or make S
   if ((select_lex->options & OPTION_SCHEMA_TABLE))
     optimize_schema_tables_reads(this);
 
-  if (select_options & SELECT_DESCRIBE)
-  {
-    error= 0;
-    goto derived_exit;
-  }
-
   /*
     The loose index scan access method guarantees that all grouping or
     duplicate row elimination (for distinct) is already performed
@@ -1990,6 +1984,11 @@ TODO: make view to decide if it is possible to write to WHERE directly or make S
   if (make_aggr_tables_info())
     DBUG_RETURN(1);
 
+  if (select_options & SELECT_DESCRIBE)
+  {
+    error= 0;
+    goto derived_exit;
+  }
   error= 0;
 
   DBUG_RETURN(0);
@@ -11377,9 +11376,10 @@ double JOIN_TAB::scan_time()
 ha_rows JOIN_TAB::get_examined_rows()
 {
   double examined_rows;
+  SQL_SELECT *sel= filesort? filesort->select : this->select;
 
-  if (select && select->quick && use_quick != 2)
-    examined_rows= select->quick->records;
+  if (sel && sel->quick && use_quick != 2)
+    examined_rows= sel->quick->records;
   else if (type == JT_NEXT || type == JT_ALL ||
            type == JT_HASH || type ==JT_HASH_NEXT)
   {
@@ -11698,6 +11698,21 @@ void JOIN::cleanup(bool full)
       }
       cleaned= true;
 
+      //psergey2: added (Q: why not in the above loop?)
+      {
+        JOIN_TAB *curr_tab= join_tab + top_join_tab_count;
+        for (uint i= 0; i < aggr_tables; i++, curr_tab++)
+        {
+          if (curr_tab->aggr)
+          {
+            free_tmp_table(thd, curr_tab->table);
+            delete curr_tab->tmp_table_param;
+            curr_tab->tmp_table_param= NULL;
+            curr_tab->aggr= NULL;
+          }
+        }
+        aggr_tables= 0; // psergey3
+      }
     }
     else
     {
@@ -23439,6 +23454,13 @@ void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tab
   uint key_len= 0;
   quick_type= -1;
   QUICK_SELECT_I *quick= NULL;
+  SQL_SELECT *tab_select;
+  /* 
+    We assume that if this table does pre-sorting, then it doesnt do filtering
+    with SQL_SELECT.
+  */
+  DBUG_ASSERT(!(tab->select && tab->filesort));
+  tab_select= (tab->filesort)? tab->filesort->select : tab->select;
 
   eta->key.clear();
   eta->quick_info= NULL;
@@ -23514,10 +23536,10 @@ void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tab
   /* "type" column */
   enum join_type tab_type= tab->type;
   if ((tab->type == JT_ALL || tab->type == JT_HASH) &&
-       tab->select && tab->select->quick && tab->use_quick != 2)
+       tab_select && tab_select->quick && tab->use_quick != 2)
   {
-    quick= tab->select->quick;
-    quick_type= tab->select->quick->get_type();
+    quick= tab_select->quick;
+    quick_type= tab_select->quick->get_type();
     if ((quick_type == QUICK_SELECT_I::QS_TYPE_INDEX_MERGE) ||
         (quick_type == QUICK_SELECT_I::QS_TYPE_INDEX_INTERSECT) ||
         (quick_type == QUICK_SELECT_I::QS_TYPE_ROR_INTERSECT) ||
@@ -23551,9 +23573,9 @@ void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tab
     In STRAIGHT_JOIN queries, there can be join tabs with JT_CONST type
     that still have quick selects.
   */
-  if (tab->select && tab->select->quick && tab_type != JT_CONST)
+  if (tab_select && tab_select->quick && tab_type != JT_CONST)
   {
-    eta->quick_info= tab->select->quick->get_explain(thd->mem_root);
+    eta->quick_info= tab_select->quick->get_explain(thd->mem_root);
   }
 
   if (key_info) /* 'index' or 'ref' access */
@@ -23677,7 +23699,7 @@ void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tab
     uint keyno= MAX_KEY;
     if (tab->ref.key_parts)
       keyno= tab->ref.key;
-    else if (tab->select && quick)
+    else if (tab_select && quick)
       keyno = quick->index;
 
     if (keyno != MAX_KEY && keyno == table->file->pushed_idx_cond_keyno &&
@@ -23696,7 +23718,7 @@ void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tab
     {
       eta->push_extra(ET_USING);
     }
-    if (tab->select)
+    if (tab_select)
     {
       if (tab->use_quick == 2)
       {
@@ -23706,7 +23728,7 @@ void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tab
         append_possible_keys(thd->mem_root, eta->range_checked_fer->key_set,
                              table, tab->keys);
       }
-      else if (tab->select->cond ||
+      else if (tab_select->cond ||
                (tab->cache_select && tab->cache_select->cond))
       {
         const COND *pushed_cond= tab->table->file->pushed_cond;
@@ -23719,12 +23741,13 @@ void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tab
         }
         else
         {
-          eta->where_cond= tab->select->cond;
+          eta->where_cond= tab_select->cond;
           eta->cache_cond= tab->cache_select? tab->cache_select->cond : NULL;
           eta->push_extra(ET_USING_WHERE);
         }
       }
     }
+
     if (table_list /* SJM bushes don't have table_list */ &&
         table_list->schema_table &&
         table_list->schema_table->i_s_requested_object & OPTIMIZE_I_S_TABLE)
@@ -23751,7 +23774,7 @@ void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tab
       if (quick_type == QUICK_SELECT_I::QS_TYPE_GROUP_MIN_MAX)
       {
         QUICK_GROUP_MIN_MAX_SELECT *qgs= 
-          (QUICK_GROUP_MIN_MAX_SELECT *) tab->select->quick;
+          (QUICK_GROUP_MIN_MAX_SELECT *) tab_select->quick;
         eta->push_extra(ET_USING_INDEX_FOR_GROUP_BY);
         eta->loose_scan_is_scanning= qgs->loose_scan_is_scanning();
       }
@@ -23763,7 +23786,7 @@ void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tab
 
     if (quick_type == QUICK_SELECT_I::QS_TYPE_RANGE)
     {
-      explain_append_mrr_info((QUICK_RANGE_SELECT*)(tab->select->quick),
+      explain_append_mrr_info((QUICK_RANGE_SELECT*)(tab_select->quick),
                               &eta->mrr_type);
       if (eta->mrr_type.length() > 0)
         eta->push_extra(ET_USING_MRR);
@@ -23897,6 +23920,37 @@ int JOIN::save_explain_data_intern(Explain_query *output, bool need_tmp_table,
     if (need_order)
       xpl_sel->using_filesort= true;
 
+    /*
+      Check whether we should display "Using filesort" or "Using temporary".
+      This is a temporary code, we need to save the 'true' plan structure for 
+      EXPLAIN FORMAT=JSON.
+    */
+    {
+      bool using_filesort_= false;
+      bool using_temporary_ = false;
+      /* The first non-const join table may do sorting */
+      JOIN_TAB *tab= first_top_level_tab(this, WITHOUT_CONST_TABLES);
+      if (tab)
+      {
+        if (tab->filesort)
+          using_filesort_= true;
+        if (tab->aggr)
+          using_temporary_= true;
+      }
+      
+      /* Aggregation tabs are located at the end of top-level join tab array. */ 
+      JOIN_TAB *curr_tab= join_tab + top_join_tab_count;
+      for (uint i= 0; i < aggr_tables; i++, curr_tab++)
+      {
+        if (curr_tab->filesort)
+          using_filesort_= true;
+        if (curr_tab->aggr)
+          using_temporary_= true;
+      }
+      xpl_sel->using_temporary= using_temporary_;
+      xpl_sel->using_filesort= using_filesort_;
+    }
+
     xpl_sel->exec_const_cond= exec_const_cond;
 
     JOIN_TAB* const first_top_tab= first_breadth_first_tab(join, WALK_OPTIMIZATION_TABS);
@@ -24017,11 +24071,6 @@ static void select_describe(JOIN *join, bool need_tmp_table, bool need_order,
   /* Update the QPF with latest values of using_temporary, using_filesort */
   Explain_select *explain_sel;
   uint select_nr= join->select_lex->select_number;
-  if ((explain_sel= thd->lex->explain->get_select(select_nr)))
-  {
-    explain_sel->using_temporary= need_tmp_table;
-    explain_sel->using_filesort= need_order;
-  }
 
   for (SELECT_LEX_UNIT *unit= join->select_lex->first_inner_unit();
        unit;
