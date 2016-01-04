@@ -32,6 +32,7 @@
 #include "sql_array.h"                        /* Array */
 #include "records.h"                          /* READ_RECORD */
 #include "opt_range.h"                /* SQL_SELECT, QUICK_SELECT_I */
+#include "filesort.h"
 
 typedef struct st_join_table JOIN_TAB;
 
@@ -458,9 +459,9 @@ typedef struct st_join_table {
   void cleanup();
   inline bool is_using_loose_index_scan()
   {
-    return (select && select->quick &&
-            (select->quick->get_type() ==
-             QUICK_SELECT_I::QS_TYPE_GROUP_MIN_MAX));
+    const SQL_SELECT *sel= filesort ? filesort->select : select;
+    return (sel && sel->quick &&
+            (sel->quick->get_type() == QUICK_SELECT_I::QS_TYPE_GROUP_MIN_MAX));
   }
   bool is_using_agg_loose_index_scan ()
   {
@@ -1042,14 +1043,6 @@ protected:
 
 public:
   JOIN_TAB *join_tab, **best_ref;
-  
-  /* 
-    Saved join_tab for pre_sorting. create_sort_index() will save here.. 
-  */
-  JOIN_TAB *pre_sort_join_tab;
-  uint pre_sort_index;
-  Item *pre_sort_idx_pushed_cond;
-  void clean_pre_sort_join_tab();
 
   /*
     For "Using temporary+Using filesort" queries, JOIN::join_tab can point to
@@ -1213,6 +1206,7 @@ public:
   Item	    *having;
   Item      *tmp_having; ///< To store having when processed temporary table
   Item      *having_history; ///< Store having for explain
+  bool      having_is_correlated;
   ulonglong  select_options;
   /* 
     Bitmap of allowed types of the join caches that
@@ -1408,6 +1402,7 @@ public:
     sum_funcs= sum_funcs2= 0;
     procedure= 0;
     having= tmp_having= having_history= 0;
+    having_is_correlated= false;
     select_options= select_options_arg;
     result= result_arg;
     lock= thd_arg->lock;
@@ -1457,7 +1452,6 @@ public:
     outer_ref_cond= pseudo_bits_cond= NULL;
     in_to_exists_where= NULL;
     in_to_exists_having= NULL;
-    pre_sort_join_tab= NULL;
     emb_sjm_nest= NULL;
     sjm_lookup_tables= 0;
 

@@ -3947,6 +3947,8 @@ void st_select_lex::update_correlated_cache()
   if (join->conds)
     is_correlated|= MY_TEST(join->conds->used_tables() & OUTER_REF_TABLE_BIT);
 
+  is_correlated|= join->having_is_correlated;
+
   if (join->having)
     is_correlated|= MY_TEST(join->having->used_tables() & OUTER_REF_TABLE_BIT);
 

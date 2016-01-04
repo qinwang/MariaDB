@@ -155,7 +155,7 @@ static COND *optimize_cond(JOIN *join, COND *conds,
                            COND_EQUAL **cond_equal,
                            int flags= 0);
 bool const_expression_in_where(COND *conds,Item *item, Item **comp_item);
-static int do_select(JOIN *join,Procedure *procedure);
+static int do_select(JOIN *join, Procedure *procedure);
 static bool instantiate_tmp_table(TABLE *table, KEY *keyinfo, 
                                   MARIA_COLUMNDEF *start_recinfo,
                                   MARIA_COLUMNDEF **recinfo, 
@@ -1818,6 +1818,33 @@ TODO: make view to decide if it is possible to write to WHERE directly or make S
   if (!(select_options & SELECT_DESCRIBE))
     init_ftfuncs(thd, select_lex, MY_TEST(order));
 
+#if 1
+  /*
+    It's necessary to check const part of HAVING cond as
+    there is a chance that some cond parts may become
+    const items after make_join_statisctics(for example
+    when Item is a reference to cost table field from
+    outer join).
+    This check is performed only for those conditions
+    which do not use aggregate functions. In such case
+    temporary table may not be used and const condition
+    elements may be lost during further having
+    condition transformation in JOIN::exec.
+  */
+  if (having && const_table_map && !having->with_sum_func)
+  {
+    having->update_used_tables();
+    having= remove_eq_conds(thd, having, &select_lex->having_value);
+    if (select_lex->having_value == Item::COND_FALSE)
+    {
+      having= new Item_int((longlong) 0,1);
+      zero_result_cause= "Impossible HAVING noticed after reading const tables";
+      error= 0;
+      DBUG_RETURN(0);
+    }
+  }
+#endif
+
   if (optimize_unflattened_subqueries())
     DBUG_RETURN(1);
   
@@ -1937,7 +1964,7 @@ TODO: make view to decide if it is possible to write to WHERE directly or make S
 	  TODO: Explain the quick_group part of the test below.
 	 */
         if ((ordered_index_usage != ordered_index_group_by) &&
-            (tmp_table_param.quick_group || 
+            (tmp_table_param.quick_group && !procedure || 
 	     (tab->emb_sj_nest && 
 	      best_positions[const_tables].sj_strategy == SJ_OPT_LOOSE_SCAN)))
         {
@@ -1957,6 +1984,10 @@ TODO: make view to decide if it is possible to write to WHERE directly or make S
     }
   }  
 
+  if (having)
+    having_is_correlated= MY_TEST(having->used_tables() & OUTER_REF_TABLE_BIT);
+
+  tmp_having= having;
   if ((select_lex->options & OPTION_SCHEMA_TABLE))
     optimize_schema_tables_reads(this);
 
@@ -2352,13 +2383,13 @@ bool JOIN::make_aggr_tables_info()
     DBUG_PRINT("info",("Sorting for send_result_set_metadata"));
     THD_STAGE_INFO(thd, stage_sorting_result);
     /* If we have already done the group, add HAVING to sorted table */
-    if (having && !group_list && !sort_and_group)
+    if (tmp_having && !group_list && !sort_and_group)
     {
       // Some tables may have been const
-      having->update_used_tables();
+      tmp_having->update_used_tables();
       table_map used_tables= (const_table_map | curr_tab->table->map);
 
-      Item* sort_table_cond= make_cond_for_table(thd, having, used_tables,
+      Item* sort_table_cond= make_cond_for_table(thd, tmp_having, used_tables,
                                                  (table_map) 0, false,
                                                  false, false);
       if (sort_table_cond)
@@ -2374,15 +2405,30 @@ bool JOIN::make_aggr_tables_info()
 		new Item_cond_and(curr_tab->select->cond,
 				  sort_table_cond)))
 	    DBUG_RETURN(true);
-	  curr_tab->select->cond->fix_fields(thd, 0);
 	}
+        if (curr_tab->pre_idx_push_select_cond)
+	{
+          if (sort_table_cond->type() == Item::COND_ITEM)
+            sort_table_cond= sort_table_cond->copy_andor_structure(thd);           
+          if (!(curr_tab->pre_idx_push_select_cond= 
+                new Item_cond_and(curr_tab->pre_idx_push_select_cond,
+                                  sort_table_cond)))
+            DBUG_RETURN(true);            
+        }
+        if (curr_tab->select->cond && !curr_tab->select->cond->fixed)
+	  curr_tab->select->cond->fix_fields(thd, 0);
+        if (curr_tab->pre_idx_push_select_cond &&
+            !curr_tab->pre_idx_push_select_cond->fixed)
+          curr_tab->pre_idx_push_select_cond->fix_fields(thd, 0);
+        curr_tab->select->pre_idx_push_select_cond=
+          curr_tab->pre_idx_push_select_cond;
         curr_tab->set_select_cond(curr_tab->select->cond, __LINE__);
         curr_tab->select_cond->top_level_item();
 	DBUG_EXECUTE("where",print_where(curr_tab->select->cond,
 					 "select and having",
                                          QT_ORDINARY););
 
-        having= make_cond_for_table(thd, having, ~ (table_map) 0,
+        having= make_cond_for_table(thd, tmp_having, ~ (table_map) 0,
                                     ~used_tables, false, false, false);
         DBUG_EXECUTE("where",
                      print_where(having, "having after sort", QT_ORDINARY););
@@ -3052,6 +3098,27 @@ void JOIN::exec_inner()
     DBUG_VOID_RETURN;
   }
   
+  /*
+    Evaluate all constant expressions with subqueries in the ORDER/GROUP clauses
+    to make sure that all subqueries return a single row. The evaluation itself
+    will trigger an error if that is not the case.
+  */
+  if (exec_const_order_group_cond.elements &&
+      !(select_options & SELECT_DESCRIBE))
+  {
+    List_iterator_fast<Item> const_item_it(exec_const_order_group_cond);
+    Item *cur_const_item;
+    while ((cur_const_item= const_item_it++))
+    {
+      cur_const_item->val_str(); // This caches val_str() to Item::str_value
+      if (thd->is_error())
+      {
+        error= thd->is_error();
+        DBUG_VOID_RETURN;
+      }
+    }
+  }
+
   if ((this->select_lex->options & OPTION_SCHEMA_TABLE) &&
       get_schema_tables_result(this, PROCESSED_BY_JOIN_EXEC))
     DBUG_VOID_RETURN;
@@ -3086,7 +3153,9 @@ void JOIN::exec_inner()
       order=0;
     if (made_call)
       join_tab[const_tables].update_explain_data(const_tables);
+#if 0
     having= tmp_having;
+#endif
     select_describe(this, need_tmp,
 		    order != 0 && !skip_sort_order,
 		    select_distinct,
@@ -3115,9 +3184,10 @@ void JOIN::exec_inner()
 
   THD_STAGE_INFO(thd, stage_sending_data);
   DBUG_PRINT("info", ("%s", thd->proc_info));
-  result->send_result_set_metadata(*fields,
-                                   Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
-  error= do_select(this, 0);
+  result->send_result_set_metadata(
+                 procedure ? procedure_fields_list : *fields,
+                 Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF);
+  error= do_select(this, procedure);
   /* Accumulate the counts from all join iterations of all join parts. */
   thd->inc_examined_row_count(examined_rows);
   DBUG_PRINT("counts", ("thd->examined_row_count: %lu",
@@ -17406,11 +17476,14 @@ do_select(JOIN *join, Procedure *procedure)
     Next_select_func end_select= setup_end_select_func(join, NULL);
     /*
       HAVING will be checked after processing aggregate functions,
-      But WHERE should be checked here (we alredy have read tables)
-
-      @todo: consider calling end_select instead of duplicating code
+      But WHERE should checked here (we alredy have read tables).
+      Notice that make_join_select() splits all conditions in this case
+      into two groups exec_const_cond and outer_ref_cond.
+      If join->table_count == join->const_tables then it is
+      sufficient to check only the condition pseudo_bits_cond.
     */
-    if (!join->conds || join->conds->val_int())
+    DBUG_ASSERT(join->outer_ref_cond == NULL);
+    if (!join->pseudo_bits_cond || join->pseudo_bits_cond->val_int())
     {
       // HAVING will be checked by end_select
       error= (*end_select)(join, 0, 0);
@@ -19071,13 +19144,7 @@ end_send(JOIN *join, JOIN_TAB *join_tab __attribute__((unused)),
   if (!end_of_records)
   {
     if (join->table_count &&
-        (join->join_tab->is_using_loose_index_scan() ||
-         /*
-           When order by used a loose scan as its input, the quick select may
-           be attached to pre_sort_join_tab.
-         */
-         (join->pre_sort_join_tab &&
-          join->pre_sort_join_tab->is_using_loose_index_scan())))
+        join->join_tab->is_using_loose_index_scan())
     {
       /* Copy non-aggregated fields when loose index scan is used. */
       copy_fields(&join->tmp_table_param);
@@ -19318,7 +19385,7 @@ end_write(JOIN *join, JOIN_TAB *join_tab __attribute__((unused)),
     if (copy_funcs(join_tab->tmp_table_param->items_to_copy, join->thd))
       DBUG_RETURN(NESTED_LOOP_ERROR);           /* purecov: inspected */
 
-    if (!join->having || join->having->val_int())
+    if (!join_tab->having || join_tab->having->val_int())
     {
       int error;
       join->found_records++;
@@ -20857,58 +20924,7 @@ create_sort_index(THD *thd, JOIN *join, JOIN_TAB *tab)
   DBUG_ASSERT(!join->only_const_tables() && fsort);
   table=  tab->table;
   select= fsort->select;
-  
-  JOIN_TAB *save_pre_sort_join_tab= NULL;
-  if (join->pre_sort_join_tab)
-  {
-    /*
-      we've already been in this function, and stashed away the original access 
-      method in join->pre_sort_join_tab, restore it now.
-    */
-    
-    /* First, restore state of the handler */
-    if (join->pre_sort_index != MAX_KEY)
-    {
-      if (table->file->ha_index_or_rnd_end())
-        goto err;
-      if (join->pre_sort_idx_pushed_cond)
-      {
-        table->file->idx_cond_push(join->pre_sort_index,
-                                 join->pre_sort_idx_pushed_cond);
-      }
-    }
-    else
-    {
-      if (table->file->ha_index_or_rnd_end() || 
-          table->file->ha_rnd_init(TRUE))
-        goto err;
-    }
-
-    /* Second, restore access method parameters */
-    tab->records=           join->pre_sort_join_tab->records;
-    tab->select=            join->pre_sort_join_tab->select;
-    tab->select_cond=       join->pre_sort_join_tab->select_cond;
-    tab->type=              join->pre_sort_join_tab->type;
-    tab->read_first_record= join->pre_sort_join_tab->read_first_record; 
-
-    save_pre_sort_join_tab= join->pre_sort_join_tab;
-    join->pre_sort_join_tab= NULL;
-  }
-  else
-  {
-    /* 
-      Save index #, save index condition. Do it right now, because MRR may 
-    */
-    if (table->file->inited == handler::INDEX)
-    {
-      join->pre_sort_index= table->file->active_index;
-      join->pre_sort_idx_pushed_cond= table->file->pushed_idx_cond;
-      // no need to save key_read
-    }
-    else
-      join->pre_sort_index= MAX_KEY;
-  }
-
+ 
   /* Currently ORDER BY ... LIMIT is not supported in subqueries. */
   DBUG_ASSERT(join->group_list || !join->is_in_subquery());
 
@@ -21001,17 +21017,7 @@ create_sort_index(THD *thd, JOIN *join, JOIN_TAB *tab)
     /* This will delete the quick select. */
     select->cleanup();
   }
-
-  if (!join->pre_sort_join_tab)
-  {
-    if (save_pre_sort_join_tab)
-      join->pre_sort_join_tab= save_pre_sort_join_tab;
-    else if (!(join->pre_sort_join_tab= (JOIN_TAB*)thd->alloc(sizeof(JOIN_TAB))))
-      goto err;
-  }
-
-  *(join->pre_sort_join_tab)= *tab;
-  
+ 
   tab->join->examined_rows+=examined_rows;
   table->set_keyread(FALSE); // Restore if we used indexes
   if (tab->type == JT_FT)
@@ -21021,20 +21027,6 @@ create_sort_index(THD *thd, JOIN *join, JOIN_TAB *tab)
   DBUG_RETURN(filesort_retval == HA_POS_ERROR);
 err:
   DBUG_RETURN(-1);
-}
-
-void JOIN::clean_pre_sort_join_tab()
-{
-  //TABLE *table=  pre_sort_join_tab->table;
-  /*
-   Note: we can come here for fake_select_lex object. That object will have
-   the table already deleted by st_select_lex_unit::cleanup().  
-    We rely on that fake_select_lex didn't have quick select.
-  */
-  if (pre_sort_join_tab->select && pre_sort_join_tab->select->quick)
-  {
-    pre_sort_join_tab->select->cleanup();
-  }
 }
 
 
@@ -23971,13 +23963,6 @@ int JOIN::save_explain_data_intern(Explain_query *output, bool need_tmp_table,
         continue;
       }
 
-
-      if (join->table_access_tabs == join->join_tab &&
-          tab == (first_top_tab + join->const_tables) && pre_sort_join_tab)
-      {
-        saved_join_tab= tab;
-        tab= pre_sort_join_tab;
-      }
 
       Explain_table_access *eta= (new (output->mem_root)
                                   Explain_table_access(output->mem_root));
