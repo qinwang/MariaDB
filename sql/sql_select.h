@@ -1206,6 +1206,7 @@ public:
   Item	    *having;
   Item      *tmp_having; ///< To store having when processed temporary table
   Item      *having_history; ///< Store having for explain
+  ORDER     *group_list_for_estimates;
   bool      having_is_correlated;
   ulonglong  select_options;
   /* 
@@ -1403,6 +1404,7 @@ public:
     procedure= 0;
     having= tmp_having= having_history= 0;
     having_is_correlated= false;
+    group_list_for_estimates= 0;
     select_options= select_options_arg;
     result= result_arg;
     lock= thd_arg->lock;

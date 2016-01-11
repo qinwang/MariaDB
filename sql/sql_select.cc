@@ -2097,6 +2097,7 @@ bool JOIN::make_aggr_tables_info()
     tmp_table_param.precomputed_group_by=
       !join_tab->is_using_agg_loose_index_scan();
 
+  group_list_for_estimates= group_list;
   /* Create a tmp table if distinct or if the sort is too complicated */
   if (need_tmp)
   {
@@ -2494,7 +2495,8 @@ bool JOIN::make_aggr_tables_info()
          select_limit : unit->select_limit_cnt;
     }
     if (!only_const_tables() &&
-        !join_tab[const_tables].table->sort.io_cache)
+        !join_tab[const_tables].table->sort.io_cache &&
+        !(select_options & SELECT_DESCRIBE))
     {
       /*
         If no IO cache exists for the first table then we are using an
@@ -17518,7 +17520,10 @@ do_select(JOIN *join, Procedure *procedure)
   else
   {
     JOIN_TAB *join_tab= join->join_tab + join->const_tables;
-    error= join->first_select(join,join_tab,0);
+    if (join->outer_ref_cond && !join->outer_ref_cond->val_int())
+      error= NESTED_LOOP_NO_MORE_ROWS;
+    else
+      error= join->first_select(join,join_tab,0);
     if (error >= NESTED_LOOP_OK)
       error= join->first_select(join,join_tab,1);
   }
@@ -19298,7 +19303,7 @@ end_send_group(JOIN *join, JOIN_TAB *join_tab __attribute__((unused)),
 	  {
 	    if (join->do_send_rows)
             {
-	      error=join->result->send_data(*fields) ? 1 : 0;
+	      error=join->result->send_data(*fields);
               if (error < 0)
               {
                 /* Duplicate row, don't count */
