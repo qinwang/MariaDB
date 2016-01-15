@@ -2770,59 +2770,6 @@ static int sort_keys(KEY *a, KEY *b)
 	  0);
 }
 
-/*
-  Check TYPELIB (set or enum) for duplicates
-
-  SYNOPSIS
-    check_duplicates_in_interval()
-    set_or_name   "SET" or "ENUM" string for warning message
-    name	  name of the checked column
-    typelib	  list of values for the column
-    dup_val_count  returns count of duplicate elements
-
-  DESCRIPTION
-    This function prints an warning for each value in list
-    which has some duplicates on its right
-
-  RETURN VALUES
-    0             ok
-    1             Error
-*/
-
-bool check_duplicates_in_interval(const char *set_or_name,
-                                  const char *name, TYPELIB *typelib,
-                                  CHARSET_INFO *cs, unsigned int *dup_val_count)
-{
-  TYPELIB tmp= *typelib;
-  const char **cur_value= typelib->type_names;
-  unsigned int *cur_length= typelib->type_lengths;
-  *dup_val_count= 0;  
-  
-  for ( ; tmp.count > 1; cur_value++, cur_length++)
-  {
-    tmp.type_names++;
-    tmp.type_lengths++;
-    tmp.count--;
-    if (find_type2(&tmp, (const char*)*cur_value, *cur_length, cs))
-    {
-      THD *thd= current_thd;
-      ErrConvString err(*cur_value, *cur_length, cs);
-      if (current_thd->is_strict_mode())
-      {
-        my_error(ER_DUPLICATED_VALUE_IN_TYPE, MYF(0),
-                 name, err.ptr(), set_or_name);
-        return 1;
-      }
-      push_warning_printf(thd,Sql_condition::WARN_LEVEL_NOTE,
-                          ER_DUPLICATED_VALUE_IN_TYPE,
-                          ER_THD(thd, ER_DUPLICATED_VALUE_IN_TYPE),
-                          name, err.ptr(), set_or_name);
-      (*dup_val_count)++;
-    }
-  }
-  return 0;
-}
-
 
 /*
   Check TYPELIB (set or enum) max and total lengths
@@ -2880,139 +2827,28 @@ int prepare_create_field(Column_definition *sql_field,
 			 uint *blob_columns, 
 			 longlong table_flags)
 {
-  unsigned int dup_val_count;
   DBUG_ENTER("prepare_create_field");
 
-  /*
-    This code came from mysql_prepare_create_table.
-    Indent preserved to make patching easier
-  */
+  const Type_handler *handler;
+  if (!(handler= Type_handler::get_handler_by_real_type(sql_field->sql_type)))
+  {
+    if (sql_field->sql_type == MYSQL_TYPE_GEOMETRY)
+      my_printf_error(ER_FEATURE_DISABLED,ER(ER_FEATURE_DISABLED), MYF(0),
+                      sym_group_geom.name, sym_group_geom.needed_define);
+    else
+      my_printf_error(ER_UNKNOWN_ERROR, "Unknown data type %d", MYF(0),
+                      sql_field->sql_type);
+    return true;
+  }
+
   DBUG_ASSERT(sql_field->charset);
 
-  switch (sql_field->sql_type) {
-  case MYSQL_TYPE_BLOB:
-  case MYSQL_TYPE_MEDIUM_BLOB:
-  case MYSQL_TYPE_TINY_BLOB:
-  case MYSQL_TYPE_LONG_BLOB:
-    sql_field->pack_flag=FIELDFLAG_BLOB |
-      pack_length_to_packflag(sql_field->pack_length -
-                              portable_sizeof_char_ptr);
-    if (sql_field->charset->state & MY_CS_BINSORT)
-      sql_field->pack_flag|=FIELDFLAG_BINARY;
-    sql_field->length=8;			// Unireg field length
-    sql_field->unireg_check=Field::BLOB_FIELD;
+  if (handler->is_blob_field_type())
     (*blob_columns)++;
-    break;
-  case MYSQL_TYPE_GEOMETRY:
-#ifdef HAVE_SPATIAL
-    if (!(table_flags & HA_CAN_GEOMETRY))
-    {
-      my_printf_error(ER_CHECK_NOT_IMPLEMENTED, ER(ER_CHECK_NOT_IMPLEMENTED),
-                      MYF(0), "GEOMETRY");
-      DBUG_RETURN(1);
-    }
-    sql_field->pack_flag=FIELDFLAG_GEOM |
-      pack_length_to_packflag(sql_field->pack_length -
-                              portable_sizeof_char_ptr);
-    if (sql_field->charset->state & MY_CS_BINSORT)
-      sql_field->pack_flag|=FIELDFLAG_BINARY;
-    sql_field->length=8;			// Unireg field length
-    sql_field->unireg_check=Field::BLOB_FIELD;
-    (*blob_columns)++;
-    break;
-#else
-    my_printf_error(ER_FEATURE_DISABLED,ER(ER_FEATURE_DISABLED), MYF(0),
-                    sym_group_geom.name, sym_group_geom.needed_define);
+
+  if (handler->prepare_column_definition(sql_field, table_flags))
     DBUG_RETURN(1);
-#endif /*HAVE_SPATIAL*/
-  case MYSQL_TYPE_VARCHAR:
-#ifndef QQ_ALL_HANDLERS_SUPPORT_VARCHAR
-    if (table_flags & HA_NO_VARCHAR)
-    {
-      /* convert VARCHAR to CHAR because handler is not yet up to date */
-      sql_field->sql_type=    MYSQL_TYPE_VAR_STRING;
-      sql_field->pack_length= calc_pack_length(sql_field->sql_type,
-                                               (uint) sql_field->length);
-      if ((sql_field->length / sql_field->charset->mbmaxlen) >
-          MAX_FIELD_CHARLENGTH)
-      {
-        my_printf_error(ER_TOO_BIG_FIELDLENGTH, ER(ER_TOO_BIG_FIELDLENGTH),
-                        MYF(0), sql_field->field_name,
-                        static_cast<ulong>(MAX_FIELD_CHARLENGTH));
-        DBUG_RETURN(1);
-      }
-    }
-#endif
-    /* fall through */
-  case MYSQL_TYPE_STRING:
-    sql_field->pack_flag=0;
-    if (sql_field->charset->state & MY_CS_BINSORT)
-      sql_field->pack_flag|=FIELDFLAG_BINARY;
-    break;
-  case MYSQL_TYPE_ENUM:
-    sql_field->pack_flag=pack_length_to_packflag(sql_field->pack_length) |
-      FIELDFLAG_INTERVAL;
-    if (sql_field->charset->state & MY_CS_BINSORT)
-      sql_field->pack_flag|=FIELDFLAG_BINARY;
-    sql_field->unireg_check=Field::INTERVAL_FIELD;
-    if (check_duplicates_in_interval("ENUM",sql_field->field_name,
-                                     sql_field->interval,
-                                     sql_field->charset, &dup_val_count))
-      DBUG_RETURN(1);
-    break;
-  case MYSQL_TYPE_SET:
-    sql_field->pack_flag=pack_length_to_packflag(sql_field->pack_length) |
-      FIELDFLAG_BITFIELD;
-    if (sql_field->charset->state & MY_CS_BINSORT)
-      sql_field->pack_flag|=FIELDFLAG_BINARY;
-    sql_field->unireg_check=Field::BIT_FIELD;
-    if (check_duplicates_in_interval("SET",sql_field->field_name,
-                                     sql_field->interval,
-                                     sql_field->charset, &dup_val_count))
-      DBUG_RETURN(1);
-    /* Check that count of unique members is not more then 64 */
-    if (sql_field->interval->count -  dup_val_count > sizeof(longlong)*8)
-    {
-       my_error(ER_TOO_BIG_SET, MYF(0), sql_field->field_name);
-       DBUG_RETURN(1);
-    }
-    break;
-  case MYSQL_TYPE_DATE:			// Rest of string types
-  case MYSQL_TYPE_NEWDATE:
-  case MYSQL_TYPE_TIME:
-  case MYSQL_TYPE_DATETIME:
-  case MYSQL_TYPE_TIME2:
-  case MYSQL_TYPE_DATETIME2:
-  case MYSQL_TYPE_NULL:
-    sql_field->pack_flag=f_settype((uint) sql_field->sql_type);
-    break;
-  case MYSQL_TYPE_BIT:
-    /* 
-      We have sql_field->pack_flag already set here, see
-      mysql_prepare_create_table().
-    */
-    break;
-  case MYSQL_TYPE_NEWDECIMAL:
-    sql_field->pack_flag=(FIELDFLAG_NUMBER |
-                          (sql_field->flags & UNSIGNED_FLAG ? 0 :
-                           FIELDFLAG_DECIMAL) |
-                          (sql_field->flags & ZEROFILL_FLAG ?
-                           FIELDFLAG_ZEROFILL : 0) |
-                          (sql_field->decimals << FIELDFLAG_DEC_SHIFT));
-    break;
-  case MYSQL_TYPE_TIMESTAMP:
-  case MYSQL_TYPE_TIMESTAMP2:
-    /* fall-through */
-  default:
-    sql_field->pack_flag=(FIELDFLAG_NUMBER |
-                          (sql_field->flags & UNSIGNED_FLAG ? 0 :
-                           FIELDFLAG_DECIMAL) |
-                          (sql_field->flags & ZEROFILL_FLAG ?
-                           FIELDFLAG_ZEROFILL : 0) |
-                          f_settype((uint) sql_field->sql_type) |
-                          (sql_field->decimals << FIELDFLAG_DEC_SHIFT));
-    break;
-  }
+
   if (!(sql_field->flags & NOT_NULL_FLAG) ||
       (sql_field->vcol_info))  /* Make virtual columns allow NULL values */
     sql_field->pack_flag|= FIELDFLAG_MAYBE_NULL;

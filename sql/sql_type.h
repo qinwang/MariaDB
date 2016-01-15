@@ -26,6 +26,7 @@
 class Field;
 class Item;
 class Create_attr;
+class Column_definition;
 class Type_std_attributes;
 class Sort_param;
 struct TABLE;
@@ -84,6 +85,8 @@ public:
 class Type_handler
 {
 protected:
+  uint pack_flags_string(CHARSET_INFO *cs) const;
+  uint pack_flags_numeric(uint flags, uint decimals) const;
   const Type_handler *string_type_handler(uint max_octet_length) const;
   void make_sort_key_longlong(uchar *to,
                               bool maybe_null, bool null_value,
@@ -96,11 +99,15 @@ public:
   virtual enum_field_types real_field_type() const { return field_type(); }
   virtual Item_result result_type() const= 0;
   virtual Item_result cmp_type() const= 0;
+  // Requires the engine not to have HA_NO_BLOBS
+  virtual bool is_blob_field_type() const= 0;
   virtual const Type_handler*
   type_handler_adjusted_to_max_octet_length(uint max_octet_length,
                                             CHARSET_INFO *cs) const
   { return this; }
   virtual ~Type_handler() {}
+  virtual bool prepare_column_definition(Column_definition *def,
+                                         longlong table_flags) const= 0;
   virtual Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                                   const char *name, const Record_addr &addr,
                                   const Create_attr &attr) const= 0;
@@ -149,9 +156,18 @@ public:
 };
 
 
+class Type_handler_numeric: public Type_handler
+{
+public:
+  bool is_blob_field_type() const { return false; }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const;
+};
+
+
 /*** Abstract classes for every XXX_RESULT */
 
-class Type_handler_real_result: public Type_handler
+class Type_handler_real_result: public Type_handler_numeric
 {
 public:
   Item_result result_type() const { return REAL_RESULT; }
@@ -165,7 +181,7 @@ public:
 };
 
 
-class Type_handler_decimal_result: public Type_handler
+class Type_handler_decimal_result: public Type_handler_numeric
 {
 public:
   Item_result result_type() const { return DECIMAL_RESULT; }
@@ -180,7 +196,7 @@ public:
 };
 
 
-class Type_handler_int_result: public Type_handler
+class Type_handler_int_result: public Type_handler_numeric
 {
 public:
   Item_result result_type() const { return INT_RESULT; }
@@ -200,7 +216,10 @@ class Type_handler_temporal_result: public Type_handler
 public:
   Item_result result_type() const { return STRING_RESULT; }
   Item_result cmp_type() const { return TIME_RESULT; }
+  bool is_blob_field_type() const { return false; }
   virtual ~Type_handler_temporal_result() {}
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const;
   void make_sort_key(uchar *to, Item *item,  const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const;
   void sortlength(THD *thd,
@@ -214,6 +233,7 @@ class Type_handler_string_result: public Type_handler
 public:
   Item_result result_type() const { return STRING_RESULT; }
   Item_result cmp_type() const { return STRING_RESULT; }
+  bool is_blob_field_type() const { return false; }
   virtual ~Type_handler_string_result() {}
   const Type_handler *
   type_handler_adjusted_to_max_octet_length(uint max_octet_length,
@@ -340,6 +360,15 @@ class Type_handler_bit: public Type_handler_int_result
 public:
   virtual ~Type_handler_bit() {}
   enum_field_types field_type() const { return MYSQL_TYPE_BIT; }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const
+  {
+    /*
+      We have sql_field->pack_flag already set here, see
+      mysql_prepare_create_table().
+    */
+    return false;
+  }
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const
@@ -465,6 +494,8 @@ class Type_handler_timestamp: public Type_handler_temporal_result
 public:
   virtual ~Type_handler_timestamp() {}
   enum_field_types field_type() const { return MYSQL_TYPE_TIMESTAMP; }
+  bool prepare_column_definition(Column_definition *def,
+                                         longlong table_flags) const;
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -479,6 +510,8 @@ public:
   virtual ~Type_handler_timestamp2() {}
   enum_field_types field_type() const { return MYSQL_TYPE_TIMESTAMP; }
   enum_field_types real_field_type() const { return MYSQL_TYPE_TIMESTAMP2; }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const;
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -505,6 +538,8 @@ class Type_handler_newdecimal: public Type_handler_decimal_result
 public:
   virtual ~Type_handler_newdecimal() {}
   enum_field_types field_type() const { return MYSQL_TYPE_NEWDECIMAL; }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const;
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -518,6 +553,8 @@ class Type_handler_null: public Type_handler_string_result
 public:
   virtual ~Type_handler_null() {}
   enum_field_types field_type() const { return MYSQL_TYPE_NULL; }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const;
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -531,6 +568,8 @@ class Type_handler_string: public Type_handler_string_result
 public:
   virtual ~Type_handler_string() {}
   enum_field_types field_type() const { return MYSQL_TYPE_STRING; }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -541,12 +580,27 @@ class Type_handler_varchar: public Type_handler_string_result
 public:
   virtual ~Type_handler_varchar() {}
   enum_field_types field_type() const { return MYSQL_TYPE_VARCHAR; }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
 
 
-class Type_handler_tiny_blob: public Type_handler_string_result
+class Type_handler_blob: public Type_handler_string_result
+{
+public:
+  bool is_blob_field_type() const { return true; }
+  virtual ~Type_handler_blob() {}
+  enum_field_types field_type() const { return MYSQL_TYPE_BLOB; }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const;
+  Field *make_conversion_table_field(TABLE *, uint metadata,
+                                     const Field *target) const;
+};
+
+
+class Type_handler_tiny_blob: public Type_handler_blob
 {
 public:
   virtual ~Type_handler_tiny_blob() {}
@@ -556,7 +610,7 @@ public:
 };
 
 
-class Type_handler_medium_blob: public Type_handler_string_result
+class Type_handler_medium_blob: public Type_handler_blob
 {
 public:
   virtual ~Type_handler_medium_blob() {}
@@ -566,7 +620,7 @@ public:
 };
 
 
-class Type_handler_long_blob: public Type_handler_string_result
+class Type_handler_long_blob: public Type_handler_blob
 {
 public:
   virtual ~Type_handler_long_blob() {}
@@ -576,22 +630,14 @@ public:
 };
 
 
-class Type_handler_blob: public Type_handler_string_result
-{
-public:
-  virtual ~Type_handler_blob() {}
-  enum_field_types field_type() const { return MYSQL_TYPE_BLOB; }
-  Field *make_conversion_table_field(TABLE *, uint metadata,
-                                     const Field *target) const;
-};
-
-
 #ifdef HAVE_SPATIAL
-class Type_handler_geometry: public Type_handler_string_result
+class Type_handler_geometry: public Type_handler_blob
 {
 public:
   virtual ~Type_handler_geometry() {}
   enum_field_types field_type() const { return MYSQL_TYPE_GEOMETRY; }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -604,6 +650,8 @@ public:
   virtual ~Type_handler_enum() {}
   enum_field_types field_type() const { return MYSQL_TYPE_VARCHAR; }
   virtual enum_field_types real_field_type() const { return MYSQL_TYPE_ENUM; }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -615,6 +663,8 @@ public:
   virtual ~Type_handler_set() {}
   enum_field_types field_type() const { return MYSQL_TYPE_VARCHAR; }
   virtual enum_field_types real_field_type() const { return MYSQL_TYPE_SET; }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -651,6 +701,8 @@ public:
   }
   Item_result result_type() const { return m_type_handler->result_type(); }
   Item_result cmp_type() const { return m_type_handler->cmp_type(); }
+  bool is_blob_field_type() const
+  { return m_type_handler->is_blob_field_type(); }
   void set_handler(const Type_handler *other)
   {
     m_type_handler= other;
@@ -683,6 +735,11 @@ public:
     return
       m_type_handler->type_handler_adjusted_to_max_octet_length(max_octet_length,
                                                                 cs);
+  }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const
+  {
+    return m_type_handler->prepare_column_definition(def, table_flags);
   }
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,

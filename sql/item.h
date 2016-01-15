@@ -766,6 +766,12 @@ public:
   {
     return get_handler_by_field_type(field_type());
   }
+  bool prepare_column_definition(Column_definition *def,
+                                 longlong table_flags) const
+  {
+    DBUG_ASSERT(0); // Not called in Item context
+    return type_handler()->prepare_column_definition(def, table_flags);
+  }
   Field *make_table_field(MEM_ROOT *mem_root, TABLE_SHARE *share,
                           const char *field_name,
                           const Record_addr &rec,
@@ -792,6 +798,10 @@ public:
   Item_result result_type() const { return type_handler()->result_type(); }
   /* ... while cmp_type() specifies how it should be compared */
   Item_result cmp_type() const { return type_handler()->cmp_type(); }
+  bool is_blob_field_type() const
+  {
+    return type_handler()->is_blob_field_type();
+  }
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const
   {

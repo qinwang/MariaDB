@@ -19,7 +19,7 @@
 #include "sql_class.h"
 #include "item.h"
 #include "log.h"
-
+#include "strfunc.h" // find_type2, find_set
 
 static Type_handler_tiny        type_handler_tiny;
 static Type_handler_short       type_handler_short;
@@ -871,6 +871,256 @@ Field *Type_handler_null::make_table_field(MEM_ROOT *mem_root,
   return new (mem_root)
     Field_null(rec.ptr, attr.length(), attr.unireg_check(),
                field_name, attr.charset());
+}
+
+
+/*************************************************************************/
+
+uint Type_handler::pack_flags_string(CHARSET_INFO *cs) const
+{
+  return (cs->state & MY_CS_BINSORT) ? FIELDFLAG_BINARY : 0;
+}
+
+uint Type_handler::pack_flags_numeric(uint flags, uint decimals) const
+{
+  return
+    FIELDFLAG_NUMBER |
+    (flags & UNSIGNED_FLAG ? 0 : FIELDFLAG_DECIMAL)  |
+    (flags & ZEROFILL_FLAG ? FIELDFLAG_ZEROFILL : 0) |
+    (decimals << FIELDFLAG_DEC_SHIFT);
+}
+
+
+bool Type_handler_null::prepare_column_definition(Column_definition *sql_field,
+                                                  longlong table_flags) const
+{
+  sql_field->pack_flag= f_settype((uint) MYSQL_TYPE_NULL);
+  return false;
+}
+
+
+bool Type_handler_blob::prepare_column_definition(Column_definition *sql_field,
+                                                  longlong table_flags) const
+{
+  switch(real_field_type()) {
+  case MYSQL_TYPE_BLOB:
+  case MYSQL_TYPE_MEDIUM_BLOB:
+  case MYSQL_TYPE_TINY_BLOB:
+  case MYSQL_TYPE_LONG_BLOB:
+    sql_field->pack_flag= FIELDFLAG_BLOB |
+      pack_length_to_packflag(sql_field->pack_length -
+                              portable_sizeof_char_ptr) |
+      pack_flags_string(sql_field->charset);
+    sql_field->length= 8;                     // Unireg field length
+    sql_field->unireg_check= Field::BLOB_FIELD;
+    return false;
+  default:
+    break;
+  }
+  DBUG_ASSERT(0);
+  return true;
+}
+
+
+#ifdef HAVE_SPATIAL
+bool
+Type_handler_geometry::prepare_column_definition(Column_definition *sql_field,
+                                                 longlong table_flags) const
+{
+  if (!(table_flags & HA_CAN_GEOMETRY))
+  {
+    my_printf_error(ER_CHECK_NOT_IMPLEMENTED, ER(ER_CHECK_NOT_IMPLEMENTED),
+                    MYF(0), "GEOMETRY");
+    return true;
+  }
+  sql_field->pack_flag=
+    FIELDFLAG_GEOM |
+    pack_length_to_packflag(sql_field->pack_length - portable_sizeof_char_ptr) |
+    pack_flags_string(sql_field->charset);
+  sql_field->length= 8;			// Unireg field length
+  sql_field->unireg_check=Field::BLOB_FIELD;
+  return false;
+}
+#endif /*HAVE_SPATIAL*/
+
+
+/*
+  Check TYPELIB (set or enum) for duplicates
+
+  SYNOPSIS
+    check_duplicates_in_interval()
+    set_or_name   "SET" or "ENUM" string for warning message
+    name	  name of the checked column
+    typelib	  list of values for the column
+    dup_val_count  returns count of duplicate elements
+
+  DESCRIPTION
+    This function prints an warning for each value in list
+    which has some duplicates on its right
+
+  RETURN VALUES
+    0             ok
+    1             Error
+*/
+
+static bool check_duplicates_in_interval(const char *set_or_name,
+                                         const char *name, TYPELIB *typelib,
+                                         CHARSET_INFO *cs,
+                                         unsigned int *dup_val_count)
+{
+  TYPELIB tmp= *typelib;
+  const char **cur_value= typelib->type_names;
+  unsigned int *cur_length= typelib->type_lengths;
+  *dup_val_count= 0;
+
+  for ( ; tmp.count > 1; cur_value++, cur_length++)
+  {
+    tmp.type_names++;
+    tmp.type_lengths++;
+    tmp.count--;
+    if (find_type2(&tmp, (const char*)*cur_value, *cur_length, cs))
+    {
+      THD *thd= current_thd;
+      ErrConvString err(*cur_value, *cur_length, cs);
+      if (current_thd->is_strict_mode())
+      {
+        my_error(ER_DUPLICATED_VALUE_IN_TYPE, MYF(0),
+                 name, err.ptr(), set_or_name);
+        return 1;
+      }
+      push_warning_printf(thd,Sql_condition::WARN_LEVEL_NOTE,
+                          ER_DUPLICATED_VALUE_IN_TYPE,
+                          ER_THD(thd, ER_DUPLICATED_VALUE_IN_TYPE),
+                          name, err.ptr(), set_or_name);
+      (*dup_val_count)++;
+    }
+  }
+  return 0;
+}
+
+
+bool Type_handler_enum::prepare_column_definition(Column_definition *sql_field,
+                                                  longlong table_flags) const
+{
+  unsigned int dup_val_count;
+  sql_field->pack_flag= FIELDFLAG_INTERVAL |
+                        pack_length_to_packflag(sql_field->pack_length) |
+                        pack_flags_string(sql_field->charset);
+  sql_field->unireg_check= Field::INTERVAL_FIELD;
+  return check_duplicates_in_interval("ENUM",sql_field->field_name,
+                                      sql_field->interval,
+                                      sql_field->charset, &dup_val_count);
+}
+
+
+bool Type_handler_set::prepare_column_definition(Column_definition *sql_field,
+                                                 longlong table_flags) const
+{
+  unsigned int dup_val_count;
+  sql_field->pack_flag= FIELDFLAG_BITFIELD |
+                        pack_length_to_packflag(sql_field->pack_length) |
+                        pack_flags_string(sql_field->charset);
+  sql_field->unireg_check= Field::BIT_FIELD;
+  if (check_duplicates_in_interval("SET",sql_field->field_name,
+                                   sql_field->interval,
+                                   sql_field->charset, &dup_val_count))
+    return true;
+  /* Check that count of unique members is not more then 64 */
+  if (sql_field->interval->count - dup_val_count > sizeof(longlong) * 8)
+  {
+     my_error(ER_TOO_BIG_SET, MYF(0), sql_field->field_name);
+     return true;
+  }
+  return false;
+}
+
+
+bool
+Type_handler_temporal_result::prepare_column_definition(Column_definition
+                                                        *sql_field,
+                                                        longlong table_flags)
+                                                        const
+{
+  sql_field->pack_flag= f_settype((uint) sql_field->sql_type);
+  return false;
+}
+
+
+bool
+Type_handler_string::prepare_column_definition(Column_definition *sql_field,
+                                               longlong table_flags) const
+{
+  sql_field->pack_flag= pack_flags_string(sql_field->charset);
+  return false;
+}
+
+
+bool
+Type_handler_varchar::prepare_column_definition(Column_definition *sql_field,
+                                                longlong table_flags) const
+{
+#ifndef QQ_ALL_HANDLERS_SUPPORT_VARCHAR
+  if (table_flags & HA_NO_VARCHAR)
+  {
+    /* convert VARCHAR to CHAR because handler is not yet up to date */
+    sql_field->sql_type= MYSQL_TYPE_VAR_STRING;
+    sql_field->pack_length= calc_pack_length(MYSQL_TYPE_VARCHAR,
+                                             (uint) sql_field->length);
+    if ((sql_field->length / sql_field->charset->mbmaxlen) >
+        MAX_FIELD_CHARLENGTH)
+    {
+      my_printf_error(ER_TOO_BIG_FIELDLENGTH, ER(ER_TOO_BIG_FIELDLENGTH),
+                      MYF(0), sql_field->field_name,
+                      static_cast<ulong>(MAX_FIELD_CHARLENGTH));
+      return true;
+    }
+  }
+#endif
+  sql_field->pack_flag= pack_flags_string(sql_field->charset);
+  return false;
+}
+
+
+bool
+Type_handler_numeric::prepare_column_definition(Column_definition *sql_field,
+                                                longlong table_flags) const
+{
+  sql_field->pack_flag=
+    pack_flags_numeric(sql_field->flags, sql_field->decimals) |
+    f_settype((uint) sql_field->sql_type);
+  return false;
+}
+
+
+bool
+Type_handler_newdecimal::prepare_column_definition(Column_definition *sql_field,
+                                                longlong table_flags) const
+{
+  sql_field->pack_flag=
+    pack_flags_numeric(sql_field->flags, sql_field->decimals);
+  return false;
+}
+
+
+bool
+Type_handler_timestamp::prepare_column_definition(Column_definition *sql_field,
+                                                  longlong table_flags) const
+{
+  sql_field->pack_flag=
+    pack_flags_numeric(sql_field->flags, 0) |
+    f_settype((uint) sql_field->sql_type);
+  return false;
+}
+
+
+bool
+Type_handler_timestamp2::prepare_column_definition(Column_definition *sql_field,
+                                                   longlong table_flags) const
+{
+  sql_field->pack_flag=
+    pack_flags_numeric(sql_field->flags, sql_field->decimals) |
+    f_settype((uint) sql_field->sql_type);
+  return false;
 }
 
 
