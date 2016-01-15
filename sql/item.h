@@ -766,6 +766,17 @@ public:
   {
     return get_handler_by_field_type(field_type());
   }
+  Field *make_table_field(MEM_ROOT *mem_root, TABLE_SHARE *share,
+                          const char *field_name,
+                          const Record_addr &rec,
+                          const Create_attr &attr) const
+  {
+    DBUG_ASSERT(0); // Not called (yet) in Item context
+    return type_handler()->make_table_field(mem_root, share,
+                                            field_name, rec, attr);
+  }
+
+
   Field *make_num_distinct_aggregator_field(MEM_ROOT *mem_root,
                                             const Item *item) const
   {

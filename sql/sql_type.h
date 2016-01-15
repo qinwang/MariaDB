@@ -25,6 +25,7 @@
 
 class Field;
 class Item;
+class Create_attr;
 class Type_std_attributes;
 class Sort_param;
 struct TABLE;
@@ -100,6 +101,9 @@ public:
                                             CHARSET_INFO *cs) const
   { return this; }
   virtual ~Type_handler() {}
+  virtual Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                                  const char *name, const Record_addr &addr,
+                                  const Create_attr &attr) const= 0;
   /**
     Makes a temporary table Field to handle numeric aggregate functions,
     e.g. SUM(DISTINCT expr), AVG(DISTINCT expr), etc.
@@ -214,6 +218,17 @@ public:
   const Type_handler *
   type_handler_adjusted_to_max_octet_length(uint max_octet_length,
                                             CHARSET_INFO *cs) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const
+  {
+    /*
+      All string fields are handled in a separate branch
+      in field.cc:make_field().
+    */
+    DBUG_ASSERT(0);
+    return NULL;
+  }
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const;
   void sortlength(THD *thd,
@@ -247,6 +262,9 @@ class Type_handler_tiny: public Type_handler_int_result
 public:
   virtual ~Type_handler_tiny() {}
   enum_field_types field_type() const { return MYSQL_TYPE_TINY; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *TABLE, uint metadata,
                                      const Field *target) const;
 };
@@ -257,6 +275,9 @@ class Type_handler_short: public Type_handler_int_result
 public:
   virtual ~Type_handler_short() {}
   enum_field_types field_type() const { return MYSQL_TYPE_SHORT; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *TABLE, uint metadata,
                                      const Field *target) const;
 };
@@ -267,6 +288,9 @@ class Type_handler_long: public Type_handler_int_result
 public:
   virtual ~Type_handler_long() {}
   enum_field_types field_type() const { return MYSQL_TYPE_LONG; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *TABLE, uint metadata,
                                      const Field *target) const;
 };
@@ -277,6 +301,9 @@ class Type_handler_longlong: public Type_handler_int_result
 public:
   virtual ~Type_handler_longlong() {}
   enum_field_types field_type() const { return MYSQL_TYPE_LONGLONG; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *TABLE, uint metadata,
                                      const Field *target) const;
 };
@@ -287,6 +314,9 @@ class Type_handler_int24: public Type_handler_int_result
 public:
   virtual ~Type_handler_int24() {}
   enum_field_types field_type() const { return MYSQL_TYPE_INT24; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -297,6 +327,9 @@ class Type_handler_year: public Type_handler_int_result
 public:
   virtual ~Type_handler_year() {}
   enum_field_types field_type() const { return MYSQL_TYPE_YEAR; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -307,6 +340,13 @@ class Type_handler_bit: public Type_handler_int_result
 public:
   virtual ~Type_handler_bit() {}
   enum_field_types field_type() const { return MYSQL_TYPE_BIT; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const
+  {
+    DBUG_ASSERT(0); // Handled separately in field.cc:make_field().
+    return NULL;
+  }
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -317,6 +357,9 @@ class Type_handler_float: public Type_handler_real_result
 public:
   virtual ~Type_handler_float() {}
   enum_field_types field_type() const { return MYSQL_TYPE_FLOAT; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_num_distinct_aggregator_field(MEM_ROOT *, const Item *) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
@@ -328,6 +371,9 @@ class Type_handler_double: public Type_handler_real_result
 public:
   virtual ~Type_handler_double() {}
   enum_field_types field_type() const { return MYSQL_TYPE_DOUBLE; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -338,6 +384,9 @@ class Type_handler_time: public Type_handler_temporal_result
 public:
   virtual ~Type_handler_time() {}
   enum_field_types field_type() const { return MYSQL_TYPE_TIME; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -349,6 +398,9 @@ public:
   virtual ~Type_handler_time2() {}
   enum_field_types field_type() const { return MYSQL_TYPE_TIME; }
   enum_field_types real_field_type() const { return MYSQL_TYPE_TIME2; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -359,6 +411,9 @@ class Type_handler_date: public Type_handler_temporal_result
 public:
   virtual ~Type_handler_date() {}
   enum_field_types field_type() const { return MYSQL_TYPE_DATE; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -370,6 +425,9 @@ public:
   virtual ~Type_handler_newdate() {}
   enum_field_types field_type() const { return MYSQL_TYPE_DATE; }
   enum_field_types real_field_type() const { return MYSQL_TYPE_NEWDATE; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -380,6 +438,9 @@ class Type_handler_datetime: public Type_handler_temporal_result
 public:
   virtual ~Type_handler_datetime() {}
   enum_field_types field_type() const { return MYSQL_TYPE_DATETIME; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -391,6 +452,9 @@ public:
   virtual ~Type_handler_datetime2() {}
   enum_field_types field_type() const { return MYSQL_TYPE_DATETIME; }
   enum_field_types real_field_type() const { return MYSQL_TYPE_DATETIME2; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -401,6 +465,9 @@ class Type_handler_timestamp: public Type_handler_temporal_result
 public:
   virtual ~Type_handler_timestamp() {}
   enum_field_types field_type() const { return MYSQL_TYPE_TIMESTAMP; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -412,6 +479,9 @@ public:
   virtual ~Type_handler_timestamp2() {}
   enum_field_types field_type() const { return MYSQL_TYPE_TIMESTAMP; }
   enum_field_types real_field_type() const { return MYSQL_TYPE_TIMESTAMP2; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -422,6 +492,9 @@ class Type_handler_olddecimal: public Type_handler_decimal_result
 public:
   virtual ~Type_handler_olddecimal() {}
   enum_field_types field_type() const { return MYSQL_TYPE_DECIMAL; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -432,6 +505,9 @@ class Type_handler_newdecimal: public Type_handler_decimal_result
 public:
   virtual ~Type_handler_newdecimal() {}
   enum_field_types field_type() const { return MYSQL_TYPE_NEWDECIMAL; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -442,6 +518,9 @@ class Type_handler_null: public Type_handler_string_result
 public:
   virtual ~Type_handler_null() {}
   enum_field_types field_type() const { return MYSQL_TYPE_NULL; }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -604,6 +683,12 @@ public:
     return
       m_type_handler->type_handler_adjusted_to_max_octet_length(max_octet_length,
                                                                 cs);
+  }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const
+  {
+    return m_type_handler->make_table_field(root, share, name, addr, attr);
   }
   Field *make_num_distinct_aggregator_field(MEM_ROOT *mem_root,
                                             const Item *item) const

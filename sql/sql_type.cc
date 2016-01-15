@@ -610,6 +610,272 @@ Field *Type_handler_set::make_conversion_table_field(TABLE *table,
 }
 
 
+/*************************************************************************/
+Field *Type_handler_olddecimal::make_table_field(MEM_ROOT *mem_root,
+                                                 TABLE_SHARE *share,
+                                                 const char *field_name,
+                                                 const Record_addr &rec,
+                                                 const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_decimal(rec.ptr, attr.length(), rec.null_ptr, rec.null_bit,
+                  attr.unireg_check(), field_name,
+                  f_decimals(attr.pack_flag()),
+                  f_is_zerofill(attr.pack_flag()) != 0,
+                  f_is_dec(attr.pack_flag()) == 0);
+}
+
+
+Field *Type_handler_newdecimal::make_table_field(MEM_ROOT *mem_root,
+                                                 TABLE_SHARE *share,
+                                                 const char *field_name,
+                                                 const Record_addr &rec,
+                                                 const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_new_decimal(rec.ptr, attr.length(), rec.null_ptr, rec.null_bit,
+                      attr.unireg_check(), field_name,
+                      f_decimals(attr.pack_flag()),
+                      f_is_zerofill(attr.pack_flag()) != 0,
+                      f_is_dec(attr.pack_flag()) == 0);
+}
+
+
+Field *Type_handler_float::make_table_field(MEM_ROOT *mem_root,
+                                            TABLE_SHARE *share,
+                                            const char *field_name,
+                                            const Record_addr &rec,
+                                            const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_float(rec.ptr, attr.length(), rec.null_ptr, rec.null_bit,
+                attr.unireg_check(), field_name,
+                f_decimals(attr.pack_flag()),
+                f_is_zerofill(attr.pack_flag()) != 0,
+                f_is_dec(attr.pack_flag())== 0);
+}
+
+
+Field *Type_handler_double::make_table_field(MEM_ROOT *mem_root,
+                                             TABLE_SHARE *share,
+                                             const char *field_name,
+                                             const Record_addr &rec,
+                                             const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_double(rec.ptr, attr.length(), rec.null_ptr, rec.null_bit,
+                 attr.unireg_check(), field_name,
+                 f_decimals(attr.pack_flag()),
+                 f_is_zerofill(attr.pack_flag()) != 0,
+                 f_is_dec(attr.pack_flag())== 0);
+}
+
+
+Field *Type_handler_tiny::make_table_field(MEM_ROOT *mem_root,
+                                           TABLE_SHARE *share,
+                                           const char *field_name,
+                                           const Record_addr &rec,
+                                           const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_tiny(rec.ptr, attr.length(), rec.null_ptr, rec.null_bit,
+               attr.unireg_check(), field_name,
+               f_is_zerofill(attr.pack_flag()) != 0,
+               f_is_dec(attr.pack_flag()) == 0);
+}
+
+
+Field *Type_handler_short::make_table_field(MEM_ROOT *mem_root,
+                                            TABLE_SHARE *share,
+                                            const char *field_name,
+                                            const Record_addr &rec,
+                                            const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_short(rec.ptr, attr.length(), rec.null_ptr, rec.null_bit,
+                attr.unireg_check(), field_name,
+                f_is_zerofill(attr.pack_flag()) != 0,
+                f_is_dec(attr.pack_flag()) == 0);
+}
+
+
+Field *Type_handler_int24::make_table_field(MEM_ROOT *mem_root,
+                                            TABLE_SHARE *share,
+                                            const char *field_name,
+                                            const Record_addr &rec,
+                                            const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_medium(rec.ptr, attr.length(), rec.null_ptr, rec.null_bit,
+                 attr.unireg_check(), field_name,
+                 f_is_zerofill(attr.pack_flag()) != 0,
+                 f_is_dec(attr.pack_flag()) == 0);
+}
+
+
+Field *Type_handler_long::make_table_field(MEM_ROOT *mem_root,
+                                           TABLE_SHARE *share,
+                                           const char *field_name,
+                                           const Record_addr &rec,
+                                           const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_long(rec.ptr, attr.length(), rec.null_ptr, rec.null_bit,
+               attr.unireg_check(), field_name,
+               f_is_zerofill(attr.pack_flag()) != 0,
+               f_is_dec(attr.pack_flag()) == 0);
+}
+
+
+Field *Type_handler_longlong::make_table_field(MEM_ROOT *mem_root,
+                                               TABLE_SHARE *share,
+                                               const char *field_name,
+                                               const Record_addr &rec,
+                                               const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_longlong(rec.ptr, attr.length(), rec.null_ptr, rec.null_bit,
+                   attr.unireg_check(), field_name,
+                   f_is_zerofill(attr.pack_flag()) != 0,
+                   f_is_dec(attr.pack_flag()) == 0);
+}
+
+
+
+Field *Type_handler_timestamp::make_table_field(MEM_ROOT *mem_root,
+                                                TABLE_SHARE *share,
+                                                const char *field_name,
+                                                const Record_addr &rec,
+                                                const Create_attr &attr) const
+{
+  uint dec= attr.length() > MAX_DATETIME_WIDTH ?
+            attr.length() - MAX_DATETIME_WIDTH - 1: 0;
+  return new_Field_timestamp(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
+                             attr.unireg_check(), field_name, share, dec);
+}
+
+
+Field *Type_handler_timestamp2::make_table_field(MEM_ROOT *mem_root,
+                                                 TABLE_SHARE *share,
+                                                 const char *field_name,
+                                                 const Record_addr &rec,
+                                                 const Create_attr &attr) const
+{
+  uint dec= attr.length() > MAX_DATETIME_WIDTH ?
+            attr.length() - MAX_DATETIME_WIDTH - 1: 0;
+  return new (mem_root)
+    Field_timestampf(rec.ptr, rec.null_ptr, rec.null_bit,
+                     attr.unireg_check(), field_name, share, dec);
+}
+
+
+Field *Type_handler_year::make_table_field(MEM_ROOT *mem_root,
+                                           TABLE_SHARE *share,
+                                           const char *field_name,
+                                           const Record_addr &rec,
+                                           const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_year(rec.ptr, attr.length(), rec.null_ptr, rec.null_bit,
+               attr.unireg_check(), field_name);
+
+}
+
+
+Field *Type_handler_date::make_table_field(MEM_ROOT *mem_root,
+                                           TABLE_SHARE *share,
+                                           const char *field_name,
+                                           const Record_addr &rec,
+                                           const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_date(rec.ptr, rec.null_ptr, rec.null_bit,
+               attr.unireg_check(), field_name);
+}
+
+
+Field *Type_handler_newdate::make_table_field(MEM_ROOT *mem_root,
+                                              TABLE_SHARE *share,
+                                              const char *field_name,
+                                              const Record_addr &rec,
+                                              const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_newdate(rec.ptr, rec.null_ptr, rec.null_bit,
+                  attr.unireg_check(), field_name);
+}
+
+
+Field *Type_handler_time::make_table_field(MEM_ROOT *mem_root,
+                                           TABLE_SHARE *share,
+                                           const char *field_name,
+                                           const Record_addr &rec,
+                                           const Create_attr &attr) const
+{
+  uint dec= attr.length() > MIN_TIME_WIDTH ?
+            attr.length() - MIN_TIME_WIDTH - 1: 0;
+  return new_Field_time(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
+                        attr.unireg_check(), field_name, dec);
+}
+
+
+
+
+Field *Type_handler_time2::make_table_field(MEM_ROOT *mem_root,
+                                            TABLE_SHARE *share,
+                                            const char *field_name,
+                                            const Record_addr &rec,
+                                            const Create_attr &attr) const
+{
+  uint dec= attr.length() > MIN_TIME_WIDTH ?
+            attr.length() - MIN_TIME_WIDTH - 1: 0;
+  return new (mem_root)
+    Field_timef(rec.ptr, rec.null_ptr, rec.null_bit,
+                attr.unireg_check(), field_name, dec);
+}
+
+
+Field *Type_handler_datetime::make_table_field(MEM_ROOT *mem_root,
+                                               TABLE_SHARE *share,
+                                               const char *field_name,
+                                               const Record_addr &rec,
+                                               const Create_attr &attr) const
+{
+  uint dec= attr.length() > MAX_DATETIME_WIDTH ?
+            attr.length() - MAX_DATETIME_WIDTH - 1: 0;
+  return new_Field_datetime(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
+                            attr.unireg_check(), field_name, dec);
+}
+
+
+Field *Type_handler_datetime2::make_table_field(MEM_ROOT *mem_root,
+                                                TABLE_SHARE *share,
+                                                const char *field_name,
+                                                const Record_addr &rec,
+                                                const Create_attr &attr) const
+{
+  uint dec= attr.length() > MAX_DATETIME_WIDTH ?
+            attr.length() - MAX_DATETIME_WIDTH - 1: 0;
+  return new (mem_root)
+    Field_datetimef(rec.ptr, rec.null_ptr, rec.null_bit,
+                    attr.unireg_check(), field_name, dec);
+}
+
+
+Field *Type_handler_null::make_table_field(MEM_ROOT *mem_root,
+                                           TABLE_SHARE *share,
+                                           const char *field_name,
+                                           const Record_addr &rec,
+                                           const Create_attr &attr) const
+{
+  return new (mem_root)
+    Field_null(rec.ptr, attr.length(), attr.unireg_check(),
+               field_name, attr.charset());
+}
+
+
+/*************************************************************************/
+
 Type_handler_register::Type_handler_register()
   :m_min_type(256), m_max_type(0)
 {

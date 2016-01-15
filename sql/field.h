@@ -3634,6 +3634,34 @@ public:
 extern const LEX_STRING null_lex_str;
 
 
+class Create_attr
+{
+  CHARSET_INFO *m_charset;
+  uint32 m_length;
+  uint m_pack_flag;
+  Field::geometry_type m_geometry_type;
+  uint m_srid;
+  Field::utype m_unireg_check;
+  TYPELIB *m_interval;
+public:
+  Create_attr(CHARSET_INFO *charset, uint32 length, uint pack_flag,
+              Field::geometry_type geometry_type, uint srid,
+              Field::utype unireg_check,
+              TYPELIB *interval)
+   :m_charset(charset), m_length(length), m_pack_flag(pack_flag),
+    m_geometry_type(geometry_type), m_srid(srid), m_unireg_check(unireg_check),
+    m_interval(interval)
+  { }
+  CHARSET_INFO *charset() const { return m_charset; }
+  uint32 length() const { return m_length; }
+  uint pack_flag() const { return m_pack_flag; }
+  Field::geometry_type geometry_type() const { return m_geometry_type; }
+  uint srid() const { return m_srid; }
+  Field::utype unireg_check() const { return m_unireg_check; }
+  TYPELIB *interval() const { return m_interval; }
+};
+
+
 Field *make_field(TABLE_SHARE *share, MEM_ROOT *mem_root,
                   uchar *ptr, uint32 field_length,
                   uchar *null_pos, uchar null_bit,
