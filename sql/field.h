@@ -31,6 +31,7 @@
 #include "my_decimal.h"                         /* my_decimal */
 #include "sql_error.h"                          /* Sql_condition */
 #include "compat56.h"
+#include "sql_type.h"
 
 class Send_field;
 class Copy_field;
@@ -611,7 +612,7 @@ public:
   }
 };
 
-class Field: public Value_source
+class Field: public Record_addr, public Value_source
 {
   Field(const Item &);				/* Prevent use of these */
   void operator=(Field &);
@@ -636,12 +637,6 @@ public:
   static void operator delete(void *ptr, MEM_ROOT *mem_root)
   { DBUG_ASSERT(0); }
 
-  uchar		*ptr;			// Position to field in record
-  /**
-     Byte where the @c NULL bit is stored inside a record. If this Field is a
-     @c NOT @c NULL field, this member is @c NULL.
-  */
-  uchar		*null_ptr;
   /*
     Note that you can use table->in_use as replacement for current_thd member
     only inside of val_*() and store() members (e.g. you can't use it in cons)
@@ -687,7 +682,6 @@ public:
   uint32	field_length;		// Length of field
   uint32	flags;
   uint16        field_index;            // field number in fields array
-  uchar		null_bit;		// Bit used to test null bit
   /**
      If true, this field was created in create_tmp_field_from_item from a NULL
      value. This means that the type of the field is just a guess, and the type
@@ -801,8 +795,7 @@ public:
   static Item_result result_merge_type(enum_field_types);
   virtual bool eq(Field *field)
   {
-    return (ptr == field->ptr && null_ptr == field->null_ptr &&
-            null_bit == field->null_bit && field->type() == type());
+    return Record_addr::eq(field) && field->type() == type();
   }
   virtual bool eq_def(const Field *field) const;
   

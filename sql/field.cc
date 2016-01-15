@@ -1667,12 +1667,12 @@ String *Field::val_int_as_str(String *val_buffer, bool unsigned_val)
 Field::Field(uchar *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,
 	     uchar null_bit_arg,
 	     utype unireg_check_arg, const char *field_name_arg)
-  :ptr(ptr_arg), null_ptr(null_ptr_arg), table(0), orig_table(0),
+  :Record_addr(ptr_arg, null_ptr_arg, null_bit_arg), table(0), orig_table(0),
   table_name(0), field_name(field_name_arg), option_list(0),
   option_struct(0), key_start(0), part_of_key(0),
   part_of_key_not_clustered(0), part_of_sortkey(0),
   unireg_check(unireg_check_arg), field_length(length_arg),
-  null_bit(null_bit_arg), is_created_from_null_item(FALSE),
+  is_created_from_null_item(FALSE),
   read_stats(NULL), collected_stats(0), vcol_info(0)
 {
   flags=null_ptr ? 0: NOT_NULL_FLAG;
@@ -10130,6 +10130,181 @@ uint pack_length_to_packflag(uint type)
 }
 
 
+class Create_attr
+{
+  CHARSET_INFO *m_charset;
+  uint32 m_length;
+  uint m_pack_flag;
+  Field::geometry_type m_geometry_type;
+  uint m_srid;
+  Field::utype m_unireg_check;
+  TYPELIB *m_interval;
+public:
+  Create_attr(CHARSET_INFO *charset, uint32 length, uint pack_flag,
+              Field::geometry_type geometry_type, uint srid,
+              Field::utype unireg_check,
+              TYPELIB *interval)
+   :m_charset(charset), m_length(length), m_pack_flag(pack_flag),
+    m_geometry_type(geometry_type), m_srid(srid), m_unireg_check(unireg_check),
+    m_interval(interval)
+  { }
+  CHARSET_INFO *charset() const { return m_charset; }
+  uint32 length() const { return m_length; }
+  uint pack_flag() const { return m_pack_flag; }
+  Field::geometry_type geometry_type() const { return m_geometry_type; }
+  uint srid() const { return m_srid; }
+  Field::utype unireg_check() const { return m_unireg_check; }
+  TYPELIB *interval() const { return m_interval; }
+};
+
+
+static
+Field *make_field2(const Type_handler *handler,
+                   TABLE_SHARE *share,
+                   MEM_ROOT *mem_root,
+                   const char *field_name,
+                   const Record_addr &rec,
+                   const Create_attr &attr)
+{
+  switch (handler->real_field_type()) {
+  case MYSQL_TYPE_DECIMAL:
+    return new (mem_root)
+      Field_decimal(rec.ptr, attr.length(), rec.null_ptr, rec.null_bit,
+                    attr.unireg_check(), field_name,
+                    f_decimals(attr.pack_flag()),
+                    f_is_zerofill(attr.pack_flag()) != 0,
+                    f_is_dec(attr.pack_flag()) == 0);
+  case MYSQL_TYPE_NEWDECIMAL:
+    return new (mem_root)
+      Field_new_decimal(rec.ptr,attr.length(),rec.null_ptr,rec.null_bit,
+                        attr.unireg_check(), field_name,
+                        f_decimals(attr.pack_flag()),
+                        f_is_zerofill(attr.pack_flag()) != 0,
+                        f_is_dec(attr.pack_flag()) == 0);
+  case MYSQL_TYPE_FLOAT:
+    return new (mem_root)
+      Field_float(rec.ptr,attr.length(),rec.null_ptr,rec.null_bit,
+                  attr.unireg_check(), field_name,
+                  f_decimals(attr.pack_flag()),
+                  f_is_zerofill(attr.pack_flag()) != 0,
+                  f_is_dec(attr.pack_flag())== 0);
+  case MYSQL_TYPE_DOUBLE:
+    return new (mem_root)
+      Field_double(rec.ptr,attr.length(),rec.null_ptr,rec.null_bit,
+                   attr.unireg_check(), field_name,
+                   f_decimals(attr.pack_flag()),
+                   f_is_zerofill(attr.pack_flag()) != 0,
+                   f_is_dec(attr.pack_flag())== 0);
+  case MYSQL_TYPE_TINY:
+    return new (mem_root)
+      Field_tiny(rec.ptr,attr.length(),rec.null_ptr,rec.null_bit,
+                 attr.unireg_check(), field_name,
+                 f_is_zerofill(attr.pack_flag()) != 0,
+                 f_is_dec(attr.pack_flag()) == 0);
+  case MYSQL_TYPE_SHORT:
+    return new (mem_root)
+      Field_short(rec.ptr,attr.length(),rec.null_ptr,rec.null_bit,
+                  attr.unireg_check(), field_name,
+                  f_is_zerofill(attr.pack_flag()) != 0,
+                  f_is_dec(attr.pack_flag()) == 0);
+  case MYSQL_TYPE_INT24:
+    return new (mem_root)
+      Field_medium(rec.ptr,attr.length(),rec.null_ptr,rec.null_bit,
+                   attr.unireg_check(), field_name,
+                   f_is_zerofill(attr.pack_flag()) != 0,
+                   f_is_dec(attr.pack_flag()) == 0);
+  case MYSQL_TYPE_LONG:
+    return new (mem_root)
+      Field_long(rec.ptr,attr.length(),rec.null_ptr,rec.null_bit,
+                 attr.unireg_check(), field_name,
+                 f_is_zerofill(attr.pack_flag()) != 0,
+                 f_is_dec(attr.pack_flag()) == 0);
+  case MYSQL_TYPE_LONGLONG:
+    return new (mem_root)
+      Field_longlong(rec.ptr,attr.length(),rec.null_ptr,rec.null_bit,
+                     attr.unireg_check(), field_name,
+                     f_is_zerofill(attr.pack_flag()) != 0,
+                     f_is_dec(attr.pack_flag()) == 0);
+  case MYSQL_TYPE_TIMESTAMP:
+  {
+    uint dec= attr.length() > MAX_DATETIME_WIDTH ?
+                       attr.length() - MAX_DATETIME_WIDTH - 1: 0;
+    return new_Field_timestamp(mem_root, rec.ptr, rec.null_ptr, rec.null_bit, attr.unireg_check(),
+                               field_name, share, dec);
+  }
+  case MYSQL_TYPE_TIMESTAMP2:
+  {
+    uint dec= attr.length() > MAX_DATETIME_WIDTH ?
+                       attr.length() - MAX_DATETIME_WIDTH - 1: 0;
+    return new (mem_root)
+      Field_timestampf(rec.ptr, rec.null_ptr, rec.null_bit, attr.unireg_check(),
+                       field_name, share, dec);
+  }
+  case MYSQL_TYPE_YEAR:
+    return new (mem_root)
+      Field_year(rec.ptr,attr.length(),rec.null_ptr,rec.null_bit,
+                 attr.unireg_check(), field_name);
+  case MYSQL_TYPE_DATE:
+    return new (mem_root)
+      Field_date(rec.ptr,rec.null_ptr,rec.null_bit,
+                 attr.unireg_check(), field_name);
+  case MYSQL_TYPE_NEWDATE:
+    return new (mem_root)
+      Field_newdate(rec.ptr,rec.null_ptr,rec.null_bit,
+                    attr.unireg_check(), field_name);
+  case MYSQL_TYPE_TIME:
+  {
+    uint dec= attr.length() > MIN_TIME_WIDTH ?
+                       attr.length() - MIN_TIME_WIDTH - 1: 0;
+    return new_Field_time(mem_root, rec.ptr, rec.null_ptr, rec.null_bit, attr.unireg_check(),
+                          field_name, dec);
+  }
+  case MYSQL_TYPE_TIME2:
+  {
+    uint dec= attr.length() > MIN_TIME_WIDTH ?
+                       attr.length() - MIN_TIME_WIDTH - 1: 0;
+    return new (mem_root)
+      Field_timef(rec.ptr, rec.null_ptr, rec.null_bit, attr.unireg_check(),
+                  field_name, dec);
+  }
+  case MYSQL_TYPE_DATETIME:
+  {
+    uint dec= attr.length() > MAX_DATETIME_WIDTH ?
+                       attr.length() - MAX_DATETIME_WIDTH - 1: 0;
+    return new_Field_datetime(mem_root, rec.ptr, rec.null_ptr, rec.null_bit, attr.unireg_check(),
+                              field_name, dec);
+  }
+  case MYSQL_TYPE_DATETIME2:
+  {
+    uint dec= attr.length() > MAX_DATETIME_WIDTH ?
+                       attr.length() - MAX_DATETIME_WIDTH - 1: 0;
+    return new (mem_root)
+      Field_datetimef(rec.ptr, rec.null_ptr, rec.null_bit, attr.unireg_check(),
+                      field_name, dec);
+  }
+  case MYSQL_TYPE_NULL:
+    return new (mem_root)
+      Field_null(rec.ptr, attr.length(), attr.unireg_check(), field_name,
+                 attr.charset());
+  //default:                                         // Impossible (Wrong version)
+  case MYSQL_TYPE_VARCHAR:
+  case MYSQL_TYPE_BIT:
+  case MYSQL_TYPE_ENUM:
+  case MYSQL_TYPE_SET:
+  case MYSQL_TYPE_TINY_BLOB:
+  case MYSQL_TYPE_MEDIUM_BLOB:
+  case MYSQL_TYPE_LONG_BLOB:
+  case MYSQL_TYPE_BLOB:
+  case MYSQL_TYPE_VAR_STRING:
+  case MYSQL_TYPE_STRING:
+  case MYSQL_TYPE_GEOMETRY:
+    break;
+  }
+
+  return 0;
+}
+
+
 Field *make_field(TABLE_SHARE *share,
                   MEM_ROOT *mem_root,
                   uchar *ptr, uint32 field_length,
@@ -10144,6 +10319,14 @@ Field *make_field(TABLE_SHARE *share,
 {
   uchar *UNINIT_VAR(bit_ptr);
   uchar UNINIT_VAR(bit_offset);
+
+  DBUG_PRINT("debug", ("field_type: %d, field_length: %u, interval: %p, pack_flag: %s%s%s%s%s",
+                       field_type, field_length, interval,
+                       FLAGSTR(pack_flag, FIELDFLAG_BINARY),
+                       FLAGSTR(pack_flag, FIELDFLAG_INTERVAL),
+                       FLAGSTR(pack_flag, FIELDFLAG_NUMBER),
+                       FLAGSTR(pack_flag, FIELDFLAG_PACK),
+                       FLAGSTR(pack_flag, FIELDFLAG_BLOB)));
 
   if (field_type == MYSQL_TYPE_BIT && !f_bit_as_char(pack_flag))
   {
@@ -10166,13 +10349,6 @@ Field *make_field(TABLE_SHARE *share,
     null_bit= ((uchar) 1) << null_bit;
   }
 
-  DBUG_PRINT("debug", ("field_type: %d, field_length: %u, interval: %p, pack_flag: %s%s%s%s%s",
-                       field_type, field_length, interval,
-                       FLAGSTR(pack_flag, FIELDFLAG_BINARY),
-                       FLAGSTR(pack_flag, FIELDFLAG_INTERVAL),
-                       FLAGSTR(pack_flag, FIELDFLAG_NUMBER),
-                       FLAGSTR(pack_flag, FIELDFLAG_PACK),
-                       FLAGSTR(pack_flag, FIELDFLAG_BLOB)));
 
   if (f_is_alpha(pack_flag))
   {
@@ -10230,127 +10406,8 @@ Field *make_field(TABLE_SHARE *share,
     }
   }
 
-  switch (field_type) {
-  case MYSQL_TYPE_DECIMAL:
-    return new (mem_root)
-      Field_decimal(ptr,field_length,null_pos,null_bit,
-                    unireg_check, field_name,
-                    f_decimals(pack_flag),
-                    f_is_zerofill(pack_flag) != 0,
-                    f_is_dec(pack_flag) == 0);
-  case MYSQL_TYPE_NEWDECIMAL:
-    return new (mem_root)
-      Field_new_decimal(ptr,field_length,null_pos,null_bit,
-                        unireg_check, field_name,
-                        f_decimals(pack_flag),
-                        f_is_zerofill(pack_flag) != 0,
-                        f_is_dec(pack_flag) == 0);
-  case MYSQL_TYPE_FLOAT:
-    return new (mem_root)
-      Field_float(ptr,field_length,null_pos,null_bit,
-                  unireg_check, field_name,
-                  f_decimals(pack_flag),
-                  f_is_zerofill(pack_flag) != 0,
-                  f_is_dec(pack_flag)== 0);
-  case MYSQL_TYPE_DOUBLE:
-    return new (mem_root)
-      Field_double(ptr,field_length,null_pos,null_bit,
-                   unireg_check, field_name,
-                   f_decimals(pack_flag),
-                   f_is_zerofill(pack_flag) != 0,
-                   f_is_dec(pack_flag)== 0);
-  case MYSQL_TYPE_TINY:
-    return new (mem_root)
-      Field_tiny(ptr,field_length,null_pos,null_bit,
-                 unireg_check, field_name,
-                 f_is_zerofill(pack_flag) != 0,
-                 f_is_dec(pack_flag) == 0);
-  case MYSQL_TYPE_SHORT:
-    return new (mem_root)
-      Field_short(ptr,field_length,null_pos,null_bit,
-                  unireg_check, field_name,
-                  f_is_zerofill(pack_flag) != 0,
-                  f_is_dec(pack_flag) == 0);
-  case MYSQL_TYPE_INT24:
-    return new (mem_root)
-      Field_medium(ptr,field_length,null_pos,null_bit,
-                   unireg_check, field_name,
-                   f_is_zerofill(pack_flag) != 0,
-                   f_is_dec(pack_flag) == 0);
-  case MYSQL_TYPE_LONG:
-    return new (mem_root)
-      Field_long(ptr,field_length,null_pos,null_bit,
-                 unireg_check, field_name,
-                 f_is_zerofill(pack_flag) != 0,
-                 f_is_dec(pack_flag) == 0);
-  case MYSQL_TYPE_LONGLONG:
-    return new (mem_root)
-      Field_longlong(ptr,field_length,null_pos,null_bit,
-                     unireg_check, field_name,
-                     f_is_zerofill(pack_flag) != 0,
-                     f_is_dec(pack_flag) == 0);
-  case MYSQL_TYPE_TIMESTAMP:
+  if (field_type == MYSQL_TYPE_BIT)
   {
-    uint dec= field_length > MAX_DATETIME_WIDTH ?
-                       field_length - MAX_DATETIME_WIDTH - 1: 0;
-    return new_Field_timestamp(mem_root, ptr, null_pos, null_bit, unireg_check,
-                               field_name, share, dec);
-  }
-  case MYSQL_TYPE_TIMESTAMP2:
-  {
-    uint dec= field_length > MAX_DATETIME_WIDTH ?
-                       field_length - MAX_DATETIME_WIDTH - 1: 0;
-    return new (mem_root)
-      Field_timestampf(ptr, null_pos, null_bit, unireg_check,
-                       field_name, share, dec);
-  }
-  case MYSQL_TYPE_YEAR:
-    return new (mem_root)
-      Field_year(ptr,field_length,null_pos,null_bit,
-                 unireg_check, field_name);
-  case MYSQL_TYPE_DATE:
-    return new (mem_root)
-      Field_date(ptr,null_pos,null_bit,
-                 unireg_check, field_name);
-  case MYSQL_TYPE_NEWDATE:
-    return new (mem_root)
-      Field_newdate(ptr,null_pos,null_bit,
-                    unireg_check, field_name);
-  case MYSQL_TYPE_TIME:
-  {
-    uint dec= field_length > MIN_TIME_WIDTH ?
-                       field_length - MIN_TIME_WIDTH - 1: 0;
-    return new_Field_time(mem_root, ptr, null_pos, null_bit, unireg_check,
-                          field_name, dec);
-  }
-  case MYSQL_TYPE_TIME2:
-  {
-    uint dec= field_length > MIN_TIME_WIDTH ?
-                       field_length - MIN_TIME_WIDTH - 1: 0;
-    return new (mem_root)
-      Field_timef(ptr, null_pos, null_bit, unireg_check,
-                  field_name, dec);
-  }
-  case MYSQL_TYPE_DATETIME:
-  {
-    uint dec= field_length > MAX_DATETIME_WIDTH ?
-                       field_length - MAX_DATETIME_WIDTH - 1: 0;
-    return new_Field_datetime(mem_root, ptr, null_pos, null_bit, unireg_check,
-                              field_name, dec);
-  }
-  case MYSQL_TYPE_DATETIME2:
-  {
-    uint dec= field_length > MAX_DATETIME_WIDTH ?
-                       field_length - MAX_DATETIME_WIDTH - 1: 0;
-    return new (mem_root)
-      Field_datetimef(ptr, null_pos, null_bit, unireg_check,
-                      field_name, dec);
-  }
-  case MYSQL_TYPE_NULL:
-    return new (mem_root)
-      Field_null(ptr, field_length, unireg_check, field_name,
-                 field_charset);
-  case MYSQL_TYPE_BIT:
     return (f_bit_as_char(pack_flag) ?
             new (mem_root)
             Field_bit_as_char(ptr, field_length, null_pos, null_bit,
@@ -10358,11 +10415,13 @@ Field *make_field(TABLE_SHARE *share,
             new (mem_root)
             Field_bit(ptr, field_length, null_pos, null_bit, bit_ptr,
                       bit_offset, unireg_check, field_name));
-
-  default:					// Impossible (Wrong version)
-    break;
   }
-  return 0;
+
+  return make_field2(Type_handler::get_handler_by_real_type(field_type),
+                     share, mem_root, field_name,
+                     Record_addr(ptr, null_pos, null_bit),
+                     Create_attr(field_charset, field_length, pack_flag,
+                                 geom_type, srid, unireg_check, interval));
 }
 
 

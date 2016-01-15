@@ -59,6 +59,27 @@ public:
 };
 
 
+class Record_addr
+{
+public:
+  uchar *ptr;  // Position to field in record
+  /**
+     Byte where the @c NULL bit is stored inside a record. If this Field is a
+     @c NOT @c NULL field, this member is @c NULL.
+  */
+  uchar *null_ptr;
+  uchar null_bit;  // Bit used to test null bit
+  Record_addr(uchar *ptr_arg, uchar *null_ptr_arg, uchar null_bit_arg)
+    :ptr(ptr_arg), null_ptr(null_ptr_arg), null_bit(null_bit_arg)
+  { }
+  bool eq(const Record_addr *other)
+  {
+    return (ptr == other->ptr && null_ptr == other->null_ptr &&
+            null_bit == other->null_bit);
+  }
+};
+
+
 class Type_handler
 {
 protected:
