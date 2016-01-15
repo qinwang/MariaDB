@@ -20,6 +20,7 @@
 #include "item.h"
 #include "log.h"
 
+
 static Type_handler_tiny        type_handler_tiny;
 static Type_handler_short       type_handler_short;
 static Type_handler_long        type_handler_long;
@@ -176,51 +177,14 @@ Type_handler::get_handler_by_field_type(enum_field_types type)
 const Type_handler *
 Type_handler::get_handler_by_real_type(enum_field_types type)
 {
-  switch (type) {
-  case MYSQL_TYPE_DECIMAL:     return &type_handler_olddecimal;
-  case MYSQL_TYPE_NEWDECIMAL:  return &type_handler_newdecimal;
-  case MYSQL_TYPE_TINY:        return &type_handler_tiny;
-  case MYSQL_TYPE_SHORT:       return &type_handler_short;
-  case MYSQL_TYPE_LONG:        return &type_handler_long;
-  case MYSQL_TYPE_LONGLONG:    return &type_handler_longlong;
-  case MYSQL_TYPE_INT24:       return &type_handler_int24;
-  case MYSQL_TYPE_YEAR:        return &type_handler_year;
-  case MYSQL_TYPE_BIT:         return &type_handler_bit;
-  case MYSQL_TYPE_FLOAT:       return &type_handler_float;
-  case MYSQL_TYPE_DOUBLE:      return &type_handler_double;
-  case MYSQL_TYPE_NULL:        return &type_handler_null;
-  case MYSQL_TYPE_VARCHAR:     return &type_handler_varchar;
-  case MYSQL_TYPE_TINY_BLOB:   return &type_handler_tiny_blob;
-  case MYSQL_TYPE_MEDIUM_BLOB: return &type_handler_medium_blob;
-  case MYSQL_TYPE_LONG_BLOB:   return &type_handler_long_blob;
-  case MYSQL_TYPE_BLOB:        return &type_handler_blob;
-  case MYSQL_TYPE_VAR_STRING:
-    /*
-      VAR_STRING is actually a field_type(), not a real_type(),
-      but it's used around the code in real_type() context.
-      We should clean up the code and add DBUG_ASSERT(0) here.
-    */
+  /*
+    VAR_STRING is actually a field_type(), not a real_type(),
+    but it's used around the code in real_type() context.
+    We should clean up the code and add DBUG_ASSERT(0) here.
+  */
+  if (type == MYSQL_TYPE_VAR_STRING)
     return &type_handler_string;
-  case MYSQL_TYPE_STRING:      return &type_handler_string;
-  case MYSQL_TYPE_ENUM:        return &type_handler_enum;
-  case MYSQL_TYPE_SET:         return &type_handler_set;
-  case MYSQL_TYPE_GEOMETRY:
-#ifdef HAVE_SPATIAL
-    return &type_handler_geometry;
-#else
-    return NULL;
-#endif
-  case MYSQL_TYPE_TIMESTAMP:   return &type_handler_timestamp;
-  case MYSQL_TYPE_TIMESTAMP2:  return &type_handler_timestamp2;
-  case MYSQL_TYPE_DATE:        return &type_handler_date;
-  case MYSQL_TYPE_TIME:        return &type_handler_time;
-  case MYSQL_TYPE_TIME2:       return &type_handler_time2;
-  case MYSQL_TYPE_DATETIME:    return &type_handler_datetime;
-  case MYSQL_TYPE_DATETIME2:   return &type_handler_datetime2;
-  case MYSQL_TYPE_NEWDATE:     return &type_handler_newdate;
-  };
-  DBUG_ASSERT(0);
-  return &type_handler_string;
+  return Type_handlers.handler(type);
 }
 
 
@@ -644,3 +608,52 @@ Field *Type_handler_set::make_conversion_table_field(TABLE *table,
                    metadata & 0x00ff/*pack_length()*/,
                    ((const Field_enum*) target)->typelib, target->charset());
 }
+
+
+Type_handler_register::Type_handler_register()
+  :m_min_type(256), m_max_type(0)
+{
+  add(&type_handler_tiny);
+  add(&type_handler_short);
+  add(&type_handler_long);
+  add(&type_handler_int24);
+  add(&type_handler_longlong);
+  add(&type_handler_year);
+  add(&type_handler_bit);
+  add(&type_handler_float);
+  add(&type_handler_double);
+
+  add(&type_handler_time);
+  add(&type_handler_time2);
+
+  add(&type_handler_date);
+  add(&type_handler_newdate);
+
+  add(&type_handler_datetime);
+  add(&type_handler_datetime2);
+
+  add(&type_handler_timestamp);
+  add(&type_handler_timestamp2);
+
+  add(&type_handler_olddecimal);
+  add(&type_handler_newdecimal);
+
+  add(&type_handler_null);
+
+  add(&type_handler_string);
+  add(&type_handler_varchar);
+
+  add(&type_handler_tiny_blob);
+  add(&type_handler_medium_blob);
+  add(&type_handler_long_blob);
+  add(&type_handler_blob);
+
+#ifdef HAVE_SPATIAL
+  add(&type_handler_geometry);
+#endif
+
+  add(&type_handler_enum);
+  add(&type_handler_set);
+}
+
+Type_handler_register Type_handlers;

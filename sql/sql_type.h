@@ -30,6 +30,35 @@ class Sort_param;
 struct TABLE;
 struct SORT_FIELD_ATTR;
 
+
+class Name: private LEX_CSTRING
+{
+public:
+  Name(const char *str_arg, uint length_arg)
+  {
+    LEX_CSTRING::str= str_arg;
+    LEX_CSTRING::length= length_arg;
+  }
+  Name()
+  {
+    LEX_CSTRING::str= NULL;
+    LEX_CSTRING::length= 0;
+  }
+  const char *ptr() const { return LEX_CSTRING::str; }
+  uint length() const { return LEX_CSTRING::length; }
+  bool eq(const Name &name) const
+  {
+    if (length() != name.length())
+      return false;
+    if (!length())
+      return true;
+    return my_strnncoll(&my_charset_latin1,
+                        (const uchar *) ptr(), length(),
+                        (const uchar *) name.ptr(), name.length());
+  }
+};
+
+
 class Type_handler
 {
 protected:
@@ -319,6 +348,7 @@ class Type_handler_newdate: public Type_handler_temporal_result
 public:
   virtual ~Type_handler_newdate() {}
   enum_field_types field_type() const { return MYSQL_TYPE_DATE; }
+  enum_field_types real_field_type() const { return MYSQL_TYPE_NEWDATE; }
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -590,6 +620,52 @@ public:
     :Type_handler_hybrid_field_type(get_handler_by_real_type(type))
   { }
 };
+
+
+class Type_handler_register
+{
+  class Entry
+  {
+    Name m_name;
+    const Type_handler *m_handler;
+  public:
+    Entry()
+      :m_name(), m_handler(NULL)
+    { }
+    Entry(const Name &name, const Type_handler *handler)
+      :m_name(name), m_handler(handler)
+    { }
+    const Name &name() const { return m_name; }
+    const Type_handler *handler() const { return m_handler; }
+    void set(const Type_handler *handler)
+    {
+      m_handler= handler;
+    }
+  };
+  Entry m_handlers[256];
+  uint m_min_type;
+  uint m_max_type;
+public:
+  Type_handler_register();
+  const Type_handler *handler(enum_field_types type) const
+  {
+    return m_handlers[type].handler();
+  }
+  bool add(const Type_handler *handler)
+  {
+    enum_field_types real_type= handler->real_field_type();
+    if (m_handlers[real_type].handler())
+    {
+      DBUG_ASSERT(0);
+      return true;
+    }
+    set_if_smaller(m_min_type, real_type);
+    set_if_bigger(m_max_type, real_type);
+    m_handlers[real_type].set(handler);
+    return false;
+  }
+};
+extern Type_handler_register Type_handlers;
 
 
 #endif /* SQL_TYPE_H_INCLUDED */
