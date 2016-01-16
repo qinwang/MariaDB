@@ -5546,7 +5546,6 @@ Field *Item::make_string_field(TABLE *table)
 */
 
 Field *Item::tmp_table_field_from_field_type(TABLE *table,
-                                             bool fixed_length,
                                              bool set_blob_packlength)
 {
   /*
@@ -5629,13 +5628,6 @@ Field *Item::tmp_table_field_from_field_type(TABLE *table,
     /* If something goes awfully wrong, it's better to get a string than die */
   case MYSQL_TYPE_NULL:
   case MYSQL_TYPE_STRING:
-    if (fixed_length && !too_big_for_varchar())
-    {
-      field= new (mem_root)
-        Field_string(max_length, maybe_null, name, collation.collation);
-      break;
-    }
-    /* Fall through to make_string_field() */
   case MYSQL_TYPE_ENUM:
   case MYSQL_TYPE_SET:
   case MYSQL_TYPE_VAR_STRING:
@@ -9493,7 +9485,7 @@ Field *Item_type_holder::make_field_by_type(TABLE *table)
   default:
     break;
   }
-  return tmp_table_field_from_field_type(table, false, true);
+  return tmp_table_field_from_field_type(table, true);
 }
 
 

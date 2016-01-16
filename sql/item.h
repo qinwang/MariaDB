@@ -658,7 +658,6 @@ protected:
 
   Field *make_string_field(TABLE *table);
   Field *tmp_table_field_from_field_type(TABLE *table,
-                                         bool fixed_length,
                                          bool set_blob_packlength);
   Field *create_tmp_field(bool group, TABLE *table,
                           uint convert_blob_length,
@@ -3271,7 +3270,7 @@ public:
   enum Type type() const { return TYPE_HOLDER; }
   enum_field_types field_type() const { return MYSQL_TYPE_BLOB; }
   Field *create_field_for_schema(THD *thd, TABLE *table)
-  { return tmp_table_field_from_field_type(table, false, true); }
+  { return tmp_table_field_from_field_type(table, true); }
 };
 
 

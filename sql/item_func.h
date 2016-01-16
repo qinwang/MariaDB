@@ -176,7 +176,7 @@ public:
     DBUG_ASSERT(thd == table->in_use);
     return result_type() != STRING_RESULT ?
            create_tmp_field(false, table, 0, MY_INT32_NUM_DECIMAL_DIGITS) :
-           tmp_table_field_from_field_type(table, false, false);
+           tmp_table_field_from_field_type(table, false);
   }
   Item *get_tmp_table_item(THD *thd);
 
@@ -1767,7 +1767,7 @@ public:
   {
     return result_type() != STRING_RESULT ?
            create_tmp_field(false, table, 0, MY_INT32_NUM_DECIMAL_DIGITS) :
-           tmp_table_field_from_field_type(table, false, true);
+           tmp_table_field_from_field_type(table, true);
   }
   table_map used_tables() const
   {
@@ -2139,7 +2139,7 @@ public:
   {
     return result_type() != STRING_RESULT ?
            sp_result_field :
-           tmp_table_field_from_field_type(table, false, false);
+           tmp_table_field_from_field_type(table, false);
   }
   void make_field(THD *thd, Send_field *tmp_field);
 
