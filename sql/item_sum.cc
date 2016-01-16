@@ -3160,20 +3160,34 @@ void Item_func_group_concat::cleanup()
 }
 
 
-Field *Item_func_group_concat::make_string_field(TABLE *table_arg)
+Field *Item_func_group_concat::create_tmp_field(bool group, TABLE *table,
+                                                uint convert_blob_length)
 {
-  Field *field;
   DBUG_ASSERT(collation.collation);
-  if (too_big_for_varchar())
-    field= new Field_blob(max_length,
-                          maybe_null, name, collation.collation, TRUE);
+  Field *field;
+  // TODO: check, it likely contradicts with field_type().
+  /*
+    Make sure that the blob fits into a Field_varstring which has
+    2-byte lenght.
+  */
+  if (max_char_length() > 255 &&
+      convert_blob_length <= Field_varstring::MAX_SIZE &&
+      convert_blob_length)
+    field= new (table->in_use->mem_root)
+           Field_varstring(convert_blob_length, maybe_null,
+                           name, table->s, collation.collation);
+  else if (too_big_for_varchar())
+    field= new (table->in_use->mem_root)
+           Field_blob(max_length, maybe_null, name, collation.collation, true);
   else
-    field= new Field_varstring(max_length,
-                               maybe_null, name, table_arg->s,
-                               collation.collation);
-
+    field= new (table->in_use->mem_root)
+           Field_varstring(max_length, maybe_null, name, table->s,
+                           collation.collation);
   if (field)
-    field->init(table_arg);
+  {
+    field->set_derivation(collation.derivation);
+    field->init(table);
+  }
   return field;
 }
 

@@ -656,7 +656,7 @@ protected:
 
   SEL_TREE *get_mm_tree_for_const(RANGE_OPT_PARAM *param);
 
-  virtual Field *make_string_field(TABLE *table);
+  Field *make_string_field(TABLE *table);
   Field *tmp_table_field_from_field_type(TABLE *table,
                                          bool fixed_length,
                                          bool set_blob_packlength);
