@@ -15729,7 +15729,10 @@ Field *Item::create_tmp_field(bool group, TABLE *table,
         Field_varstring(convert_blob_length, maybe_null,
                         name, table->s, collation.collation);
     else
-      new_field= make_string_field(table);
+    {
+      DBUG_ASSERT(type() != TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING);
+      new_field= make_string_field(table, name, maybe_null);
+    }
     new_field->set_derivation(collation.derivation);
     break;
   case DECIMAL_RESULT:

@@ -5504,13 +5504,14 @@ bool Item::eq_by_collation(Item *item, bool binary_cmp, CHARSET_INFO *cs)
   @param table		Table for which the field is created
 */
 
-Field *Item::make_string_field(TABLE *table) const
+Field *Type_std_attributes::make_string_field(TABLE *table,
+                                              const char *name,
+                                              bool maybe_null) const
 {
   Field *field;
   MEM_ROOT *mem_root= table->in_use->mem_root;
 
   DBUG_ASSERT(collation.collation);
-  DBUG_ASSERT(type() != TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING);
   /* 
     Note: the following check is repeated in 
     subquery_types_allow_materialization():
@@ -5637,7 +5638,8 @@ Field *Item::tmp_table_field_from_field_type(TABLE *table,
   case MYSQL_TYPE_SET:
   case MYSQL_TYPE_VAR_STRING:
   case MYSQL_TYPE_VARCHAR:
-    return make_string_field(table);
+    DBUG_ASSERT(type() != TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING);
+    return make_string_field(table, name, maybe_null);
   case MYSQL_TYPE_TINY_BLOB:
   case MYSQL_TYPE_MEDIUM_BLOB:
   case MYSQL_TYPE_LONG_BLOB:

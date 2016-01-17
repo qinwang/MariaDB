@@ -602,6 +602,8 @@ public:
   { return max_length / collation.collation->mbmaxlen; }
   bool too_big_for_varchar() const
   { return max_char_length() > CONVERT_IF_BIGGER_TO_BLOB; }
+  Field *make_string_field(TABLE *table,
+                           const char *name, bool maybe_null) const;
 };
 
 
@@ -660,7 +662,6 @@ protected:
 
   SEL_TREE *get_mm_tree_for_const(RANGE_OPT_PARAM *param);
 
-  Field *make_string_field(TABLE *table) const;
   Field *tmp_table_field_from_field_type(TABLE *table,
                                          bool set_blob_packlength) const;
   Field *create_tmp_field(bool group, TABLE *table,
