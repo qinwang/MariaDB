@@ -15731,7 +15731,8 @@ Field *Item::create_tmp_field(bool group, TABLE *table,
     else
     {
       DBUG_ASSERT(type() != TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING);
-      new_field= make_string_field(table, name, Record_addr(maybe_null));
+      new_field= make_string_field(mem_root, table->s,
+                                   name, Record_addr(maybe_null));
     }
     new_field->set_derivation(collation.derivation);
     break;

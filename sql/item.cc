@@ -5504,13 +5504,12 @@ bool Item::eq_by_collation(Item *item, bool binary_cmp, CHARSET_INFO *cs)
   @param table		Table for which the field is created
 */
 
-Field *Type_std_attributes::make_string_field(TABLE *table,
+Field *Type_std_attributes::make_string_field(MEM_ROOT *mem_root,
+                                              TABLE_SHARE *share,
                                               const char *name,
                                               const Record_addr &rec) const
 {
   Field *field;
-  MEM_ROOT *mem_root= table->in_use->mem_root;
-
   DBUG_ASSERT(collation.collation);
   /* 
     Note: the following check is repeated in 
@@ -5521,12 +5520,10 @@ Field *Type_std_attributes::make_string_field(TABLE *table,
       Field_blob(name, rec, max_length, collation.collation, true);
   else if (max_length > 0)
     field= new (mem_root)
-      Field_varstring(table->s, name, rec, max_length, collation.collation);
+      Field_varstring(share, name, rec, max_length, collation.collation);
   else
     field= new (mem_root)
       Field_string(name, rec, max_length, collation.collation);
-  if (field)
-    field->init(table);
   return field;
 }
 
@@ -5636,7 +5633,8 @@ Field *Item::table_field_from_field_type(TABLE *table,
   case MYSQL_TYPE_VAR_STRING:
   case MYSQL_TYPE_VARCHAR:
     DBUG_ASSERT(type() != TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING);
-    return make_string_field(table, name, rec);
+    field= make_string_field(mem_root, table->s, name, rec);
+    break;
   case MYSQL_TYPE_TINY_BLOB:
   case MYSQL_TYPE_MEDIUM_BLOB:
   case MYSQL_TYPE_LONG_BLOB:

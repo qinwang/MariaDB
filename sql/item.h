@@ -602,7 +602,7 @@ public:
   { return max_length / collation.collation->mbmaxlen; }
   bool too_big_for_varchar() const
   { return max_char_length() > CONVERT_IF_BIGGER_TO_BLOB; }
-  Field *make_string_field(TABLE *table,
+  Field *make_string_field(MEM_ROOT *root, TABLE_SHARE *share,
                            const char *name, const Record_addr &rec) const;
 };
 
