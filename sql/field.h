@@ -2932,6 +2932,11 @@ public:
     :Field_longstr((uchar*) 0, len_arg, maybe_null_arg ? (uchar*) "": 0, 0,
                    NONE, field_name_arg, cs),
      can_alter_field_type(1) {};
+  Field_string(const char *field_name_arg, const Record_addr &rec,
+               uint32 len_arg, CHARSET_INFO *cs)
+    :Field_longstr(rec.ptr, len_arg, rec.null_ptr, rec.null_bit,
+                   NONE, field_name_arg, cs),
+     can_alter_field_type(1) {};
 
   enum_field_types type() const
   {
@@ -3028,6 +3033,15 @@ public:
   {
     share->varchar_fields++;
   }
+  Field_varstring(TABLE_SHARE *share,
+                  const char *field_name_arg, const Record_addr &rec,
+                  uint32 len_arg, CHARSET_INFO *cs)
+    :Field_longstr(rec.ptr, len_arg, rec.null_ptr, rec.null_bit,
+                   NONE, field_name_arg, cs),
+     length_bytes(len_arg < 256 ? 1 :2)
+  {
+    share->varchar_fields++;
+  }
 
   enum_field_types type() const { return MYSQL_TYPE_VARCHAR; }
   enum ha_base_keytype key_type() const;
@@ -3102,6 +3116,14 @@ protected:
 
   static void do_copy_blob(Copy_field *copy);
   static void do_conv_blob(Copy_field *copy);
+  uint min_packlength(uint32 len_arg, CHARSET_INFO *cs)
+  {
+    uint32 l_char_length= len_arg / cs->mbmaxlen;
+    return l_char_length <= 255 ? 1 :
+           l_char_length <= 65535 ? 2 :
+           l_char_length <= 16777215 ? 3 : 4;
+  }
+
 public:
   Field_blob(uchar *ptr_arg, uchar *null_ptr_arg, uchar null_bit_arg,
 	     enum utype unireg_check_arg, const char *field_name_arg,
@@ -3115,20 +3137,22 @@ public:
     flags|= BLOB_FLAG;
   }
   Field_blob(uint32 len_arg,bool maybe_null_arg, const char *field_name_arg,
-	     CHARSET_INFO *cs, bool set_packlength)
+	     CHARSET_INFO *cs, bool set_packlength_arg)
     :Field_longstr((uchar*) 0,len_arg, maybe_null_arg ? (uchar*) "": 0, 0,
-                   NONE, field_name_arg, cs)
+                   NONE, field_name_arg, cs),
+     packlength(set_packlength_arg ? min_packlength(len_arg, cs) : 4)
   {
     flags|= BLOB_FLAG;
-    packlength= 4;
-    if (set_packlength)
-    {
-      uint32 l_char_length= len_arg/cs->mbmaxlen;
-      packlength= l_char_length <= 255 ? 1 :
-                  l_char_length <= 65535 ? 2 :
-                  l_char_length <= 16777215 ? 3 : 4;
-    }
   }
+  Field_blob(const char *field_name_arg, const Record_addr &rec,
+             uint32 len_arg, CHARSET_INFO *cs, bool set_packlength_arg)
+    :Field_longstr(rec.ptr, len_arg, rec.null_ptr, rec.null_bit,
+                   NONE, field_name_arg, cs),
+     packlength(set_packlength_arg ? min_packlength(len_arg, cs) : 4)
+  {
+    flags|= BLOB_FLAG;
+  }
+
   Field_blob(uint32 packlength_arg)
     :Field_longstr((uchar*) 0, 0, (uchar*) "", 0, NONE, "temp", system_charset_info),
     packlength(packlength_arg) {}

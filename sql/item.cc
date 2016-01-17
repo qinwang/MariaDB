@@ -5506,7 +5506,7 @@ bool Item::eq_by_collation(Item *item, bool binary_cmp, CHARSET_INFO *cs)
 
 Field *Type_std_attributes::make_string_field(TABLE *table,
                                               const char *name,
-                                              bool maybe_null) const
+                                              const Record_addr &rec) const
 {
   Field *field;
   MEM_ROOT *mem_root= table->in_use->mem_root;
@@ -5518,15 +5518,13 @@ Field *Type_std_attributes::make_string_field(TABLE *table,
   */
   if (too_big_for_varchar())
     field= new (mem_root)
-      Field_blob(max_length, maybe_null, name,
-                 collation.collation, TRUE);
+      Field_blob(name, rec, max_length, collation.collation, true);
   else if (max_length > 0)
     field= new (mem_root)
-      Field_varstring(max_length, maybe_null, name, table->s,
-                      collation.collation);
+      Field_varstring(table->s, name, rec, max_length, collation.collation);
   else
     field= new (mem_root)
-      Field_string(max_length, maybe_null, name, collation.collation);
+      Field_string(name, rec, max_length, collation.collation);
   if (field)
     field->init(table);
   return field;
@@ -5639,13 +5637,13 @@ Field *Item::tmp_table_field_from_field_type(TABLE *table,
   case MYSQL_TYPE_VAR_STRING:
   case MYSQL_TYPE_VARCHAR:
     DBUG_ASSERT(type() != TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING);
-    return make_string_field(table, name, maybe_null);
+    return make_string_field(table, name, Record_addr(maybe_null));
   case MYSQL_TYPE_TINY_BLOB:
   case MYSQL_TYPE_MEDIUM_BLOB:
   case MYSQL_TYPE_LONG_BLOB:
   case MYSQL_TYPE_BLOB:
     field= new (mem_root)
-           Field_blob(max_length, maybe_null, name,
+           Field_blob(name, Record_addr(maybe_null), max_length,
                       collation.collation, set_blob_packlength);
     break;					// Blob handled outside of case
 #ifdef HAVE_SPATIAL
@@ -9488,7 +9486,8 @@ Field *Item_type_holder::create_tmp_field(bool group, TABLE *table,
   case MYSQL_TYPE_STRING:
     if (too_big_for_varchar()) // QQ: should probably check/assert for 256
       field= new (table->in_use->mem_root)
-        Field_blob(max_length, maybe_null, name, collation.collation, true);
+        Field_blob(name, Record_addr(maybe_null), max_length,
+                   collation.collation, true);
     else
       field= new (table->in_use->mem_root)
         Field_string(max_length, maybe_null, name, collation.collation);

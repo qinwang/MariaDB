@@ -603,7 +603,7 @@ public:
   bool too_big_for_varchar() const
   { return max_char_length() > CONVERT_IF_BIGGER_TO_BLOB; }
   Field *make_string_field(TABLE *table,
-                           const char *name, bool maybe_null) const;
+                           const char *name, const Record_addr &rec) const;
 };
 
 

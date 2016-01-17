@@ -74,6 +74,9 @@ public:
   Record_addr(uchar *ptr_arg, uchar *null_ptr_arg, uchar null_bit_arg)
     :ptr(ptr_arg), null_ptr(null_ptr_arg), null_bit(null_bit_arg)
   { }
+  Record_addr(bool maybe_null)
+    :ptr(NULL), null_ptr(maybe_null ? (uchar *) "" : NULL), null_bit(0)
+  { }
   bool eq(const Record_addr *other)
   {
     return (ptr == other->ptr && null_ptr == other->null_ptr &&
