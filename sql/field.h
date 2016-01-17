@@ -1812,7 +1812,7 @@ public:
                              uint16 mflags, int *order_var);
   uint is_equal(Create_field *new_field);
   virtual const uchar *unpack(uchar* to, const uchar *from, const uchar *from_end, uint param_data);
-  static Field *create_from_item(MEM_ROOT *root, Item *);
+  static Field *create_from_item(MEM_ROOT *root, const Item *);
   Item *get_equal_const_item(THD *thd, const Context &ctx, Item *const_item);
 };
 

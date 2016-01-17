@@ -15872,6 +15872,7 @@ Field *create_tmp_field(THD *thd, TABLE *table,Item *item, Item::Type type,
 
   switch (type) {
   case Item::SUM_FUNC_ITEM:
+  case Item::TYPE_HOLDER:
   {
     result= item->create_tmp_field(group, table, convert_blob_length);
     if (!result)
@@ -16000,10 +16001,6 @@ Field *create_tmp_field(THD *thd, TABLE *table,Item *item, Item::Type type,
     return create_tmp_field_from_item(thd, item, table,
                                       (make_copy_field ? 0 : copy_func),
                                        modify_item, convert_blob_length);
-  case Item::TYPE_HOLDER:  
-    result= ((Item_type_holder *)item)->make_field_by_type(table);
-    result->set_derivation(item->collation.derivation);
-    return result;
   default:					// Dosen't have to be stored
     return 0;
   }

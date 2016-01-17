@@ -598,6 +598,10 @@ public:
     collation.set(field->charset());
     unsigned_flag= MY_TEST(field->flags & UNSIGNED_FLAG);
   }
+  uint32 max_char_length() const
+  { return max_length / collation.collation->mbmaxlen; }
+  bool too_big_for_varchar() const
+  { return max_char_length() > CONVERT_IF_BIGGER_TO_BLOB; }
 };
 
 
@@ -656,9 +660,9 @@ protected:
 
   SEL_TREE *get_mm_tree_for_const(RANGE_OPT_PARAM *param);
 
-  Field *make_string_field(TABLE *table);
+  Field *make_string_field(TABLE *table) const;
   Field *tmp_table_field_from_field_type(TABLE *table,
-                                         bool set_blob_packlength);
+                                         bool set_blob_packlength) const;
   Field *create_tmp_field(bool group, TABLE *table,
                           uint convert_blob_length,
                           uint convert_int_length);
@@ -1787,10 +1791,6 @@ public:
     { return Field::GEOM_GEOMETRY; };
   String *check_well_formed_result(String *str, bool send_error= 0);
   bool eq_by_collation(Item *item, bool binary_cmp, CHARSET_INFO *cs); 
-  uint32 max_char_length() const
-  { return max_length / collation.collation->mbmaxlen; }
-  bool too_big_for_varchar() const
-  { return max_char_length() > CONVERT_IF_BIGGER_TO_BLOB; }
   void fix_length_and_charset(uint32 max_char_length_arg, CHARSET_INFO *cs)
   {
     max_length= char_to_byte_length_safe(max_char_length_arg, cs->mbmaxlen);
@@ -5378,7 +5378,7 @@ public:
   my_decimal *val_decimal(my_decimal *);
   String *val_str(String*);
   bool join_types(THD *thd, Item *);
-  Field *make_field_by_type(TABLE *table);
+  Field *create_tmp_field(bool group, TABLE *table, uint convert_blob_length);
   static uint32 display_length(Item *item);
   static enum_field_types get_real_type(Item *);
   Field::geometry_type get_geometry_type() const { return geometry_type; };

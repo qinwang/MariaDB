@@ -5504,12 +5504,13 @@ bool Item::eq_by_collation(Item *item, bool binary_cmp, CHARSET_INFO *cs)
   @param table		Table for which the field is created
 */
 
-Field *Item::make_string_field(TABLE *table)
+Field *Item::make_string_field(TABLE *table) const
 {
   Field *field;
   MEM_ROOT *mem_root= table->in_use->mem_root;
 
   DBUG_ASSERT(collation.collation);
+  DBUG_ASSERT(type() != TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING);
   /* 
     Note: the following check is repeated in 
     subquery_types_allow_materialization():
@@ -5518,9 +5519,7 @@ Field *Item::make_string_field(TABLE *table)
     field= new (mem_root)
       Field_blob(max_length, maybe_null, name,
                  collation.collation, TRUE);
-  /* Item_type_holder holds the exact type, do not change it */
-  else if (max_length > 0 &&
-      (type() != Item::TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING))
+  else if (max_length > 0)
     field= new (mem_root)
       Field_varstring(max_length, maybe_null, name, table->s,
                       collation.collation);
@@ -5546,7 +5545,7 @@ Field *Item::make_string_field(TABLE *table)
 */
 
 Field *Item::tmp_table_field_from_field_type(TABLE *table,
-                                             bool set_blob_packlength)
+                                             bool set_blob_packlength) const
 {
   /*
     The field functions defines a field to be not null if null_ptr is not 0
@@ -5602,14 +5601,20 @@ Field *Item::tmp_table_field_from_field_type(TABLE *table,
     field= new (mem_root)
       Field_newdate(0, null_ptr, 0, Field::NONE, name);
     break;
+  case MYSQL_TYPE_TIME2:
+    DBUG_ASSERT(0);
   case MYSQL_TYPE_TIME:
     field= new_Field_time(mem_root, 0, null_ptr, 0, Field::NONE, name,
                           decimals);
     break;
+  case MYSQL_TYPE_TIMESTAMP2:
+    DBUG_ASSERT(0);
   case MYSQL_TYPE_TIMESTAMP:
     field= new_Field_timestamp(mem_root, 0, null_ptr, 0,
                                Field::NONE, name, 0, decimals);
     break;
+  case MYSQL_TYPE_DATETIME2:
+    DBUG_ASSERT(0);
   case MYSQL_TYPE_DATETIME:
     field= new_Field_datetime(mem_root, 0, null_ptr, 0, Field::NONE, name,
                               decimals);
@@ -5622,11 +5627,11 @@ Field *Item::tmp_table_field_from_field_type(TABLE *table,
     field= new (mem_root)
       Field_bit_as_char(NULL, max_length, null_ptr, 0, Field::NONE, name);
     break;
-  default:
-    /* This case should never be chosen */
-    DBUG_ASSERT(0);
-    /* If something goes awfully wrong, it's better to get a string than die */
   case MYSQL_TYPE_NULL:
+    DBUG_ASSERT(max_length == 0);
+    field= new (mem_root)
+      Field_string(0, maybe_null, name, collation.collation);
+    break;
   case MYSQL_TYPE_STRING:
   case MYSQL_TYPE_ENUM:
   case MYSQL_TYPE_SET:
@@ -9453,7 +9458,8 @@ uint32 Item_type_holder::display_length(Item *item)
     created field
 */
 
-Field *Item_type_holder::make_field_by_type(TABLE *table)
+Field *Item_type_holder::create_tmp_field(bool group, TABLE *table,
+                                          uint convert_blob_length)
 {
   /*
     The field functions defines a field to be not null if null_ptr is not 0
@@ -9461,6 +9467,7 @@ Field *Item_type_holder::make_field_by_type(TABLE *table)
   uchar *null_ptr= maybe_null ? (uchar*) "" : 0;
   Field *field;
 
+  DBUG_ASSERT(current_thd == table->in_use);
   switch (Item_type_holder::real_field_type()) {
   case MYSQL_TYPE_ENUM:
     DBUG_ASSERT(enum_set_typelib);
@@ -9468,24 +9475,32 @@ Field *Item_type_holder::make_field_by_type(TABLE *table)
                           Field::NONE, name,
                           get_enum_pack_length(enum_set_typelib->count),
                           enum_set_typelib, collation.collation);
-    if (field)
-      field->init(table);
-    return field;
+    break;
   case MYSQL_TYPE_SET:
     DBUG_ASSERT(enum_set_typelib);
     field= new Field_set((uchar *) 0, max_length, null_ptr, 0,
                          Field::NONE, name,
                          get_set_pack_length(enum_set_typelib->count),
                          enum_set_typelib, collation.collation);
-    if (field)
-      field->init(table);
-    return field;
-  case MYSQL_TYPE_NULL:
-    return make_string_field(table);
-  default:
     break;
+  case MYSQL_TYPE_STRING:
+    if (too_big_for_varchar()) // QQ: should probably check/assert for 256
+      field= new (table->in_use->mem_root)
+        Field_blob(max_length, maybe_null, name, collation.collation, true);
+    else
+      field= new (table->in_use->mem_root)
+        Field_string(max_length, maybe_null, name, collation.collation);
+    break;
+
+  default:
+    field= tmp_table_field_from_field_type(table, true);
   }
-  return tmp_table_field_from_field_type(table, true);
+  if (field)
+  {
+    field->init(table);
+    field->set_derivation(collation.derivation);
+  }
+  return field;
 }
 
 

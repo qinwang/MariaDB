@@ -2946,7 +2946,7 @@ Field_new_decimal::Field_new_decimal(uint32 len_arg,
 }
 
 
-Field *Field_new_decimal::create_from_item(MEM_ROOT *mem_root, Item *item)
+Field *Field_new_decimal::create_from_item(MEM_ROOT *mem_root, const Item *item)
 {
   uint8 dec= item->decimals;
   uint8 intg= item->decimal_precision() - dec;
