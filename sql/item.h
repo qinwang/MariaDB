@@ -680,8 +680,15 @@ protected:
 
   SEL_TREE *get_mm_tree_for_const(RANGE_OPT_PARAM *param);
 
+  Field *table_field_from_field_type(TABLE *table,
+                                     const Record_addr &rec,
+                                     bool set_blob_packlength) const;
   Field *tmp_table_field_from_field_type(TABLE *table,
-                                         bool set_blob_packlength) const;
+                                         bool set_blob_packlength) const
+  {
+    return table_field_from_field_type(table, Record_addr(maybe_null),
+                                       set_blob_packlength);
+  }
   Field *create_tmp_field(bool group, TABLE *table,
                           uint convert_blob_length,
                           uint convert_int_length);

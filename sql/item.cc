@@ -5543,13 +5543,10 @@ Field *Type_std_attributes::make_string_field(TABLE *table,
     \#    Created field
 */
 
-Field *Item::tmp_table_field_from_field_type(TABLE *table,
-                                             bool set_blob_packlength) const
+Field *Item::table_field_from_field_type(TABLE *table,
+                                         const Record_addr &rec,
+                                         bool set_blob_packlength) const
 {
-  /*
-    The field functions defines a field to be not null if null_ptr is not 0
-  */
-  uchar *null_ptr= maybe_null ? (uchar*) "" : 0;
   Field *field;
   MEM_ROOT *mem_root= table->in_use->mem_root;
 
@@ -5560,76 +5557,78 @@ Field *Item::tmp_table_field_from_field_type(TABLE *table,
     break;
   case MYSQL_TYPE_TINY:
     field= new (mem_root)
-      Field_tiny((uchar*) 0, max_length, null_ptr, 0, Field::NONE,
-                 name, 0, unsigned_flag);
+      Field_tiny(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
+                 Field::NONE, name, 0, unsigned_flag);
     break;
   case MYSQL_TYPE_SHORT:
     field= new (mem_root)
-      Field_short((uchar*) 0, max_length, null_ptr, 0, Field::NONE,
-                  name, 0, unsigned_flag);
+      Field_short(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
+                  Field::NONE, name, 0, unsigned_flag);
     break;
   case MYSQL_TYPE_LONG:
     field= new (mem_root)
-      Field_long((uchar*) 0, max_length, null_ptr, 0, Field::NONE,
-                 name, 0, unsigned_flag);
+      Field_long(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
+                 Field::NONE, name, 0, unsigned_flag);
     break;
 #ifdef HAVE_LONG_LONG
   case MYSQL_TYPE_LONGLONG:
     field= new (mem_root)
-      Field_longlong((uchar*) 0, max_length, null_ptr, 0, Field::NONE,
-                     name, 0, unsigned_flag);
+      Field_longlong(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
+                     Field::NONE, name, 0, unsigned_flag);
     break;
 #endif
   case MYSQL_TYPE_FLOAT:
     field= new (mem_root)
-      Field_float((uchar*) 0, max_length, null_ptr, 0, Field::NONE,
-                  name, decimals, 0, unsigned_flag);
+      Field_float(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
+                  Field::NONE, name, decimals, 0, unsigned_flag);
     break;
   case MYSQL_TYPE_DOUBLE:
     field= new (mem_root)
-      Field_double((uchar*) 0, max_length, null_ptr, 0, Field::NONE,
-                   name, decimals, 0, unsigned_flag);
+      Field_double(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
+                   Field::NONE, name, decimals, 0, unsigned_flag);
     break;
   case MYSQL_TYPE_INT24:
     field= new (mem_root)
-      Field_medium((uchar*) 0, max_length, null_ptr, 0, Field::NONE,
-                   name, 0, unsigned_flag);
+      Field_medium(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
+                   Field::NONE, name, 0, unsigned_flag);
     break;
   case MYSQL_TYPE_NEWDATE:
   case MYSQL_TYPE_DATE:
     field= new (mem_root)
-      Field_newdate(0, null_ptr, 0, Field::NONE, name);
+      Field_newdate(rec.ptr, rec.null_ptr, rec.null_bit, Field::NONE, name);
     break;
   case MYSQL_TYPE_TIME2:
     DBUG_ASSERT(0);
   case MYSQL_TYPE_TIME:
-    field= new_Field_time(mem_root, 0, null_ptr, 0, Field::NONE, name,
-                          decimals);
+    field= new_Field_time(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
+                          Field::NONE, name, decimals);
     break;
   case MYSQL_TYPE_TIMESTAMP2:
     DBUG_ASSERT(0);
   case MYSQL_TYPE_TIMESTAMP:
-    field= new_Field_timestamp(mem_root, 0, null_ptr, 0,
+    field= new_Field_timestamp(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
                                Field::NONE, name, 0, decimals);
     break;
   case MYSQL_TYPE_DATETIME2:
     DBUG_ASSERT(0);
   case MYSQL_TYPE_DATETIME:
-    field= new_Field_datetime(mem_root, 0, null_ptr, 0, Field::NONE, name,
-                              decimals);
+    field= new_Field_datetime(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
+                              Field::NONE, name, decimals);
     break;
   case MYSQL_TYPE_YEAR:
     field= new (mem_root)
-      Field_year((uchar*) 0, max_length, null_ptr, 0, Field::NONE, name);
+      Field_year(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
+                 Field::NONE, name);
     break;
   case MYSQL_TYPE_BIT:
     field= new (mem_root)
-      Field_bit_as_char(NULL, max_length, null_ptr, 0, Field::NONE, name);
+      Field_bit_as_char(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
+                        Field::NONE, name);
     break;
   case MYSQL_TYPE_NULL:
     DBUG_ASSERT(max_length == 0);
     field= new (mem_root)
-      Field_string(0, maybe_null, name, collation.collation);
+      Field_string(name, rec, 0 /*max_length*/, collation.collation);
     break;
   case MYSQL_TYPE_STRING:
   case MYSQL_TYPE_ENUM:
@@ -5637,13 +5636,13 @@ Field *Item::tmp_table_field_from_field_type(TABLE *table,
   case MYSQL_TYPE_VAR_STRING:
   case MYSQL_TYPE_VARCHAR:
     DBUG_ASSERT(type() != TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING);
-    return make_string_field(table, name, Record_addr(maybe_null));
+    return make_string_field(table, name, rec);
   case MYSQL_TYPE_TINY_BLOB:
   case MYSQL_TYPE_MEDIUM_BLOB:
   case MYSQL_TYPE_LONG_BLOB:
   case MYSQL_TYPE_BLOB:
     field= new (mem_root)
-           Field_blob(name, Record_addr(maybe_null), max_length,
+           Field_blob(name, rec, max_length,
                       collation.collation, set_blob_packlength);
     break;					// Blob handled outside of case
 #ifdef HAVE_SPATIAL
