@@ -607,6 +607,24 @@ public:
 };
 
 
+/**
+  Extended type attributes.
+*/
+class Type_ext_attributes
+{
+protected:
+  TYPELIB *m_typelib;                    // for SET and ENUM
+  Field::geometry_type m_geometry_type;  // for GEOMETRY
+public:
+  Type_ext_attributes()
+    :m_typelib(NULL),
+     m_geometry_type(Field::GEOM_GEOMETRY)
+  { }
+  TYPELIB *typelib() const { return m_typelib; }
+  Field::geometry_type geometry_type() const { return m_geometry_type; }
+};
+
+
 class Item: public Value_source,
             public Type_std_attributes,
             public Type_handler
@@ -5339,12 +5357,10 @@ public:
   single SP/PS execution.
 */
 class Item_type_holder: public Item,
-                        public Type_handler_hybrid_real_field_type
+                        public Type_handler_hybrid_real_field_type,
+                        protected Type_ext_attributes
 {
 protected:
-  TYPELIB *enum_set_typelib;
-  Field::geometry_type geometry_type;
-
   void get_full_info(Item *item);
 
   /* It is used to count decimal precision in join_types */
@@ -5382,7 +5398,7 @@ public:
   Field *create_tmp_field(bool group, TABLE *table, uint convert_blob_length);
   static uint32 display_length(Item *item);
   static enum_field_types get_real_type(Item *);
-  Field::geometry_type get_geometry_type() const { return geometry_type; };
+  Field::geometry_type get_geometry_type() const { return m_geometry_type; };
 };
 
 

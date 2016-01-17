@@ -9150,7 +9150,7 @@ void Item_cache_row::set_null()
 Item_type_holder::Item_type_holder(THD *thd, Item *item)
   :Item(thd, item),
    Type_handler_hybrid_real_field_type(get_real_type(item)),
-   enum_set_typelib(0)
+   Type_ext_attributes()
 {
   DBUG_ASSERT(item->fixed);
   maybe_null= item->maybe_null;
@@ -9174,7 +9174,7 @@ Item_type_holder::Item_type_holder(THD *thd, Item *item)
   prev_decimal_int_part= item->decimal_int_part();
 #ifdef HAVE_SPATIAL
   if (item->field_type() == MYSQL_TYPE_GEOMETRY)
-    geometry_type= item->get_geometry_type();
+    m_geometry_type= item->get_geometry_type();
 #endif /* HAVE_SPATIAL */
 }
 
@@ -9295,8 +9295,8 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
   }
 
   if (Item_type_holder::field_type() == FIELD_TYPE_GEOMETRY)
-    geometry_type=
-      Field_geom::geometry_type_merge(geometry_type, item->get_geometry_type());
+    m_geometry_type=
+      Field_geom::geometry_type_merge(m_geometry_type, item->get_geometry_type());
 
   if (Field::result_merge_type(real_field_type()) == DECIMAL_RESULT)
   {
@@ -9470,18 +9470,18 @@ Field *Item_type_holder::create_tmp_field(bool group, TABLE *table,
   DBUG_ASSERT(current_thd == table->in_use);
   switch (Item_type_holder::real_field_type()) {
   case MYSQL_TYPE_ENUM:
-    DBUG_ASSERT(enum_set_typelib);
+    DBUG_ASSERT(m_typelib);
     field= new Field_enum((uchar *) 0, max_length, null_ptr, 0,
                           Field::NONE, name,
-                          get_enum_pack_length(enum_set_typelib->count),
-                          enum_set_typelib, collation.collation);
+                          get_enum_pack_length(m_typelib->count),
+                          m_typelib, collation.collation);
     break;
   case MYSQL_TYPE_SET:
-    DBUG_ASSERT(enum_set_typelib);
+    DBUG_ASSERT(m_typelib);
     field= new Field_set((uchar *) 0, max_length, null_ptr, 0,
                          Field::NONE, name,
-                         get_set_pack_length(enum_set_typelib->count),
-                         enum_set_typelib, collation.collation);
+                         get_set_pack_length(m_typelib->count),
+                         m_typelib, collation.collation);
     break;
   case MYSQL_TYPE_STRING:
     if (too_big_for_varchar()) // QQ: should probably check/assert for 256
@@ -9524,16 +9524,16 @@ void Item_type_holder::get_full_info(Item *item)
       We can have enum/set type after merging only if we have one enum|set
       field (or MIN|MAX(enum|set field)) and number of NULL fields
     */
-    DBUG_ASSERT((enum_set_typelib &&
+    DBUG_ASSERT((m_typelib &&
                  get_real_type(item) == MYSQL_TYPE_NULL) ||
-                (!enum_set_typelib &&
+                (!m_typelib &&
                  item->real_item()->type() == Item::FIELD_ITEM &&
                  (get_real_type(item->real_item()) == MYSQL_TYPE_ENUM ||
                   get_real_type(item->real_item()) == MYSQL_TYPE_SET) &&
                  ((Field_enum*)((Item_field *) item->real_item())->field)->typelib));
-    if (!enum_set_typelib)
+    if (!m_typelib)
     {
-      enum_set_typelib= ((Field_enum*)((Item_field *) item->real_item())->field)->typelib;
+      m_typelib= ((Field_enum*)((Item_field *) item->real_item())->field)->typelib;
     }
   }
 }
