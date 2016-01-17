@@ -5546,108 +5546,23 @@ Field *Item::table_field_from_field_type(TABLE *table,
 {
   Field *field;
   MEM_ROOT *mem_root= table->in_use->mem_root;
+  DBUG_ASSERT(type() != TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING);
 
   switch (field_type()) {
   case MYSQL_TYPE_DECIMAL:
   case MYSQL_TYPE_NEWDECIMAL:
     field= Field_new_decimal::create_from_item(mem_root, this);
     break;
-  case MYSQL_TYPE_TINY:
-    field= new (mem_root)
-      Field_tiny(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
-                 Field::NONE, name, 0, unsigned_flag);
-    break;
-  case MYSQL_TYPE_SHORT:
-    field= new (mem_root)
-      Field_short(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
-                  Field::NONE, name, 0, unsigned_flag);
-    break;
-  case MYSQL_TYPE_LONG:
-    field= new (mem_root)
-      Field_long(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
-                 Field::NONE, name, 0, unsigned_flag);
-    break;
-#ifdef HAVE_LONG_LONG
-  case MYSQL_TYPE_LONGLONG:
-    field= new (mem_root)
-      Field_longlong(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
-                     Field::NONE, name, 0, unsigned_flag);
-    break;
-#endif
-  case MYSQL_TYPE_FLOAT:
-    field= new (mem_root)
-      Field_float(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
-                  Field::NONE, name, decimals, 0, unsigned_flag);
-    break;
-  case MYSQL_TYPE_DOUBLE:
-    field= new (mem_root)
-      Field_double(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
-                   Field::NONE, name, decimals, 0, unsigned_flag);
-    break;
-  case MYSQL_TYPE_INT24:
-    field= new (mem_root)
-      Field_medium(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
-                   Field::NONE, name, 0, unsigned_flag);
-    break;
-  case MYSQL_TYPE_NEWDATE:
-  case MYSQL_TYPE_DATE:
-    field= new (mem_root)
-      Field_newdate(rec.ptr, rec.null_ptr, rec.null_bit, Field::NONE, name);
-    break;
-  case MYSQL_TYPE_TIME2:
-    DBUG_ASSERT(0);
-  case MYSQL_TYPE_TIME:
-    field= new_Field_time(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
-                          Field::NONE, name, decimals);
-    break;
-  case MYSQL_TYPE_TIMESTAMP2:
-    DBUG_ASSERT(0);
-  case MYSQL_TYPE_TIMESTAMP:
-    field= new_Field_timestamp(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
-                               Field::NONE, name, 0, decimals);
-    break;
-  case MYSQL_TYPE_DATETIME2:
-    DBUG_ASSERT(0);
-  case MYSQL_TYPE_DATETIME:
-    field= new_Field_datetime(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
-                              Field::NONE, name, decimals);
-    break;
-  case MYSQL_TYPE_YEAR:
-    field= new (mem_root)
-      Field_year(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
-                 Field::NONE, name);
-    break;
-  case MYSQL_TYPE_BIT:
-    field= new (mem_root)
-      Field_bit_as_char(rec.ptr, max_length, rec.null_ptr, rec.null_bit,
-                        Field::NONE, name);
-    break;
-  case MYSQL_TYPE_NULL:
-    DBUG_ASSERT(max_length == 0);
-    field= new (mem_root)
-      Field_string(name, rec, 0 /*max_length*/, collation.collation);
-    break;
-  case MYSQL_TYPE_STRING:
-  case MYSQL_TYPE_ENUM:
-  case MYSQL_TYPE_SET:
-  case MYSQL_TYPE_VAR_STRING:
-  case MYSQL_TYPE_VARCHAR:
-    DBUG_ASSERT(type() != TYPE_HOLDER || field_type() != MYSQL_TYPE_STRING);
-    field= make_string_field(mem_root, table->s, name, rec);
-    break;
-  case MYSQL_TYPE_TINY_BLOB:
-  case MYSQL_TYPE_MEDIUM_BLOB:
-  case MYSQL_TYPE_LONG_BLOB:
-  case MYSQL_TYPE_BLOB:
-    field= new (mem_root)
-           Field_blob(name, rec, max_length,
-                      collation.collation, set_blob_packlength);
-    break;					// Blob handled outside of case
 #ifdef HAVE_SPATIAL
   case MYSQL_TYPE_GEOMETRY:
     field= new (mem_root)
       Field_geom(max_length, maybe_null, name, table->s, get_geometry_type());
+    break;
 #endif /* HAVE_SPATIAL */
+  default:
+    field= make_table_field(mem_root, table->s, name, rec, *this,
+                            set_blob_packlength);
+    break;
   }
   if (field)
     field->init(table);

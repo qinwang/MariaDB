@@ -810,7 +810,15 @@ public:
     return type_handler()->make_table_field(mem_root, share,
                                             field_name, rec, attr);
   }
-
+  Field *make_table_field(MEM_ROOT *mem_root, TABLE_SHARE *share,
+                          const char *field_name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const
+  {
+    return type_handler()->make_table_field(mem_root, share,
+                                            field_name, addr, attr,
+                                            set_blob_packlength);
+  }
 
   Field *make_num_distinct_aggregator_field(MEM_ROOT *mem_root,
                                             const Item *item) const

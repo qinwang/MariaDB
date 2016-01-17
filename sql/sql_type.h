@@ -114,6 +114,10 @@ public:
   virtual Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                                   const char *name, const Record_addr &addr,
                                   const Create_attr &attr) const= 0;
+  virtual Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                                  const char *name, const Record_addr &addr,
+                                  const Type_std_attributes &attr,
+                                  bool set_blob_packlength) const= 0;
   /**
     Makes a temporary table Field to handle numeric aggregate functions,
     e.g. SUM(DISTINCT expr), AVG(DISTINCT expr), etc.
@@ -252,6 +256,10 @@ public:
     DBUG_ASSERT(0);
     return NULL;
   }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                                  const char *name, const Record_addr &addr,
+                                  const Type_std_attributes &attr,
+                                  bool set_blob_packlength) const;
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const;
   void sortlength(THD *thd,
@@ -288,6 +296,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *TABLE, uint metadata,
                                      const Field *target) const;
 };
@@ -301,6 +313,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *TABLE, uint metadata,
                                      const Field *target) const;
 };
@@ -314,6 +330,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *TABLE, uint metadata,
                                      const Field *target) const;
 };
@@ -327,6 +347,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *TABLE, uint metadata,
                                      const Field *target) const;
 };
@@ -340,6 +364,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -353,6 +381,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -379,6 +411,10 @@ public:
     DBUG_ASSERT(0); // Handled separately in field.cc:make_field().
     return NULL;
   }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -392,6 +428,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_num_distinct_aggregator_field(MEM_ROOT *, const Item *) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
@@ -406,6 +446,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -419,6 +463,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -433,6 +481,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -446,6 +498,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -460,6 +516,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -473,6 +533,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -487,6 +551,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -502,6 +570,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -518,6 +590,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -531,6 +607,14 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const
+  {
+    DBUG_ASSERT(0);
+    return NULL;
+  }
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -546,6 +630,14 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const
+  {
+    DBUG_ASSERT(0);
+    return NULL;
+  }
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -561,6 +653,10 @@ public:
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -598,6 +694,17 @@ public:
   enum_field_types field_type() const { return MYSQL_TYPE_BLOB; }
   bool prepare_column_definition(Column_definition *def,
                                  longlong table_flags) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const
+  {
+    return Type_handler_string_result::make_table_field(root, share, name,
+                                                        addr, attr);
+  }
+  Field *make_table_field(MEM_ROOT *mem_root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &rec,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -749,6 +856,14 @@ public:
                           const Create_attr &attr) const
   {
     return m_type_handler->make_table_field(root, share, name, addr, attr);
+  }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          bool set_blob_packlength) const
+  {
+    return m_type_handler->make_table_field(root, share, name, addr, attr,
+                                            set_blob_packlength);
   }
   Field *make_num_distinct_aggregator_field(MEM_ROOT *mem_root,
                                             const Item *item) const
