@@ -1064,8 +1064,8 @@ Type_handler_varchar::prepare_column_definition(Column_definition *sql_field,
   {
     /* convert VARCHAR to CHAR because handler is not yet up to date */
     sql_field->sql_type= MYSQL_TYPE_VAR_STRING;
-    sql_field->pack_length= calc_pack_length(MYSQL_TYPE_VARCHAR,
-                                             (uint) sql_field->length);
+    sql_field->pack_length=
+      Type_handler_varchar::calc_pack_length((uint) sql_field->length);
     if ((sql_field->length / sql_field->charset->mbmaxlen) >
         MAX_FIELD_CHARLENGTH)
     {

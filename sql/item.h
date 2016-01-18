@@ -850,6 +850,10 @@ public:
   {
     type_handler()->sortlength(thd, item, attr);
   }
+  uint32 calc_pack_length(uint32 length) const
+  {
+    return type_handler()->calc_pack_length(length);
+  }
   virtual Item_result cast_to_int_type() const { return cmp_type(); }
   enum_field_types string_field_type() const
   {

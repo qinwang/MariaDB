@@ -3745,6 +3745,11 @@ public:
   }
 
   Column_definition(THD *thd, Field *field, Field *orig_field);
+  const Type_handler *type_handler() const
+  {
+    // QQ: Need to map VAR_STRING to STRING
+    return Type_handler::get_handler_by_real_type(sql_type);
+  }
   void create_length_to_internal_length(void);
 
   bool check(THD *thd);
@@ -3884,7 +3889,6 @@ public:
 
 uint pack_length_to_packflag(uint type);
 enum_field_types get_blob_type_from_length(ulong length);
-uint32 calc_pack_length(enum_field_types type,uint32 length);
 int set_field_to_null(Field *field);
 int set_field_to_null_with_conversions(Field *field, bool no_conversions);
 int convert_null_to_field_value_or_error(Field *field);

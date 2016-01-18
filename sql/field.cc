@@ -9670,7 +9670,7 @@ void Column_definition::create_length_to_internal_length(void)
   case MYSQL_TYPE_VARCHAR:
     length*= charset->mbmaxlen;
     key_length= length;
-    pack_length= calc_pack_length(sql_type, length);
+    pack_length= type_handler()->calc_pack_length(length);
     break;
   case MYSQL_TYPE_ENUM:
   case MYSQL_TYPE_SET:
@@ -9699,7 +9699,7 @@ void Column_definition::create_length_to_internal_length(void)
 				 decimals);
     break;
   default:
-    key_length= pack_length= calc_pack_length(sql_type, length);
+    key_length= pack_length= type_handler()->calc_pack_length(length);
     break;
   }
 }
@@ -10063,57 +10063,92 @@ enum_field_types get_blob_type_from_length(ulong length)
   Make a field from the .frm file info
 */
 
-uint32 calc_pack_length(enum_field_types type,uint32 length)
+uint32 Type_handler_time::calc_pack_length(uint32 length) const
 {
-  switch (type) {
-  case MYSQL_TYPE_VAR_STRING:
-  case MYSQL_TYPE_STRING:
-  case MYSQL_TYPE_DECIMAL:     return (length);
-  case MYSQL_TYPE_VARCHAR:     return (length + (length < 256 ? 1: 2));
-  case MYSQL_TYPE_YEAR:
-  case MYSQL_TYPE_TINY	: return 1;
-  case MYSQL_TYPE_SHORT : return 2;
-  case MYSQL_TYPE_INT24:
-  case MYSQL_TYPE_NEWDATE: return 3;
-  case MYSQL_TYPE_TIME:   return length > MIN_TIME_WIDTH
-                            ? time_hires_bytes[length - 1 - MIN_TIME_WIDTH]
-                            : 3;
-  case MYSQL_TYPE_TIME2:
-    return length > MIN_TIME_WIDTH ?
-           my_time_binary_length(length - MIN_TIME_WIDTH - 1) : 3;
-  case MYSQL_TYPE_TIMESTAMP:
-                          return length > MAX_DATETIME_WIDTH
-                            ? 4 + sec_part_bytes[length - 1 - MAX_DATETIME_WIDTH]
-                            : 4;
-  case MYSQL_TYPE_TIMESTAMP2:
-    return length > MAX_DATETIME_WIDTH ?
-           my_timestamp_binary_length(length - MAX_DATETIME_WIDTH - 1) : 4;
-  case MYSQL_TYPE_DATE:
-  case MYSQL_TYPE_LONG	: return 4;
-  case MYSQL_TYPE_FLOAT : return sizeof(float);
-  case MYSQL_TYPE_DOUBLE: return sizeof(double);
-  case MYSQL_TYPE_DATETIME:
-                          return length > MAX_DATETIME_WIDTH
-                            ? datetime_hires_bytes[length - 1 - MAX_DATETIME_WIDTH]
-                            : 8;
-  case MYSQL_TYPE_DATETIME2:
-    return length > MAX_DATETIME_WIDTH ?
-           my_datetime_binary_length(length - MAX_DATETIME_WIDTH - 1) : 5;
-  case MYSQL_TYPE_LONGLONG: return 8;	/* Don't crash if no longlong */
-  case MYSQL_TYPE_NULL	: return 0;
-  case MYSQL_TYPE_TINY_BLOB:	return 1+portable_sizeof_char_ptr;
-  case MYSQL_TYPE_BLOB:		return 2+portable_sizeof_char_ptr;
-  case MYSQL_TYPE_MEDIUM_BLOB:	return 3+portable_sizeof_char_ptr;
-  case MYSQL_TYPE_LONG_BLOB:	return 4+portable_sizeof_char_ptr;
-  case MYSQL_TYPE_GEOMETRY:	return 4+portable_sizeof_char_ptr;
-  case MYSQL_TYPE_SET:
-  case MYSQL_TYPE_ENUM:
-  case MYSQL_TYPE_NEWDECIMAL:
-    abort(); return 0;                          // This shouldn't happen
-  case MYSQL_TYPE_BIT: return length / 8;
-  default:
-    return 0;
-  }
+  return length > MIN_TIME_WIDTH ?
+         my_time_binary_length(length - MIN_TIME_WIDTH - 1) : 3;
+}
+
+
+uint32 Type_handler_time2::calc_pack_length(uint32 length) const
+{
+  return length > MIN_TIME_WIDTH ?
+         my_time_binary_length(length - MIN_TIME_WIDTH - 1) : 3;
+}
+
+
+uint32 Type_handler_timestamp::calc_pack_length(uint32 length) const
+{
+ return length > MAX_DATETIME_WIDTH ?
+        4 + sec_part_bytes[length - 1 - MAX_DATETIME_WIDTH] : 4;
+}
+
+
+uint32 Type_handler_timestamp2::calc_pack_length(uint32 length) const
+{
+  return length > MAX_DATETIME_WIDTH ?
+         my_timestamp_binary_length(length - MAX_DATETIME_WIDTH - 1) : 4;
+}
+
+
+uint32 Type_handler_datetime::calc_pack_length(uint32 length) const
+{
+  return length > MAX_DATETIME_WIDTH ?
+         datetime_hires_bytes[length - 1 - MAX_DATETIME_WIDTH] : 8;
+}
+
+
+uint32 Type_handler_datetime2::calc_pack_length(uint32 length) const
+{
+  return length > MAX_DATETIME_WIDTH ?
+         my_datetime_binary_length(length - MAX_DATETIME_WIDTH - 1) : 5;
+}
+
+
+uint32 Type_handler_tiny_blob::calc_pack_length(uint32 length) const
+{
+  return 1 + portable_sizeof_char_ptr;
+}
+
+
+uint32 Type_handler_blob::calc_pack_length(uint32 length) const
+{
+  return 2 + portable_sizeof_char_ptr;
+}
+
+
+uint32 Type_handler_medium_blob::calc_pack_length(uint32 length) const
+{
+  return 3 + portable_sizeof_char_ptr;
+}
+
+
+uint32 Type_handler_long_blob::calc_pack_length(uint32 length) const
+{
+  return 4 + portable_sizeof_char_ptr;
+}
+
+
+uint32 Type_handler_geometry::calc_pack_length(uint32 length) const
+{
+  return 4 + portable_sizeof_char_ptr;
+}
+
+
+uint32 Type_handler_newdecimal::calc_pack_length(uint32 length) const
+{
+  abort();  // This shouldn't happen
+  return 0;
+}
+uint32 Type_handler_set::calc_pack_length(uint32 length) const
+{
+  abort();  // This shouldn't happen
+  return 0;
+}
+uint32 Type_handler_enum::calc_pack_length(uint32 length) const
+{
+  abort();  // This shouldn't happen
+  return 0;
 }
 
 
@@ -10208,10 +10243,15 @@ Field *make_field(TABLE_SHARE *share,
       return 0;                                 // Error
     }
 
-    uint pack_length=calc_pack_length((enum_field_types)
-				      f_packtype(pack_flag),
-				      field_length);
-
+    /*
+      MYSQL_TYPE_VAR_STRING is handled above.
+      So it's ok to call Type_handlers.handler() rather than
+      Type_handlers.get_handler_by_real_type().
+    */
+    DBUG_ASSERT(f_packtype(pack_flag) != MYSQL_TYPE_VAR_STRING);
+    uint pack_length= Type_handlers.handler((enum_field_types)
+                                            f_packtype(pack_flag))->
+                                            calc_pack_length(field_length);
 #ifdef HAVE_SPATIAL
     if (f_is_geom(pack_flag))
     {
