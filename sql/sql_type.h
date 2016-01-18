@@ -56,7 +56,7 @@ public:
       return true;
     return my_strnncoll(&my_charset_latin1,
                         (const uchar *) ptr(), length(),
-                        (const uchar *) name.ptr(), name.length());
+                        (const uchar *) name.ptr(), name.length()) == 0;
   }
 };
 
