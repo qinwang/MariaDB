@@ -122,44 +122,28 @@ Type_handler_hybrid_field_type::Type_handler_hybrid_field_type()
 }
 
 
+/**
+  This method is used in Item context, e.g. in hybrid type functions
+  like COALESCE, and does the following mapping:
+
+  - CREATE TABLE t1 AS SELECT COALESCE(enum_of_set_column) FROM t2;
+    creates a VARCHAR column. This may probably change in the future,
+    to preserve the original type when it's possible.
+
+  - CREATE TABLE t1 AS SELECT COALESCE(old_field) FROM t2;
+    converts old types to new ones.
+*/
 const Type_handler *
 Type_handler::get_handler_by_field_type(enum_field_types type)
 {
   switch (type) {
-  case MYSQL_TYPE_DECIMAL:     return &type_handler_olddecimal;
-  case MYSQL_TYPE_NEWDECIMAL:  return &type_handler_newdecimal;
-  case MYSQL_TYPE_TINY:        return &type_handler_tiny;
-  case MYSQL_TYPE_SHORT:       return &type_handler_short;
-  case MYSQL_TYPE_LONG:        return &type_handler_long;
-  case MYSQL_TYPE_LONGLONG:    return &type_handler_longlong;
-  case MYSQL_TYPE_INT24:       return &type_handler_int24;
-  case MYSQL_TYPE_YEAR:        return &type_handler_year;
-  case MYSQL_TYPE_BIT:         return &type_handler_bit;
-  case MYSQL_TYPE_FLOAT:       return &type_handler_float;
-  case MYSQL_TYPE_DOUBLE:      return &type_handler_double;
-  case MYSQL_TYPE_NULL:        return &type_handler_null;
-  case MYSQL_TYPE_VARCHAR:     return &type_handler_varchar;
-  case MYSQL_TYPE_TINY_BLOB:   return &type_handler_tiny_blob;
-  case MYSQL_TYPE_MEDIUM_BLOB: return &type_handler_medium_blob;
-  case MYSQL_TYPE_LONG_BLOB:   return &type_handler_long_blob;
-  case MYSQL_TYPE_BLOB:        return &type_handler_blob;
-  case MYSQL_TYPE_VAR_STRING:  return &type_handler_varchar; // Map to VARCHAR 
-  case MYSQL_TYPE_STRING:      return &type_handler_string;
+  case MYSQL_TYPE_VAR_STRING:  return &type_handler_varchar; // Map to VARCHAR
   case MYSQL_TYPE_ENUM:        return &type_handler_varchar; // Map to VARCHAR
   case MYSQL_TYPE_SET:         return &type_handler_varchar; // Map to VARCHAR
-  case MYSQL_TYPE_GEOMETRY:
-#ifdef HAVE_SPATIAL
-    return &type_handler_geometry;
-#else
-    return NULL;
-#endif
   case MYSQL_TYPE_TIMESTAMP:   return &type_handler_timestamp2;// Map to timestamp2
-  case MYSQL_TYPE_TIMESTAMP2:  return &type_handler_timestamp2;
-  case MYSQL_TYPE_DATE:        return &type_handler_newdate;   // Map to newdate
   case MYSQL_TYPE_TIME:        return &type_handler_time2;     // Map to time2
-  case MYSQL_TYPE_TIME2:       return &type_handler_time2;
   case MYSQL_TYPE_DATETIME:    return &type_handler_datetime2; // Map to datetime2
-  case MYSQL_TYPE_DATETIME2:   return &type_handler_datetime2;
+  case MYSQL_TYPE_DATE:        return &type_handler_newdate;   // Map to newdate
   case MYSQL_TYPE_NEWDATE:
     /*
       NEWDATE is actually a real_type(), not a field_type(),
@@ -168,9 +152,10 @@ Type_handler::get_handler_by_field_type(enum_field_types type)
       in field_type() context and add DBUG_ASSERT(0) here.
     */
     return &type_handler_newdate;
-  };
-  DBUG_ASSERT(0);
-  return &type_handler_string;
+  default:
+    break;
+  }
+  return get_handler_by_real_type(type);
 }
 
 
