@@ -10066,7 +10066,7 @@ enum_field_types get_blob_type_from_length(ulong length)
 uint32 Type_handler_time::calc_pack_length(uint32 length) const
 {
   return length > MIN_TIME_WIDTH ?
-         my_time_binary_length(length - MIN_TIME_WIDTH - 1) : 3;
+         time_hires_bytes[length - 1 - MIN_TIME_WIDTH] : 3;
 }
 
 
