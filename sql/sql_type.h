@@ -826,6 +826,10 @@ class Type_handler_hybrid_field_type: public Type_handler
 {
   const Type_handler *m_type_handler;
   const Type_handler *get_handler_by_result_type(Item_result type) const;
+protected:
+  void merge_type(const Type_handler *other, bool treat_bit_as_number);
+  void finalize_type(uint unsigned_count, uint total_count);
+  void agg_field_type(Item **items, uint nitems, bool treat_bit_as_number);
 public:
   Type_handler_hybrid_field_type();
   Type_handler_hybrid_field_type(const Type_handler *handler)

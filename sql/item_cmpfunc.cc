@@ -173,32 +173,48 @@ static int agg_cmp_type(Item_result *type, Item **items, uint nitems)
   @return aggregated field type.
 */
 
-enum_field_types agg_field_type(Item **items, uint nitems,
-                                bool treat_bit_as_number)
+void Type_handler_hybrid_field_type::merge_type(const Type_handler *other,
+                                                bool treat_bit_as_number)
+{
+  enum_field_types res= field_type();
+  enum_field_types cur= other->field_type();
+  if (treat_bit_as_number &&
+      ((res == MYSQL_TYPE_BIT) ^ (cur == MYSQL_TYPE_BIT)))
+  {
+    if (res == MYSQL_TYPE_BIT)
+      res= MYSQL_TYPE_LONGLONG; // BIT + non-BIT
+    else
+      cur= MYSQL_TYPE_LONGLONG; // non-BIT + BIT
+  }
+  set_handler_by_field_type(Field::field_type_merge(res, cur));
+}
+
+
+void Type_handler_hybrid_field_type::agg_field_type(Item **items, uint nitems,
+                                                    bool treat_bit_as_number)
 {
   uint i;
   if (!nitems || items[0]->result_type() == ROW_RESULT)
   {
     DBUG_ASSERT(0);
-    return MYSQL_TYPE_NULL;
+    set_handler_by_real_type(MYSQL_TYPE_NULL);
+    return;
   }
-  enum_field_types res= items[0]->field_type();
+  set_handler(items[0]->type_handler());
   uint unsigned_count= items[0]->unsigned_flag;
   for (i= 1 ; i < nitems ; i++)
   {
-    enum_field_types cur= items[i]->field_type();
-    if (treat_bit_as_number &&
-        ((res == MYSQL_TYPE_BIT) ^ (cur == MYSQL_TYPE_BIT)))
-    {
-      if (res == MYSQL_TYPE_BIT)
-        res= MYSQL_TYPE_LONGLONG; // BIT + non-BIT
-      else
-        cur= MYSQL_TYPE_LONGLONG; // non-BIT + BIT
-    }
-    res= Field::field_type_merge(res, cur);
+    merge_type(items[i], treat_bit_as_number);
     unsigned_count+= items[i]->unsigned_flag;
   }
-  switch (res) {
+  finalize_type(unsigned_count, nitems);
+}
+
+
+void Type_handler_hybrid_field_type::finalize_type(uint unsigned_count,
+                                                   uint total_count)
+{
+  switch (field_type()) {
   case MYSQL_TYPE_TINY:
   case MYSQL_TYPE_SHORT:
   case MYSQL_TYPE_LONG:
@@ -206,18 +222,17 @@ enum_field_types agg_field_type(Item **items, uint nitems,
   case MYSQL_TYPE_INT24:
   case MYSQL_TYPE_YEAR:
   case MYSQL_TYPE_BIT:
-    if (unsigned_count != 0 && unsigned_count != nitems)
+    if (unsigned_count != 0 && unsigned_count != total_count)
     {
       /*
         If all arguments are of INT-alike type but have different
         unsigned_flag, then convert to DECIMAL.
       */
-      return MYSQL_TYPE_NEWDECIMAL;
+      set_handler_by_real_type(MYSQL_TYPE_NEWDECIMAL);
     }
   default:
     break;
   }
-  return res;
 }
 
 /*
@@ -2250,7 +2265,7 @@ void
 Item_func_case_abbreviation2::fix_length_and_dec2(Item **args)
 {
   uint32 char_length;
-  set_handler_by_field_type(agg_field_type(args, 2, true));
+  agg_field_type(args, 2, true);
   maybe_null=args[0]->maybe_null || args[1]->maybe_null;
   decimals= MY_MAX(args[0]->decimals, args[1]->decimals);
   unsigned_flag= args[0]->unsigned_flag && args[1]->unsigned_flag;
@@ -2927,29 +2942,55 @@ static void change_item_tree_if_needed(THD *thd,
 
 void Item_func_case::fix_length_and_dec()
 {
-  Item **agg= arg_buffer;
-  uint nagg;
   THD *thd= current_thd;
+  fix_field_type(thd);
+  fix_return_arguments(thd);
+  fix_comparison_arguments(thd);
+}
 
-  m_found_types= 0;
+
+void Item_func_case::fix_field_type(THD *thd)
+{
+  uint total_count;
+  uint unsigned_count= args[1]->unsigned_flag;
+  set_handler(args[1]);
+  for (total_count= 1; total_count < ncases / 2; total_count++)
+  {
+    const Item *item= args[total_count * 2 + 1];
+    unsigned_count+= item->unsigned_flag;
+    merge_type(item, true);
+  }
+  if (else_expr_num != -1)
+  {
+    const Item *item= args[else_expr_num];
+    unsigned_count+= item->unsigned_flag;
+    merge_type(item, true);
+    total_count++;
+  }
+  finalize_type(unsigned_count, total_count);
+}
+
+
+void Item_func_case::fix_return_arguments(THD *thd)
+{
   if (else_expr_num == -1 || args[else_expr_num]->maybe_null)
     maybe_null= 1;
 
-  /*
-    Aggregate all THEN and ELSE expression types
-    and collations when string result
-  */
-  
-  for (nagg= 0 ; nagg < ncases/2 ; nagg++)
-    agg[nagg]= args[nagg*2+1];
-  
-  if (else_expr_num != -1)
-    agg[nagg++]= args[else_expr_num];
-  
-  set_handler_by_field_type(agg_field_type(agg, nagg, true));
-
   if (Item_func_case::result_type() == STRING_RESULT)
   {
+    Item **agg= arg_buffer;
+    uint nagg;
+    /*
+      Aggregate all THEN and ELSE expression types
+      and collations when string result
+    */
+
+    for (nagg= 0 ; nagg < ncases/2 ; nagg++)
+      agg[nagg]= args[nagg*2+1];
+
+    if (else_expr_num != -1)
+      agg[nagg++]= args[else_expr_num];
+
     if (count_string_result_length(Item_func_case::field_type(), agg, nagg))
       return;
     /*
@@ -2977,7 +3018,14 @@ void Item_func_case::fix_length_and_dec()
                                                              decimals,
                                                              unsigned_flag);
   }
-  
+}
+
+
+void Item_func_case::fix_comparison_arguments(THD *thd)
+{
+  uint nagg;
+  Item **agg= arg_buffer;
+  m_found_types= 0;
   /*
     Aggregate first expression and all WHEN expression types
     and collations when string comparison
@@ -3279,7 +3327,7 @@ my_decimal *Item_func_coalesce::decimal_op(my_decimal *decimal_value)
 
 void Item_func_coalesce::fix_length_and_dec()
 {
-  set_handler_by_field_type(agg_field_type(args, arg_count, true));
+  agg_field_type(args, arg_count, true);
   switch (Item_func_coalesce::result_type()) {
   case STRING_RESULT:
     if (count_string_result_length(Item_func_coalesce::field_type(),
