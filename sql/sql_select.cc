@@ -18104,9 +18104,7 @@ evaluate_join_record(JOIN *join, JOIN_TAB *join_tab,
     DBUG_RETURN(NESTED_LOOP_KILLED);            /* purecov: inspected */
   }
 
-#if 0
   join_tab->tracker->r_rows++;
-#endif
 
   if (join_tab->table->vfield)
     update_virtual_fields(join->thd, join_tab->table);
@@ -18126,9 +18124,8 @@ evaluate_join_record(JOIN *join, JOIN_TAB *join_tab,
       There is no select condition or the attached pushed down
       condition is true => a match is found.
     */
-#if 0
     join_tab->tracker->r_rows_after_where++;
-#endif
+
     bool found= 1;
     while (join_tab->first_unmatched && found)
     {
