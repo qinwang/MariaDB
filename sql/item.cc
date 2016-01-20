@@ -5542,6 +5542,7 @@ Field *Type_std_attributes::make_string_field(MEM_ROOT *mem_root,
 
 Field *Item::table_field_from_field_type(TABLE *table,
                                          const Record_addr &rec,
+                                         const Type_ext_attributes &eattr,
                                          bool set_blob_packlength) const
 {
   Field *field;
@@ -5560,8 +5561,8 @@ Field *Item::table_field_from_field_type(TABLE *table,
     break;
 #endif /* HAVE_SPATIAL */
   default:
-    field= make_table_field(mem_root, table->s, name, rec, *this,
-                            set_blob_packlength);
+    field= make_table_field(mem_root, table->s, name, rec,
+                            *this, eattr, set_blob_packlength);
     break;
   }
   if (field)
@@ -9373,28 +9374,14 @@ uint32 Item_type_holder::display_length(Item *item)
 Field *Item_type_holder::create_tmp_field(bool group, TABLE *table,
                                           uint convert_blob_length)
 {
-  /*
-    The field functions defines a field to be not null if null_ptr is not 0
-  */
-  uchar *null_ptr= maybe_null ? (uchar*) "" : 0;
   Field *field;
 
   DBUG_ASSERT(current_thd == table->in_use);
+  DBUG_ASSERT(Item_type_holder::real_field_type() == MYSQL_TYPE_ENUM ||
+              Item_type_holder::real_field_type() == MYSQL_TYPE_SET ?
+              m_typelib != NULL : true);
+
   switch (Item_type_holder::real_field_type()) {
-  case MYSQL_TYPE_ENUM:
-    DBUG_ASSERT(m_typelib);
-    field= new Field_enum((uchar *) 0, max_length, null_ptr, 0,
-                          Field::NONE, name,
-                          get_enum_pack_length(m_typelib->count),
-                          m_typelib, collation.collation);
-    break;
-  case MYSQL_TYPE_SET:
-    DBUG_ASSERT(m_typelib);
-    field= new Field_set((uchar *) 0, max_length, null_ptr, 0,
-                         Field::NONE, name,
-                         get_set_pack_length(m_typelib->count),
-                         m_typelib, collation.collation);
-    break;
   case MYSQL_TYPE_STRING:
     if (too_big_for_varchar()) // QQ: should probably check/assert for 256
       field= new (table->in_use->mem_root)
@@ -9406,7 +9393,8 @@ Field *Item_type_holder::create_tmp_field(bool group, TABLE *table,
     break;
 
   default:
-    field= tmp_table_field_from_field_type(table, true);
+    field= table_field_from_field_type(table, Record_addr(maybe_null),
+                                       *this, true);
   }
   if (field)
   {

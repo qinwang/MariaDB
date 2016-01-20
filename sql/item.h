@@ -682,11 +682,13 @@ protected:
 
   Field *table_field_from_field_type(TABLE *table,
                                      const Record_addr &rec,
+                                     const Type_ext_attributes &eattr,
                                      bool set_blob_packlength) const;
   Field *tmp_table_field_from_field_type(TABLE *table,
                                          bool set_blob_packlength) const
   {
     return table_field_from_field_type(table, Record_addr(maybe_null),
+                                       Type_ext_attributes(),
                                        set_blob_packlength);
   }
   Field *create_tmp_field(bool group, TABLE *table,
@@ -813,10 +815,11 @@ public:
   Field *make_table_field(MEM_ROOT *mem_root, TABLE_SHARE *share,
                           const char *field_name, const Record_addr &addr,
                           const Type_std_attributes &attr,
+                          const Type_ext_attributes &eattr,
                           bool set_blob_packlength) const
   {
     return type_handler()->make_table_field(mem_root, share,
-                                            field_name, addr, attr,
+                                            field_name, addr, attr, eattr,
                                             set_blob_packlength);
   }
 
@@ -5406,6 +5409,26 @@ public:
       type cannot be numeric: it's either BIT, or VARBINARY.
     */
     return Type_handler_hybrid_real_field_type::result_type();
+  }
+  Field *make_table_field(MEM_ROOT *mem_root, TABLE_SHARE *share,
+                          const char *field_name,
+                          const Record_addr &rec,
+                          const Create_attr &attr) const
+  {
+    DBUG_ASSERT(0); // Not called in Item context
+    return type_handler()->make_table_field(mem_root, share,
+                                            field_name, rec, attr);
+  }
+  Field *make_table_field(MEM_ROOT *mem_root, TABLE_SHARE *share,
+                          const char *field_name, const Record_addr &addr,
+                          const Type_std_attributes &attr,
+                          const Type_ext_attributes &eattr,
+                          bool set_blob_packlength) const
+  {
+    return Type_handler_hybrid_field_type::make_table_field(mem_root, share,
+                                                           field_name,
+                                                           addr, attr, eattr,
+                                                           set_blob_packlength);
   }
 
   enum Type type() const { return TYPE_HOLDER; }

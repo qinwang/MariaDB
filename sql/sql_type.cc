@@ -1123,6 +1123,7 @@ Field *Type_handler_tiny::make_table_field(MEM_ROOT *mem_root,
                                            const char *name,
                                            const Record_addr &rec,
                                            const Type_std_attributes &attr,
+                                           const Type_ext_attributes &eattr,
                                            bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1136,6 +1137,7 @@ Field *Type_handler_short::make_table_field(MEM_ROOT *mem_root,
                                             const char *name,
                                             const Record_addr &rec,
                                             const Type_std_attributes &attr,
+                                            const Type_ext_attributes &eattr,
                                             bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1149,6 +1151,7 @@ Field *Type_handler_long::make_table_field(MEM_ROOT *mem_root,
                                            const char *name,
                                            const Record_addr &rec,
                                            const Type_std_attributes &attr,
+                                           const Type_ext_attributes &eattr,
                                            bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1162,6 +1165,7 @@ Field *Type_handler_longlong::make_table_field(MEM_ROOT *mem_root,
                                                const char *name,
                                                const Record_addr &rec,
                                                const Type_std_attributes &attr,
+                                               const Type_ext_attributes &eattr,
                                                bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1175,6 +1179,7 @@ Field *Type_handler_float::make_table_field(MEM_ROOT *mem_root,
                                             const char *name,
                                             const Record_addr &rec,
                                             const Type_std_attributes &attr,
+                                            const Type_ext_attributes &eattr,
                                             bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1188,6 +1193,7 @@ Field *Type_handler_double::make_table_field(MEM_ROOT *mem_root,
                                              const char *name,
                                              const Record_addr &rec,
                                              const Type_std_attributes &attr,
+                                             const Type_ext_attributes &eattr,
                                              bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1201,6 +1207,7 @@ Field *Type_handler_int24::make_table_field(MEM_ROOT *mem_root,
                                            const char *name,
                                            const Record_addr &rec,
                                            const Type_std_attributes &attr,
+                                           const Type_ext_attributes &eattr,
                                            bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1214,6 +1221,7 @@ Field *Type_handler_date::make_table_field(MEM_ROOT *mem_root,
                                            const char *name,
                                            const Record_addr &rec,
                                            const Type_std_attributes &attr,
+                                           const Type_ext_attributes &eattr,
                                            bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1227,6 +1235,7 @@ Field *Type_handler_newdate::make_table_field(MEM_ROOT *mem_root,
                                               const char *name,
                                               const Record_addr &rec,
                                               const Type_std_attributes &attr,
+                                             const Type_ext_attributes &eattr,
                                               bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1239,6 +1248,7 @@ Field *Type_handler_time::make_table_field(MEM_ROOT *mem_root,
                                            const char *name,
                                            const Record_addr &rec,
                                            const Type_std_attributes &attr,
+                                           const Type_ext_attributes &eattr,
                                            bool set_blob_packlength) const
 {
   return new_Field_time(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
@@ -1251,6 +1261,7 @@ Field *Type_handler_time2::make_table_field(MEM_ROOT *mem_root,
                                             const char *name,
                                             const Record_addr &rec,
                                             const Type_std_attributes &attr,
+                                            const Type_ext_attributes &eattr,
                                             bool set_blob_packlength) const
 {
   return new_Field_time(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
@@ -1263,6 +1274,7 @@ Field *Type_handler_timestamp::make_table_field(MEM_ROOT *mem_root,
                                                 const char *name,
                                                 const Record_addr &rec,
                                                 const Type_std_attributes &attr,
+                                                const Type_ext_attributes &eattr,
                                                 bool set_blob_packlength) const
 {
   return new_Field_timestamp(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
@@ -1275,6 +1287,7 @@ Field *Type_handler_timestamp2::make_table_field(MEM_ROOT *mem_root,
                                                  const char *name,
                                                  const Record_addr &rec,
                                                  const Type_std_attributes &attr,
+                                                 const Type_ext_attributes &eattr,
                                                  bool set_blob_packlength) const
 {
   return new_Field_timestamp(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
@@ -1287,6 +1300,7 @@ Field *Type_handler_datetime::make_table_field(MEM_ROOT *mem_root,
                                                const char *name,
                                                const Record_addr &rec,
                                                const Type_std_attributes &attr,
+                                               const Type_ext_attributes &eattr,
                                                bool set_blob_packlength) const
 {
   return new_Field_datetime(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
@@ -1299,6 +1313,7 @@ Field *Type_handler_datetime2::make_table_field(MEM_ROOT *mem_root,
                                                const char *name,
                                                const Record_addr &rec,
                                                const Type_std_attributes &attr,
+                                               const Type_ext_attributes &eattr,
                                                bool set_blob_packlength) const
 {
   return new_Field_datetime(mem_root, rec.ptr, rec.null_ptr, rec.null_bit,
@@ -1311,6 +1326,7 @@ Field *Type_handler_year::make_table_field(MEM_ROOT *mem_root,
                                            const char *name,
                                            const Record_addr &rec,
                                            const Type_std_attributes &attr,
+                                           const Type_ext_attributes &eattr,
                                            bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1324,6 +1340,7 @@ Field *Type_handler_bit::make_table_field(MEM_ROOT *mem_root,
                                           const char *name,
                                           const Record_addr &rec,
                                           const Type_std_attributes &attr,
+                                          const Type_ext_attributes &eattr,
                                           bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1337,6 +1354,7 @@ Field *Type_handler_null::make_table_field(MEM_ROOT *mem_root,
                                            const char *name,
                                            const Record_addr &rec,
                                            const Type_std_attributes &attr,
+                                           const Type_ext_attributes &eattr,
                                            bool set_blob_packlength) const
 {
   DBUG_ASSERT(attr.max_length == 0);
@@ -1350,6 +1368,7 @@ Field *Type_handler_blob::make_table_field(MEM_ROOT *mem_root,
                                            const char *name,
                                            const Record_addr &rec,
                                            const Type_std_attributes &attr,
+                                           const Type_ext_attributes &eattr,
                                            bool set_blob_packlength) const
 {
   return new (mem_root)
@@ -1364,9 +1383,46 @@ Type_handler_string_result::make_table_field(MEM_ROOT *mem_root,
                                              const char *name,
                                              const Record_addr &rec,
                                              const Type_std_attributes &attr,
+                                             const Type_ext_attributes &eattr,
                                              bool set_blob_packlength) const
 {
   return attr.make_string_field(mem_root, share, name, rec);
+}
+
+
+Field *Type_handler_enum::make_table_field(MEM_ROOT *mem_root,
+                                           TABLE_SHARE *share,
+                                           const char *name,
+                                           const Record_addr &rec,
+                                           const Type_std_attributes &attr,
+                                           const Type_ext_attributes &eattr,
+                                           bool set_blob_packlength) const
+{
+  return eattr.typelib() ?
+    new Field_enum(rec.ptr, attr.max_length, rec.null_ptr, rec.null_bit,
+                   Field::NONE, name,
+                   get_enum_pack_length(eattr.typelib()->count),
+                   eattr.typelib(),
+                   attr.collation.collation) :
+    attr.make_string_field(mem_root, share, name, rec);
+}
+
+
+Field *Type_handler_set::make_table_field(MEM_ROOT *mem_root,
+                                          TABLE_SHARE *share,
+                                          const char *name,
+                                          const Record_addr &rec,
+                                          const Type_std_attributes &attr,
+                                          const Type_ext_attributes &eattr,
+                                          bool set_blob_packlength) const
+{
+  return eattr.typelib() ?
+    new Field_set(rec.ptr, attr.max_length, rec.null_ptr, rec.null_bit,
+                  Field::NONE, name,
+                  get_enum_pack_length(eattr.typelib()->count),
+                  eattr.typelib(),
+                  attr.collation.collation) :
+    attr.make_string_field(mem_root, share, name, rec);
 }
 
 
