@@ -1818,7 +1818,6 @@ TODO: make view to decide if it is possible to write to WHERE directly or make S
   if (!(select_options & SELECT_DESCRIBE))
     init_ftfuncs(thd, select_lex, MY_TEST(order));
 
-#if 1
   /*
     It's necessary to check const part of HAVING cond as
     there is a chance that some cond parts may become
@@ -1843,7 +1842,6 @@ TODO: make view to decide if it is possible to write to WHERE directly or make S
       DBUG_RETURN(0);
     }
   }
-#endif
 
   if (optimize_unflattened_subqueries())
     DBUG_RETURN(1);
@@ -3004,6 +3002,19 @@ void JOIN::exec_inner()
 
   THD_STAGE_INFO(thd, stage_executing);
 
+  /*
+    Enable LIMIT ROWS EXAMINED during query execution if:
+    (1) This JOIN is the outermost query (not a subquery or derived table)
+        This ensures that the limit is enabled when actual execution begins, and
+        not if a subquery is evaluated during optimization of the outer query.
+    (2) This JOIN is not the result of a UNION. In this case do not apply the
+        limit in order to produce the partial query result stored in the
+        UNION temp table.
+  */
+  if (!select_lex->outer_select() &&                            // (1)
+      select_lex != select_lex->master_unit()->fake_select_lex) // (2)
+    thd->lex->set_limit_rows_examined();
+
   if (procedure)
   {
     procedure_fields_list= fields_list;
@@ -3127,37 +3138,6 @@ void JOIN::exec_inner()
 
   if (select_options & SELECT_DESCRIBE)
   {
-    /*
-      Check if we managed to optimize ORDER BY away and don't use temporary
-      table to resolve ORDER BY: in that case, we only may need to do
-      filesort for GROUP BY.
-    */
-    if (!order && !no_order && (!skip_sort_order || !need_tmp))
-    {
-      /*
-	Reset 'order' to 'group_list' and reinit variables describing
-	'order'
-      */
-      order= group_list;
-      simple_order= simple_group;
-      skip_sort_order= 0;
-    }
-    bool made_call= false;
-    if (order && 
-        (order != group_list || !(select_options & SELECT_BIG_RESULT)) &&
-	(const_tables == table_count ||
- 	 ((simple_order || skip_sort_order) &&
-	  (made_call=true) &&
-          test_if_skip_sort_order(&join_tab[const_tables], order,
-				  select_limit, 0, 
-                                  &join_tab[const_tables].table->
-                                    keys_in_use_for_query))))
-      order=0;
-    if (made_call)
-      join_tab[const_tables].update_explain_data(const_tables);
-#if 0
-    having= tmp_having;
-#endif
     select_describe(this, need_tmp,
 		    order != 0 && !skip_sort_order,
 		    select_distinct,
@@ -17524,11 +17504,15 @@ do_select(JOIN *join, Procedure *procedure)
       error= NESTED_LOOP_NO_MORE_ROWS;
     else
       error= join->first_select(join,join_tab,0);
-    if (error >= NESTED_LOOP_OK)
+    if (error >= NESTED_LOOP_OK && join->thd->killed != ABORT_QUERY)
       error= join->first_select(join,join_tab,1);
   }
 
   join->thd->limit_found_rows= join->send_records;
+
+  if (error == NESTED_LOOP_NO_MORE_ROWS || join->thd->killed == ABORT_QUERY)
+    error= NESTED_LOOP_OK;
+
   /*
     For "order by with limit", we cannot rely on send_records, but need
     to use the rowcount read originally into the join_tab applying the
