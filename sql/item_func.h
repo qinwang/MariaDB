@@ -470,6 +470,34 @@ public:
   String *val_str(String*str);
   bool get_date(MYSQL_TIME *res, ulonglong fuzzy_date);
 
+  String *val_str_from_dec_op(String *str);
+  String *val_str_from_int_op(String *str);
+  String *val_str_from_real_op(String *str);
+  String *val_str_from_temp_op(String *str);
+  String *val_str_from_str_op(String *str)
+  {
+    return str_op_with_null_check(str);
+  }
+
+  double val_real_from_dec_op();
+  double val_real_from_int_op();
+  double val_real_from_str_op();
+  double val_real_from_temp_op();
+
+  longlong val_int_from_dec_op();
+  longlong val_int_from_str_op();
+  longlong val_int_from_temp_op();
+
+  my_decimal *val_decimal_from_int_op(my_decimal *decimal_value);
+  my_decimal *val_decimal_from_real_op(my_decimal *decimal_value);
+  my_decimal *val_decimal_from_str_op(my_decimal *decimal_value);
+  my_decimal *val_decimal_from_temp_op(my_decimal *decimal_value);
+
+  bool get_date_from_int_op(MYSQL_TIME *ltime, ulonglong fuzzydate);
+  bool get_date_from_dec_op(MYSQL_TIME *ltime, ulonglong fuzzydate);
+  bool get_date_from_str_op(MYSQL_TIME *ltime, ulonglong fuzzydate);
+  bool get_date_from_real_op(MYSQL_TIME *ltime, ulonglong fuzzydate);
+
   /**
      @brief Performs the operation that this functions implements when the
      result type is INT.
