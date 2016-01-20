@@ -907,27 +907,6 @@ double Item_func_hybrid_field_type::val_real_from_str_op()
 }
 
 
-double Item_func_hybrid_field_type::val_real()
-{
-  DBUG_ASSERT(fixed == 1);
-  switch (Item_func_hybrid_field_type::cmp_type()) {
-  case DECIMAL_RESULT:
-    return val_real_from_dec_op();
-  case INT_RESULT:
-    return val_real_from_int_op();
-  case REAL_RESULT:
-    return real_op();
-  case TIME_RESULT:
-    return val_real_from_temp_op();
-  case STRING_RESULT:
-    return val_real_from_str_op();
-  case ROW_RESULT:
-    DBUG_ASSERT(0);
-  }
-  return 0.0;
-}
-
-
 longlong Item_func_hybrid_field_type::val_int_from_dec_op()
 {
   my_decimal decimal_value, *val;
@@ -953,27 +932,6 @@ longlong Item_func_hybrid_field_type::val_int_from_str_op()
 {
   String *res= str_op_with_null_check(&str_value);
   return res ? longlong_from_string_with_check(res) : 0;
-}
-
-
-longlong Item_func_hybrid_field_type::val_int()
-{
-  DBUG_ASSERT(fixed == 1);
-  switch (Item_func_hybrid_field_type::cmp_type()) {
-  case DECIMAL_RESULT:
-    return val_int_from_dec_op();
-  case INT_RESULT:
-    return int_op();
-  case REAL_RESULT:
-    return (longlong) rint(real_op());
-  case TIME_RESULT:
-    return val_int_from_temp_op();
-  case STRING_RESULT:
-    return val_int_from_str_op();
-  case ROW_RESULT:
-    DBUG_ASSERT(0);
-  }
-  return 0;
 }
 
 
@@ -1018,28 +976,6 @@ Item_func_hybrid_field_type::val_decimal_from_str_op(my_decimal *decimal_value)
 {
   String *res= str_op_with_null_check(&str_value);
   return res ? decimal_from_string_with_check(decimal_value, res) : 0;
-}
-
-my_decimal *Item_func_hybrid_field_type::val_decimal(my_decimal *decimal_value)
-{
-  my_decimal *val= decimal_value;
-  DBUG_ASSERT(fixed == 1);
-  switch (Item_func_hybrid_field_type::cmp_type()) {
-  case DECIMAL_RESULT:
-    val= decimal_op_with_null_check(decimal_value);
-    break;
-  case INT_RESULT:
-    return val_decimal_from_int_op(decimal_value);
-  case REAL_RESULT:
-    return val_decimal_from_real_op(decimal_value);
-  case TIME_RESULT:
-    return val_decimal_from_temp_op(decimal_value);
-  case STRING_RESULT:
-    return val_decimal_from_str_op(decimal_value);
-  case ROW_RESULT:
-    DBUG_ASSERT(0);
-  }
-  return val;
 }
 
 
@@ -1102,32 +1038,6 @@ bool Item_func_hybrid_field_type::get_date_from_str_op(MYSQL_TIME *ltime,
     return null_value|= !(fuzzydate & TIME_FUZZY_DATES);     
   }
   return (null_value= 0);
-}
-
-
-bool Item_func_hybrid_field_type::get_date(MYSQL_TIME *ltime,
-                                            ulonglong fuzzydate)
-{
-  DBUG_ASSERT(fixed == 1);
-  switch (Item_func_hybrid_field_type::cmp_type()) {
-  case DECIMAL_RESULT:
-    return get_date_from_dec_op(ltime, fuzzydate);
-  case INT_RESULT:
-    return get_date_from_int_op(ltime, fuzzydate);
-  case REAL_RESULT:
-    return get_date_from_real_op(ltime, fuzzydate);
-  case TIME_RESULT:
-    return date_op(ltime,
-                   fuzzydate |
-                   (field_type() == MYSQL_TYPE_TIME ? TIME_TIME_ONLY : 0));
-  case STRING_RESULT:
-    return get_date_from_str_op(ltime, fuzzydate);
-  case ROW_RESULT:
-    break;
-  }
-  DBUG_ASSERT(0);
-  bzero(ltime, sizeof(*ltime));
-  return (null_value= true);
 }
 
 

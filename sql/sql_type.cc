@@ -1472,29 +1472,158 @@ Type_handler_temporal_result::Item_func_hybrid_field_type_val_str(
   return item->val_str_from_temp_op(str);
 }
 
-/*
-String *Item_func_hybrid_field_type::val_str(String *str)
+/************************************************************************/
+
+longlong Type_handler_int_result::
+Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const
 {
-  DBUG_ASSERT(fixed == 1);
-  switch (Item_func_hybrid_field_type::cmp_type()) {
-  case DECIMAL_RESULT:
-    return val_str_from_dec_op(str);
-  case INT_RESULT:
-    return val_str_from_int_op(str);
-  case REAL_RESULT:
-    return val_str_from_real_op(str);
-  case TIME_RESULT:
-    return val_str_from_temp_op(str);
-  case STRING_RESULT:
-    return str_op_with_null_check(&str_value);
-  case ROW_RESULT:
-    break;
-  }
-  DBUG_ASSERT(0);
-  null_value= 0;
-  return 0;
+  return item->int_op();
 }
-*/
+
+longlong Type_handler_real_result::
+Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const
+{
+  return (longlong) rint(item->real_op());
+}
+
+longlong Type_handler_decimal_result::
+Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const
+{
+  return item->val_int_from_dec_op();
+}
+
+longlong Type_handler_temporal_result::
+Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const
+{
+  return item->val_int_from_temp_op();
+}
+
+longlong Type_handler_string_result::
+Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const
+{
+  return item->val_int_from_str_op();
+}
+
+
+/**************************************************************************/
+
+
+double Type_handler_int_result::
+Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const
+{
+  return item->val_real_from_int_op();
+}
+
+double Type_handler_real_result::
+Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const
+{
+  return item->real_op();
+}
+
+double Type_handler_decimal_result::
+Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const
+{
+  return item->val_real_from_dec_op();
+}
+
+double Type_handler_temporal_result::
+Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const
+{
+  return item->val_real_from_temp_op();
+}
+
+double Type_handler_string_result::
+  Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const
+{
+  return item->val_real_from_str_op();
+}
+
+/*****************************************************************************/
+
+my_decimal* Type_handler_decimal_result::
+Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                        my_decimal *to) const
+{
+  return item->val_decimal_from_dec_op(to);
+}
+
+my_decimal* Type_handler_int_result::
+Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                        my_decimal *to) const
+{
+  return item->val_decimal_from_int_op(to);
+}
+
+my_decimal* Type_handler_real_result::
+Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                        my_decimal *to) const
+{
+  return item->val_decimal_from_real_op(to);
+}
+
+my_decimal* Type_handler_temporal_result::
+Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                        my_decimal *to) const
+{
+  return item->val_decimal_from_temp_op(to);
+}
+
+my_decimal* Type_handler_string_result::
+Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                        my_decimal *to) const
+{
+  return item->val_decimal_from_str_op(to);
+}
+
+/*************************************************************************/
+bool
+Type_handler_decimal_result::
+Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                     MYSQL_TIME *ltime, ulonglong fuzzydate)
+                                     const
+{
+  return item->get_date_from_dec_op(ltime, fuzzydate);
+}
+
+bool
+Type_handler_int_result::
+Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                     MYSQL_TIME *ltime, ulonglong fuzzydate)
+                                     const
+{
+  return item->get_date_from_int_op(ltime, fuzzydate);
+}
+
+bool
+Type_handler_real_result::
+Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                     MYSQL_TIME *ltime, ulonglong fuzzydate)
+                                     const
+{
+  return item->get_date_from_real_op(ltime, fuzzydate);
+}
+
+bool
+Type_handler_temporal_result::
+Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                     MYSQL_TIME *ltime, ulonglong fuzzydate)
+                                     const
+{
+  return item->date_op(ltime,
+                       fuzzydate |
+                       (field_type() == MYSQL_TYPE_TIME ? TIME_TIME_ONLY : 0));
+}
+
+
+bool
+Type_handler_string_result::
+Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                     MYSQL_TIME *ltime, ulonglong fuzzydate)
+                                     const
+{
+  return item->get_date_from_str_op(ltime, fuzzydate);
+}
+
 /*************************************************************************/
 
 Type_handler_register::Type_handler_register()

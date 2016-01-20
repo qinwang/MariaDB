@@ -822,6 +822,7 @@ public:
                                             field_name, addr, attr, eattr,
                                             set_blob_packlength);
   }
+
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const
@@ -830,6 +831,35 @@ public:
     DBUG_ASSERT(0);
     return type_handler()->Item_func_hybrid_field_type_val_str(item, str);
   }
+  longlong
+  Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const
+  {
+    DBUG_ASSERT(0);
+    return type_handler()->Item_func_hybrid_field_type_val_int(item);
+  }
+  double
+  Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const
+  {
+    DBUG_ASSERT(0);
+    return type_handler()->Item_func_hybrid_field_type_val_real(item);
+  }
+  my_decimal*
+  Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                          my_decimal *to) const
+  {
+    DBUG_ASSERT(0);
+    return type_handler()->Item_func_hybrid_field_type_val_decimal(item, to);
+  }
+  bool
+  Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                       MYSQL_TIME *ltime, ulonglong fuzzydate)
+                                       const
+  {
+    DBUG_ASSERT(0);
+    return type_handler()->Item_func_hybrid_field_type_get_date(item, ltime,
+                                                                fuzzydate);
+  }
+
 
   Field *make_num_distinct_aggregator_field(MEM_ROOT *mem_root,
                                             const Item *item) const

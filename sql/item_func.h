@@ -402,14 +402,45 @@ public:
   { return Type_handler_hybrid_field_type::result_type(); }
   enum Item_result cmp_type () const
   { return Type_handler_hybrid_field_type::cmp_type(); }
+
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const
   {
     DBUG_ASSERT(fixed);
-    return
-      Type_handler_hybrid_field_type::Item_func_hybrid_field_type_val_str(item,
-                                                                          str);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_val_str(item, str);
+  }
+  longlong
+  Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const
+  {
+    DBUG_ASSERT(fixed);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_val_int(item);
+  }
+  double
+  Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const
+  {
+    DBUG_ASSERT(fixed);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_val_real(item);
+  }
+  my_decimal*
+  Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                          my_decimal *to) const
+  {
+    DBUG_ASSERT(fixed);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_val_decimal(item, to);
+  }
+  bool
+  Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                       MYSQL_TIME *ltime, ulonglong fuzzydate)
+                                       const
+  {
+    DBUG_ASSERT(fixed);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_get_date(item, ltime, fuzzydate);
   }
 };
 
@@ -473,15 +504,37 @@ public:
     Item_hybrid_func(thd, list)
   { collation.set_numeric(); }
 
-  double val_real();
-  longlong val_int();
-  my_decimal *val_decimal(my_decimal *);
+  double val_real()
+  {
+    DBUG_ASSERT(fixed);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_val_real(this);
+  }
+  longlong val_int()
+  {
+    DBUG_ASSERT(fixed);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_val_int(this);
+  }
+  my_decimal *val_decimal(my_decimal *decimal_value)
+  {
+    DBUG_ASSERT(fixed);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_val_decimal(this, decimal_value);
+  }
+
   String *val_str(String*str)
   {
-    DBUG_ASSERT(fixed == 1);
-    return Item_hybrid_func::Item_func_hybrid_field_type_val_str(this, str);
+    DBUG_ASSERT(fixed);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_val_str(this, str);
   }
-  bool get_date(MYSQL_TIME *res, ulonglong fuzzy_date);
+  bool get_date(MYSQL_TIME *res, ulonglong fuzzy_date)
+  {
+    DBUG_ASSERT(fixed);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_get_date(this, res, fuzzy_date);
+  }
 
   String *val_str_from_dec_op(String *str);
   String *val_str_from_int_op(String *str);
@@ -505,6 +558,10 @@ public:
   my_decimal *val_decimal_from_real_op(my_decimal *decimal_value);
   my_decimal *val_decimal_from_str_op(my_decimal *decimal_value);
   my_decimal *val_decimal_from_temp_op(my_decimal *decimal_value);
+  my_decimal *val_decimal_from_dec_op(my_decimal *decimal_value)
+  {
+    return decimal_op_with_null_check(decimal_value);
+  }
 
   bool get_date_from_int_op(MYSQL_TIME *ltime, ulonglong fuzzydate);
   bool get_date_from_dec_op(MYSQL_TIME *ltime, ulonglong fuzzydate);

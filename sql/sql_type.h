@@ -173,9 +173,24 @@ public:
                           SORT_FIELD_ATTR *attr) const= 0;
   virtual uint32 calc_pack_length(uint32 length) const= 0;
 
+  // Hybrid function routines
   virtual
   String *Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                               String *str) const= 0;
+  virtual longlong
+  Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item)
+                                       const= 0;
+
+  virtual double
+  Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item)
+                                       const= 0;
+  virtual my_decimal*
+  Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                          my_decimal *to) const= 0;
+  virtual bool
+  Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                       MYSQL_TIME *ltime, ulonglong fuzzydate)
+                                       const= 0;
 };
 
 
@@ -204,6 +219,17 @@ public:
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
+  longlong
+  Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const;
+  double
+  Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const;
+  my_decimal*
+  Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                          my_decimal *to) const;
+  bool
+  Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                       MYSQL_TIME *ltime,
+                                       ulonglong fuzzydate) const;
 };
 
 
@@ -222,6 +248,17 @@ public:
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
+  longlong
+  Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const;
+  double
+  Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const;
+  my_decimal*
+  Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                          my_decimal *to) const;
+  bool
+  Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                       MYSQL_TIME *ltime,
+                                       ulonglong fuzzydate) const;
 };
 
 
@@ -240,6 +277,17 @@ public:
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
+  longlong
+  Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const;
+  double
+  Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const;
+  my_decimal*
+  Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                          my_decimal *to) const;
+  bool
+  Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                       MYSQL_TIME *ltime,
+                                       ulonglong fuzzydate) const;
 };
 
 
@@ -260,6 +308,17 @@ public:
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
+  longlong
+  Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const;
+  double
+  Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const;
+  my_decimal*
+  Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                          my_decimal *to) const;
+  bool
+  Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                       MYSQL_TIME *ltime,
+                                       ulonglong fuzzydate) const;
 };
 
 
@@ -297,6 +356,17 @@ public:
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
+  longlong
+  Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const;
+  double
+  Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const;
+  my_decimal*
+  Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                          my_decimal *to) const;
+  bool
+  Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                       MYSQL_TIME *ltime,
+                                       ulonglong fuzzydate) const;
 };
 
 
@@ -1020,6 +1090,30 @@ public:
                                       String *str) const
   {
     return m_type_handler->Item_func_hybrid_field_type_val_str(item, str);
+  }
+  longlong
+  Item_func_hybrid_field_type_val_int(Item_func_hybrid_field_type *item) const
+  {
+    return m_type_handler->Item_func_hybrid_field_type_val_int(item);
+  }
+  double
+  Item_func_hybrid_field_type_val_real(Item_func_hybrid_field_type *item) const
+  {
+    return m_type_handler->Item_func_hybrid_field_type_val_real(item);
+  }
+  my_decimal*
+  Item_func_hybrid_field_type_val_decimal(Item_func_hybrid_field_type *item,
+                                          my_decimal *to) const
+  {
+    return m_type_handler->Item_func_hybrid_field_type_val_decimal(item, to);
+  }
+  bool
+  Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
+                                       MYSQL_TIME *ltime, ulonglong fuzzydate)
+                                       const
+  {
+    return m_type_handler->Item_func_hybrid_field_type_get_date(item, ltime,
+                                                                fuzzydate);
   }
 };
 
