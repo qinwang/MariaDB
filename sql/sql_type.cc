@@ -1428,6 +1428,74 @@ Field *Type_handler_set::make_table_field(MEM_ROOT *mem_root,
 
 /*************************************************************************/
 
+String *
+Type_handler_string_result::Item_func_hybrid_field_type_val_str(
+                                              Item_func_hybrid_field_type *item,
+                                              String *str) const
+{
+  return item->val_str_from_str_op(str);
+}
+
+
+String *
+Type_handler_decimal_result::Item_func_hybrid_field_type_val_str(
+                                              Item_func_hybrid_field_type *item,
+                                              String *str) const
+{
+  return item->val_str_from_dec_op(str);
+}
+
+
+String *
+Type_handler_int_result::Item_func_hybrid_field_type_val_str(
+                                              Item_func_hybrid_field_type *item,
+                                              String *str) const
+{
+  return item->val_str_from_int_op(str);
+}
+
+
+String *
+Type_handler_real_result::Item_func_hybrid_field_type_val_str(
+                                              Item_func_hybrid_field_type *item,
+                                              String *str) const
+{
+  return item->val_str_from_real_op(str);
+}
+
+
+String *
+Type_handler_temporal_result::Item_func_hybrid_field_type_val_str(
+                                              Item_func_hybrid_field_type *item,
+                                              String *str) const
+{
+  return item->val_str_from_temp_op(str);
+}
+
+/*
+String *Item_func_hybrid_field_type::val_str(String *str)
+{
+  DBUG_ASSERT(fixed == 1);
+  switch (Item_func_hybrid_field_type::cmp_type()) {
+  case DECIMAL_RESULT:
+    return val_str_from_dec_op(str);
+  case INT_RESULT:
+    return val_str_from_int_op(str);
+  case REAL_RESULT:
+    return val_str_from_real_op(str);
+  case TIME_RESULT:
+    return val_str_from_temp_op(str);
+  case STRING_RESULT:
+    return str_op_with_null_check(&str_value);
+  case ROW_RESULT:
+    break;
+  }
+  DBUG_ASSERT(0);
+  null_value= 0;
+  return 0;
+}
+*/
+/*************************************************************************/
 
 Type_handler_register::Type_handler_register()
   :m_min_type(256), m_max_type(0)

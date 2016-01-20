@@ -402,6 +402,15 @@ public:
   { return Type_handler_hybrid_field_type::result_type(); }
   enum Item_result cmp_type () const
   { return Type_handler_hybrid_field_type::cmp_type(); }
+  String *
+  Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
+                                      String *str) const
+  {
+    DBUG_ASSERT(fixed);
+    return
+      Type_handler_hybrid_field_type::Item_func_hybrid_field_type_val_str(item,
+                                                                          str);
+  }
 };
 
 
@@ -467,7 +476,11 @@ public:
   double val_real();
   longlong val_int();
   my_decimal *val_decimal(my_decimal *);
-  String *val_str(String*str);
+  String *val_str(String*str)
+  {
+    DBUG_ASSERT(fixed == 1);
+    return Item_hybrid_func::Item_func_hybrid_field_type_val_str(this, str);
+  }
   bool get_date(MYSQL_TIME *res, ulonglong fuzzy_date);
 
   String *val_str_from_dec_op(String *str);

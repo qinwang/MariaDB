@@ -2953,7 +2953,7 @@ void Item_func_case::fix_field_type(THD *thd)
 {
   uint total_count;
   uint unsigned_count= args[1]->unsigned_flag;
-  set_handler(args[1]);
+  set_handler(args[1]->type_handler());
   for (total_count= 1; total_count < ncases / 2; total_count++)
   {
     const Item *item= args[total_count * 2 + 1];

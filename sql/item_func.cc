@@ -872,29 +872,6 @@ String *Item_func_hybrid_field_type::val_str_from_temp_op(String *str)
 }
 
 
-String *Item_func_hybrid_field_type::val_str(String *str)
-{
-  DBUG_ASSERT(fixed == 1);
-  switch (Item_func_hybrid_field_type::cmp_type()) {
-  case DECIMAL_RESULT:
-    return val_str_from_dec_op(str);
-  case INT_RESULT:
-    return val_str_from_int_op(str);
-  case REAL_RESULT:
-    return val_str_from_real_op(str);
-  case TIME_RESULT:
-    return val_str_from_temp_op(str);
-  case STRING_RESULT:
-    return str_op_with_null_check(&str_value);
-  case ROW_RESULT:
-    break;
-  }
-  DBUG_ASSERT(0);
-  null_value= 0;
-  return 0;
-}
-
-
 double Item_func_hybrid_field_type::val_real_from_dec_op()
 {
   my_decimal decimal_value, *val;

@@ -822,6 +822,14 @@ public:
                                             field_name, addr, attr, eattr,
                                             set_blob_packlength);
   }
+  String *
+  Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
+                                      String *str) const
+  {
+    // Should be called only for Item_func_hybrid_field_type_val_str
+    DBUG_ASSERT(0);
+    return type_handler()->Item_func_hybrid_field_type_val_str(item, str);
+  }
 
   Field *make_num_distinct_aggregator_field(MEM_ROOT *mem_root,
                                             const Item *item) const

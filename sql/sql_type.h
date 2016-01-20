@@ -20,7 +20,6 @@
 #pragma interface			/* gcc class implementation */
 #endif
 
-
 #include "mysqld.h"
 
 class Field;
@@ -32,7 +31,8 @@ class Type_ext_attributes;
 class Sort_param;
 struct TABLE;
 struct SORT_FIELD_ATTR;
-
+class String;
+class Item_func_hybrid_field_type;
 
 class Name: private LEX_CSTRING
 {
@@ -172,6 +172,10 @@ public:
                           const Type_std_attributes *item,
                           SORT_FIELD_ATTR *attr) const= 0;
   virtual uint32 calc_pack_length(uint32 length) const= 0;
+
+  virtual
+  String *Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
+                                              String *str) const= 0;
 };
 
 
@@ -197,6 +201,9 @@ public:
   void sortlength(THD *thd,
                   const Type_std_attributes *item,
                   SORT_FIELD_ATTR *attr) const;
+  String *
+  Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
+                                      String *str) const;
 };
 
 
@@ -212,6 +219,9 @@ public:
   void sortlength(THD *thd,
                   const Type_std_attributes *item,
                   SORT_FIELD_ATTR *attr) const;
+  String *
+  Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
+                                      String *str) const;
 };
 
 
@@ -227,6 +237,9 @@ public:
   void sortlength(THD *thd,
                   const Type_std_attributes *item,
                   SORT_FIELD_ATTR *attr) const;
+  String *
+  Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
+                                      String *str) const;
 };
 
 
@@ -244,6 +257,9 @@ public:
   void sortlength(THD *thd,
                   const Type_std_attributes *item,
                   SORT_FIELD_ATTR *attr) const;
+  String *
+  Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
+                                      String *str) const;
 };
 
 
@@ -278,6 +294,9 @@ public:
   void sortlength(THD *thd,
                   const Type_std_attributes *item,
                   SORT_FIELD_ATTR *attr) const;
+  String *
+  Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
+                                      String *str) const;
 };
 
 
@@ -911,6 +930,14 @@ public:
   { return m_type_handler->is_blob_field_type(); }
   void set_handler(const Type_handler *other)
   {
+    /*
+      Safety: make sure we have an address of a singeton handler objects here,
+      e.g. one of those permanently instantiated in sql_type.cc.
+      Caching a pointer to just any temporary variable derived from
+      Type_handler (e.g. an address of some Item) is potentially dangerous,
+      as the temporary variable may disappear when "this" is used.
+    */
+    DBUG_ASSERT(other == get_handler_by_real_type(other->real_field_type()));
     m_type_handler= other;
   }
   const Type_handler *set_handler_by_result_type(Item_result type)
@@ -987,6 +1014,12 @@ public:
   uint32 calc_pack_length(uint32 length) const
   {
     return m_type_handler->calc_pack_length(length);
+  }
+  String *
+  Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
+                                      String *str) const
+  {
+    return m_type_handler->Item_func_hybrid_field_type_val_str(item, str);
   }
 };
 
