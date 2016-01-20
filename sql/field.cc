@@ -9711,12 +9711,13 @@ static inline bool is_item_func(Item* x)
 }
 
 
-bool Column_definition::check(THD *thd)
+bool Column_definition::check_traditional_type(THD *thd)
 {
   const uint conditional_type_modifiers= AUTO_INCREMENT_FLAG;
   uint sign_len, allowed_type_modifier= 0;
   ulong max_field_charlength= MAX_FIELD_CHARLENGTH;
   DBUG_ENTER("Create_field::check");
+  DBUG_ASSERT(Type_handler::is_traditional_type(sql_type));
 
   /* Initialize data for a computed field */
   if (vcol_info)

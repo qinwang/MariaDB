@@ -98,6 +98,14 @@ protected:
 public:
   static const Type_handler *get_handler_by_field_type(enum_field_types type);
   static const Type_handler *get_handler_by_real_type(enum_field_types type);
+  /**
+    Check if a data type is a traditional type, known as of version 10.1.
+    Note, some traditional type can become dynamically loadable (e.g. GEOMETRY).
+  */
+  static bool is_traditional_type(enum_field_types type)
+  {
+    return type <= MYSQL_TYPE_TIME2 || type >= MYSQL_TYPE_NEWDECIMAL;
+  }
   virtual enum_field_types field_type() const= 0;
   virtual enum_field_types real_field_type() const { return field_type(); }
   virtual Item_result result_type() const= 0;
@@ -109,6 +117,7 @@ public:
                                             CHARSET_INFO *cs) const
   { return this; }
   virtual ~Type_handler() {}
+  virtual bool check_column_definition(THD *thd, Column_definition *def) const;
   virtual bool prepare_column_definition(Column_definition *def,
                                          longlong table_flags) const= 0;
   virtual Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,

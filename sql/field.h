@@ -3752,7 +3752,12 @@ public:
   }
   void create_length_to_internal_length(void);
 
-  bool check(THD *thd);
+  bool check_traditional_type(THD *thd);
+
+  bool check(THD *thd)
+  {
+    return Type_handlers.handler(sql_type)->check_column_definition(thd, this);
+  }
 
   bool stored_in_db() const { return !vcol_info || vcol_info->stored_in_db; }
 

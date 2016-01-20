@@ -173,6 +173,13 @@ Type_handler::get_handler_by_real_type(enum_field_types type)
 }
 
 
+bool
+Type_handler::check_column_definition(THD *thd, Column_definition *def) const
+{
+  return def->check_traditional_type(thd);
+}
+
+
 /**
   Create a DOUBLE field by default.
 */
