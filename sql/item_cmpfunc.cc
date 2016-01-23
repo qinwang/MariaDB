@@ -601,19 +601,7 @@ bool Arg_comparator::set_cmp_func(Item_func_or_sum *owner_arg,
   m_compare_handler.set_handler(a[0]->type_handler());
   m_compare_handler.merge_type_for_comparision(b[0]->type_handler());
   m_compare_type= m_compare_handler.cmp_type();
-
-  switch (compare_type()) {
-  case STRING_RESULT:     return set_cmp_func_string();
-  case TIME_RESULT:       return set_cmp_func_temporal();
-  case INT_RESULT:        return set_cmp_func_int();
-  case REAL_RESULT:       return set_cmp_func_real();
-  case DECIMAL_RESULT:    return set_cmp_func_decimal();
-  case ROW_RESULT:
-    DBUG_ASSERT(0);
-    break;
-  }
-
-  return true;
+  return m_compare_handler.set_comparator_func(this);
 }
 
 
