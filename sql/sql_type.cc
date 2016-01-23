@@ -1674,6 +1674,32 @@ Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
 }
 
 /*************************************************************************/
+bool Type_handler_int_result::set_comparator_func(Arg_comparator *cmp) const
+{
+  return cmp->set_cmp_func_int();
+}
+
+bool Type_handler_real_result::set_comparator_func(Arg_comparator *cmp) const
+{
+  return cmp->set_cmp_func_real();
+}
+
+bool Type_handler_decimal_result::set_comparator_func(Arg_comparator *cmp) const
+{
+  return cmp->set_cmp_func_decimal();
+}
+
+bool Type_handler_string_result::set_comparator_func(Arg_comparator *cmp) const
+{
+  return cmp->set_cmp_func_string();
+}
+
+bool Type_handler_temporal_result::set_comparator_func(Arg_comparator *cmp) const
+{
+  return cmp->set_cmp_func_temporal();
+}
+
+/*************************************************************************/
 
 Type_handler_register::Type_handler_register()
   :m_min_type(256), m_max_type(0)

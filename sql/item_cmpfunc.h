@@ -60,11 +60,6 @@ class Arg_comparator: public Sql_alloc
                                    //   when one of arguments is NULL.
   bool set_cmp_func_for_row_arguments();
   bool set_cmp_func(Item_func_or_sum *owner_arg, Item **a1, Item **a2);
-  bool set_cmp_func_string();
-  bool set_cmp_func_temporal();
-  bool set_cmp_func_int();
-  bool set_cmp_func_real();
-  bool set_cmp_func_decimal();
 
   int compare_temporal(enum_field_types type);
   int compare_e_temporal(enum_field_types type);
@@ -87,6 +82,11 @@ public:
     a_cache(0), b_cache(0) {};
 
 public:
+  bool set_cmp_func_string();
+  bool set_cmp_func_temporal();
+  bool set_cmp_func_int();
+  bool set_cmp_func_real();
+  bool set_cmp_func_decimal();
   inline bool set_cmp_func(Item_func_or_sum *owner_arg,
 			  Item **a1, Item **a2, bool set_null_arg)
   {

@@ -895,6 +895,11 @@ public:
   {
     return type_handler()->calc_pack_length(length);
   }
+  bool set_comparator_func(Arg_comparator *cmp) const
+  {
+    return type_handler()->set_comparator_func(cmp);
+  }
+
   virtual Item_result cast_to_int_type() const { return cmp_type(); }
   enum_field_types string_field_type() const
   {

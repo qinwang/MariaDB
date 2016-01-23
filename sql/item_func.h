@@ -442,6 +442,10 @@ public:
     return Type_handler_hybrid_field_type::
       Item_func_hybrid_field_type_get_date(item, ltime, fuzzydate);
   }
+  bool set_comparator_func(Arg_comparator *cmp) const
+  {
+    return Type_handler_hybrid_field_type::set_comparator_func(cmp);
+  }
 };
 
 

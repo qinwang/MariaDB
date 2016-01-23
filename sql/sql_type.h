@@ -33,6 +33,7 @@ struct TABLE;
 struct SORT_FIELD_ATTR;
 class String;
 class Item_func_hybrid_field_type;
+class Arg_comparator;
 
 class Name: private LEX_CSTRING
 {
@@ -194,6 +195,7 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime, ulonglong fuzzydate)
                                        const= 0;
+  virtual bool set_comparator_func(Arg_comparator *cmp) const= 0;
 };
 
 
@@ -233,6 +235,7 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime,
                                        ulonglong fuzzydate) const;
+  bool set_comparator_func(Arg_comparator *cmp) const;
 };
 
 
@@ -262,6 +265,7 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime,
                                        ulonglong fuzzydate) const;
+  bool set_comparator_func(Arg_comparator *cmp) const;
 };
 
 
@@ -291,6 +295,7 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime,
                                        ulonglong fuzzydate) const;
+  bool set_comparator_func(Arg_comparator *cmp) const;
 };
 
 
@@ -322,6 +327,7 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime,
                                        ulonglong fuzzydate) const;
+  bool set_comparator_func(Arg_comparator *cmp) const;
 };
 
 
@@ -370,6 +376,7 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime,
                                        ulonglong fuzzydate) const;
+  bool set_comparator_func(Arg_comparator *cmp) const;
 };
 
 
@@ -1120,6 +1127,10 @@ public:
   {
     return m_type_handler->Item_func_hybrid_field_type_get_date(item, ltime,
                                                                 fuzzydate);
+  }
+  bool set_comparator_func(Arg_comparator *cmp) const
+  {
+    return m_type_handler->set_comparator_func(cmp);
   }
 };
 
