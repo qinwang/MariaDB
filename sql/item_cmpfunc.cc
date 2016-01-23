@@ -598,7 +598,9 @@ bool Arg_comparator::set_cmp_func(Item_func_or_sum *owner_arg,
     return set_cmp_func_for_row_arguments();
   }
 
-  m_compare_type= item_cmp_type(*a1, *a2);
+  m_compare_handler.set_handler(a[0]->type_handler());
+  m_compare_handler.merge_type_for_comparision(b[0]->type_handler());
+  m_compare_type= m_compare_handler.cmp_type();
 
   switch (compare_type()) {
   case STRING_RESULT:     return set_cmp_func_string();

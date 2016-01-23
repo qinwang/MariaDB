@@ -47,6 +47,7 @@ class Arg_comparator: public Sql_alloc
 {
   Item **a, **b;
   Item_result m_compare_type;
+  Type_handler_hybrid_field_type m_compare_handler;
   CHARSET_INFO *m_compare_collation;
   arg_cmp_func func;
   Item_func_or_sum *owner;
@@ -72,12 +73,15 @@ public:
   /* Allow owner function to use string buffers. */
   String value1, value2;
 
-  Arg_comparator(): m_compare_type(STRING_RESULT),
+  Arg_comparator():
+    m_compare_type(STRING_RESULT),
+    m_compare_handler(MYSQL_TYPE_STRING),
     m_compare_collation(&my_charset_bin),
     set_null(TRUE), comparators(0), thd(0),
     a_cache(0), b_cache(0) {};
   Arg_comparator(Item **a1, Item **a2): a(a1), b(a2),
     m_compare_type(STRING_RESULT),
+    m_compare_handler(MYSQL_TYPE_STRING),
     m_compare_collation(&my_charset_bin),
     set_null(TRUE), comparators(0), thd(0),
     a_cache(0), b_cache(0) {};

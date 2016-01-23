@@ -54,6 +54,55 @@ static Type_handler_enum        type_handler_enum;
 static Type_handler_set         type_handler_set;
 
 
+enum_field_types Type_handler::
+  field_type_for_temporal_comparison(const Type_handler *other) const
+{
+  if (cmp_type() == TIME_RESULT)
+  {
+    if (other->cmp_type() == TIME_RESULT)
+      return Field::field_type_merge(field_type(), other->field_type());
+    else
+      return field_type();
+  }
+  else
+  {
+    if (other->cmp_type() == TIME_RESULT)
+      return other->field_type();
+    DBUG_ASSERT(0); // Two non-temporal data types, we should not get to here
+    return MYSQL_TYPE_DATETIME;
+  }
+}
+
+
+void Type_handler_hybrid_field_type::
+       merge_type_for_comparision(const Type_handler *other)
+{
+  if (!is_traditional_type(field_type()))
+    return;
+  if (!is_traditional_type(other->field_type()))
+  {
+    set_handler(other);
+    return;
+  }
+
+  switch (item_cmp_type(cmp_type(), other->cmp_type())) {
+  case STRING_RESULT:  set_handler(&type_handler_string);     break;
+  case INT_RESULT:     set_handler(&type_handler_longlong);   break;
+  case REAL_RESULT:    set_handler(&type_handler_double);     break;
+  case DECIMAL_RESULT: set_handler(&type_handler_newdecimal); break;
+  case TIME_RESULT:
+  {
+    set_handler_by_field_type(field_type_for_temporal_comparison(other));
+    break;
+  }
+  case ROW_RESULT:
+    set_handler(&type_handler_string);
+    DBUG_ASSERT(0);
+    break;
+  }
+}
+
+
 /**
   This method is used by:
   - Item_user_var_as_out_param::field_type()

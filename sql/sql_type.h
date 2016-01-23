@@ -97,6 +97,9 @@ protected:
                               bool unsigned_flag,
                               longlong value) const;
 public:
+  enum_field_types
+  field_type_for_temporal_comparison(const Type_handler *other) const;
+
   static const Type_handler *get_handler_by_field_type(enum_field_types type);
   static const Type_handler *get_handler_by_real_type(enum_field_types type);
   /**
@@ -989,6 +992,9 @@ public:
   Type_handler_hybrid_field_type(const Type_handler_hybrid_field_type *other)
     :m_type_handler(other->m_type_handler)
   { }
+
+  void merge_type_for_comparision(const Type_handler *other);
+
   enum_field_types field_type() const { return m_type_handler->field_type(); }
   enum_field_types real_field_type() const
   {
