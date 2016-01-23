@@ -57,8 +57,13 @@ class Arg_comparator: public Sql_alloc
   THD *thd;
   Item *a_cache, *b_cache;         // Cached values of a and b items
                                    //   when one of arguments is NULL.
-  int set_compare_func(Item_func_or_sum *owner, Item_result type);
-  int set_cmp_func(Item_func_or_sum *owner_arg, Item **a1, Item **a2);
+  bool set_cmp_func_for_row_arguments();
+  bool set_cmp_func(Item_func_or_sum *owner_arg, Item **a1, Item **a2);
+  bool set_cmp_func_string();
+  bool set_cmp_func_temporal();
+  bool set_cmp_func_int();
+  bool set_cmp_func_real();
+  bool set_cmp_func_decimal();
 
   int compare_temporal(enum_field_types type);
   int compare_e_temporal(enum_field_types type);
@@ -78,7 +83,7 @@ public:
     a_cache(0), b_cache(0) {};
 
 public:
-  inline int set_cmp_func(Item_func_or_sum *owner_arg,
+  inline bool set_cmp_func(Item_func_or_sum *owner_arg,
 			  Item **a1, Item **a2, bool set_null_arg)
   {
     set_null= set_null_arg;
@@ -109,7 +114,6 @@ public:
 
   Item** cache_converted_constant(THD *thd, Item **value, Item **cache,
                                   Item_result type);
-  static arg_cmp_func comparator_matrix [6][2];
   inline bool is_owner_equal_func()
   {
     return (owner->type() == Item::FUNC_ITEM &&
