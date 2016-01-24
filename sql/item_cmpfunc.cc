@@ -593,8 +593,6 @@ bool Arg_comparator::set_cmp_func(Item_func_or_sum *owner_arg,
     m_compare_type= ROW_RESULT;
     func= is_owner_equal_func() ? &Arg_comparator::compare_e_row :
                                   &Arg_comparator::compare_row;
-    a= cache_converted_constant(thd, a, &a_cache, ROW_RESULT);
-    b= cache_converted_constant(thd, b, &b_cache, ROW_RESULT);
     return set_cmp_func_for_row_arguments();
   }
 
@@ -620,8 +618,8 @@ bool Arg_comparator::set_cmp_func_string()
     if (owner->agg_arg_charsets_for_comparison(&m_compare_collation, a, b))
       return true;
   }
-  a= cache_converted_constant(thd, a, &a_cache, STRING_RESULT);
-  b= cache_converted_constant(thd, b, &b_cache, STRING_RESULT);
+  a= cache_converted_constant(thd, a, &a_cache, compare_type_handler());
+  b= cache_converted_constant(thd, b, &b_cache, compare_type_handler());
   return false;
 }
 
@@ -668,8 +666,8 @@ bool Arg_comparator::set_cmp_func_int()
     if ((*a)->unsigned_flag ^ (*b)->unsigned_flag)
       func= &Arg_comparator::compare_e_int_diff_signedness;
   }
-  a= cache_converted_constant(thd, a, &a_cache, INT_RESULT);
-  b= cache_converted_constant(thd, b, &b_cache, INT_RESULT);
+  a= cache_converted_constant(thd, a, &a_cache, compare_type_handler());
+  b= cache_converted_constant(thd, b, &b_cache, compare_type_handler());
   return false;
 }
 
@@ -686,8 +684,8 @@ bool Arg_comparator::set_cmp_func_real()
     else if (func == &Arg_comparator::compare_e_real)
       func= &Arg_comparator::compare_e_real_fixed;
   }
-  a= cache_converted_constant(thd, a, &a_cache, REAL_RESULT);
-  b= cache_converted_constant(thd, b, &b_cache, REAL_RESULT);
+  a= cache_converted_constant(thd, a, &a_cache, compare_type_handler());
+  b= cache_converted_constant(thd, b, &b_cache, compare_type_handler());
   return false;
 }
 
@@ -696,8 +694,8 @@ bool Arg_comparator::set_cmp_func_decimal()
 {
   func= is_owner_equal_func() ? &Arg_comparator::compare_e_decimal :
                                 &Arg_comparator::compare_decimal;
-  a= cache_converted_constant(thd, a, &a_cache, DECIMAL_RESULT);
-  b= cache_converted_constant(thd, b, &b_cache, DECIMAL_RESULT);
+  a= cache_converted_constant(thd, a, &a_cache, compare_type_handler());
+  b= cache_converted_constant(thd, b, &b_cache, compare_type_handler());
   return false;
 }
 
@@ -721,18 +719,20 @@ bool Arg_comparator::set_cmp_func_decimal()
 
 Item** Arg_comparator::cache_converted_constant(THD *thd_arg, Item **value,
                                                 Item **cache_item,
-                                                Item_result type)
+                                                const Type_handler *handler)
 {
+  DBUG_ASSERT(handler->cmp_type() != TIME_RESULT);
   /*
     Don't need cache if doing context analysis only.
     Also, get_datetime_value creates Item_cache internally.
     Unless fixed, we should not do it here.
   */
   if (!thd_arg->lex->is_ps_or_view_context_analysis() &&
-      (*value)->const_item() && type != (*value)->result_type() &&
-      type != TIME_RESULT)
+      (*value)->const_item() &&
+      handler->cmp_type() != (*value)->result_type() &&
+      handler->cmp_type() != TIME_RESULT)
   {
-    Item_cache *cache= Item_cache::get_cache(thd_arg, *value, type);
+    Item_cache *cache= Item_cache::get_cache(thd_arg, *value, handler);
     cache->setup(thd_arg, *value);
     *cache_item= cache;
     return cache_item;

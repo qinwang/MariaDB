@@ -1167,14 +1167,14 @@ Item_sum_hybrid::fix_fields(THD *thd, Item **ref)
 
 void Item_sum_hybrid::setup_hybrid(THD *thd, Item *item, Item *value_arg)
 {
-  if (!(value= Item_cache::get_cache(thd, item, item->cmp_type())))
+  if (!(value= Item_cache::get_cache(thd, item)))
     return;
   value->setup(thd, item);
   value->store(value_arg);
   /* Don't cache value, as it will change */
   if (!item->const_item())
     value->set_used_tables(RAND_TABLE_BIT);
-  if (!(arg_cache= Item_cache::get_cache(thd, item, item->cmp_type())))
+  if (!(arg_cache= Item_cache::get_cache(thd, item)))
     return;
   arg_cache->setup(thd, item);
   /* Don't cache value, as it will change */

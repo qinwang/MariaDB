@@ -64,6 +64,8 @@ class Arg_comparator: public Sql_alloc
   int compare_temporal(enum_field_types type);
   int compare_e_temporal(enum_field_types type);
 
+  const Type_handler *compare_type_handler() const
+  { return m_compare_handler.type_handler(); }
 public:
   /* Allow owner function to use string buffers. */
   String value1, value2;
@@ -117,7 +119,8 @@ public:
   int compare_e_time()     { return compare_e_temporal(MYSQL_TYPE_TIME); }
 
   Item** cache_converted_constant(THD *thd, Item **value, Item **cache,
-                                  Item_result type);
+                                  const Type_handler *handler);
+
   inline bool is_owner_equal_func()
   {
     return (owner->type() == Item::FUNC_ITEM &&

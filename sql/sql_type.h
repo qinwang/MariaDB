@@ -1002,6 +1002,7 @@ public:
 
   void merge_type_for_comparision(const Type_handler *other);
 
+  const Type_handler *type_handler() const { return m_type_handler; }
   enum_field_types field_type() const { return m_type_handler->field_type(); }
   enum_field_types real_field_type() const
   {
@@ -1145,6 +1146,10 @@ public:
   Type_handler_hybrid_real_field_type(enum_field_types type)
     :Type_handler_hybrid_field_type(get_handler_by_real_type(type))
   { }
+  const Type_handler *type_handler() const
+  { return get_handler_by_field_type(Type_handler_hybrid_field_type::type_handler()->field_type()); }
+  const Type_handler *real_type_handler() const
+  { return Type_handler_hybrid_field_type::type_handler(); }
 };
 
 

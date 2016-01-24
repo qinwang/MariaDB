@@ -3598,7 +3598,7 @@ void subselect_engine::set_row(List<Item> &item_list, Item_cache **row)
     item->decimals= sel_item->decimals;
     item->unsigned_flag= sel_item->unsigned_flag;
     maybe_null= sel_item->maybe_null;
-    if (!(row[i]= Item_cache::get_cache(thd, sel_item, sel_item->cmp_type())))
+    if (!(row[i]= Item_cache::get_cache(thd, sel_item)))
       return;
     row[i]->setup(thd, sel_item);
  //psergey-backport-timours:   row[i]->store(sel_item);

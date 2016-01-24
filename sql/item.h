@@ -2783,6 +2783,8 @@ public:
 
   enum Type item_type;
 
+  const Type_handler *type_handler() const
+  { return Type_handler_hybrid_field_type::type_handler(); }
   enum_field_types field_type() const
   { return Type_handler_hybrid_field_type::field_type(); }
   enum Item_result result_type () const
@@ -5170,7 +5172,8 @@ public:
   { return Type_handler_hybrid_field_type::cmp_type(); }
 
   static Item_cache* get_cache(THD *thd, const Item *item);
-  static Item_cache* get_cache(THD *thd, const Item* item, const Item_result type);
+  static Item_cache* get_cache(THD *thd, const Item* item,
+                               const Type_handler *handler);
   virtual void keep_array() {}
   virtual void print(String *str, enum_query_type query_type);
   bool eq_def(const Field *field) 
@@ -5442,8 +5445,9 @@ public:
                           const Create_attr &attr) const
   {
     DBUG_ASSERT(0); // Not called in Item context
-    return type_handler()->make_table_field(mem_root, share,
-                                            field_name, rec, attr);
+    return Type_handler_hybrid_field_type::make_table_field(mem_root, share,
+                                                            field_name,
+                                                            rec, attr);
   }
   Field *make_table_field(MEM_ROOT *mem_root, TABLE_SHARE *share,
                           const char *field_name, const Record_addr &addr,
