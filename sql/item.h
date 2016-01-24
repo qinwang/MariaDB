@@ -872,6 +872,10 @@ public:
     DBUG_ASSERT(0); // Should not be called in Item context
     return NULL;
   }
+  Item_cache *make_cache_item(THD *thd, const Item *item) const
+  {
+    return type_handler()->make_cache_item(thd, item);
+  }
   /* result_type() of an item specifies how the value should be returned */
   Item_result result_type() const { return type_handler()->result_type(); }
   /* ... while cmp_type() specifies how it should be compared */
@@ -5172,8 +5176,18 @@ public:
   { return Type_handler_hybrid_field_type::cmp_type(); }
 
   static Item_cache* get_cache(THD *thd, const Item *item);
+  /**
+    Get a cache item of the given type.
+    @param thd          current thd
+    @param item         value to be cached
+    @param handler      required data type of the cache
+    @return cache item
+  */
   static Item_cache* get_cache(THD *thd, const Item* item,
-                               const Type_handler *handler);
+                               const Type_handler *handler)
+  {
+    return handler->make_cache_item(thd, item);
+  }
   virtual void keep_array() {}
   virtual void print(String *str, enum_query_type query_type);
   bool eq_def(const Field *field) 

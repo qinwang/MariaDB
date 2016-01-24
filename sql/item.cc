@@ -8490,37 +8490,6 @@ Item_cache* Item_cache::get_cache(THD *thd, const Item *item)
 }
 
 
-/**
-  Get a cache item of given type.
-
-  @param item         value to be cached
-  @param type         required type of cache
-
-  @return cache item
-*/
-
-Item_cache* Item_cache::get_cache(THD *thd, const Item *item,
-                                  const Type_handler *handler)
-{
-  MEM_ROOT *mem_root= thd->mem_root;
-  switch (handler->cmp_type()) {
-  case INT_RESULT:
-    return new (mem_root) Item_cache_int(thd, item->field_type());
-  case REAL_RESULT:
-    return new (mem_root) Item_cache_real(thd);
-  case DECIMAL_RESULT:
-    return new (mem_root) Item_cache_decimal(thd);
-  case STRING_RESULT:
-    return new (mem_root) Item_cache_str(thd, item);
-  case ROW_RESULT:
-    DBUG_ASSERT(0);
-    return new (mem_root) Item_cache_row(thd);
-  case TIME_RESULT:
-    return new (mem_root) Item_cache_temporal(thd, item->field_type());
-  }
-  return 0;                                     // Impossible
-}
-
 void Item_cache::store(Item *item)
 {
   example= item;

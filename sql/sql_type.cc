@@ -1701,6 +1701,38 @@ bool Type_handler_temporal_result::set_comparator_func(Arg_comparator *cmp) cons
 
 /*************************************************************************/
 
+Item_cache *
+Type_handler_int_result::make_cache_item(THD *thd, const Item *item) const
+{
+  return new (thd->mem_root) Item_cache_int(thd, item->field_type());
+}
+
+Item_cache *
+Type_handler_real_result::make_cache_item(THD *thd, const Item *item) const
+{
+  return new (thd->mem_root) Item_cache_real(thd);
+}
+
+Item_cache *
+Type_handler_decimal_result::make_cache_item(THD *thd, const Item *item) const
+{
+  return new (thd->mem_root) Item_cache_decimal(thd);
+}
+
+Item_cache *
+Type_handler_string_result::make_cache_item(THD *thd, const Item *item) const
+{
+  return new (thd->mem_root) Item_cache_str(thd, item);
+}
+
+Item_cache *
+Type_handler_temporal_result::make_cache_item(THD *thd, const Item *item) const
+{
+  return new (thd->mem_root) Item_cache_temporal(thd, item->field_type());
+}
+
+/*************************************************************************/
+
 Type_handler_register::Type_handler_register()
   :m_min_type(256), m_max_type(0)
 {

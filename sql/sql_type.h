@@ -24,6 +24,7 @@
 
 class Field;
 class Item;
+class Item_cache;
 class Create_attr;
 class Column_definition;
 class Type_std_attributes;
@@ -169,6 +170,7 @@ public:
   virtual Field *make_conversion_table_field(TABLE *TABLE,
                                              uint metadata,
                                              const Field *target) const= 0;
+  virtual Item_cache *make_cache_item(THD *thd, const Item *item) const= 0;
   virtual void make_sort_key(uchar *to, Item *item,
                              const SORT_FIELD_ATTR *sort_field,
                              Sort_param *param) const= 0;
@@ -216,6 +218,7 @@ public:
   Item_result result_type() const { return REAL_RESULT; }
   Item_result cmp_type() const { return REAL_RESULT; }
   virtual ~Type_handler_real_result() {}
+  Item_cache *make_cache_item(THD *thd, const Item *item) const;
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const;
   void sortlength(THD *thd,
@@ -246,6 +249,7 @@ public:
   Item_result cmp_type() const { return DECIMAL_RESULT; }
   virtual ~Type_handler_decimal_result() {};
   Field *make_num_distinct_aggregator_field(MEM_ROOT *, const Item *) const;
+  Item_cache *make_cache_item(THD *thd, const Item *item) const;
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const;
   void sortlength(THD *thd,
@@ -276,6 +280,7 @@ public:
   Item_result cmp_type() const { return INT_RESULT; }
   virtual ~Type_handler_int_result() {}
   Field *make_num_distinct_aggregator_field(MEM_ROOT *, const Item *) const;
+  Item_cache *make_cache_item(THD *thd, const Item *item) const;
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const;
   void sortlength(THD *thd,
@@ -306,6 +311,7 @@ public:
   Item_result cmp_type() const { return TIME_RESULT; }
   bool is_blob_field_type() const { return false; }
   virtual ~Type_handler_temporal_result() {}
+  Item_cache *make_cache_item(THD *thd, const Item *item) const;
   bool prepare_column_definition(Column_definition *def,
                                  longlong table_flags) const;
   void make_sort_key(uchar *to, Item *item,  const SORT_FIELD_ATTR *sort_field,
@@ -357,6 +363,7 @@ public:
                                   const Type_std_attributes &attr,
                                   const Type_ext_attributes &eattr,
                                   bool set_blob_packlength) const;
+  Item_cache *make_cache_item(THD *thd, const Item *item) const;
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const;
   void sortlength(THD *thd,
@@ -1083,6 +1090,10 @@ public:
                                      const Field *target) const
   {
     return m_type_handler->make_conversion_table_field(table, metadata, target);
+  }
+  Item_cache *make_cache_item(THD *thd, const Item *item) const
+  {
+    return m_type_handler->make_cache_item(thd, item);
   }
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const

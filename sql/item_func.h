@@ -402,6 +402,8 @@ public:
   { return Type_handler_hybrid_field_type::result_type(); }
   enum Item_result cmp_type () const
   { return Type_handler_hybrid_field_type::cmp_type(); }
+  Item_cache *make_cache_item(THD *thd, const Item *item) const
+  { return  Type_handler_hybrid_field_type::make_cache_item(thd, item); }
 
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
