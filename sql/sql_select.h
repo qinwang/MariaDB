@@ -1374,6 +1374,8 @@ public:
   /** Exec time only: TRUE <=> current group has been sent */
   bool group_sent;
 
+  JOIN_TAB *sort_and_group_aggr_tab;
+
   JOIN(THD *thd_arg, List<Item> &fields_arg, ulonglong select_options_arg,
        select_result *result_arg)
     :fields_list(fields_arg)

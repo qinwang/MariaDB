@@ -2070,6 +2070,8 @@ bool JOIN::make_aggr_tables_info()
 
   const bool has_group_by= this->group;
   
+  sort_and_group_aggr_tab= NULL;
+  
   /*
     Setup last table to provide fields and all_fields lists to the next
     node in the plan.
@@ -2628,7 +2630,16 @@ JOIN::optimize_distinct()
   {
     if (select_lex->select_list_tables & last_join_tab->table->map ||
         last_join_tab->use_join_cache)
+    {
+      JOIN_TAB *first_inner= last_join_tab->first_inner;
+      if (first_inner && first_inner != first_inner->last_inner)
+      {
+        for (JOIN_TAB *tab= last_join_tab; 
+             tab <= first_inner->last_inner; tab++)
+         tab->shortcut_for_distinct= false;
+      }
       break;
+    }
     last_join_tab->shortcut_for_distinct= true;
     if (last_join_tab == join_tab)
       break;
@@ -17374,10 +17385,12 @@ void set_postjoin_aggr_write_func(JOIN_TAB *tab)
       aggr->set_write_func(end_unique_update);
     }
   }
-  else if (join->sort_and_group && !tmp_tbl->precomputed_group_by)
+  else if (join->sort_and_group && !tmp_tbl->precomputed_group_by &&
+           !join->sort_and_group_aggr_tab)
   {
     DBUG_PRINT("info",("Using end_write_group"));
     aggr->set_write_func(end_write_group);
+    join->sort_and_group_aggr_tab= tab;
   }
   else
   {
