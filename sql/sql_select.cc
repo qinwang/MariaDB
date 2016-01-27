@@ -23412,6 +23412,7 @@ int append_possible_keys(MEM_ROOT *alloc, String_list &list, TABLE *table,
   return 0;
 }
 
+#if 0
 /*
   TODO: this function is only applicable for the first non-const optimization
   join tab. 
@@ -23432,7 +23433,7 @@ void JOIN_TAB::update_explain_data(uint idx)
     sel->replace_table(idx, eta);
   }
 }
-
+#endif
 
 void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tables, 
                                  bool distinct, JOIN_TAB *first_top_tab)

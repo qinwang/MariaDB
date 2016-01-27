@@ -210,11 +210,13 @@ public:
     using_temporary(false), using_filesort(false)
   {}
 
+#if 0
   /*
     This is used to save the results of "late" test_if_skip_sort_order() calls
     that are made from JOIN::exec
   */
   void replace_table(uint idx, Explain_table_access *new_tab);
+#endif
 
 public:
   const char *select_type;
