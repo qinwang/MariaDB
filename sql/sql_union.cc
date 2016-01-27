@@ -1021,13 +1021,6 @@ bool st_select_lex_unit::cleanup()
 
   if (fake_select_lex)
   {
-    JOIN *join;
-    if ((join= fake_select_lex->join))
-    {
-      join->tables_list= 0;
-      join->table_count= 0;
-      join->top_join_tab_count= 0;
-    }
     error|= fake_select_lex->cleanup();
     /*
       There are two cases when we should clean order items:
