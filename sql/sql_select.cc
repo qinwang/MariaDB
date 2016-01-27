@@ -17512,6 +17512,12 @@ do_select(JOIN *join, Procedure *procedure)
   }
   else
   {
+    DBUG_EXECUTE_IF("show_explain_probe_do_select", 
+                    if (dbug_user_var_equals_int(join->thd, 
+                                                 "show_explain_probe_select_id", 
+                                                 join->select_lex->select_number))
+                          dbug_serve_apcs(join->thd, 1);
+                   );
     JOIN_TAB *join_tab= join->join_tab + join->const_tables;
     if (join->outer_ref_cond && !join->outer_ref_cond->val_int())
       error= NESTED_LOOP_NO_MORE_ROWS;
