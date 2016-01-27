@@ -999,9 +999,6 @@ bool JOIN::prepare_stage2()
 
   /* Init join struct */
   count_field_types(select_lex, &tmp_table_param, all_fields, 0);
-#if 0
-  ref_pointer_array_size= all_fields.elements*sizeof(Item*);
-#endif
   this->group= group_list != 0;
 
   if (tmp_table_param.sum_func_count && !group_list)
@@ -2041,13 +2038,14 @@ derived_exit:
 }
 
 /**
-  Set info for working tables
+  Set info for aggregation tables
 
   @details
   This function finalizes execution plan by taking following actions:
-    .) working tables are created, but not instantiated (this is done during
-       execution). JOIN_TABs for working tables are set appropriately.
-       see JOIN::create_working_table.
+    .) aggregation temporary tables are created, but not instantiated 
+       (this is done during execution).
+       JOIN_TABs for aggregation tables are set appropriately
+       (see JOIN::create_postjoin_aggr_table).
     .) prepare fields lists (fields, all_fields, ref_pointer_array slices) for
        each required stage of execution. These fields lists are set for
        working tables' tabs and for the tab of last table in the join.
@@ -2212,9 +2210,6 @@ bool JOIN::make_aggr_tables_info()
       {
         // 1st tmp table were materializing join result
         materialize_join= true;
-#if 0
-        explain_flags.set(ESC_BUFFER_RESULT, ESP_USING_TMPTABLE);
-#endif
       }
       curr_tab++;
       aggr_tables++;
@@ -2240,9 +2235,6 @@ bool JOIN::make_aggr_tables_info()
 
       if (group_list)
       {
-#if 0
-        explain_flags.set(group_list.src, ESP_USING_TMPTABLE);
-#endif
         if (!only_const_tables())        // No need to sort a single row
         {
           if (add_sorting_to_table(curr_tab - 1, group_list))
@@ -2252,16 +2244,6 @@ bool JOIN::make_aggr_tables_info()
         if (make_group_fields(this, this))
           DBUG_RETURN(true);
       }
-
-      /*
-        If there is no sorting or grouping, 'use_order'
-        index result should not have been requested.
-      */
-#if 0
-      DBUG_ASSERT(!(ordered_index_usage == ordered_index_void &&
-                    !plan_is_const() &&
-                    join_tab[const_tables].use_order()));
-#endif
 
       // Setup sum funcs only when necessary, otherwise we might break info
       // for the first table
@@ -2307,9 +2289,6 @@ bool JOIN::make_aggr_tables_info()
         having->update_used_tables();
       }
       curr_tab->distinct= true;
-#if 0
-      explain_flags.set(ESC_DISTINCT, ESP_DUPS_REMOVAL);
-#endif
       having= NULL;
       select_distinct= false;
     }
@@ -2475,10 +2454,6 @@ bool JOIN::make_aggr_tables_info()
     {
       // Sort either first non-const table or the last tmp table
       JOIN_TAB *sort_tab= curr_tab;
-#if 0
-      if (need_tmp && !materialize_join && !exec_tmp_table->group)
-        explain_flags.set(order_arg.src, ESP_USING_TMPTABLE);
-#endif
 
       if (add_sorting_to_table(sort_tab, order_arg))
         DBUG_RETURN(true);
@@ -2556,21 +2531,6 @@ JOIN::create_postjoin_aggr_table(JOIN_TAB *tab, List<Item> *table_fields,
   tab->table= table;
   table->reginfo.join_tab= tab;
 
-#if 0
-  if (table->group)
-  {
-    explain_flags.set(tmp_table_group.src, ESP_USING_TMPTABLE);
-  }
-  if (table->distinct || select_distinct)
-  {
-    explain_flags.set(ESC_DISTINCT, ESP_USING_TMPTABLE);
-  }
-  if ((!group_list && !order && !select_distinct) ||
-      (select_options & (SELECT_BIG_RESULT | OPTION_BUFFER_RESULT)))
-  {
-    explain_flags.set(ESC_BUFFER_RESULT, ESP_USING_TMPTABLE);
-  }
-#endif
   /* if group or order on first table, sort first */
   if (group_list && simple_group)
   {
@@ -2673,9 +2633,6 @@ JOIN::optimize_distinct()
 bool
 JOIN::add_sorting_to_table(JOIN_TAB *tab, ORDER *order)
 {
-#if 0
-  explain_flags.set(order->src, ESP_USING_FILESORT);
-#endif
   tab->filesort= new (thd->mem_root) Filesort(order, HA_POS_ERROR, tab->select);
   if (!tab->filesort)
     return true;
@@ -17700,16 +17657,6 @@ sub_select_postjoin_aggr(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
       rc= sub_select(join, join_tab, end_of_records);
     DBUG_RETURN(rc);
   }
-  if (join_tab->prepare_scan())
-    DBUG_RETURN(NESTED_LOOP_ERROR);
-
-#if 0
-  /*
-    setup_join_buffering() disables join buffering if QS_DYNAMIC_RANGE is
-    enabled.
-  */
-  DBUG_ASSERT(join_tab->use_quick != QS_DYNAMIC_RANGE);
-#endif
 
   rc= aggr->put_record();
 
@@ -17947,9 +17894,7 @@ sub_select(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
   int error;
   enum_nested_loop_state rc= NESTED_LOOP_OK;
   READ_RECORD *info= &join_tab->read_record;
-   
-  if (join_tab->prepare_scan())
-    DBUG_RETURN(NESTED_LOOP_ERROR);
+
 
   for (SJ_TMP_TABLE *flush_dups_table= join_tab->flush_weedout_table;
        flush_dups_table;
@@ -18039,32 +17984,6 @@ sub_select(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
   if (rc == NESTED_LOOP_NO_MORE_ROWS)
     rc= NESTED_LOOP_OK;
   DBUG_RETURN(rc);
-}
-
-
-/**
-  @brief Prepare table to be scanned.
-
-  @details This function is the place to do any work on the table that
-  needs to be done before table can be scanned. Currently it
-  only materialized derived tables and semi-joined subqueries and binds
-  buffer for current rowid.
-
-  @returns false - Ok, true  - error
-*/
-
-bool JOIN_TAB::prepare_scan()
-{
-#if 0
-  // Check whether materialization is required.
-  if (!materialize_table)
-    return false;
-
-  // Materialize table prior to reading it
-  if ((*materialize_table)(this))
-    return true;
-#endif
-  return false;
 }
 
 /**
@@ -20933,26 +20852,6 @@ create_sort_index(THD *thd, JOIN *join, JOIN_TAB *tab)
   /* Currently ORDER BY ... LIMIT is not supported in subqueries. */
   DBUG_ASSERT(join->group_list || !join->is_in_subquery());
 
-#if 0
-  /*
-    When there is SQL_BIG_RESULT do not sort using index for GROUP BY,
-    and thus force sorting on disk unless a group min-max optimization
-    is going to be used as it is applied now only for one table queries
-    with covering indexes.
-  */
-  if ((order != join->group_list || 
-       !(join->select_options & SELECT_BIG_RESULT) ||
-       (select && select->quick &&
-        select->quick->get_type() == QUICK_SELECT_I::QS_TYPE_GROUP_MIN_MAX)) &&
-      test_if_skip_sort_order(tab,order,select_limit,0, 
-                              is_order_by ?  &table->keys_in_use_for_order_by :
-                              &table->keys_in_use_for_group_by))
-  {
-    tab->update_explain_data(join->const_tables);
-    DBUG_RETURN(0);
-  }
-  tab->update_explain_data(join->const_tables);
-#endif
 
   table->sort.io_cache=(IO_CACHE*) my_malloc(sizeof(IO_CACHE),
                                              MYF(MY_WME | MY_ZEROFILL|
@@ -23411,29 +23310,6 @@ int append_possible_keys(MEM_ROOT *alloc, String_list &list, TABLE *table,
   }
   return 0;
 }
-
-#if 0
-/*
-  TODO: this function is only applicable for the first non-const optimization
-  join tab. 
-*/
-
-void JOIN_TAB::update_explain_data(uint idx)
-{
-  if (this == first_breadth_first_tab(join, WALK_OPTIMIZATION_TABS) + join->const_tables &&
-      join->select_lex->select_number != INT_MAX &&
-      join->select_lex->select_number != UINT_MAX)
-  {
-    Explain_table_access *eta= new (join->thd->mem_root) Explain_table_access(join->thd->mem_root);
-    JOIN_TAB* const first_top_tab= first_breadth_first_tab(join, WALK_OPTIMIZATION_TABS);
-    save_explain_data(eta, join->const_table_map, join->select_distinct, first_top_tab);
-
-    Explain_select *sel= join->thd->lex->explain->get_select(join->select_lex->select_number);
-    idx -= my_count_bits(join->eliminated_tables);
-    sel->replace_table(idx, eta);
-  }
-}
-#endif
 
 void JOIN_TAB::save_explain_data(Explain_table_access *eta, table_map prefix_tables, 
                                  bool distinct, JOIN_TAB *first_top_tab)

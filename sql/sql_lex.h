@@ -792,8 +792,6 @@ public:
   /// Array of pointers to top elements of all_fields list
   Ref_ptr_array ref_pointer_array;
 
-  size_t ref_pointer_array_size; // Number of elements in array.
-
   /*
     number of items in select_list and HAVING clause used to get number
     bigger then can be number of entries that will be added to all item

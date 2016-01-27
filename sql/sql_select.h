@@ -596,11 +596,6 @@ typedef struct st_join_table {
   void save_explain_data(Explain_table_access *eta, table_map prefix_tables, 
                          bool distinct, struct st_join_table *first_top_tab);
 
-#if 0
-  void update_explain_data(uint idx);
-#endif
-
-  bool prepare_scan();
   bool use_order() const; ///< Use ordering provided by chosen index?
   bool sort_table();
   bool remove_duplicates();
