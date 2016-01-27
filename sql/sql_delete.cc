@@ -491,7 +491,14 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
         so we don't need the where clause
       */
       delete select;
-      free_underlaid_joins(thd, select_lex);
+
+      /*
+        If we are not in DELETE ... RETURNING, we can free subqueries. (in
+        DELETE ... RETURNING we can't, because the RETURNING part may have
+        a subquery in it)
+      */
+      if (!with_select)
+        free_underlaid_joins(thd, select_lex);
       select= 0;
     }
   }
