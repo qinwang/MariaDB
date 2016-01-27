@@ -786,10 +786,10 @@ class Item_func_opt_neg :public Item_bool_func
 {
 protected:
   /*
-    The result type that will be used for comparison.
+    The data type handler that will be used for comparison.
     cmp_type() of all arguments are collected to here.
   */
-  Item_result m_compare_type;
+  Type_handler_hybrid_field_type m_compare_handler;
   /*
     The collation that will be used for comparison in case
     when m_compare_type is STRING_RESULT.
@@ -823,12 +823,20 @@ protected:
   SEL_TREE *get_func_mm_tree(RANGE_OPT_PARAM *param,
                              Field *field, Item *value);
 public:
+  longlong cmp_temporal();
+  longlong cmp_string();
+  longlong cmp_int();
+  longlong cmp_decimal();
+  longlong cmp_real();
+  bool fix_length_and_dec_traditional();
   String value0,value1,value2;
-  /* TRUE <=> arguments will be compared as dates. */
-  Item *compare_as_dates;
   Item_func_between(THD *thd, Item *a, Item *b, Item *c):
-    Item_func_opt_neg(thd, a, b, c), compare_as_dates(FALSE) { }
-  longlong val_int();
+    Item_func_opt_neg(thd, a, b, c) { }
+  longlong val_int()
+  {
+    DBUG_ASSERT(fixed == 1);
+    return m_compare_handler.Item_func_between_val_int(this);
+  }
   enum Functype functype() const   { return BETWEEN; }
   const char *func_name() const { return "between"; }
   void fix_length_and_dec();
@@ -844,7 +852,7 @@ public:
   {
     Item_args::propagate_equal_fields(thd,
                                       Context(ANY_SUBST,
-                                              m_compare_type,
+                                              m_compare_handler.cmp_type(),
                                               compare_collation()),
                                       cond);
     return this;
@@ -1529,7 +1537,7 @@ public:
       will be replaced to a zero-filled Item_string.
       Such a change would require rebuilding of cmp_items.
     */
-    Context cmpctx(ANY_SUBST, m_compare_type,
+    Context cmpctx(ANY_SUBST, m_compare_handler.cmp_type(),
                    Item_func_in::compare_collation());
     for (uint i= 0; i < arg_count; i++)
     {

@@ -25,6 +25,7 @@
 class Field;
 class Item;
 class Item_cache;
+class Item_func_between;
 class Create_attr;
 class Column_definition;
 class Type_std_attributes;
@@ -197,6 +198,13 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime, ulonglong fuzzydate)
                                        const= 0;
+
+  // Hybrid comparison routines
+  virtual bool
+  Item_func_between_fix_length_and_dec(Item_func_between *func) const= 0;
+  virtual longlong
+  Item_func_between_val_int(Item_func_between *func) const= 0;
+
   virtual bool set_comparator_func(Arg_comparator *cmp) const= 0;
 };
 
@@ -238,6 +246,8 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime,
                                        ulonglong fuzzydate) const;
+  bool Item_func_between_fix_length_and_dec(Item_func_between *func) const;
+  longlong Item_func_between_val_int(Item_func_between *func) const;
   bool set_comparator_func(Arg_comparator *cmp) const;
 };
 
@@ -269,6 +279,8 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime,
                                        ulonglong fuzzydate) const;
+  bool Item_func_between_fix_length_and_dec(Item_func_between *func) const;
+  longlong Item_func_between_val_int(Item_func_between *func) const;
   bool set_comparator_func(Arg_comparator *cmp) const;
 };
 
@@ -300,6 +312,8 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime,
                                        ulonglong fuzzydate) const;
+  bool Item_func_between_fix_length_and_dec(Item_func_between *func) const;
+  longlong Item_func_between_val_int(Item_func_between *func) const;
   bool set_comparator_func(Arg_comparator *cmp) const;
 };
 
@@ -333,6 +347,8 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime,
                                        ulonglong fuzzydate) const;
+  bool Item_func_between_fix_length_and_dec(Item_func_between *func) const;
+  longlong Item_func_between_val_int(Item_func_between *func) const;
   bool set_comparator_func(Arg_comparator *cmp) const;
 };
 
@@ -383,6 +399,8 @@ public:
   Item_func_hybrid_field_type_get_date(Item_func_hybrid_field_type *item,
                                        MYSQL_TIME *ltime,
                                        ulonglong fuzzydate) const;
+  bool Item_func_between_fix_length_and_dec(Item_func_between *func) const;
+  longlong Item_func_between_val_int(Item_func_between *func) const;
   bool set_comparator_func(Arg_comparator *cmp) const;
 };
 
@@ -1139,6 +1157,14 @@ public:
   {
     return m_type_handler->Item_func_hybrid_field_type_get_date(item, ltime,
                                                                 fuzzydate);
+  }
+  bool Item_func_between_fix_length_and_dec(Item_func_between *func) const
+  {
+    return m_type_handler->Item_func_between_fix_length_and_dec(func);
+  }
+  longlong Item_func_between_val_int(Item_func_between *func) const
+  {
+    return m_type_handler->Item_func_between_val_int(func);
   }
   bool set_comparator_func(Arg_comparator *cmp) const
   {

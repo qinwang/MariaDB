@@ -157,7 +157,7 @@ Type_handler_hybrid_field_type::get_handler_by_result_type(Item_result type)
   case INT_RESULT:        return &type_handler_longlong;
   case DECIMAL_RESULT:    return &type_handler_newdecimal;
   case STRING_RESULT:     return &type_handler_long_blob;
-  case TIME_RESULT:
+  case TIME_RESULT:       return &type_handler_datetime;
   case ROW_RESULT:
     DBUG_ASSERT(0);
   }
@@ -1729,6 +1729,72 @@ Item_cache *
 Type_handler_temporal_result::make_cache_item(THD *thd, const Item *item) const
 {
   return new (thd->mem_root) Item_cache_temporal(thd, item->field_type());
+}
+
+/*************************************************************************/
+
+bool Type_handler_string_result::
+       Item_func_between_fix_length_and_dec(Item_func_between *func) const
+{
+  return func->fix_length_and_dec_traditional();
+}
+
+bool Type_handler_temporal_result::
+       Item_func_between_fix_length_and_dec(Item_func_between *func) const
+{
+  return func->fix_length_and_dec_traditional();
+
+}
+
+bool Type_handler_int_result::
+       Item_func_between_fix_length_and_dec(Item_func_between *func) const
+{
+  return func->fix_length_and_dec_traditional();
+
+}
+
+bool Type_handler_real_result::
+       Item_func_between_fix_length_and_dec(Item_func_between *func) const
+{
+  return func->fix_length_and_dec_traditional();
+
+}
+
+bool Type_handler_decimal_result::
+       Item_func_between_fix_length_and_dec(Item_func_between *func) const
+{
+  return func->fix_length_and_dec_traditional();
+
+}
+
+longlong Type_handler_string_result::
+           Item_func_between_val_int(Item_func_between *func) const
+{
+  return func->cmp_string();
+}
+
+longlong Type_handler_temporal_result::
+           Item_func_between_val_int(Item_func_between *func) const
+{
+  return func->cmp_temporal();
+}
+
+longlong Type_handler_int_result::
+           Item_func_between_val_int(Item_func_between *func) const
+{
+  return func->cmp_int();
+}
+
+longlong Type_handler_real_result::
+           Item_func_between_val_int(Item_func_between *func) const
+{
+  return func->cmp_real();
+}
+
+longlong Type_handler_decimal_result::
+           Item_func_between_val_int(Item_func_between *func) const
+{
+  return func->cmp_decimal();
 }
 
 /*************************************************************************/

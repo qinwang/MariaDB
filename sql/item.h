@@ -899,6 +899,14 @@ public:
   {
     return type_handler()->calc_pack_length(length);
   }
+  bool Item_func_between_fix_length_and_dec(Item_func_between *func) const
+  {
+    return type_handler()->Item_func_between_fix_length_and_dec(func);
+  }
+  longlong Item_func_between_val_int(Item_func_between *func) const
+  {
+    return type_handler()->Item_func_between_val_int(func);
+  }
   bool set_comparator_func(Arg_comparator *cmp) const
   {
     return type_handler()->set_comparator_func(cmp);
