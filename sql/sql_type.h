@@ -26,6 +26,7 @@ class Field;
 class Item;
 class Item_cache;
 class Item_func_between;
+class Item_sum_hybrid;
 class Create_attr;
 class Column_definition;
 class Type_std_attributes;
@@ -206,11 +207,19 @@ public:
   Item_func_between_val_int(Item_func_between *func) const= 0;
 
   virtual bool set_comparator_func(Arg_comparator *cmp) const= 0;
+
+  // Hybrid aggregate routines
+  virtual bool
+  Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const= 0;
 };
 
 
 class Type_handler_numeric: public Type_handler
 {
+protected:
+  bool Item_sum_hybrid_fix_length_and_dec_numeric(Item_sum_hybrid *func,
+                                                  const Type_handler *handler)
+                                                  const;
 public:
   bool is_blob_field_type() const { return false; }
   bool prepare_column_definition(Column_definition *def,
@@ -249,6 +258,7 @@ public:
   bool Item_func_between_fix_length_and_dec(Item_func_between *func) const;
   longlong Item_func_between_val_int(Item_func_between *func) const;
   bool set_comparator_func(Arg_comparator *cmp) const;
+  bool Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const;
 };
 
 
@@ -282,6 +292,7 @@ public:
   bool Item_func_between_fix_length_and_dec(Item_func_between *func) const;
   longlong Item_func_between_val_int(Item_func_between *func) const;
   bool set_comparator_func(Arg_comparator *cmp) const;
+  bool Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const;
 };
 
 
@@ -315,6 +326,7 @@ public:
   bool Item_func_between_fix_length_and_dec(Item_func_between *func) const;
   longlong Item_func_between_val_int(Item_func_between *func) const;
   bool set_comparator_func(Arg_comparator *cmp) const;
+  bool Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const;
 };
 
 
@@ -350,6 +362,7 @@ public:
   bool Item_func_between_fix_length_and_dec(Item_func_between *func) const;
   longlong Item_func_between_val_int(Item_func_between *func) const;
   bool set_comparator_func(Arg_comparator *cmp) const;
+  bool Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const;
 };
 
 
@@ -402,6 +415,7 @@ public:
   bool Item_func_between_fix_length_and_dec(Item_func_between *func) const;
   longlong Item_func_between_val_int(Item_func_between *func) const;
   bool set_comparator_func(Arg_comparator *cmp) const;
+  bool Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const;
 };
 
 
@@ -1169,6 +1183,10 @@ public:
   bool set_comparator_func(Arg_comparator *cmp) const
   {
     return m_type_handler->set_comparator_func(cmp);
+  }
+  bool Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const
+  {
+    return m_type_handler->Item_sum_hybrid_fix_length_and_dec(func);
   }
 };
 

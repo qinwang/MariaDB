@@ -911,6 +911,10 @@ public:
   {
     return type_handler()->set_comparator_func(cmp);
   }
+  bool Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const
+  {
+    return type_handler()->Item_sum_hybrid_fix_length_and_dec(func);
+  }
 
   virtual Item_result cast_to_int_type() const { return cmp_type(); }
   enum_field_types string_field_type() const

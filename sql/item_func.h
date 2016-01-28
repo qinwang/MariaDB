@@ -448,6 +448,10 @@ public:
   {
     return Type_handler_hybrid_field_type::set_comparator_func(cmp);
   }
+  bool Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const
+  {
+    return Type_handler_hybrid_field_type::Item_sum_hybrid_fix_length_and_dec(func);
+  }
 };
 
 

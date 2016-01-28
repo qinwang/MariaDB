@@ -1799,6 +1799,103 @@ longlong Type_handler_decimal_result::
 
 /*************************************************************************/
 
+/**
+   MAX(str_field) converts ENUM/SET to CHAR, and preserve all other types
+   for Fields.
+   QQ: This works differently from UNION, which preserve the exact data
+   type for ENUM/SET, if the joined ENUM/SET fields are equally defined.
+   Perhaps should be fixed.
+   MAX(str_item) chooses the best suitable string type.
+*/
+bool Type_handler_string_result::
+       Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const
+{
+  Item *item= func->arguments()[0];
+  Item *item2= item->real_item();
+  func->Type_std_attributes::set(item);
+  if (item2->type() == Item::FIELD_ITEM)
+  {
+    // Fields: convert ENUM/SET to CHAR
+    func->set_handler_by_field_type(item->field_type());
+  }
+  else
+  {
+    /*
+      Items: choose VARCHAR / BLOB / MEDIUMBLOB / LONGBLOB, depending on length.
+    */
+    func->set_handler(type_handler_varchar.
+          type_handler_adjusted_to_max_octet_length(func->max_length,
+                                                    func->collation.collation));
+  }
+  return false;
+}
+
+
+/**
+  MAX/MIN for the traditional numeric types preserve the exact data type
+  from Fields, but do not preserve the exact type from Items:
+    MAX(float_field)              -> FLOAT
+    MAX(smallint_field)           -> LONGLONG
+    MAX(COALESCE(float_field))    -> DOUBLE
+    MAX(COALESCE(smallint_field)) -> LONGLONG
+  QQ: Items should probably be fixed to preserve the exact type.
+*/
+bool Type_handler_numeric::
+       Item_sum_hybrid_fix_length_and_dec_numeric(Item_sum_hybrid *func,
+                                                  const Type_handler *handler)
+                                                  const
+{
+  Item *item= func->arguments()[0];
+  Item *item2= item->real_item();
+  func->Type_std_attributes::set(item);
+  if (item2->type() == Item::FIELD_ITEM)
+    func->set_handler_by_field_type(item2->field_type());
+  else
+    func->set_handler(handler);
+  return false;
+}
+
+
+bool Type_handler_int_result::
+       Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const
+{
+  return Item_sum_hybrid_fix_length_and_dec_numeric(func,
+                                                    &type_handler_longlong);
+}
+
+
+bool Type_handler_real_result::
+       Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const
+{
+  (void) Item_sum_hybrid_fix_length_and_dec_numeric(func,
+                                                    &type_handler_double);
+  func->max_length= func->float_length(func->decimals);
+  return false;
+}
+
+
+bool Type_handler_decimal_result::
+       Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const
+{
+  return Item_sum_hybrid_fix_length_and_dec_numeric(func,
+                                                    &type_handler_newdecimal);
+}
+
+
+/**
+  Traditional temporal types always preserve the type of the argument.
+*/
+bool Type_handler_temporal_result::
+       Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const
+{
+  Item *item= func->arguments()[0];
+  func->Type_std_attributes::set(item);
+  func->set_handler_by_field_type(item->field_type());
+  return false;
+}
+
+/*************************************************************************/
+
 Type_handler_register::Type_handler_register()
   :m_min_type(256), m_max_type(0)
 {
