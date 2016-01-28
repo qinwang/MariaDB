@@ -899,6 +899,10 @@ public:
   {
     return type_handler()->calc_pack_length(length);
   }
+  uint32 calc_display_length(const Type_std_attributes *attr) const
+  {
+    return type_handler()->calc_display_length(attr);
+  }
   bool Item_func_between_fix_length_and_dec(Item_func_between *func) const
   {
     return type_handler()->Item_func_between_fix_length_and_dec(func);

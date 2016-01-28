@@ -180,6 +180,7 @@ public:
                           const Type_std_attributes *item,
                           SORT_FIELD_ATTR *attr) const= 0;
   virtual uint32 calc_pack_length(uint32 length) const= 0;
+  virtual uint32 calc_display_length(const Type_std_attributes *attr) const= 0;
 
   // Hybrid function routines
   virtual
@@ -268,6 +269,7 @@ public:
   Item_result result_type() const { return DECIMAL_RESULT; }
   Item_result cmp_type() const { return DECIMAL_RESULT; }
   virtual ~Type_handler_decimal_result() {};
+  uint32 calc_display_length(const Type_std_attributes *attr) const;
   Field *make_num_distinct_aggregator_field(MEM_ROOT *, const Item *) const;
   Item_cache *make_cache_item(THD *thd, const Item *item) const;
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
@@ -338,6 +340,7 @@ public:
   bool is_blob_field_type() const { return false; }
   virtual ~Type_handler_temporal_result() {}
   Item_cache *make_cache_item(THD *thd, const Item *item) const;
+  uint32 calc_display_length(const Type_std_attributes *attr) const;
   bool prepare_column_definition(Column_definition *def,
                                  longlong table_flags) const;
   void make_sort_key(uchar *to, Item *item,  const SORT_FIELD_ATTR *sort_field,
@@ -371,6 +374,7 @@ class Type_handler_string_result: public Type_handler
 public:
   Item_result result_type() const { return STRING_RESULT; }
   Item_result cmp_type() const { return STRING_RESULT; }
+  uint32 calc_display_length(const Type_std_attributes *attr) const;
   bool is_blob_field_type() const { return false; }
   virtual ~Type_handler_string_result() {}
   const Type_handler *
@@ -445,6 +449,8 @@ public:
   virtual ~Type_handler_tiny() {}
   enum_field_types field_type() const { return MYSQL_TYPE_TINY; }
   uint32 calc_pack_length(uint32 length) const { return 1; }
+  uint32 calc_display_length(const Type_std_attributes *attr) const
+  { return 4; }
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -464,6 +470,8 @@ public:
   virtual ~Type_handler_short() {}
   enum_field_types field_type() const { return MYSQL_TYPE_SHORT; }
   uint32 calc_pack_length(uint32 length) const { return 2; }
+  uint32 calc_display_length(const Type_std_attributes *attr) const
+  { return 6; }
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -483,6 +491,8 @@ public:
   virtual ~Type_handler_long() {}
   enum_field_types field_type() const { return MYSQL_TYPE_LONG; }
   uint32 calc_pack_length(uint32 length) const { return 4; }
+  uint32 calc_display_length(const Type_std_attributes *attr) const
+  { return MY_INT32_NUM_DECIMAL_DIGITS; }
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -502,6 +512,8 @@ public:
   virtual ~Type_handler_longlong() {}
   enum_field_types field_type() const { return MYSQL_TYPE_LONGLONG; }
   uint32 calc_pack_length(uint32 length) const { return 8; }
+  uint32 calc_display_length(const Type_std_attributes *attr) const
+  { return 20; }
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -521,6 +533,8 @@ public:
   virtual ~Type_handler_int24() {}
   enum_field_types field_type() const { return MYSQL_TYPE_INT24; }
   uint32 calc_pack_length(uint32 length) const { return 3; }
+  uint32 calc_display_length(const Type_std_attributes *attr) const
+  { return 8; }
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -540,6 +554,7 @@ public:
   virtual ~Type_handler_year() {}
   enum_field_types field_type() const { return MYSQL_TYPE_YEAR; }
   uint32 calc_pack_length(uint32 length) const { return 1; }
+  uint32 calc_display_length(const Type_std_attributes *attr) const;
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -559,6 +574,7 @@ public:
   virtual ~Type_handler_bit() {}
   enum_field_types field_type() const { return MYSQL_TYPE_BIT; }
   uint32 calc_pack_length(uint32 length) const { return length / 8; }
+  uint32 calc_display_length(const Type_std_attributes *attr) const;
   bool prepare_column_definition(Column_definition *def,
                                  longlong table_flags) const
   {
@@ -591,6 +607,8 @@ public:
   virtual ~Type_handler_float() {}
   enum_field_types field_type() const { return MYSQL_TYPE_FLOAT; }
   uint32 calc_pack_length(uint32 length) const { return sizeof(float); }
+  uint32 calc_display_length(const Type_std_attributes *attr) const
+  { return 25; }
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -611,6 +629,8 @@ public:
   virtual ~Type_handler_double() {}
   enum_field_types field_type() const { return MYSQL_TYPE_DOUBLE; }
   uint32 calc_pack_length(uint32 length) const { return sizeof(double); }
+  uint32 calc_display_length(const Type_std_attributes *attr) const
+  { return 53; }
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
                           const char *name, const Record_addr &addr,
                           const Create_attr &attr) const;
@@ -838,6 +858,8 @@ public:
   virtual ~Type_handler_null() {}
   enum_field_types field_type() const { return MYSQL_TYPE_NULL; }
   uint32 calc_pack_length(uint32 length) const { return 0; }
+  uint32 calc_display_length(const Type_std_attributes *attr) const
+  { return 0; }
   bool prepare_column_definition(Column_definition *def,
                                  longlong table_flags) const;
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
@@ -1141,6 +1163,10 @@ public:
   uint32 calc_pack_length(uint32 length) const
   {
     return m_type_handler->calc_pack_length(length);
+  }
+  uint32 calc_display_length(const Type_std_attributes *attr) const
+  {
+    return m_type_handler->calc_display_length(attr);
   }
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,

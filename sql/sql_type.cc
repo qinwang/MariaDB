@@ -1896,6 +1896,41 @@ bool Type_handler_temporal_result::
 
 /*************************************************************************/
 
+uint32
+Type_handler_temporal_result::
+  calc_display_length(const Type_std_attributes *attr) const
+{
+  return attr->max_length;
+}
+
+uint32
+Type_handler_string_result::
+  calc_display_length(const Type_std_attributes *attr) const
+{
+  return attr->max_length;
+}
+
+uint32
+Type_handler_decimal_result::
+  calc_display_length(const Type_std_attributes *attr) const
+{
+  return attr->max_length;
+}
+
+uint32
+Type_handler_year::calc_display_length(const Type_std_attributes *attr) const
+{
+  return attr->max_length;
+}
+
+uint32
+Type_handler_bit::calc_display_length(const Type_std_attributes *attr) const
+{
+  return attr->max_length;
+}
+
+/*************************************************************************/
+
 Type_handler_register::Type_handler_register()
   :m_min_type(256), m_max_type(0)
 {
