@@ -172,6 +172,8 @@ public:
   virtual Field *make_conversion_table_field(TABLE *TABLE,
                                              uint metadata,
                                              const Field *target) const= 0;
+  virtual int Item_save_in_field(Item *item, Field *field,
+                                 bool no_conversions) const= 0;
   virtual Item_cache *make_cache_item(THD *thd, const Item *item) const= 0;
   virtual void make_sort_key(uchar *to, Item *item,
                              const SORT_FIELD_ATTR *sort_field,
@@ -236,6 +238,7 @@ public:
   Item_result result_type() const { return REAL_RESULT; }
   Item_result cmp_type() const { return REAL_RESULT; }
   virtual ~Type_handler_real_result() {}
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
   Item_cache *make_cache_item(THD *thd, const Item *item) const;
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const;
@@ -270,6 +273,7 @@ public:
   Item_result cmp_type() const { return DECIMAL_RESULT; }
   virtual ~Type_handler_decimal_result() {};
   uint32 calc_display_length(const Type_std_attributes *attr) const;
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
   Field *make_num_distinct_aggregator_field(MEM_ROOT *, const Item *) const;
   Item_cache *make_cache_item(THD *thd, const Item *item) const;
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
@@ -305,6 +309,7 @@ public:
   Item_result cmp_type() const { return INT_RESULT; }
   virtual ~Type_handler_int_result() {}
   Field *make_num_distinct_aggregator_field(MEM_ROOT *, const Item *) const;
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
   Item_cache *make_cache_item(THD *thd, const Item *item) const;
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const;
@@ -396,6 +401,7 @@ public:
                                   const Type_std_attributes &attr,
                                   const Type_ext_attributes &eattr,
                                   bool set_blob_packlength) const;
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
   Item_cache *make_cache_item(THD *thd, const Item *item) const;
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const;
@@ -660,6 +666,7 @@ public:
                           bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
 };
 
 
@@ -680,6 +687,7 @@ public:
                           bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
 };
 
 
@@ -699,6 +707,7 @@ public:
                           bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
 };
 
 
@@ -719,6 +728,7 @@ public:
                           bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
 };
 
 
@@ -738,6 +748,7 @@ public:
                           bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
 };
 
 
@@ -758,6 +769,7 @@ public:
                           bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
 };
 
 
@@ -779,6 +791,7 @@ public:
                           bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
 };
 
 
@@ -801,6 +814,7 @@ public:
                           bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
 };
 
 
@@ -1071,6 +1085,10 @@ public:
   }
   Item_result result_type() const { return m_type_handler->result_type(); }
   Item_result cmp_type() const { return m_type_handler->cmp_type(); }
+  int Item_save_in_field(Item *item, Field *field, bool no_conversions) const
+  {
+    return m_type_handler->Item_save_in_field(item, field, no_conversions);
+  }
   bool is_blob_field_type() const
   { return m_type_handler->is_blob_field_type(); }
   void set_handler(const Type_handler *other)

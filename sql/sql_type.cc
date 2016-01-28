@@ -1931,6 +1931,99 @@ Type_handler_bit::calc_display_length(const Type_std_attributes *attr) const
 
 /*************************************************************************/
 
+int Type_handler_time::Item_save_in_field(Item *item, Field *field,
+                                          bool no_conversions) const
+{
+  return item->save_time_in_field(field, no_conversions);
+}
+
+int Type_handler_time2::Item_save_in_field(Item *item, Field *field,
+                                           bool no_conversions) const
+{
+  return item->save_time_in_field(field, no_conversions);
+}
+
+
+int Type_handler_date::Item_save_in_field(Item *item, Field *field,
+                                          bool no_conversions) const
+{
+  return item->save_date_in_field(field, no_conversions);
+}
+
+int Type_handler_newdate::Item_save_in_field(Item *item, Field *field,
+                                             bool no_conversions) const
+{
+  return item->save_date_in_field(field, no_conversions);
+}
+
+
+int Type_handler_datetime::Item_save_in_field(Item *item, Field *field,
+                                               bool no_conversions) const
+{
+  return item->save_date_in_field(field, no_conversions);
+}
+
+int Type_handler_datetime2::Item_save_in_field(Item *item, Field *field,
+                                               bool no_conversions) const
+{
+  return item->save_date_in_field(field, no_conversions);
+}
+
+int Type_handler_timestamp::Item_save_in_field(Item *item, Field *field,
+                                               bool no_conversions) const
+{
+  return item->save_date_in_field(field, no_conversions);
+}
+
+int Type_handler_timestamp2::Item_save_in_field(Item *item, Field *field,
+                                                bool no_conversions) const
+{
+  return item->save_date_in_field(field, no_conversions);
+}
+
+
+int Type_handler_string_result::Item_save_in_field(Item *item, Field *field,
+                                                   bool no_conversions) const
+{
+  return item->save_str_in_field(field, no_conversions);
+}
+
+
+int Type_handler_real_result::Item_save_in_field(Item *item, Field *field,
+                                                 bool no_conversions) const
+{
+  double nr= item->val_real();
+  if (item->null_value)
+    return set_field_to_null_with_conversions(field, no_conversions);
+  field->set_notnull();
+  return field->store(nr);
+}
+
+
+int Type_handler_decimal_result::Item_save_in_field(Item *item, Field *field,
+                                                    bool no_conversions) const
+{
+  my_decimal decimal_value;
+  my_decimal *value= item->val_decimal(&decimal_value);
+  if (item->null_value)
+    return set_field_to_null_with_conversions(field, no_conversions);
+  field->set_notnull();
+  return field->store_decimal(value);
+}
+
+
+int Type_handler_int_result::Item_save_in_field(Item *item, Field *field,
+                                                bool no_conversions) const
+{
+  longlong nr= item->val_int();
+  if (item->null_value)
+    return set_field_to_null_with_conversions(field, no_conversions);
+  field->set_notnull();
+  return field->store(nr, item->unsigned_flag);
+}
+
+/*************************************************************************/
+
 Type_handler_register::Type_handler_register()
   :m_min_type(256), m_max_type(0)
 {

@@ -505,7 +505,7 @@ public:
   Field *create_field_for_create_select(THD *thd, TABLE *table)
   { return tmp_table_field_from_field_type(table, false); }
   int save_in_field(Field *field, bool no_conversions)
-  { return save_date_in_field(field); }
+  { return save_date_in_field(field, false); }
   void fix_length_and_dec();
 };
 
