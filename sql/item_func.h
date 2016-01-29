@@ -404,6 +404,14 @@ public:
   { return Type_handler_hybrid_field_type::cmp_type(); }
   uint32 calc_display_length(const Type_std_attributes *item) const
   { return Type_handler_hybrid_field_type::calc_display_length(item); }
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const
+  {
+    return
+      Type_handler_hybrid_field_type::Item_type_holder_join_attributes(thd,
+                                                                       holder,
+                                                                       item);
+  }
   int Item_save_in_field(Item *item, Field *field, bool no_conversions) const
   {
     return Type_handler_hybrid_field_type::Item_save_in_field(item, field,

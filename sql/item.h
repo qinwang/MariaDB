@@ -628,6 +628,22 @@ public:
   Field::geometry_type geometry_type() const { return m_geometry_type; }
   TYPELIB *get_typelib(Item *item);
   static enum_field_types get_real_type(Item *);
+  void join_geometry_type(Field::geometry_type type)
+  {
+    m_geometry_type= Field_geom::geometry_type_merge(m_geometry_type, type);
+  }
+  void join_typelib(Item *item)
+  {
+    TYPELIB *typelib2= get_typelib(item);
+    /*
+      We can have enum/set type after merging only if we have one enum|set
+      field (or MIN|MAX(enum|set field)) and number of NULL fields
+    */
+    DBUG_ASSERT((m_typelib && get_real_type(item) == MYSQL_TYPE_NULL) ||
+                (!m_typelib && typelib2));
+    if (!m_typelib)
+      m_typelib= typelib2;
+  }
 };
 
 
@@ -911,6 +927,11 @@ public:
   uint32 calc_display_length(const Type_std_attributes *attr) const
   {
     return type_handler()->calc_display_length(attr);
+  }
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const
+  {
+    return type_handler()->Item_type_holder_join_attributes(thd, holder, item);
   }
   bool Item_func_between_fix_length_and_dec(Item_func_between *func) const
   {
@@ -5510,6 +5531,16 @@ public:
   bool join_attributes_decimal(THD *thd, Item *);
   bool join_attributes_int(THD *thd, Item *);
   bool join_attributes_temporal(THD *thd, Item *);
+  bool join_attributes_geometry(THD *thd, Item *item)
+  {
+    join_geometry_type(item->get_geometry_type());
+    return join_attributes_string(thd, item);
+  }
+  bool join_attributes_enum_or_set(THD *thd, Item *item)
+  {
+    join_typelib(item);
+    return join_attributes_string(thd, item);
+  }
   Field *create_tmp_field(bool group, TABLE *table, uint convert_blob_length);
   Field::geometry_type get_geometry_type() const { return m_geometry_type; };
 };

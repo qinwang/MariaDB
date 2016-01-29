@@ -27,6 +27,7 @@ class Item;
 class Item_cache;
 class Item_func_between;
 class Item_sum_hybrid;
+class Item_type_holder;
 class Create_attr;
 class Column_definition;
 class Type_std_attributes;
@@ -184,7 +185,10 @@ public:
   virtual uint32 calc_pack_length(uint32 length) const= 0;
   virtual uint32 calc_display_length(const Type_std_attributes *attr) const= 0;
 
-  // Hybrid function routines
+  virtual bool Item_type_holder_join_attributes(THD *thd,
+                                                Item_type_holder *holder,
+                                                Item *item) const= 0;
+  // Hybrid function routines;
   virtual
   String *Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                               String *str) const= 0;
@@ -281,6 +285,8 @@ public:
   void sortlength(THD *thd,
                   const Type_std_attributes *item,
                   SORT_FIELD_ATTR *attr) const;
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const;
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
@@ -316,6 +322,8 @@ public:
   void sortlength(THD *thd,
                   const Type_std_attributes *item,
                   SORT_FIELD_ATTR *attr) const;
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const;
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
@@ -353,6 +361,8 @@ public:
   void sortlength(THD *thd,
                   const Type_std_attributes *item,
                   SORT_FIELD_ATTR *attr) const;
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const;
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
@@ -408,6 +418,8 @@ public:
   void sortlength(THD *thd,
                   const Type_std_attributes *item,
                   SORT_FIELD_ATTR *attr) const;
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const;
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
@@ -626,6 +638,8 @@ public:
   Field *make_num_distinct_aggregator_field(MEM_ROOT *, const Item *) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const;
 };
 
 
@@ -647,6 +661,8 @@ public:
                           bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const;
 };
 
 
@@ -988,6 +1004,8 @@ public:
                                  longlong table_flags) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const;
 };
 #endif
 
@@ -1016,6 +1034,8 @@ public:
                           bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const;
 };
 
 
@@ -1043,6 +1063,8 @@ public:
                           bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const;
 };
 
 
@@ -1185,6 +1207,11 @@ public:
   uint32 calc_display_length(const Type_std_attributes *attr) const
   {
     return m_type_handler->calc_display_length(attr);
+  }
+  bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const
+  {
+    return m_type_handler->Item_type_holder_join_attributes(thd, holder, item);
   }
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,

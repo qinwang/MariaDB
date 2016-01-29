@@ -2024,6 +2024,75 @@ int Type_handler_int_result::Item_save_in_field(Item *item, Field *field,
 
 /*************************************************************************/
 
+bool Type_handler_decimal_result::
+       Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const
+{
+  return holder->join_attributes_decimal(thd, item);
+}
+
+bool Type_handler_int_result::Item_type_holder_join_attributes(THD *thd,
+                                                    Item_type_holder *holder,
+                                                    Item *item) const
+{
+  return holder->join_attributes_int(thd, item);
+}
+
+bool Type_handler_float::Item_type_holder_join_attributes(THD *thd,
+                                                    Item_type_holder *holder,
+                                                    Item *item) const
+{
+  return holder->join_attributes_real(thd, item, FLT_DIG, MAX_FLOAT_STR_LENGTH,
+                                                 FLT_DIG + 6);
+}
+
+bool Type_handler_double::Item_type_holder_join_attributes(THD *thd,
+                                                    Item_type_holder *holder,
+                                                    Item *item) const
+{
+  return holder->join_attributes_real(thd, item, DBL_DIG, MAX_DOUBLE_STR_LENGTH,
+                                                 DBL_DIG + 7);
+}
+
+bool Type_handler_temporal_result::Item_type_holder_join_attributes(THD *thd,
+                                                    Item_type_holder *holder,
+                                                    Item *item) const
+{
+  return holder->join_attributes_temporal(thd, item);
+}
+
+bool Type_handler_enum::Item_type_holder_join_attributes(THD *thd,
+                                                    Item_type_holder *holder,
+                                                    Item *item) const
+{
+  return holder->join_attributes_enum_or_set(thd, item);
+}
+
+
+bool Type_handler_set::Item_type_holder_join_attributes(THD *thd,
+                                                    Item_type_holder *holder,
+                                                    Item *item) const
+{
+  return holder->join_attributes_enum_or_set(thd, item);
+}
+
+
+bool Type_handler_string_result::Item_type_holder_join_attributes(THD *thd,
+                                                    Item_type_holder *holder,
+                                                    Item *item) const
+{
+  return holder->join_attributes_string(thd, item);
+}
+
+bool Type_handler_geometry::
+       Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
+                                        Item *item) const
+{
+  return holder->join_attributes_geometry(thd, item);
+}
+
+/*************************************************************************/
+
 Type_handler_register::Type_handler_register()
   :m_min_type(256), m_max_type(0)
 {
