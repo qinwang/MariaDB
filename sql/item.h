@@ -5501,6 +5501,11 @@ public:
   my_decimal *val_decimal(my_decimal *);
   String *val_str(String*);
   bool join_types(THD *thd, Item *);
+  bool join_attributes_string(THD *thd, Item *);
+  bool join_attributes_real(THD *thd, Item *);
+  bool join_attributes_decimal(THD *thd, Item *);
+  bool join_attributes_int(THD *thd, Item *);
+  bool join_attributes_temporal(THD *thd, Item *);
   Field *create_tmp_field(bool group, TABLE *table, uint convert_blob_length);
   static uint32 display_length(Item *item);
   static enum_field_types get_real_type(Item *);

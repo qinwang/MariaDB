@@ -9122,6 +9122,117 @@ enum_field_types Item_type_holder::get_real_type(Item *item)
   return item->field_type();
 }
 
+
+bool Item_type_holder::join_attributes_string(THD *thd, Item *item)
+{
+  const char *old_cs, *old_derivation;
+  uint32 old_max_chars= max_length / collation.collation->mbmaxlen;
+  old_cs= collation.collation->name;
+  old_derivation= collation.derivation_name();
+  if (collation.aggregate(item->collation, MY_COLL_ALLOW_CONV))
+  {
+    my_error(ER_CANT_AGGREGATE_2COLLATIONS, MYF(0),
+             old_cs, old_derivation,
+             item->collation.collation->name,
+             item->collation.derivation_name(),
+             "UNION");
+    return true;
+  }
+  /*
+    To figure out max_length, we have to take into account possible
+    expansion of the size of the values because of character set
+    conversions.
+   */
+  if (collation.collation != &my_charset_bin)
+  {
+    max_length= MY_MAX(old_max_chars * collation.collation->mbmaxlen,
+                    display_length(item) /
+                    item->collation.collation->mbmaxlen *
+                    collation.collation->mbmaxlen);
+  }
+  else
+    set_if_bigger(max_length, display_length(item));
+  decimals= MY_MAX(decimals, item->decimals);
+
+  prev_decimal_int_part= MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
+  return false;
+}
+
+
+bool Item_type_holder::join_attributes_real(THD *thd, Item *item)
+{
+  uint max_length_orig= max_length;
+  uint decimals_orig= decimals;
+
+  decimals= MY_MAX(decimals, item->decimals);
+  if (decimals != NOT_FIXED_DEC)
+  {
+    /*
+      For FLOAT(M,D)/DOUBLE(M,D) do not change precision
+       if both fields have the same M and D
+    */
+    if (item->max_length != max_length_orig ||
+        item->decimals != decimals_orig)
+    {
+      int delta1= max_length_orig - decimals_orig;
+      int delta2= item->max_length - item->decimals;
+      max_length= MY_MAX(delta1, delta2) + decimals;
+      if (Item_type_holder::real_field_type() == MYSQL_TYPE_FLOAT &&
+          max_length > FLT_DIG + 2)
+      {
+        max_length= MAX_FLOAT_STR_LENGTH;
+        decimals= NOT_FIXED_DEC;
+      } 
+      else if (Item_type_holder::real_field_type() == MYSQL_TYPE_DOUBLE &&
+               max_length > DBL_DIG + 2)
+      {
+        max_length= MAX_DOUBLE_STR_LENGTH;
+        decimals= NOT_FIXED_DEC;
+      }
+    }
+  }
+  else
+    max_length= (Item_type_holder::field_type() == MYSQL_TYPE_FLOAT) ?
+                 FLT_DIG+6 : DBL_DIG+7;
+  prev_decimal_int_part= MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
+  return false;
+}
+
+
+bool Item_type_holder::join_attributes_decimal(THD *thd, Item *item)
+{
+  decimals= MY_MIN(MY_MAX(decimals, item->decimals), DECIMAL_MAX_SCALE);
+  int item_int_part= item->decimal_int_part();
+  int item_prec = MY_MAX(prev_decimal_int_part, item_int_part) + decimals;
+  int precision= MY_MIN(item_prec, DECIMAL_MAX_PRECISION);
+  unsigned_flag&= item->unsigned_flag;
+  max_length= my_decimal_precision_to_length_no_truncation(precision,
+                                                           decimals,
+                                                           unsigned_flag);
+  max_length= MY_MAX(max_length, display_length(item));
+  prev_decimal_int_part= decimal_int_part();
+  return false;
+}
+
+
+bool Item_type_holder::join_attributes_int(THD *thd, Item *item)
+{
+  decimals= 0;
+  max_length= MY_MAX(max_length, display_length(item));
+  prev_decimal_int_part= decimal_int_part();
+  return false;
+}
+
+
+bool Item_type_holder::join_attributes_temporal(THD *thd, Item *item)
+{
+  decimals= MY_MAX(decimals, item->decimals);
+  max_length= MY_MAX(max_length, display_length(item));
+  prev_decimal_int_part= MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
+  return false;
+}
+
+
 /**
   Find field type which can carry current Item_type_holder type and
   type of given Item.
@@ -9137,8 +9248,6 @@ enum_field_types Item_type_holder::get_real_type(Item *item)
 
 bool Item_type_holder::join_types(THD *thd, Item *item)
 {
-  uint max_length_orig= max_length;
-  uint decimals_orig= decimals;
   DBUG_ENTER("Item_type_holder::join_types");
   DBUG_PRINT("info:", ("was type %d len %d, dec %d name %s",
                        real_field_type(), max_length, decimals,
@@ -9148,104 +9257,99 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
                        item->max_length, item->decimals));
   set_handler_by_real_type(Field::field_type_merge(real_field_type(),
                                                    get_real_type(item)));
-  {
-    uint item_decimals= item->decimals;
-    /* fix variable decimals which always is NOT_FIXED_DEC */
-    if (Field::result_merge_type(real_field_type()) == INT_RESULT)
-      item_decimals= 0;
-    decimals= MY_MAX(decimals, item_decimals);
+
+  bool rc= true;
+
+  switch (real_field_type()) {
+  case MYSQL_TYPE_DECIMAL:
+  case MYSQL_TYPE_NEWDECIMAL:
+    rc= join_attributes_decimal(thd, item);
+    break;
+
+  case MYSQL_TYPE_TINY:
+  case MYSQL_TYPE_SHORT:
+  case MYSQL_TYPE_LONG:
+  case MYSQL_TYPE_LONGLONG:
+  case MYSQL_TYPE_INT24:
+  case MYSQL_TYPE_YEAR:
+    rc= join_attributes_int(thd, item);
+    break;
+
+  case MYSQL_TYPE_FLOAT:
+  case MYSQL_TYPE_DOUBLE:
+    rc= join_attributes_real(thd, item);
+    break;
+
+  case MYSQL_TYPE_TIMESTAMP:
+  case MYSQL_TYPE_DATE:
+  case MYSQL_TYPE_TIME:
+  case MYSQL_TYPE_DATETIME:
+  case MYSQL_TYPE_NEWDATE:
+  case MYSQL_TYPE_TIMESTAMP2:
+  case MYSQL_TYPE_DATETIME2:
+  case MYSQL_TYPE_TIME2:
+    rc= join_attributes_temporal(thd, item);
+    break;
+
+  case MYSQL_TYPE_ENUM:
+  case MYSQL_TYPE_SET:
+    get_full_info(item);
+    rc= join_attributes_string(thd, item);
+    break;
+
+  case MYSQL_TYPE_NULL:
+  case MYSQL_TYPE_VARCHAR:
+  case MYSQL_TYPE_BIT:
+  case MYSQL_TYPE_TINY_BLOB:
+  case MYSQL_TYPE_MEDIUM_BLOB:
+  case MYSQL_TYPE_LONG_BLOB:
+  case MYSQL_TYPE_BLOB:
+  case MYSQL_TYPE_VAR_STRING:
+  case MYSQL_TYPE_STRING:
+    rc= join_attributes_string(thd, item);
+    break;
+
+  case MYSQL_TYPE_GEOMETRY:
+    if (Item_type_holder::field_type() == FIELD_TYPE_GEOMETRY)
+      m_geometry_type=
+        Field_geom::geometry_type_merge(m_geometry_type, item->get_geometry_type());
+    rc= join_attributes_string(thd, item);
+    break;
   }
 
-  if (Item_type_holder::field_type() == FIELD_TYPE_GEOMETRY)
-    m_geometry_type=
-      Field_geom::geometry_type_merge(m_geometry_type, item->get_geometry_type());
+  if (rc)
+    DBUG_RETURN(true);
 
-  if (Field::result_merge_type(real_field_type()) == DECIMAL_RESULT)
-  {
-    decimals= MY_MIN(MY_MAX(decimals, item->decimals), DECIMAL_MAX_SCALE);
-    int item_int_part= item->decimal_int_part();
-    int item_prec = MY_MAX(prev_decimal_int_part, item_int_part) + decimals;
-    int precision= MY_MIN(item_prec, DECIMAL_MAX_PRECISION);
-    unsigned_flag&= item->unsigned_flag;
-    max_length= my_decimal_precision_to_length_no_truncation(precision,
-                                                             decimals,
-                                                             unsigned_flag);
-  }
-
+/*
   switch (Field::result_merge_type(real_field_type()))
   {
   case STRING_RESULT:
-  {
-    const char *old_cs, *old_derivation;
-    uint32 old_max_chars= max_length / collation.collation->mbmaxlen;
-    old_cs= collation.collation->name;
-    old_derivation= collation.derivation_name();
-    if (collation.aggregate(item->collation, MY_COLL_ALLOW_CONV))
-    {
-      my_error(ER_CANT_AGGREGATE_2COLLATIONS, MYF(0),
-	       old_cs, old_derivation,
-	       item->collation.collation->name,
-	       item->collation.derivation_name(),
-	       "UNION");
-      DBUG_RETURN(TRUE);
-    }
-    /*
-      To figure out max_length, we have to take into account possible
-      expansion of the size of the values because of character set
-      conversions.
-     */
-    if (collation.collation != &my_charset_bin)
-    {
-      max_length= MY_MAX(old_max_chars * collation.collation->mbmaxlen,
-                      display_length(item) /
-                      item->collation.collation->mbmaxlen *
-                      collation.collation->mbmaxlen);
-    }
-    else
-      set_if_bigger(max_length, display_length(item));
+    if (join_attributes_string(thd, item))
+      DBUG_RETURN(true);
     break;
-  }
   case REAL_RESULT:
-  {
-    if (decimals != NOT_FIXED_DEC)
-    {
-      /*
-        For FLOAT(M,D)/DOUBLE(M,D) do not change precision
-         if both fields have the same M and D
-      */
-      if (item->max_length != max_length_orig ||
-          item->decimals != decimals_orig)
-      {
-        int delta1= max_length_orig - decimals_orig;
-        int delta2= item->max_length - item->decimals;
-        max_length= MY_MAX(delta1, delta2) + decimals;
-        if (Item_type_holder::real_field_type() == MYSQL_TYPE_FLOAT &&
-            max_length > FLT_DIG + 2)
-        {
-          max_length= MAX_FLOAT_STR_LENGTH;
-          decimals= NOT_FIXED_DEC;
-        } 
-        else if (Item_type_holder::real_field_type() == MYSQL_TYPE_DOUBLE &&
-                 max_length > DBL_DIG + 2)
-        {
-          max_length= MAX_DOUBLE_STR_LENGTH;
-          decimals= NOT_FIXED_DEC;
-        }
-      }
-    }
-    else
-      max_length= (Item_type_holder::field_type() == MYSQL_TYPE_FLOAT) ?
-                  FLT_DIG+6 : DBL_DIG+7;
+    if (join_attributes_real(thd, item))
+      DBUG_RETURN(true);
     break;
-  }
-  default:
-    max_length= MY_MAX(max_length, display_length(item));
+  case DECIMAL_RESULT:
+    if (join_attributes_decimal(thd, item))
+      DBUG_RETURN(true);
+    break;
+  case ROW_RESULT:
+    DBUG_ASSERT(0);
+  case INT_RESULT:
+    if (join_attributes_int(thd, item))
+      DBUG_RETURN(true);
+    break;
+  case TIME_RESULT:
+    if (join_attributes_temporal(thd, item))
+      DBUG_RETURN(true);
+    break;
   };
-  maybe_null|= item->maybe_null;
   get_full_info(item);
+*/
+  maybe_null|= item->maybe_null;
 
-  /* Remember decimal integer part to be used in DECIMAL_RESULT handleng */
-  prev_decimal_int_part= decimal_int_part();
   DBUG_PRINT("info", ("become type: %d  len: %u  dec: %u",
                       (int) real_field_type(), max_length, (uint) decimals));
   DBUG_RETURN(FALSE);
