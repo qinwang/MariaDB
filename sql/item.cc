@@ -9114,7 +9114,7 @@ enum_field_types Type_ext_attributes::get_real_type(Item *item)
 }
 
 
-bool Item_type_holder::join_attributes_string(THD *thd, Item *item)
+bool Item_type_holder::join_attributes_string(THD *thd, const Item *item)
 {
   const char *old_cs, *old_derivation;
   uint32 old_max_chars= max_length / collation.collation->mbmaxlen;
@@ -9150,7 +9150,7 @@ bool Item_type_holder::join_attributes_string(THD *thd, Item *item)
 }
 
 
-bool Item_type_holder::join_attributes_real(THD *thd, Item *item,
+bool Item_type_holder::join_attributes_real(THD *thd, const Item *item,
                                             uint32 float_digits,
                                             uint32 max_length_fixed,
                                             uint32 max_length_not_fixed)
@@ -9185,7 +9185,7 @@ bool Item_type_holder::join_attributes_real(THD *thd, Item *item,
 }
 
 
-bool Item_type_holder::join_attributes_decimal(THD *thd, Item *item)
+bool Item_type_holder::join_attributes_decimal(THD *thd, const Item *item)
 {
   decimals= MY_MIN(MY_MAX(decimals, item->decimals), DECIMAL_MAX_SCALE);
   int item_int_part= item->decimal_int_part();
@@ -9201,7 +9201,7 @@ bool Item_type_holder::join_attributes_decimal(THD *thd, Item *item)
 }
 
 
-bool Item_type_holder::join_attributes_int(THD *thd, Item *item)
+bool Item_type_holder::join_attributes_int(THD *thd, const Item *item)
 {
   decimals= 0;
   max_length= MY_MAX(max_length, display_length(item));
@@ -9210,7 +9210,7 @@ bool Item_type_holder::join_attributes_int(THD *thd, Item *item)
 }
 
 
-bool Item_type_holder::join_attributes_temporal(THD *thd, Item *item)
+bool Item_type_holder::join_attributes_temporal(THD *thd, const Item *item)
 {
   decimals= MY_MAX(decimals, item->decimals);
   max_length= MY_MAX(max_length, display_length(item));
@@ -9262,10 +9262,10 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
     length
 */
 
-uint32 Type_std_attributes::display_length(Item *item)
+uint32 Type_std_attributes::display_length(const Item *item)
 {
   if (item->type() == Item::FIELD_ITEM)
-    return ((Item_field *)item)->max_disp_length();
+    return ((const Item_field *)item)->max_disp_length();
   return item->calc_display_length(item);
 }
 

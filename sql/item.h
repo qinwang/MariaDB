@@ -598,7 +598,7 @@ public:
     collation.set(field->charset());
     unsigned_flag= MY_TEST(field->flags & UNSIGNED_FLAG);
   }
-  static uint32 display_length(Item *item);
+  static uint32 display_length(const Item *item);
   uint32 max_char_length() const
   { return max_length / collation.collation->mbmaxlen; }
   bool too_big_for_varchar() const
@@ -2659,7 +2659,7 @@ public:
   Item_equal *find_item_equal(COND_EQUAL *cond_equal);
   Item* propagate_equal_fields(THD *, const Context &, COND_EQUAL *);
   Item *replace_equal_field(THD *thd, uchar *arg);
-  inline uint32 max_disp_length() { return field->max_display_length(); }
+  inline uint32 max_disp_length() const { return field->max_display_length(); }
   Item_field *field_for_view_update() { return this; }
   int fix_outer_field(THD *thd, Field **field, Item **reference);
   virtual Item *update_value_transformer(THD *thd, uchar *select_arg);
@@ -5529,15 +5529,15 @@ public:
   my_decimal *val_decimal(my_decimal *);
   String *val_str(String*);
   bool join_types(THD *thd, Item *);
-  bool join_attributes_string(THD *thd, Item *);
-  bool join_attributes_real(THD *thd, Item *,
+  bool join_attributes_string(THD *thd, const Item *);
+  bool join_attributes_real(THD *thd, const Item *,
                             uint32 float_digits,
                             uint32 max_length_fixed,
                             uint32 max_length_not_fixed);
-  bool join_attributes_decimal(THD *thd, Item *);
-  bool join_attributes_int(THD *thd, Item *);
-  bool join_attributes_temporal(THD *thd, Item *);
-  bool join_attributes_geometry(THD *thd, Item *item)
+  bool join_attributes_decimal(THD *thd, const Item *);
+  bool join_attributes_int(THD *thd, const Item *);
+  bool join_attributes_temporal(THD *thd, const Item *);
+  bool join_attributes_geometry(THD *thd, const Item *item)
   {
     join_geometry_type(item->get_geometry_type());
     return join_attributes_string(thd, item);
