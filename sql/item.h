@@ -615,13 +615,18 @@ class Type_ext_attributes
 protected:
   TYPELIB *m_typelib;                    // for SET and ENUM
   Field::geometry_type m_geometry_type;  // for GEOMETRY
+  int m_decimal_int_part;                // for DECIMAL
 public:
   Type_ext_attributes()
     :m_typelib(NULL),
-     m_geometry_type(Field::GEOM_GEOMETRY)
+     m_geometry_type(Field::GEOM_GEOMETRY),
+     m_decimal_int_part(0)
   { }
+  Type_ext_attributes(Item *item);
   TYPELIB *typelib() const { return m_typelib; }
   Field::geometry_type geometry_type() const { return m_geometry_type; }
+  TYPELIB *get_typelib(Item *item);
+  static enum_field_types get_real_type(Item *);
 };
 
 
@@ -5445,11 +5450,6 @@ class Item_type_holder: public Item,
                         public Type_handler_hybrid_real_field_type,
                         protected Type_ext_attributes
 {
-protected:
-  void get_full_info(Item *item);
-
-  /* It is used to count decimal precision in join_types */
-  int prev_decimal_int_part;
 public:
   Item_type_holder(THD*, Item*);
 
@@ -5508,7 +5508,6 @@ public:
   bool join_attributes_temporal(THD *thd, Item *);
   Field *create_tmp_field(bool group, TABLE *table, uint convert_blob_length);
   static uint32 display_length(Item *item);
-  static enum_field_types get_real_type(Item *);
   Field::geometry_type get_geometry_type() const { return m_geometry_type; };
 };
 

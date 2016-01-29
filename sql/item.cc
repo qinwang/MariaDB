@@ -9009,26 +9009,31 @@ void Item_cache_row::set_null()
 };
 
 
+Type_ext_attributes::Type_ext_attributes(Item *item)
+  :m_typelib(get_typelib(item)),
+   m_geometry_type(Field::GEOM_GEOMETRY),
+   m_decimal_int_part(item->decimal_int_part())
+{
+#ifdef HAVE_SPATIAL
+  if (item->field_type() == MYSQL_TYPE_GEOMETRY)
+    m_geometry_type= item->get_geometry_type();
+#endif /* HAVE_SPATIAL */
+}
+
+
 Item_type_holder::Item_type_holder(THD *thd, Item *item)
   :Item(thd, item),
    Type_handler_hybrid_real_field_type(get_real_type(item)),
-   Type_ext_attributes()
+   Type_ext_attributes(item)
 {
   DBUG_ASSERT(item->fixed);
   maybe_null= item->maybe_null;
-  collation.set(item->collation);
-  get_full_info(item);
 
   // Item_type_holder::join_type() expectes BIT to have decimals==0
   DBUG_ASSERT(decimals == 0 || real_field_type() != MYSQL_TYPE_BIT);
   /* fix variable decimals which always is NOT_FIXED_DEC */
   if (result_type() == INT_RESULT)
     decimals= 0;
-  prev_decimal_int_part= item->decimal_int_part();
-#ifdef HAVE_SPATIAL
-  if (item->field_type() == MYSQL_TYPE_GEOMETRY)
-    m_geometry_type= item->get_geometry_type();
-#endif /* HAVE_SPATIAL */
 }
 
 
@@ -9039,13 +9044,13 @@ Item_type_holder::Item_type_holder(THD *thd, Item *item)
     type of field which should be created to store item value
 */
 
-enum_field_types Item_type_holder::get_real_type(Item *item)
+enum_field_types Type_ext_attributes::get_real_type(Item *item)
 {
-  if (item->type() == REF_ITEM)
+  if (item->type() == Item::REF_ITEM)
     item= item->real_item();
   switch(item->type())
   {
-  case FIELD_ITEM:
+  case Item::FIELD_ITEM:
   {
     /*
       Item_field::field_type ask Field_type() but sometimes field return
@@ -9060,7 +9065,7 @@ enum_field_types Item_type_holder::get_real_type(Item *item)
       return MYSQL_TYPE_VAR_STRING;
     return type;
   }
-  case SUM_FUNC_ITEM:
+  case Item::SUM_FUNC_ITEM:
   {
     /*
       Argument of aggregate function sometimes should be asked about field
@@ -9071,7 +9076,7 @@ enum_field_types Item_type_holder::get_real_type(Item *item)
       return get_real_type(item_sum->get_arg(0));
     break;
   }
-  case FUNC_ITEM:
+  case Item::FUNC_ITEM:
     if (((Item_func *) item)->functype() == Item_func::GUSERVAR_FUNC)
     {
       /*
@@ -9096,7 +9101,7 @@ enum_field_types Item_type_holder::get_real_type(Item *item)
       }
     }
     break;
-  case TYPE_HOLDER:
+  case Item::TYPE_HOLDER:
     /*
       Item_type_holder and Item_blob should not appear in this context.
       In case they for some reasons do, returning field_type() is wrong anyway.
@@ -9145,7 +9150,7 @@ bool Item_type_holder::join_attributes_string(THD *thd, Item *item)
     set_if_bigger(max_length, display_length(item));
   decimals= MY_MAX(decimals, item->decimals);
 
-  prev_decimal_int_part= MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
+  m_decimal_int_part= MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
   return false;
 }
 
@@ -9185,7 +9190,7 @@ bool Item_type_holder::join_attributes_real(THD *thd, Item *item)
   else
     max_length= (Item_type_holder::field_type() == MYSQL_TYPE_FLOAT) ?
                  FLT_DIG+6 : DBL_DIG+7;
-  prev_decimal_int_part= MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
+  m_decimal_int_part= MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
   return false;
 }
 
@@ -9194,14 +9199,14 @@ bool Item_type_holder::join_attributes_decimal(THD *thd, Item *item)
 {
   decimals= MY_MIN(MY_MAX(decimals, item->decimals), DECIMAL_MAX_SCALE);
   int item_int_part= item->decimal_int_part();
-  int item_prec = MY_MAX(prev_decimal_int_part, item_int_part) + decimals;
+  int item_prec = MY_MAX(m_decimal_int_part, item_int_part) + decimals;
   int precision= MY_MIN(item_prec, DECIMAL_MAX_PRECISION);
   unsigned_flag&= item->unsigned_flag;
   max_length= my_decimal_precision_to_length_no_truncation(precision,
                                                            decimals,
                                                            unsigned_flag);
   max_length= MY_MAX(max_length, display_length(item));
-  prev_decimal_int_part= decimal_int_part();
+  m_decimal_int_part= decimal_int_part();
   return false;
 }
 
@@ -9210,7 +9215,7 @@ bool Item_type_holder::join_attributes_int(THD *thd, Item *item)
 {
   decimals= 0;
   max_length= MY_MAX(max_length, display_length(item));
-  prev_decimal_int_part= decimal_int_part();
+  m_decimal_int_part= decimal_int_part();
   return false;
 }
 
@@ -9219,7 +9224,7 @@ bool Item_type_holder::join_attributes_temporal(THD *thd, Item *item)
 {
   decimals= MY_MAX(decimals, item->decimals);
   max_length= MY_MAX(max_length, display_length(item));
-  prev_decimal_int_part= MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
+  m_decimal_int_part= MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
   return false;
 }
 
@@ -9284,7 +9289,17 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
 
   case MYSQL_TYPE_ENUM:
   case MYSQL_TYPE_SET:
-    get_full_info(item);
+    {
+      TYPELIB *typelib2= get_typelib(item);
+      /*
+        We can have enum/set type after merging only if we have one enum|set
+        field (or MIN|MAX(enum|set field)) and number of NULL fields
+      */
+      DBUG_ASSERT((m_typelib && get_real_type(item) == MYSQL_TYPE_NULL) ||
+                  (!m_typelib && typelib2));
+      if (!m_typelib)
+        m_typelib= typelib2;
+    }
     rc= join_attributes_string(thd, item);
     break;
 
@@ -9379,37 +9394,17 @@ Field *Item_type_holder::create_tmp_field(bool group, TABLE *table,
 }
 
 
-/**
-  Get full information from Item about enum/set fields to be able to create
-  them later.
-
-  @param item    Item for information collection
-*/
-void Item_type_holder::get_full_info(Item *item)
+TYPELIB *Type_ext_attributes::get_typelib(Item *item)
 {
-  if (Item_type_holder::real_field_type() == MYSQL_TYPE_ENUM ||
-      Item_type_holder::real_field_type() == MYSQL_TYPE_SET)
-  {
-    if (item->type() == Item::SUM_FUNC_ITEM &&
-        (((Item_sum*)item)->sum_func() == Item_sum::MAX_FUNC ||
-         ((Item_sum*)item)->sum_func() == Item_sum::MIN_FUNC))
-      item = ((Item_sum*)item)->get_arg(0);
-    /*
-      We can have enum/set type after merging only if we have one enum|set
-      field (or MIN|MAX(enum|set field)) and number of NULL fields
-    */
-    DBUG_ASSERT((m_typelib &&
-                 get_real_type(item) == MYSQL_TYPE_NULL) ||
-                (!m_typelib &&
-                 item->real_item()->type() == Item::FIELD_ITEM &&
-                 (get_real_type(item->real_item()) == MYSQL_TYPE_ENUM ||
-                  get_real_type(item->real_item()) == MYSQL_TYPE_SET) &&
-                 ((Field_enum*)((Item_field *) item->real_item())->field)->typelib));
-    if (!m_typelib)
-    {
-      m_typelib= ((Field_enum*)((Item_field *) item->real_item())->field)->typelib;
-    }
-  }
+  if (item->type() == Item::SUM_FUNC_ITEM &&
+      (((Item_sum*)item)->sum_func() == Item_sum::MAX_FUNC ||
+       ((Item_sum*)item)->sum_func() == Item_sum::MIN_FUNC))
+    item= ((Item_sum*)item)->get_arg(0)->real_item();
+  if (item->type() == Item::FIELD_ITEM &&
+      (get_real_type(item) == MYSQL_TYPE_ENUM ||
+       get_real_type(item) == MYSQL_TYPE_SET))
+    return ((Field_enum*)((Item_field *) item)->field)->typelib;
+  return NULL;
 }
 
 
