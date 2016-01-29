@@ -428,7 +428,6 @@ public:
     Updated value is then saved in the field.
   */
   virtual void update_field()=0;
-  virtual bool keep_field_type(void) const { return 0; }
   virtual void fix_length_and_dec() { maybe_null=1; null_value=1; }
   virtual Item *result_item(THD *thd, Field *field);
 
@@ -974,7 +973,10 @@ protected:
   my_decimal *val_decimal(my_decimal *);
   void reset_field();
   String *val_str(String *);
-  bool keep_field_type(void) const { return 1; }
+  const Type_handler *type_handler_for_union() const
+  {
+    return args[0]->type_handler_for_union();
+  }
   enum Item_result result_type () const
   { return Type_handler_hybrid_field_type::result_type(); }
   enum Item_result cmp_type () const

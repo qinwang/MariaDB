@@ -9018,7 +9018,7 @@ Type_ext_attributes::Type_ext_attributes(Item *item)
 
 Item_type_holder::Item_type_holder(THD *thd, Item *item)
   :Item(thd, item),
-   Type_handler_hybrid_real_field_type(get_real_type(item)),
+   Type_handler_hybrid_real_field_type(item->type_handler_for_union()),
    Type_ext_attributes(item)
 {
   DBUG_ASSERT(item->fixed);
@@ -9032,85 +9032,60 @@ Item_type_holder::Item_type_holder(THD *thd, Item *item)
 }
 
 
-/**
-  Find real field type of item.
-
-  @return
-    type of field which should be created to store item value
-*/
-
-enum_field_types Type_ext_attributes::get_real_type(Item *item)
+const Type_handler *Item_field::type_handler_for_union() const
 {
-  if (item->type() == Item::REF_ITEM)
-    item= item->real_item();
-  switch(item->type())
-  {
-  case Item::FIELD_ITEM:
-  {
-    /*
-      Item_field::field_type ask Field_type() but sometimes field return
-      a different type, like for enum/set, so we need to ask real type.
-    */
-    Field *field= ((Item_field *) item)->field;
-    enum_field_types type= field->real_type();
-    if (field->is_created_from_null_item)
-      return MYSQL_TYPE_NULL;
-    /* work around about varchar type field detection */
-    if (type == MYSQL_TYPE_STRING && field->type() == MYSQL_TYPE_VAR_STRING)
-      return MYSQL_TYPE_VAR_STRING;
-    return type;
-  }
-  case Item::SUM_FUNC_ITEM:
-  {
-    /*
-      Argument of aggregate function sometimes should be asked about field
-      type
-    */
-    Item_sum *item_sum= (Item_sum *) item;
-    if (item_sum->keep_field_type())
-      return get_real_type(item_sum->get_arg(0));
-    break;
-  }
-  case Item::FUNC_ITEM:
-    if (((Item_func *) item)->functype() == Item_func::GUSERVAR_FUNC)
-    {
-      /*
-        There are work around of problem with changing variable type on the
-        fly and variable always report "string" as field type to get
-        acceptable information for client in send_field, so we make field
-        type from expression type.
-      */
-      switch (item->result_type()) {
-      case STRING_RESULT:
-        return MYSQL_TYPE_VARCHAR;
-      case INT_RESULT:
-        return MYSQL_TYPE_LONGLONG;
-      case REAL_RESULT:
-        return MYSQL_TYPE_DOUBLE;
-      case DECIMAL_RESULT:
-        return MYSQL_TYPE_NEWDECIMAL;
-      case ROW_RESULT:
-      case TIME_RESULT:
-        DBUG_ASSERT(0);
-        return MYSQL_TYPE_VARCHAR;
-      }
-    }
-    break;
-  case Item::TYPE_HOLDER:
-    /*
-      Item_type_holder and Item_blob should not appear in this context.
-      In case they for some reasons do, returning field_type() is wrong anyway.
-      They must return Item_type_holder::real_field_type() instead, to make
-      the code in sql_type.cc and sql_type.h happy, as it expectes
-      Field::real_type()-compatible rather than Field::field_type()-compatible
-      valies in some places, and may in the future add some asserts preventing
-      use of field_type() instead of real_type() and the other way around.
-    */
+  if (field->is_created_from_null_item)
+    return get_handler_by_field_type(MYSQL_TYPE_NULL);
+  /*
+    Item_field::field_type ask Field_type() but sometimes field return
+    a different type, like for enum/set, so we need to ask real type.
+  */
+  enum_field_types type= field->real_type();
+  /* work around about varchar type field detection */
+  if (type == MYSQL_TYPE_STRING && field->type() == MYSQL_TYPE_VAR_STRING)
+    return get_handler_by_field_type(MYSQL_TYPE_VAR_STRING);
+  return get_handler_by_real_type(type);
+}
+
+
+const Type_handler *Item_func_get_user_var::type_handler_for_union() const
+{
+  /*
+    There are work around of problem with changing variable type on the
+    fly and variable always report "string" as field type to get
+    acceptable information for client in send_field, so we make field
+    type from expression type.
+  */
+  switch (result_type()) {
+  case STRING_RESULT:
+    return get_handler_by_real_type(MYSQL_TYPE_VARCHAR);
+  case INT_RESULT:
+    return get_handler_by_real_type(MYSQL_TYPE_LONGLONG);
+  case REAL_RESULT:
+    return get_handler_by_real_type(MYSQL_TYPE_DOUBLE);
+  case DECIMAL_RESULT:
+    return get_handler_by_real_type(MYSQL_TYPE_NEWDECIMAL);
+  case ROW_RESULT:
+  case TIME_RESULT:
     DBUG_ASSERT(0);
-  default:
-    break;
   }
-  return item->field_type();
+  return get_handler_by_real_type(MYSQL_TYPE_VARCHAR);
+}
+
+
+const Type_handler *Item::type_handler_for_union() const
+{
+  /*
+    Item_type_holder and Item_blob should not appear in this context.
+    In case they for some reasons do, returning field_type() is wrong anyway.
+    They must return Item_type_holder::real_field_type() instead, to make
+    the code in sql_type.cc and sql_type.h happy, as it expectes
+    Field::real_type()-compatible rather than Field::field_type()-compatible
+    valies in some places, and may in the future add some asserts preventing
+    use of field_type() instead of real_type() and the other way around.
+  */
+  DBUG_ASSERT(type() != Item::TYPE_HOLDER);
+  return type_handler(); // This converts ENUM/SET to VARCHAR
 }
 
 
@@ -9239,10 +9214,11 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
                        real_field_type(), max_length, decimals,
                        (name ? name : "<NULL>")));
   DBUG_PRINT("info:", ("in type %d len %d, dec %d",
-                       get_real_type(item),
+                       item->type_handler_for_union()->real_field_type(),
                        item->max_length, item->decimals));
-  set_handler_by_real_type(Field::field_type_merge(real_field_type(),
-                                                   get_real_type(item)));
+  set_handler_by_real_type(
+    Field::field_type_merge(real_field_type(),
+                            item->type_handler_for_union()->real_field_type()));
   if (real_type_handler()->Item_type_holder_join_attributes(thd, this, item))
     DBUG_RETURN(true);
 
@@ -9314,17 +9290,32 @@ Field *Item_type_holder::create_tmp_field(bool group, TABLE *table,
 }
 
 
-TYPELIB *Type_ext_attributes::get_typelib(Item *item)
+TYPELIB *Type_ext_attributes::get_typelib(const Item *item) const
 {
   if (item->type() == Item::SUM_FUNC_ITEM &&
-      (((Item_sum*)item)->sum_func() == Item_sum::MAX_FUNC ||
-       ((Item_sum*)item)->sum_func() == Item_sum::MIN_FUNC))
+      (((const Item_sum*) item)->sum_func() == Item_sum::MAX_FUNC ||
+       ((const Item_sum*) item)->sum_func() == Item_sum::MIN_FUNC))
     item= ((Item_sum*)item)->get_arg(0)->real_item();
   if (item->type() == Item::FIELD_ITEM &&
-      (get_real_type(item) == MYSQL_TYPE_ENUM ||
-       get_real_type(item) == MYSQL_TYPE_SET))
+      (item->type_handler_for_union()->real_field_type() == MYSQL_TYPE_ENUM ||
+       item->type_handler_for_union()->real_field_type() == MYSQL_TYPE_SET))
     return ((Field_enum*)((Item_field *) item)->field)->typelib;
   return NULL;
+}
+
+
+void Type_ext_attributes::join_typelib(const Item *item)
+{
+  TYPELIB *typelib2= get_typelib(item);
+  /*
+    We can have enum/set type after merging only if we have one enum|set
+    field (or MIN|MAX(enum|set field)) and number of NULL fields
+  */
+  DBUG_ASSERT((m_typelib && item->type_handler_for_union()->field_type() ==
+                            MYSQL_TYPE_NULL) ||
+              (!m_typelib && typelib2));
+  if (!m_typelib)
+    m_typelib= typelib2;
 }
 
 

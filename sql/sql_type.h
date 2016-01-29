@@ -1269,6 +1269,9 @@ class Type_handler_hybrid_real_field_type:
   public Type_handler_hybrid_field_type
 {
 public:
+  Type_handler_hybrid_real_field_type(const Type_handler *handler)
+    :Type_handler_hybrid_field_type(handler)
+  { }
   Type_handler_hybrid_real_field_type(enum_field_types type)
     :Type_handler_hybrid_field_type(get_handler_by_real_type(type))
   { }

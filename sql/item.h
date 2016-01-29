@@ -632,24 +632,12 @@ public:
   Type_ext_attributes(Item *item);
   TYPELIB *typelib() const { return m_typelib; }
   Field::geometry_type geometry_type() const { return m_geometry_type; }
-  TYPELIB *get_typelib(Item *item);
-  static enum_field_types get_real_type(Item *);
+  TYPELIB *get_typelib(const Item *item) const;
   void join_geometry_type(Field::geometry_type type)
   {
     m_geometry_type= Field_geom::geometry_type_merge(m_geometry_type, type);
   }
-  void join_typelib(Item *item)
-  {
-    TYPELIB *typelib2= get_typelib(item);
-    /*
-      We can have enum/set type after merging only if we have one enum|set
-      field (or MIN|MAX(enum|set field)) and number of NULL fields
-    */
-    DBUG_ASSERT((m_typelib && get_real_type(item) == MYSQL_TYPE_NULL) ||
-                (!m_typelib && typelib2));
-    if (!m_typelib)
-      m_typelib= typelib2;
-  }
+  void join_typelib(const Item *item);
 };
 
 
@@ -821,6 +809,7 @@ public:
   { return save_in_field(field, 1); }
   virtual bool send(Protocol *protocol, String *str);
   virtual bool eq(const Item *, bool binary_cmp) const;
+  virtual const Type_handler *type_handler_for_union() const;
   const Type_handler  *type_handler() const
   {
     return get_handler_by_field_type(field_type());
@@ -2575,6 +2564,7 @@ public:
   fast_field_copier setup_fast_field_copier(Field *field);
   table_map used_tables() const;
   table_map all_used_tables() const; 
+  const Type_handler *type_handler_for_union() const;
   enum Item_result result_type () const
   {
     return field->result_type();
@@ -4069,6 +4059,11 @@ public:
   /* Constructor need to process subselect with temporary tables (see Item) */
   Item_ref(THD *thd, Item_ref *item)
     :Item_ident(thd, item), set_properties_only(0), ref(item->ref) {}
+  const Type_handler *type_handler_for_union() const
+  {
+    DBUG_ASSERT(type() == Item::REF_ITEM);
+    return ((Item_ref *)this)->real_item()->type_handler_for_union();
+  }
   enum Type type() const		{ return REF_ITEM; }
   enum Type real_type() const           { return ref ? (*ref)->type() :
                                           REF_ITEM; }
