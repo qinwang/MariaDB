@@ -515,12 +515,7 @@ uint Item::decimal_precision() const
   Item_result restype= result_type();
 
   if ((restype == DECIMAL_RESULT) || (restype == INT_RESULT))
-  {
-    uint prec= 
-      my_decimal_length_to_precision(max_char_length(), decimals,
-                                     unsigned_flag);
-    return MY_MIN(prec, DECIMAL_MAX_PRECISION);
-  }
+    return calc_decimal_precision();
   return MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
 }
 
@@ -9201,7 +9196,7 @@ bool Item_type_holder::join_attributes_decimal(THD *thd, Item *item)
                                                            decimals,
                                                            unsigned_flag);
   max_length= MY_MAX(max_length, display_length(item));
-  m_decimal_int_part= decimal_int_part();
+  m_decimal_int_part= calc_decimal_precision();
   return false;
 }
 
@@ -9210,7 +9205,7 @@ bool Item_type_holder::join_attributes_int(THD *thd, Item *item)
 {
   decimals= 0;
   max_length= MY_MAX(max_length, display_length(item));
-  m_decimal_int_part= decimal_int_part();
+  m_decimal_int_part= calc_decimal_precision();
   return false;
 }
 

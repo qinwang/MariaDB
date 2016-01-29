@@ -605,6 +605,12 @@ public:
   { return max_char_length() > CONVERT_IF_BIGGER_TO_BLOB; }
   Field *make_string_field(MEM_ROOT *root, TABLE_SHARE *share,
                            const char *name, const Record_addr &rec) const;
+  uint32 calc_decimal_precision() const
+  {
+    uint32 prec= my_decimal_length_to_precision(max_char_length(), decimals,
+                                                unsigned_flag);
+    return MY_MIN(prec, DECIMAL_MAX_PRECISION);
+  }
 };
 
 
