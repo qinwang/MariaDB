@@ -9155,7 +9155,10 @@ bool Item_type_holder::join_attributes_string(THD *thd, Item *item)
 }
 
 
-bool Item_type_holder::join_attributes_real(THD *thd, Item *item)
+bool Item_type_holder::join_attributes_real(THD *thd, Item *item,
+                                            uint32 float_digits,
+                                            uint32 max_length_fixed,
+                                            uint32 max_length_not_fixed)
 {
   uint max_length_orig= max_length;
   uint decimals_orig= decimals;
@@ -9173,23 +9176,15 @@ bool Item_type_holder::join_attributes_real(THD *thd, Item *item)
       int delta1= max_length_orig - decimals_orig;
       int delta2= item->max_length - item->decimals;
       max_length= MY_MAX(delta1, delta2) + decimals;
-      if (Item_type_holder::real_field_type() == MYSQL_TYPE_FLOAT &&
-          max_length > FLT_DIG + 2)
+      if (max_length > float_digits + 2)
       {
-        max_length= MAX_FLOAT_STR_LENGTH;
+        max_length= max_length_fixed;
         decimals= NOT_FIXED_DEC;
       } 
-      else if (Item_type_holder::real_field_type() == MYSQL_TYPE_DOUBLE &&
-               max_length > DBL_DIG + 2)
-      {
-        max_length= MAX_DOUBLE_STR_LENGTH;
-        decimals= NOT_FIXED_DEC;
-      }
     }
   }
   else
-    max_length= (Item_type_holder::field_type() == MYSQL_TYPE_FLOAT) ?
-                 FLT_DIG+6 : DBL_DIG+7;
+    max_length= max_length_not_fixed;
   m_decimal_int_part= MY_MIN(max_char_length(), DECIMAL_MAX_PRECISION);
   return false;
 }
@@ -9253,7 +9248,6 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
                        item->max_length, item->decimals));
   set_handler_by_real_type(Field::field_type_merge(real_field_type(),
                                                    get_real_type(item)));
-
   bool rc= true;
 
   switch (real_field_type()) {
@@ -9272,8 +9266,12 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
     break;
 
   case MYSQL_TYPE_FLOAT:
+    rc= join_attributes_real(thd, item, FLT_DIG, MAX_FLOAT_STR_LENGTH,
+                                        FLT_DIG + 6);
+    break;
   case MYSQL_TYPE_DOUBLE:
-    rc= join_attributes_real(thd, item);
+    rc= join_attributes_real(thd, item, DBL_DIG, MAX_DOUBLE_STR_LENGTH,
+                                        DBL_DIG + 7);
     break;
 
   case MYSQL_TYPE_TIMESTAMP:
@@ -9342,7 +9340,7 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
     length
 */
 
-uint32 Item_type_holder::display_length(Item *item)
+uint32 Type_std_attributes::display_length(Item *item)
 {
   if (item->type() == Item::FIELD_ITEM)
     return ((Item_field *)item)->max_disp_length();

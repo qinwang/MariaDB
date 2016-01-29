@@ -598,6 +598,7 @@ public:
     collation.set(field->charset());
     unsigned_flag= MY_TEST(field->flags & UNSIGNED_FLAG);
   }
+  static uint32 display_length(Item *item);
   uint32 max_char_length() const
   { return max_length / collation.collation->mbmaxlen; }
   bool too_big_for_varchar() const
@@ -5502,12 +5503,14 @@ public:
   String *val_str(String*);
   bool join_types(THD *thd, Item *);
   bool join_attributes_string(THD *thd, Item *);
-  bool join_attributes_real(THD *thd, Item *);
+  bool join_attributes_real(THD *thd, Item *,
+                            uint32 float_digits,
+                            uint32 max_length_fixed,
+                            uint32 max_length_not_fixed);
   bool join_attributes_decimal(THD *thd, Item *);
   bool join_attributes_int(THD *thd, Item *);
   bool join_attributes_temporal(THD *thd, Item *);
   Field *create_tmp_field(bool group, TABLE *table, uint convert_blob_length);
-  static uint32 display_length(Item *item);
   Field::geometry_type get_geometry_type() const { return m_geometry_type; };
 };
 
