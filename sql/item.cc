@@ -9018,20 +9018,11 @@ Item_type_holder::Item_type_holder(THD *thd, Item *item)
   maybe_null= item->maybe_null;
   collation.set(item->collation);
   get_full_info(item);
-  /**
-    Field::result_merge_type(real_field_type()) should be equal to
-    result_type(), with one exception when "this" is a Item_field for
-    a BIT field:
-    - Field_bit::result_type() returns INT_RESULT, so does its Item_field.
-    - Field::result_merge_type(MYSQL_TYPE_BIT) returns STRING_RESULT.
-    Perhaps we need a new method in Type_handler to cover these type
-    merging rules for UNION.
-  */
-  DBUG_ASSERT(real_field_type() == MYSQL_TYPE_BIT ||
-              Item_type_holder::result_type()  ==
-              Field::result_merge_type(Item_type_holder::real_field_type()));
+
+  // Item_type_holder::join_type() expectes BIT to have decimals==0
+  DBUG_ASSERT(decimals == 0 || real_field_type() != MYSQL_TYPE_BIT);
   /* fix variable decimals which always is NOT_FIXED_DEC */
-  if (Field::result_merge_type(real_field_type()) == INT_RESULT)
+  if (result_type() == INT_RESULT)
     decimals= 0;
   prev_decimal_int_part= item->decimal_int_part();
 #ifdef HAVE_SPATIAL
@@ -9320,34 +9311,6 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
   if (rc)
     DBUG_RETURN(true);
 
-/*
-  switch (Field::result_merge_type(real_field_type()))
-  {
-  case STRING_RESULT:
-    if (join_attributes_string(thd, item))
-      DBUG_RETURN(true);
-    break;
-  case REAL_RESULT:
-    if (join_attributes_real(thd, item))
-      DBUG_RETURN(true);
-    break;
-  case DECIMAL_RESULT:
-    if (join_attributes_decimal(thd, item))
-      DBUG_RETURN(true);
-    break;
-  case ROW_RESULT:
-    DBUG_ASSERT(0);
-  case INT_RESULT:
-    if (join_attributes_int(thd, item))
-      DBUG_RETURN(true);
-    break;
-  case TIME_RESULT:
-    if (join_attributes_temporal(thd, item))
-      DBUG_RETURN(true);
-    break;
-  };
-  get_full_info(item);
-*/
   maybe_null|= item->maybe_null;
 
   DBUG_PRINT("info", ("become type: %d  len: %u  dec: %u",

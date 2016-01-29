@@ -957,39 +957,6 @@ enum_field_types Field::field_type_merge(enum_field_types a,
 }
 
 
-static Item_result field_types_result_type [FIELDTYPE_NUM]=
-{
-  //MYSQL_TYPE_DECIMAL      MYSQL_TYPE_TINY
-  DECIMAL_RESULT,           INT_RESULT,
-  //MYSQL_TYPE_SHORT        MYSQL_TYPE_LONG
-  INT_RESULT,               INT_RESULT,
-  //MYSQL_TYPE_FLOAT        MYSQL_TYPE_DOUBLE
-  REAL_RESULT,              REAL_RESULT,
-  //MYSQL_TYPE_NULL         MYSQL_TYPE_TIMESTAMP
-  STRING_RESULT,            STRING_RESULT,
-  //MYSQL_TYPE_LONGLONG     MYSQL_TYPE_INT24
-  INT_RESULT,               INT_RESULT,
-  //MYSQL_TYPE_DATE         MYSQL_TYPE_TIME
-  STRING_RESULT,            STRING_RESULT,
-  //MYSQL_TYPE_DATETIME     MYSQL_TYPE_YEAR
-  STRING_RESULT,            INT_RESULT,
-  //MYSQL_TYPE_NEWDATE      MYSQL_TYPE_VARCHAR
-  STRING_RESULT,            STRING_RESULT,
-  //MYSQL_TYPE_BIT          <16>-<245>
-  STRING_RESULT,
-  //MYSQL_TYPE_NEWDECIMAL   MYSQL_TYPE_ENUM
-  DECIMAL_RESULT,           STRING_RESULT,
-  //MYSQL_TYPE_SET          MYSQL_TYPE_TINY_BLOB
-  STRING_RESULT,            STRING_RESULT,
-  //MYSQL_TYPE_MEDIUM_BLOB  MYSQL_TYPE_LONG_BLOB
-  STRING_RESULT,            STRING_RESULT,
-  //MYSQL_TYPE_BLOB         MYSQL_TYPE_VAR_STRING
-  STRING_RESULT,            STRING_RESULT,
-  //MYSQL_TYPE_STRING       MYSQL_TYPE_GEOMETRY
-  STRING_RESULT,            STRING_RESULT
-};
-
-
 /*
   Test if the given string contains important data:
   not spaces for character string,
@@ -1034,21 +1001,6 @@ int compare(unsigned int a, unsigned int b)
 
 CPP_UNNAMED_NS_END
 
-/**
-  Detect Item_result by given field type of UNION merge result.
-
-  @param field_type  given field type
-
-  @return
-    Item_result (type of internal MySQL expression result)
-*/
-
-Item_result Field::result_merge_type(enum_field_types field_type)
-{
-  DBUG_ASSERT(real_type_to_type(field_type) < FIELDTYPE_TEAR_FROM ||
-              real_type_to_type(field_type) > FIELDTYPE_TEAR_TO);
-  return field_types_result_type[field_type2index(field_type)];
-}
 
 /*****************************************************************************
   Static help functions
