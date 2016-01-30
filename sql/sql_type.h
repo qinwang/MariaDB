@@ -1006,6 +1006,22 @@ public:
                                      const Field *target) const;
   bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
                                         Item *item) const;
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                          const char *name, const Record_addr &addr,
+                          const Create_attr &attr) const
+  {
+    /*
+      All string fields are handled in a separate branch
+      in field.cc:make_field().
+    */
+    DBUG_ASSERT(0);
+    return NULL;
+  }
+  Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
+                                  const char *name, const Record_addr &addr,
+                                  const Type_std_attributes &attr,
+                                  const Type_ext_attributes &eattr,
+                                  bool set_blob_packlength) const;
 };
 #endif
 

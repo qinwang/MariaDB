@@ -602,6 +602,20 @@ Field *Type_handler_long_blob::make_conversion_table_field(TABLE *table,
 
 
 #ifdef HAVE_SPATIAL
+Field *Type_handler_geometry::make_table_field(MEM_ROOT *root,
+                                               TABLE_SHARE *share,
+                                               const char *name,
+                                               const Record_addr &rec,
+                                               const Type_std_attributes &attr,
+                                               const Type_ext_attributes &eattr,
+                                               bool set_blob_packlength) const
+{
+  return new(root)
+         Field_geom(rec.ptr, rec.null_ptr, rec.null_bit, Field::NONE, name,
+                    share, 4, eattr.geometry_type(), 0/*TODO:SRID*/);
+}
+
+
 Field *Type_handler_geometry::make_conversion_table_field(TABLE *table,
                                                           uint metadata,
                                                           const Field *target)

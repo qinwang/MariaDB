@@ -9277,9 +9277,17 @@ Field *Item_type_holder::create_tmp_field(bool group, TABLE *table,
         Field_string(max_length, maybe_null, name, collation.collation);
     break;
 
+  case MYSQL_TYPE_DECIMAL:
+  case MYSQL_TYPE_NEWDECIMAL:
+    field= Field_new_decimal::create_from_item(table->in_use->mem_root, this);
+    break;
+
   default:
-    field= table_field_from_field_type(table, Record_addr(maybe_null),
-                                       *this, true);
+    field= Item_type_holder::make_table_field(table->in_use->mem_root, table->s,
+                                              name, Record_addr(maybe_null),
+                                              *this /* Type_std_attr */,
+                                              *this /* Type_ext_attr */,
+                                              true  /* set_blob_packlength */);
   }
   if (field)
   {
