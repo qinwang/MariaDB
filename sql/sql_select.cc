@@ -15707,7 +15707,9 @@ Field *Item::create_tmp_field(bool group, TABLE *table,
         Field_long(max_char_length(), maybe_null, name, unsigned_flag);
     break;
   case TIME_RESULT:
-    new_field= tmp_table_field_from_field_type(table, false);
+    new_field= make_table_field(table->in_use->mem_root, table->s, name,
+                                Record_addr(maybe_null),
+                                *this, Type_ext_attributes(), false);
     break;
   case STRING_RESULT:
     DBUG_ASSERT(collation.collation);
@@ -15717,7 +15719,9 @@ Field *Item::create_tmp_field(bool group, TABLE *table,
       To preserve type they needed to be handled separately.
     */
     if (field_type() == MYSQL_TYPE_GEOMETRY)
-      new_field= tmp_table_field_from_field_type(table, false);
+      new_field= make_table_field(table->in_use->mem_root, table->s, name,
+                                  Record_addr(maybe_null),
+                                  *this, Type_ext_attributes(this), false);
     /* 
       Make sure that the blob fits into a Field_varstring which has 
       2-byte lenght. 
