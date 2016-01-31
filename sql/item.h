@@ -629,7 +629,7 @@ public:
      m_geometry_type(Field::GEOM_GEOMETRY),
      m_decimal_int_part(0)
   { }
-  Type_ext_attributes(Item *item);
+  Type_ext_attributes(const Item *item);
   TYPELIB *typelib() const { return m_typelib; }
   Field::geometry_type geometry_type() const { return m_geometry_type; }
   TYPELIB *get_typelib(const Item *item) const;

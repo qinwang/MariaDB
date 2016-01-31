@@ -8998,7 +8998,7 @@ void Item_cache_row::set_null()
 };
 
 
-Type_ext_attributes::Type_ext_attributes(Item *item)
+Type_ext_attributes::Type_ext_attributes(const Item *item)
   :m_typelib(get_typelib(item)),
    m_geometry_type(Field::GEOM_GEOMETRY),
    m_decimal_int_part(item->decimal_int_part())
