@@ -9171,7 +9171,7 @@ bool Item_type_holder::join_attributes_decimal(THD *thd, const Item *item)
                                                            decimals,
                                                            unsigned_flag);
   max_length= MY_MAX(max_length, display_length(item));
-  m_decimal_int_part= calc_decimal_precision();
+  m_decimal_int_part= calc_decimal_precision() - decimals;
   return false;
 }
 
@@ -9275,11 +9275,6 @@ Field *Item_type_holder::create_tmp_field(bool group, TABLE *table,
     else
       field= new (table->in_use->mem_root)
         Field_string(max_length, maybe_null, name, collation.collation);
-    break;
-
-  case MYSQL_TYPE_DECIMAL:
-  case MYSQL_TYPE_NEWDECIMAL:
-    field= Field_new_decimal::create_from_item(table->in_use->mem_root, this);
     break;
 
   default:

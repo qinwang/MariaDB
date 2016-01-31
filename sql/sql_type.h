@@ -847,11 +847,7 @@ public:
                           const char *name, const Record_addr &addr,
                           const Type_std_attributes &attr,
                           const Type_ext_attributes &eattr,
-                          bool set_blob_packlength) const
-  {
-    DBUG_ASSERT(0);
-    return NULL;
-  }
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };
@@ -872,11 +868,7 @@ public:
                           const char *name, const Record_addr &addr,
                           const Type_std_attributes &attr,
                           const Type_ext_attributes &eattr,
-                          bool set_blob_packlength) const
-  {
-    DBUG_ASSERT(0);
-    return NULL;
-  }
+                          bool set_blob_packlength) const;
   Field *make_conversion_table_field(TABLE *, uint metadata,
                                      const Field *target) const;
 };

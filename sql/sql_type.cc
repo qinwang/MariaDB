@@ -1489,6 +1489,41 @@ Field *Type_handler_set::make_table_field(MEM_ROOT *mem_root,
 }
 
 
+Field *
+Type_handler_newdecimal::make_table_field(MEM_ROOT *mem_root,
+                                          TABLE_SHARE *share,
+                                          const char *name,
+                                          const Record_addr &rec,
+                                          const Type_std_attributes &attr,
+                                          const Type_ext_attributes &eattr,
+                                          bool set_blob_packlength) const
+{
+  DBUG_ASSERT(eattr.decimal_int_part() > 0);
+  DBUG_ASSERT(eattr.decimal_int_part() + attr.decimals + 1 <= attr.max_length);
+  uint32 len= my_decimal_precision_to_length(eattr.decimal_int_part() + attr.decimals,
+                                             attr.decimals,
+                                             attr.unsigned_flag);
+  return new (mem_root)
+             Field_new_decimal(rec.ptr, len, rec.null_ptr, rec.null_bit,
+                               Field::NONE, name, attr.decimals,
+                               0/*zero_arg*/, attr.unsigned_flag);
+}
+
+
+Field *
+Type_handler_olddecimal::make_table_field(MEM_ROOT *mem_root,
+                                          TABLE_SHARE *share,
+                                          const char *name,
+                                          const Record_addr &rec,
+                                          const Type_std_attributes &attr,
+                                          const Type_ext_attributes &eattr,
+                                          bool set_blob_packlength) const
+{
+  return type_handler_newdecimal.make_table_field(mem_root, share, name,
+                                                  rec, attr, eattr,
+                                                  set_blob_packlength);
+}
+
 /*************************************************************************/
 
 String *

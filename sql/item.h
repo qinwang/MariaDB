@@ -638,6 +638,7 @@ public:
     m_geometry_type= Field_geom::geometry_type_merge(m_geometry_type, type);
   }
   void join_typelib(const Item *item);
+  int decimal_int_part() const { return m_decimal_int_part; }
 };
 
 
