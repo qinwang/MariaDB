@@ -15825,7 +15825,7 @@ Field *Item::create_field_for_schema(THD *thd, TABLE *table)
       field->init(table);
     return field;
   }
-  return tmp_table_field_from_field_type(table, false);
+  return tmp_table_field_from_field_type(table, Type_ext_attributes(), false);
 }
 
 

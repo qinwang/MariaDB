@@ -702,11 +702,11 @@ protected:
                                      const Type_ext_attributes &eattr,
                                      bool set_blob_packlength) const;
   Field *tmp_table_field_from_field_type(TABLE *table,
+                                         const Type_ext_attributes &eattr,
                                          bool set_blob_packlength) const
   {
     return table_field_from_field_type(table, Record_addr(maybe_null),
-                                       Type_ext_attributes(),
-                                       set_blob_packlength);
+                                       eattr, set_blob_packlength);
   }
   Field *create_tmp_field(bool group, TABLE *table,
                           uint convert_blob_length,
@@ -3387,7 +3387,9 @@ public:
   enum Type type() const { return TYPE_HOLDER; }
   enum_field_types field_type() const { return MYSQL_TYPE_BLOB; }
   Field *create_field_for_schema(THD *thd, TABLE *table)
-  { return tmp_table_field_from_field_type(table, true); }
+  {
+    return tmp_table_field_from_field_type(table, Type_ext_attributes(), true);
+  }
 };
 
 

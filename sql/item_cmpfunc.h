@@ -960,8 +960,10 @@ public:
   }
   const char *func_name() const { return "ifnull"; }
   Field *create_field_for_create_select(THD *thd, TABLE *table)
-  { return tmp_table_field_from_field_type(table, false); }
-
+  {
+    // TODO: MDEV-9405 Hybrid functions do not preserve geometry type
+    return tmp_table_field_from_field_type(table, Type_ext_attributes(), false);
+  }
   table_map not_null_tables() const { return 0; }
   uint decimal_precision() const
   {

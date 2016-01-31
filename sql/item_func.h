@@ -176,7 +176,7 @@ public:
     DBUG_ASSERT(thd == table->in_use);
     return result_type() != STRING_RESULT ?
            create_tmp_field(false, table, 0, MY_INT32_NUM_DECIMAL_DIGITS) :
-           tmp_table_field_from_field_type(table, false);
+           tmp_table_field_from_field_type(table, Type_ext_attributes(), false);
   }
   Item *get_tmp_table_item(THD *thd);
 
@@ -1890,7 +1890,7 @@ public:
   {
     return result_type() != STRING_RESULT ?
            create_tmp_field(false, table, 0, MY_INT32_NUM_DECIMAL_DIGITS) :
-           tmp_table_field_from_field_type(table, true);
+           tmp_table_field_from_field_type(table, Type_ext_attributes(), true);
   }
   table_map used_tables() const
   {
@@ -2261,9 +2261,10 @@ public:
 
   Field *create_field_for_create_select(THD *thd, TABLE *table)
   {
+    // TODO: MDEV-9405: Stored functions do not preserve geometry type
     return result_type() != STRING_RESULT ?
            sp_result_field :
-           tmp_table_field_from_field_type(table, false);
+           tmp_table_field_from_field_type(table, Type_ext_attributes(), false);
   }
   void make_field(THD *thd, Send_field *tmp_field);
 

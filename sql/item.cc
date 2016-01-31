@@ -5549,12 +5549,6 @@ Field *Item::table_field_from_field_type(TABLE *table,
   case MYSQL_TYPE_NEWDECIMAL:
     field= Field_new_decimal::create_from_item(mem_root, this);
     break;
-#ifdef HAVE_SPATIAL
-  case MYSQL_TYPE_GEOMETRY:
-    field= new (mem_root)
-      Field_geom(max_length, maybe_null, name, table->s, get_geometry_type());
-    break;
-#endif /* HAVE_SPATIAL */
   default:
     field= make_table_field(mem_root, table->s, name, rec,
                             *this, eattr, set_blob_packlength);
