@@ -9003,10 +9003,8 @@ Type_ext_attributes::Type_ext_attributes(Item *item)
    m_geometry_type(Field::GEOM_GEOMETRY),
    m_decimal_int_part(item->decimal_int_part())
 {
-#ifdef HAVE_SPATIAL
   if (item->field_type() == MYSQL_TYPE_GEOMETRY)
     m_geometry_type= item->get_geometry_type();
-#endif /* HAVE_SPATIAL */
 }
 
 
