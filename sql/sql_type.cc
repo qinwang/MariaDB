@@ -74,17 +74,46 @@ enum_field_types Type_handler::
 }
 
 
-void Type_handler_hybrid_field_type::
-       merge_type_for_comparision(const Type_handler *other)
+void
+Type_handler::error_cant_merge_types(const char *op,
+                                     const Type_handler *h1,
+                                     const Type_handler *h2) const
 {
-  if (!is_traditional_type(field_type()))
-    return;
-  if (!is_traditional_type(other->field_type()))
+  my_printf_error(ER_UNKNOWN_ERROR,
+                  "Can't aggregate types for operation '%s'", MYF(0), op);
+}
+
+
+bool Type_handler_hybrid_field_type::
+       merge_non_traditional_types(const char *op, const Type_handler *other,
+                                   uint *non_traditional_count)
+{
+  bool ext1= !Type_handler::is_traditional_type(real_field_type());
+  bool ext2= !Type_handler::is_traditional_type(other->real_field_type());
+  if ((non_traditional_count[0]= ext1 + ext2) && type_handler() != other)
+  {
+    error_cant_merge_types(op, type_handler(), other);
+    return true;  // Two different non-traditional types
+  }
+  if (ext1)
+    return false; // The current type won
+  if (ext2)
   {
     set_handler(other);
-    return;
+    return false; // The "other" type won
   }
+  return false;   // No non-traditional types were found
+}
 
+
+bool Type_handler_hybrid_field_type::
+       merge_type_for_comparison(const char *op, const Type_handler *other)
+{
+  uint non_traditional_count;
+  if (merge_non_traditional_types(op, other, &non_traditional_count))
+    return true;
+  if (non_traditional_count > 0)
+    return false;
   switch (item_cmp_type(cmp_type(), other->cmp_type())) {
   case STRING_RESULT:  set_handler(&type_handler_string);     break;
   case INT_RESULT:     set_handler(&type_handler_longlong);   break;
@@ -100,6 +129,7 @@ void Type_handler_hybrid_field_type::
     DBUG_ASSERT(0);
     break;
   }
+  return false;
 }
 
 

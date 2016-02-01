@@ -129,9 +129,15 @@ static int cmp_row_type(Item* item1, Item* item2)
   @return aggregated field type.
 */
 
-void Type_handler_hybrid_field_type::merge_type(const Type_handler *other,
+bool Type_handler_hybrid_field_type::merge_type(const char *op,
+                                                const Type_handler *other,
                                                 bool treat_bit_as_number)
 {
+  uint non_traditional_count;
+  if (merge_non_traditional_types(op, other, &non_traditional_count))
+    return true;
+  if (non_traditional_count > 0)
+    return false;
   enum_field_types res= field_type();
   enum_field_types cur= other->field_type();
   if (treat_bit_as_number &&
@@ -143,10 +149,12 @@ void Type_handler_hybrid_field_type::merge_type(const Type_handler *other,
       cur= MYSQL_TYPE_LONGLONG; // non-BIT + BIT
   }
   set_handler_by_field_type(Field::field_type_merge(res, cur));
+  return false;
 }
 
 
-void Type_handler_hybrid_field_type::agg_field_type(Item **items, uint nitems,
+bool Type_handler_hybrid_field_type::agg_field_type(const char *op,
+                                                    Item **items, uint nitems,
                                                     bool treat_bit_as_number)
 {
   uint i;
@@ -154,16 +162,18 @@ void Type_handler_hybrid_field_type::agg_field_type(Item **items, uint nitems,
   {
     DBUG_ASSERT(0);
     set_handler_by_real_type(MYSQL_TYPE_NULL);
-    return;
+    return true;
   }
   set_handler(items[0]->type_handler());
   uint unsigned_count= items[0]->unsigned_flag;
   for (i= 1 ; i < nitems ; i++)
   {
-    merge_type(items[i], treat_bit_as_number);
+    if (merge_type(op, items[i], treat_bit_as_number))
+      return true;
     unsigned_count+= items[i]->unsigned_flag;
   }
   finalize_type(unsigned_count, nitems);
+  return false;
 }
 
 
@@ -553,7 +563,9 @@ bool Arg_comparator::set_cmp_func(Item_func_or_sum *owner_arg,
   }
 
   m_compare_handler.set_handler(a[0]->type_handler());
-  m_compare_handler.merge_type_for_comparision(b[0]->type_handler());
+  if (m_compare_handler.merge_type_for_comparison(owner->func_name(),
+                                                  b[0]->type_handler()))
+    return true;
   m_compare_type= m_compare_handler.cmp_type();
   return m_compare_handler.set_comparator_func(this);
 }
@@ -2058,8 +2070,11 @@ void Item_func_between::fix_length_and_dec()
   DBUG_ASSERT(args[2]->cmp_type() != ROW_RESULT);
 
   m_compare_handler.set_handler(args[0]->type_handler());
-  m_compare_handler.merge_type_for_comparision(args[1]->type_handler());
-  m_compare_handler.merge_type_for_comparision(args[2]->type_handler());
+  if (m_compare_handler.merge_type_for_comparison(Item_func_between::func_name(),
+                                                  args[1]->type_handler()) ||
+      m_compare_handler.merge_type_for_comparison(Item_func_between::func_name(),
+                                                  args[2]->type_handler()))
+    return;
   (void) m_compare_handler.Item_func_between_fix_length_and_dec(this);
 }
 
@@ -2240,7 +2255,7 @@ void
 Item_func_case_abbreviation2::fix_length_and_dec2(Item **args)
 {
   uint32 char_length;
-  agg_field_type(args, 2, true);
+  agg_field_type(func_name(), args, 2, true);
   maybe_null=args[0]->maybe_null || args[1]->maybe_null;
   decimals= MY_MAX(args[0]->decimals, args[1]->decimals);
   unsigned_flag= args[0]->unsigned_flag && args[1]->unsigned_flag;
@@ -2918,13 +2933,13 @@ static void change_item_tree_if_needed(THD *thd,
 void Item_func_case::fix_length_and_dec()
 {
   THD *thd= current_thd;
-  fix_field_type(thd);
-  fix_return_arguments(thd);
+  fix_field_type(thd) ||
+  fix_return_arguments(thd) ||
   fix_comparison_arguments(thd);
 }
 
 
-void Item_func_case::fix_field_type(THD *thd)
+bool Item_func_case::fix_field_type(THD *thd)
 {
   uint total_count;
   uint unsigned_count= args[1]->unsigned_flag;
@@ -2933,20 +2948,23 @@ void Item_func_case::fix_field_type(THD *thd)
   {
     const Item *item= args[total_count * 2 + 1];
     unsigned_count+= item->unsigned_flag;
-    merge_type(item, true);
+    if (merge_type(Item_func_case::func_name(), item, true))
+      return true;
   }
   if (else_expr_num != -1)
   {
     const Item *item= args[else_expr_num];
     unsigned_count+= item->unsigned_flag;
-    merge_type(item, true);
+    if (merge_type(func_name(), item, true))
+      return true;
     total_count++;
   }
   finalize_type(unsigned_count, total_count);
+  return false;
 }
 
 
-void Item_func_case::fix_return_arguments(THD *thd)
+bool Item_func_case::fix_return_arguments(THD *thd)
 {
   if (else_expr_num == -1 || args[else_expr_num]->maybe_null)
     maybe_null= 1;
@@ -2967,7 +2985,7 @@ void Item_func_case::fix_return_arguments(THD *thd)
       agg[nagg++]= args[else_expr_num];
 
     if (count_string_result_length(Item_func_case::field_type(), agg, nagg))
-      return;
+      return true;
     /*
       Copy all THEN and ELSE items back to args[] array.
       Some of the items might have been changed to Item_func_conv_charset.
@@ -2993,10 +3011,11 @@ void Item_func_case::fix_return_arguments(THD *thd)
                                                              decimals,
                                                              unsigned_flag);
   }
+  return false;
 }
 
 
-void Item_func_case::fix_comparison_arguments(THD *thd)
+bool Item_func_case::fix_comparison_arguments(THD *thd)
 {
   uint nagg;
   Item **agg= arg_buffer;
@@ -3021,7 +3040,7 @@ void Item_func_case::fix_comparison_arguments(THD *thd)
       agg[nagg+1]= args[nagg*2];
     nagg++;
     if (!(m_found_types= collect_cmp_types(agg, nagg)))
-      return;
+      return true;
 
     Item *date_arg= 0;
     if (m_found_types & (1U << TIME_RESULT))
@@ -3054,7 +3073,7 @@ void Item_func_case::fix_comparison_arguments(THD *thd)
            CASE utf16_item WHEN CONVERT(latin1_item USING utf16) THEN ... END
       */
       if (agg_arg_charsets_for_comparison(cmp_collation, agg, nagg))
-        return;
+        return true;
       /*
         Now copy first expression and all WHEN expressions back to args[]
         arrray, because some of the items might have been changed to converters
@@ -3075,10 +3094,11 @@ void Item_func_case::fix_comparison_arguments(THD *thd)
         if (!(cmp_items[i]=
             cmp_item::get_comparator((Item_result)i, date_arg,
                                      cmp_collation.collation)))
-          return;
+          return true;
       }
     }
   }
+  return false;
 }
 
 
@@ -3302,7 +3322,8 @@ my_decimal *Item_func_coalesce::decimal_op(my_decimal *decimal_value)
 
 void Item_func_coalesce::fix_length_and_dec()
 {
-  agg_field_type(args, arg_count, true);
+  if (agg_field_type(Item_func_coalesce::func_name(), args, arg_count, true))
+    return;
   switch (Item_func_coalesce::result_type()) {
   case STRING_RESULT:
     if (count_string_result_length(Item_func_coalesce::field_type(),

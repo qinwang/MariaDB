@@ -101,6 +101,8 @@ protected:
                               bool maybe_null, bool null_value,
                               bool unsigned_flag,
                               longlong value) const;
+  void error_cant_merge_types(const char *op, const Type_handler *h1,
+                                              const Type_handler *h2) const;
 public:
   enum_field_types
   field_type_for_temporal_comparison(const Type_handler *other) const;
@@ -1090,9 +1092,13 @@ class Type_handler_hybrid_field_type: public Type_handler
   const Type_handler *m_type_handler;
   const Type_handler *get_handler_by_result_type(Item_result type) const;
 protected:
-  void merge_type(const Type_handler *other, bool treat_bit_as_number);
+  bool merge_non_traditional_types(const char *op, const Type_handler *other,
+                                   uint *non_traditional_count);
+  bool merge_type(const char *op, const Type_handler *other,
+                  bool treat_bit_as_number);
   void finalize_type(uint unsigned_count, uint total_count);
-  void agg_field_type(Item **items, uint nitems, bool treat_bit_as_number);
+  bool agg_field_type(const char *op, Item **items, uint nitems,
+                      bool treat_bit_as_number);
 public:
   Type_handler_hybrid_field_type();
   Type_handler_hybrid_field_type(const Type_handler *handler)
@@ -1105,7 +1111,7 @@ public:
     :m_type_handler(other->m_type_handler)
   { }
 
-  void merge_type_for_comparision(const Type_handler *other);
+  bool merge_type_for_comparison(const char *op, const Type_handler *other);
 
   const Type_handler *type_handler() const { return m_type_handler; }
   enum_field_types field_type() const { return m_type_handler->field_type(); }

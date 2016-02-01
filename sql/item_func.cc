@@ -2803,7 +2803,8 @@ void Item_func_min_max::fix_length_and_dec()
     */
     agg_arg_charsets_for_string_result_with_comparison(collation,
                                                        args, arg_count);
-    agg_field_type(args, arg_count, false);
+    if (agg_field_type(func_name(), args, arg_count, false))
+      return;
     break;
 
   case INT_RESULT:
@@ -2832,7 +2833,8 @@ void Item_func_min_max::fix_length_and_dec()
         Treat BIT as LONGLONG when aggregating to non-BIT types.
         Possible final type: TINY, SHORT, LONG, LONGLONG, INT24, YEAR, BIT.
       */
-      agg_field_type(args, arg_count, true);
+      if (agg_field_type(func_name(), args, arg_count, true))
+        return;
     }
     break;
 

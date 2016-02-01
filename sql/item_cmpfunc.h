@@ -1446,9 +1446,9 @@ class Item_func_case :public Item_func_hybrid_field_type
   cmp_item *case_item;
   Item **arg_buffer;
   uint m_found_types;
-  void fix_field_type(THD *thd);
-  void fix_return_arguments(THD *thd);
-  void fix_comparison_arguments(THD *thd);
+  bool fix_field_type(THD *thd);
+  bool fix_return_arguments(THD *thd);
+  bool fix_comparison_arguments(THD *thd);
 public:
   Item_func_case(THD *thd, List<Item> &list, Item *first_expr_arg,
                  Item *else_expr_arg);
