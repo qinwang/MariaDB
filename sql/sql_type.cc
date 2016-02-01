@@ -90,7 +90,8 @@ bool Type_handler_hybrid_field_type::
 {
   bool ext1= !Type_handler::is_traditional_type(real_field_type());
   bool ext2= !Type_handler::is_traditional_type(other->real_field_type());
-  if ((non_traditional_count[0]= ext1 + ext2) && type_handler() != other)
+  if ((non_traditional_count[0]= ext1 + ext2) == 2 &&
+      type_handler() != other)
   {
     error_cant_merge_types(op, type_handler(), other);
     return true;  // Two different non-traditional types
