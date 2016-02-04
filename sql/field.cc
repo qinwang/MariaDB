@@ -10173,9 +10173,23 @@ Field *make_field(TABLE_SHARE *share,
                       bit_offset, unireg_check, field_name));
   }
 
-  if (f_is_alpha(pack_flag))
+  /**
+    TODO-4912: refactor ::make_field()
+    The below "if" condition decides if "field_type" has a reliable value,
+    or if the exact field type should be determined from pack_flag.
+    - In old FRM versions string field types shared the same type codes
+      with numeric types, so "field_type" can have unexpected values here,
+      and the exact field type should be determined by flags.
+    - In new FRM version "field_type" should have a correct value here,
+      but the exact type detection is still traditionally done by flags below.
+    - In case of a new handled data the type code *is* reliable,
+      so we must skip the flag-based block and go directly to the
+      make_table_field() method call thus avoid a new handled type to be
+      erroneously misinterpreted as a traditional built-in string type.
+  */
+  if (f_is_alpha(pack_flag) &&
+      Type_handler::is_traditional_type(field_type))
   {
-    DBUG_ASSERT(field_type != MYSQL_TYPE_BIT);
     if (!f_is_packed(pack_flag))
     {
       if (field_type == MYSQL_TYPE_STRING ||

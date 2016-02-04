@@ -823,11 +823,11 @@ protected:
   SEL_TREE *get_func_mm_tree(RANGE_OPT_PARAM *param,
                              Field *field, Item *value);
 public:
-  longlong cmp_temporal();
-  longlong cmp_string();
-  longlong cmp_int();
-  longlong cmp_decimal();
-  longlong cmp_real();
+  longlong val_int_cmp_temporal();
+  longlong val_int_cmp_string();
+  longlong val_int_cmp_int();
+  longlong val_int_cmp_decimal();
+  longlong val_int_cmp_real();
   bool fix_length_and_dec_traditional();
   String value0,value1,value2;
   Item_func_between(THD *thd, Item *a, Item *b, Item *c):

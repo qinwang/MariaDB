@@ -1850,31 +1850,31 @@ bool Type_handler_decimal_result::
 longlong Type_handler_string_result::
            Item_func_between_val_int(Item_func_between *func) const
 {
-  return func->cmp_string();
+  return func->val_int_cmp_string();
 }
 
 longlong Type_handler_temporal_result::
            Item_func_between_val_int(Item_func_between *func) const
 {
-  return func->cmp_temporal();
+  return func->val_int_cmp_temporal();
 }
 
 longlong Type_handler_int_result::
            Item_func_between_val_int(Item_func_between *func) const
 {
-  return func->cmp_int();
+  return func->val_int_cmp_int();
 }
 
 longlong Type_handler_real_result::
            Item_func_between_val_int(Item_func_between *func) const
 {
-  return func->cmp_real();
+  return func->val_int_cmp_real();
 }
 
 longlong Type_handler_decimal_result::
            Item_func_between_val_int(Item_func_between *func) const
 {
-  return func->cmp_decimal();
+  return func->val_int_cmp_decimal();
 }
 
 /*************************************************************************/

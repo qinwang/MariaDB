@@ -168,7 +168,7 @@ bool Type_handler_hybrid_field_type::agg_field_type(const char *op,
   uint unsigned_count= items[0]->unsigned_flag;
   for (i= 1 ; i < nitems ; i++)
   {
-    if (merge_type(op, items[i], treat_bit_as_number))
+    if (merge_type(op, items[i]->type_handler(), treat_bit_as_number))
       return true;
     unsigned_count+= items[i]->unsigned_flag;
   }
@@ -2104,7 +2104,7 @@ bool Item_func_between::fix_length_and_dec_traditional()
 }
 
 
-longlong Item_func_between::cmp_temporal()
+longlong Item_func_between::val_int_cmp_temporal()
 {
   THD *thd= current_thd;
   longlong value, a, b;
@@ -2142,7 +2142,7 @@ longlong Item_func_between::cmp_temporal()
 }
 
 
-longlong Item_func_between::cmp_string()
+longlong Item_func_between::val_int_cmp_string()
 {
   String *value,*a,*b;
   value=args[0]->val_str(&value0);
@@ -2170,7 +2170,7 @@ longlong Item_func_between::cmp_string()
 }
 
 
-longlong Item_func_between::cmp_int()
+longlong Item_func_between::val_int_cmp_int()
 {
   longlong value=args[0]->val_int(), a, b;
   if ((null_value=args[0]->null_value))
@@ -2193,7 +2193,7 @@ longlong Item_func_between::cmp_int()
 }
 
 
-longlong Item_func_between::cmp_decimal()
+longlong Item_func_between::val_int_cmp_decimal()
 {
   my_decimal dec_buf, *dec= args[0]->val_decimal(&dec_buf),
              a_buf, *a_dec, b_buf, *b_dec;
@@ -2214,7 +2214,7 @@ longlong Item_func_between::cmp_decimal()
 }
 
 
-longlong Item_func_between::cmp_real()
+longlong Item_func_between::val_int_cmp_real()
 {
   double value= args[0]->val_real(),a,b;
   if ((null_value=args[0]->null_value))
