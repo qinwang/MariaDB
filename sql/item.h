@@ -844,6 +844,10 @@ public:
   {
     return type_handler()->Item_save_in_field(item, field, no_conversions);
   }
+  String *Item_func_hex_val_str_ascii(Item_func_hex *item, String *str) const
+  {
+    return type_handler()->Item_func_hex_val_str_ascii(item, str);
+  }
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const

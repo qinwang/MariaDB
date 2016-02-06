@@ -815,7 +815,10 @@ public:
   String *val_str_ascii_from_val_str(String *);
   String *val_str_ascii_from_val_real(String *);
   String *val_str_ascii_from_val_int(String *);
-  String *val_str_ascii(String *);
+  String *val_str_ascii(String *str)
+  {
+    return args[0]->Item_func_hex_val_str_ascii(this, str);
+  }
   void fix_length_and_dec()
   {
     collation.set(default_charset());

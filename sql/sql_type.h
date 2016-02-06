@@ -25,6 +25,7 @@
 class Field;
 class Item;
 class Item_cache;
+class Item_func_hex;
 class Item_func_between;
 class Item_sum_hybrid;
 class Item_type_holder;
@@ -190,6 +191,10 @@ public:
   virtual bool Item_type_holder_join_attributes(THD *thd,
                                                 Item_type_holder *holder,
                                                 Item *item) const= 0;
+  // HEX routines
+  virtual
+  String *Item_func_hex_val_str_ascii(Item_func_hex *item,
+                                      String *str) const= 0;
   // Hybrid function routines;
   virtual
   String *Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
@@ -251,6 +256,7 @@ public:
   void sortlength(THD *thd,
                   const Type_std_attributes *item,
                   SORT_FIELD_ATTR *attr) const;
+  String *Item_func_hex_val_str_ascii(Item_func_hex *item, String *str) const;
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
@@ -289,6 +295,7 @@ public:
                   SORT_FIELD_ATTR *attr) const;
   bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
                                         Item *item) const;
+  String *Item_func_hex_val_str_ascii(Item_func_hex *item, String *str) const;
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
@@ -326,6 +333,7 @@ public:
                   SORT_FIELD_ATTR *attr) const;
   bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
                                         Item *item) const;
+  String *Item_func_hex_val_str_ascii(Item_func_hex *item, String *str) const;
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
@@ -365,6 +373,7 @@ public:
                   SORT_FIELD_ATTR *attr) const;
   bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
                                         Item *item) const;
+  String *Item_func_hex_val_str_ascii(Item_func_hex *item, String *str) const;
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
@@ -422,6 +431,7 @@ public:
                   SORT_FIELD_ATTR *attr) const;
   bool Item_type_holder_join_attributes(THD *thd, Item_type_holder *holder,
                                         Item *item) const;
+  String *Item_func_hex_val_str_ascii(Item_func_hex *item, String *str) const;
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const;
@@ -1226,6 +1236,10 @@ public:
                                         Item *item) const
   {
     return m_type_handler->Item_type_holder_join_attributes(thd, holder, item);
+  }
+  String *Item_func_hex_val_str_ascii(Item_func_hex *item, String *str) const
+  {
+    return m_type_handler->Item_func_hex_val_str_ascii(item, str);
   }
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,

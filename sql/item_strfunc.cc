@@ -3672,24 +3672,6 @@ String *Item_func_hex::val_str_ascii_from_val_str(String *str)
 }
 
 
-String *Item_func_hex::val_str_ascii(String *str)
-{
-  switch (args[0]->result_type()) {
-  case REAL_RESULT:
-  case DECIMAL_RESULT:
-    return val_str_ascii_from_val_real(str);
-  case INT_RESULT:
-  case TIME_RESULT:
-    return val_str_ascii_from_val_int(str);
-  case ROW_RESULT:
-    DBUG_ASSERT(0);
-  case STRING_RESULT:
-    break;
-  }
-  return val_str_ascii_from_val_str(str);
-}
-
-
   /** Convert given hex string to a binary string. */
 
 String *Item_func_unhex::val_str(String *str)

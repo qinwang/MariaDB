@@ -2173,6 +2173,44 @@ bool Type_handler_geometry::
 
 /*************************************************************************/
 
+String *
+Type_handler_int_result::Item_func_hex_val_str_ascii(Item_func_hex *item,
+                                                     String *str) const
+{
+  return item->val_str_ascii_from_val_int(str);
+}
+
+String *
+Type_handler_decimal_result::Item_func_hex_val_str_ascii(Item_func_hex *item,
+                                                         String *str) const
+{
+  return item->val_str_ascii_from_val_real(str);
+}
+
+String *
+Type_handler_real_result::Item_func_hex_val_str_ascii(Item_func_hex *item,
+                                                      String *str) const
+{
+  return item->val_str_ascii_from_val_real(str);
+}
+
+
+String *
+Type_handler_temporal_result::Item_func_hex_val_str_ascii(Item_func_hex *item,
+                                                          String *str) const
+{
+  return item->val_str_ascii_from_val_str(str);
+}
+
+String *
+Type_handler_string_result::Item_func_hex_val_str_ascii(Item_func_hex *item,
+                                                        String *str) const
+{
+  return item->val_str_ascii_from_val_str(str);
+}
+
+/*************************************************************************/
+
 Type_handler_register::Type_handler_register()
   :m_min_type(256), m_max_type(0)
 {
