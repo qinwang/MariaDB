@@ -3620,52 +3620,75 @@ nl:
 }
 
 
-String *Item_func_hex::val_str_ascii(String *str)
+String *Item_func_hex::val_str_ascii_from_int(String *str, ulonglong num)
 {
-  String *res;
-  DBUG_ASSERT(fixed == 1);
-  if (args[0]->result_type() != STRING_RESULT)
-  {
-    ulonglong dec;
-    char ans[65],*ptr;
-    /* Return hex of unsigned longlong value */
-    if (args[0]->result_type() == REAL_RESULT ||
-        args[0]->result_type() == DECIMAL_RESULT)
-    {
-      double val= args[0]->val_real();
-      if ((val <= (double) LONGLONG_MIN) || 
-          (val >= (double) (ulonglong) ULONGLONG_MAX))
-        dec=  ~(longlong) 0;
-      else
-        dec= (ulonglong) (val + (val > 0 ? 0.5 : -0.5));
-    }
-    else
-      dec= (ulonglong) args[0]->val_int();
+  char ans[65], *ptr;
+  if (!(ptr= longlong2str(num, ans, 16)) ||
+      str->copy(ans, (uint32) (ptr - ans), &my_charset_numeric))
+    return make_empty_result();        // End of memory
+  return str;
+}
 
-    if ((null_value= args[0]->null_value))
-      return 0;
-    
-    if (!(ptr= longlong2str(dec, ans, 16)) ||
-        str->copy(ans,(uint32) (ptr - ans),
-        &my_charset_numeric))
-      return make_empty_result();		// End of memory
-    return str;
-  }
 
+String *Item_func_hex::val_str_ascii_from_val_real(String *str)
+{
+  ulonglong dec;
+  double val= args[0]->val_real();
+  if ((null_value= args[0]->null_value))
+    return 0;
+  if ((val <= (double) LONGLONG_MIN) ||
+      (val >= (double) (ulonglong) ULONGLONG_MAX))
+    dec= ~(longlong) 0;
+  else
+    dec= (ulonglong) (val + (val > 0 ? 0.5 : -0.5));
+  return val_str_ascii_from_int(str, dec);
+}
+
+
+String *Item_func_hex::val_str_ascii_from_val_int(String *str)
+{
+  ulonglong dec= (ulonglong) args[0]->val_int();
+  if ((null_value= args[0]->null_value))
+    return 0;
+  return val_str_ascii_from_int(str, dec);
+}
+
+
+String *Item_func_hex::val_str_ascii_from_val_str(String *str)
+{
   /* Convert given string to a hex string, character by character */
-  res= args[0]->val_str(str);
-  if (!res || tmp_value.alloc(res->length()*2+1))
+  String *res= args[0]->val_str(str);
+  if (!res || tmp_value.alloc(res->length() * 2 + 1))
   {
     null_value=1;
     return 0;
   }
-  null_value=0;
-  tmp_value.length(res->length()*2);
+  null_value= 0;
+  tmp_value.length(res->length() * 2);
   tmp_value.set_charset(&my_charset_latin1);
 
   octet2hex((char*) tmp_value.ptr(), res->ptr(), res->length());
   return &tmp_value;
 }
+
+
+String *Item_func_hex::val_str_ascii(String *str)
+{
+  switch (args[0]->result_type()) {
+  case REAL_RESULT:
+  case DECIMAL_RESULT:
+    return val_str_ascii_from_val_real(str);
+  case INT_RESULT:
+  case TIME_RESULT:
+    return val_str_ascii_from_val_int(str);
+  case ROW_RESULT:
+    DBUG_ASSERT(0);
+  case STRING_RESULT:
+    break;
+  }
+  return val_str_ascii_from_val_str(str);
+}
+
 
   /** Convert given hex string to a binary string. */
 

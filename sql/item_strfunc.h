@@ -807,10 +807,14 @@ public:
 class Item_func_hex :public Item_str_ascii_func
 {
   String tmp_value;
+  String *val_str_ascii_from_int(String *, ulonglong);
 public:
   Item_func_hex(THD *thd, Item *a):
     Item_str_ascii_func(thd, a) {}
   const char *func_name() const { return "hex"; }
+  String *val_str_ascii_from_val_str(String *);
+  String *val_str_ascii_from_val_real(String *);
+  String *val_str_ascii_from_val_int(String *);
   String *val_str_ascii(String *);
   void fix_length_and_dec()
   {
