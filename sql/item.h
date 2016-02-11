@@ -811,6 +811,7 @@ public:
   virtual bool send(Protocol *protocol, String *str);
   virtual bool eq(const Item *, bool binary_cmp) const;
   virtual const Type_handler *type_handler_for_union() const;
+  const Name type_name() const { return type_handler()->type_name(); }
   const Type_handler  *type_handler() const
   {
     return get_handler_by_field_type(field_type());

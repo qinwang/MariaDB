@@ -80,7 +80,8 @@ Type_handler::error_cant_merge_types(const char *op,
                                      const Type_handler *h2) const
 {
   my_printf_error(ER_UNKNOWN_ERROR,
-                  "Can't aggregate types for operation '%s'", MYF(0), op);
+                  "Illegal data types %s and %s for operation '%s'", MYF(0),
+                  h1->type_name().ptr(), h2->type_name().ptr(), op);
 }
 
 
