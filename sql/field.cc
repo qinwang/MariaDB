@@ -10188,7 +10188,7 @@ Field *make_field(TABLE_SHARE *share,
       erroneously misinterpreted as a traditional built-in string type.
   */
   if (f_is_alpha(pack_flag) &&
-      Type_handler::is_traditional_type(field_type))
+      Type_handler::is_traditional_type(field_type)) // make_field
   {
     if (!f_is_packed(pack_flag))
     {

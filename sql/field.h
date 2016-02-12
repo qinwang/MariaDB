@@ -3657,6 +3657,18 @@ public:
 extern const LEX_STRING null_lex_str;
 
 
+/**
+  Create_attr.
+  This class is used to pass attributes to Type_handler::make_table_field(),
+  to create fields from TABLE_SHARE::init_from_binary_frm_image() and
+  make_empty_rec().
+
+  Perhaps Create_attr should derive from Type_ext_attributes, as it
+  repeates all members of Type_ext_attributes. Note, this will need
+  to move Field::geometry_type to Type_handler::geometry_type.
+
+  Deriving from Type_std_attributes might be also a good idea.
+*/
 class Create_attr
 {
   CHARSET_INFO *m_charset;

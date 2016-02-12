@@ -118,6 +118,25 @@ public:
   {
     return type <= MYSQL_TYPE_TIME2 || type >= MYSQL_TYPE_NEWDECIMAL;
   }
+  /**
+    type_name() - return a name of the data type.
+
+    type_name() can depend on attributes actually.
+    Currently type_name() is used for errors only, to report
+    incompatible types (e.g. in comparison, UNION, CASE, etc).
+    so it should not be a show-stopper problem that VARCHAR is reported
+    in an error message instead of VARBINARY, or GEOMETRY instead of POINT.
+
+    But we should fix it in long terms. There are two options:
+    1. Pass attributes:
+       virtual const Name type_name(const Type_std_attributes &std,
+                                    const Type_ext_attributes &ext);
+
+    2. Introduce separate handlers,
+       e.g. for CHAR vs BINARY, VARCHAR vs VARBINARY, TEXT vs BLOB.
+       The same change will be needed for GEOMETRY
+       (separate handlers for POINT, POLYGON, LINESTRING, etc).
+  */
   virtual const Name type_name() const= 0;
   virtual enum_field_types field_type() const= 0;
   virtual enum_field_types real_field_type() const { return field_type(); }
@@ -189,6 +208,21 @@ public:
   virtual uint32 calc_pack_length(uint32 length) const= 0;
   virtual uint32 calc_display_length(const Type_std_attributes *attr) const= 0;
 
+  /**
+    TODO: join join_type_attributes() and Item_type_holder_join_attributes() ?
+
+    Type attribute aggregation for the traditional types is done
+    differently in various parts of the code, which is the reason for bugs:
+
+    MDEV-9495 Wrong field type for a UNION of a signed and an unsigned INT expression
+    MDEV-9497 UNION and COALESCE produce different field types for DECIMAL+INT
+    MDEV-9406 CREATE TABLE..SELECT creates different columns for IFNULL()
+              and equivalent COALESCE,CASE,IF
+
+    When fixing these bugs, we should try to make hybrid functions and UNION
+    reuse as much code as possible, so perhaps no two separate methods are
+    even needed.
+  */
   virtual bool Item_type_holder_join_attributes(THD *thd,
                                                 Item_type_holder *holder,
                                                 Item *item) const= 0;

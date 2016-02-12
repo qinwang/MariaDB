@@ -177,6 +177,13 @@ bool Type_handler_hybrid_field_type::agg_field_type(const char *op,
 }
 
 
+/*
+  TODO: This should migrate to Type_handler somehow.
+  Passing unsigned_count and total_count to a Type_handler method
+  is probably not too universal. Another option would be to add a new
+  "bool final" parameter into merge_type(), and modify merge_type() itself
+  to an unary method in Type_handler.
+*/
 void Type_handler_hybrid_field_type::finalize_type(uint unsigned_count,
                                                    uint total_count)
 {
