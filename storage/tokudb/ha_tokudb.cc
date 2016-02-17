@@ -7093,7 +7093,7 @@ int ha_tokudb::create(
 #endif
 
 #if TOKU_INCLUDE_OPTION_STRUCTS
-    const tokudb::sysvars::format_t row_format =
+    const tokudb::sysvars::row_format_t row_format =
         (tokudb::sysvars::row_format_t)form->s->option_struct->row_format;
 #else
     const tokudb::sysvars::row_format_t row_format =
@@ -8198,7 +8198,7 @@ int ha_tokudb::tokudb_add_index(
                 thd_progress_report(
                     thd,
                     num_processed,
-                    (long long unsigned)share->rows);
+                    (long long unsigned)share->row_count());
 #endif
 
                 if (thd_killed(thd)) {

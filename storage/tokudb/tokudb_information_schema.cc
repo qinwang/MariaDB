@@ -41,11 +41,13 @@ static void field_store_time_t(Field* field, time_t time) {
         localtime_r(&time, &tm_time);
         localtime_to_TIME(&my_time, &tm_time);
         my_time.time_type = MYSQL_TIMESTAMP_DATETIME;
+#ifdef MARIA_PLUGIN_INTERFACE_VERSION
+        field->store_time(&my_time);
+#else
         field->store_time(&my_time, MYSQL_TIMESTAMP_DATETIME);
+#endif
         field->set_notnull();
     } else {
-        memset(&my_time, 0, sizeof(my_time));
-        field->store_time(&my_time, MYSQL_TIMESTAMP_DATETIME);
         field->set_null();
     }
 }

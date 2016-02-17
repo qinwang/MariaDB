@@ -34,18 +34,6 @@ typedef struct savepoint_info {
     bool in_sub_stmt;
 } *SP_INFO, SP_INFO_T;
 
-#if TOKU_INCLUDE_OPTION_STRUCTS
-ha_create_table_option tokudb_table_options[] = {
-    HA_TOPTION_SYSVAR("compression", row_format, row_format),
-    HA_TOPTION_END
-};
-
-ha_create_table_option tokudb_index_options[] = {
-    HA_IOPTION_BOOL("clustering", clustering, 0),
-    HA_IOPTION_END
-};
-#endif
-
 static handler* tokudb_create_handler(
     handlerton* hton,
     TABLE_SHARE* table,
@@ -377,8 +365,8 @@ static int tokudb_init_func(void *p) {
 #endif
 
 #if TOKU_INCLUDE_OPTION_STRUCTS
-    tokudb_hton->table_options = tokudb_table_options;
-    tokudb_hton->index_options = tokudb_index_options;
+    tokudb_hton->table_options = tokudb::sysvars::tokudb_table_options;
+    tokudb_hton->index_options = tokudb::sysvars::tokudb_index_options;
 #endif
 
     if (!tokudb_home)

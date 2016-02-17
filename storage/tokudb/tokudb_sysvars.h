@@ -26,6 +26,26 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #ifndef _TOKUDB_SYSVARS_H
 #define _TOKUDB_SYSVARS_H
 
+#if TOKU_INCLUDE_OPTION_STRUCTS
+struct ha_table_option_struct {
+    uint row_format;
+};
+
+struct ha_index_option_struct {
+    bool clustering;
+};
+
+static inline bool key_is_clustering(const KEY *key) {
+    return (key->flags & HA_CLUSTERING) || (key->option_struct && key->option_struct->clustering);
+}
+
+#else
+
+static inline bool key_is_clustering(const KEY *key) {
+    return key->flags & HA_CLUSTERING;
+}
+#endif
+
 namespace tokudb {
 namespace sysvars {
 
@@ -140,6 +160,11 @@ ulonglong   rpl_unique_checks_delay(THD* thd);
 my_bool     support_xa(THD* thd);
 
 extern st_mysql_sys_var* system_variables[];
+
+#if TOKU_INCLUDE_OPTION_STRUCTS
+extern ha_create_table_option tokudb_table_options[];
+extern ha_create_table_option tokudb_index_options[];
+#endif
 
 } // namespace sysvars
 } // namespace tokudb

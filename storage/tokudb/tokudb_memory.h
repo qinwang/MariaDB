@@ -52,7 +52,7 @@ inline void* realloc(void* p, size_t s, myf flags) {
 #if 50700 <= MYSQL_VERSION_ID && MYSQL_VERSION_ID <= 50799
     return ::my_realloc(0, p, s, flags);
 #else
-    return ::my_realloc(p, s, flags);
+    return ::my_realloc(p, s, flags | MY_ALLOW_ZERO_PTR);
 #endif
 }
 inline void free(void* ptr) {

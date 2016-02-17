@@ -1031,25 +1031,5 @@ private:
     bool in_rpl_update_rows;
 };
 
-#if TOKU_INCLUDE_OPTION_STRUCTS
-struct ha_table_option_struct {
-    uint row_format;
-};
-
-struct ha_index_option_struct {
-    bool clustering;
-};
-
-static inline bool key_is_clustering(const KEY *key) {
-    return (key->flags & HA_CLUSTERING) || (key->option_struct && key->option_struct->clustering);
-}
-
-#else
-
-static inline bool key_is_clustering(const KEY *key) {
-    return key->flags & HA_CLUSTERING;
-}
-#endif
-
 #endif // _HA_TOKUDB_H
 

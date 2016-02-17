@@ -1016,12 +1016,14 @@ my_bool disable_prefetching(THD* thd) {
 my_bool disable_slow_alter(THD* thd) {
     return (THDVAR(thd, disable_slow_alter) != 0);
 }
+#if TOKU_INCLUDE_UPSERT
 my_bool disable_slow_update(THD* thd) {
     return (THDVAR(thd, disable_slow_update) != 0);
 }
 my_bool disable_slow_upsert(THD* thd) {
     return (THDVAR(thd, disable_slow_upsert) != 0);
 }
+#endif
 empty_scan_mode_t empty_scan(THD* thd) {
     return (empty_scan_mode_t)THDVAR(thd, empty_scan);
 }
@@ -1094,6 +1096,18 @@ ulonglong rpl_unique_checks_delay(THD* thd) {
 my_bool support_xa(THD* thd) {
     return (THDVAR(thd, support_xa) != 0);
 }
+
+#if TOKU_INCLUDE_OPTION_STRUCTS
+ha_create_table_option tokudb_table_options[] = {
+    HA_TOPTION_SYSVAR("compression", row_format, row_format),
+    HA_TOPTION_END
+};
+
+ha_create_table_option tokudb_index_options[] = {
+    HA_IOPTION_BOOL("clustering", clustering, 0),
+    HA_IOPTION_END
+};
+#endif
 
 } // namespace sysvars
 } // namespace tokudb

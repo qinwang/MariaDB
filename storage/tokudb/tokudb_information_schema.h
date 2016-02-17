@@ -32,6 +32,10 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 namespace tokudb {
 namespace information_schema {
 
+#ifdef MARIA_PLUGIN_INTERFACE_VERSION
+#define st_mysql_plugin st_maria_plugin
+#endif
+
 extern st_mysql_plugin trx;
 extern st_mysql_plugin lock_waits;
 extern st_mysql_plugin locks;
