@@ -240,6 +240,10 @@ public:
     str_charset=cs;
   }
   bool set_ascii(const char *str, uint32 arg_length);
+  bool set_ascii(const LEX_CSTRING &str)
+  {
+    return set_ascii(str.str, str.length);
+  }
   inline void set_quick(char *str,uint32 arg_length, CHARSET_INFO *cs)
   {
     if (!alloced)

@@ -3672,6 +3672,23 @@ String *Item_func_hex::val_str_ascii_from_val_str(String *str)
 }
 
 
+String *Item_func_hex::val_str_ascii_from_val_raw_native(String *str)
+{
+  String *res= args[0]->val_raw_native(str);
+  if (!res || tmp_value.alloc(res->length() * 2 + 1))
+  {
+    null_value=1;
+    return 0;
+  }
+  null_value= 0;
+  tmp_value.length(res->length() * 2);
+  tmp_value.set_charset(&my_charset_latin1);
+
+  octet2hex((char*) tmp_value.ptr(), res->ptr(), res->length());
+  return &tmp_value;
+}
+
+
   /** Convert given hex string to a binary string. */
 
 String *Item_func_unhex::val_str(String *str)
@@ -4368,6 +4385,8 @@ bool Item_func_dyncol_create::prepare_arguments(THD *thd, bool force_names_arg)
     DYNAMIC_COLUMN_TYPE type= defs[i].type;
     if (type == DYN_COL_NULL) // auto detect
     {
+      // TODO: add support for loadable types for dynamic columns
+      DBUG_ASSERT(args[valpos]->is_traditional_field_type()); // dyncol
       /*
         We don't have a default here to ensure we get a warning if
         one adds a new not handled MYSQL_TYPE_...

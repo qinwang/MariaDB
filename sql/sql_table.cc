@@ -3675,7 +3675,8 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
           }
         }
 
-	if (f_is_blob(sql_field->pack_flag) ||
+	if ((f_is_blob(sql_field->pack_flag) &&
+            Type_handler::is_traditional_type(sql_field->sql_type)) || // MDEV-9482
             (f_is_geom(sql_field->pack_flag) && key->type != Key::SPATIAL))
 	{
 	  if (!(file->ha_table_flags() & HA_CAN_INDEX_BLOBS))
@@ -3756,7 +3757,8 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 
       if (column->length)
       {
-	if (f_is_blob(sql_field->pack_flag))
+	if (f_is_blob(sql_field->pack_flag) &&
+	    Type_handler::is_traditional_type(sql_field->sql_type)) // MDEV-9482
 	{
 	  key_part_length= MY_MIN(column->length,
                                blob_length_by_type(sql_field->sql_type)

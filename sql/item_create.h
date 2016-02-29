@@ -154,20 +154,6 @@ protected:
 #endif
 
 
-/**
-  Builder for cast expressions.
-  @param thd The current thread
-  @param a The item to cast
-  @param cast_type the type casted into
-  @param len TODO
-  @param dec TODO
-  @param cs The character set
-*/
-Item *
-create_func_cast(THD *thd, Item *a, Cast_target cast_type,
-                 const char *len, const char *dec,
-                 CHARSET_INFO *cs);
-
 Item *create_temporal_literal(THD *thd,
                               const char *str, uint length,
                               CHARSET_INFO *cs,

@@ -676,6 +676,9 @@ can_convert_field_to(Field *field,
   */
 
   DBUG_PRINT("debug", ("Base types are different, checking conversion"));
+  if (!Type_handler::is_traditional_type(source_type)) // MDEV-9219
+    DBUG_RETURN(false);
+
   switch (source_type)                      // Source type (on master)
   {
   case MYSQL_TYPE_DECIMAL:

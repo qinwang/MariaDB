@@ -282,6 +282,7 @@ public:
   double val_real();
   longlong val_int ();
   String *val_str (String *);
+  String *val_raw_native(String *to);
   my_decimal *val_decimal(my_decimal *);
   bool val_bool();
   bool get_date(MYSQL_TIME *ltime, ulonglong fuzzydate);

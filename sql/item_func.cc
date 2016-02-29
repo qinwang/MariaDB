@@ -2751,6 +2751,14 @@ double Item_func_units::val_real()
 
 void Item_func_min_max::fix_length_and_dec()
 {
+  if (agg_field_type(func_name(), args, arg_count, false))
+    return;
+  if (!is_traditional_field_type()) // TODO: MDEV-9406
+  {
+    (void) join_type_attributes(this, this, args, arg_count);
+    return;
+  }
+
   uint unsigned_count= 0;
   int max_int_part=0;
   decimals=0;
@@ -2884,7 +2892,9 @@ bool Item_func_min_max::get_date(MYSQL_TIME *ltime, ulonglong fuzzy_date)
 {
   longlong UNINIT_VAR(min_max);
   DBUG_ASSERT(fixed == 1);
-
+  if (!is_traditional_field_type()) // TODO: MDEV-9406
+    return Item_hybrid_func::type_handler()->Item_get_date(this,
+                                                           ltime, fuzzy_date);
   /*
     just like ::val_int() method of a string item can be called,
     for example, SELECT CONCAT("10", "12") + 1,
@@ -2934,9 +2944,38 @@ bool Item_func_min_max::get_date(MYSQL_TIME *ltime, ulonglong fuzzy_date)
 }
 
 
+String *Item_func_min_max::val_raw_native(String *str)
+{
+  DBUG_ASSERT(fixed == 1);
+  const Type_handler *handler= Item_hybrid_func::type_handler();
+  if (is_traditional_type(handler->field_type())) // TODO: MDEV-9406
+    return handler->Item_val_raw(this, str);
+  StringBuffer<64> cur;
+  for (uint i= 0; i < arg_count; i++)
+  {
+    handler->Item_val_raw(args[i], i == 0 ?  str : &cur);
+    if (args[i]->null_value)
+    {
+      null_value= true;
+      return 0;
+    }
+    if (i > 0)
+    {
+      int cmp= handler->cmp_raw(str, &cur);
+      if ((cmp_sign < 0 ? cmp : - cmp) < 0)
+        str->copy(cur.ptr(), cur.length(), &my_charset_numeric);
+    }
+  }
+  null_value= false;
+  return str;
+}
+
+
 String *Item_func_min_max::val_str(String *str)
 {
   DBUG_ASSERT(fixed == 1);
+  if (!is_traditional_field_type()) // TODO: MDEV-9406
+    return type_handler()->Item_val_str(this, str);
   if (Item_func_min_max::cmp_type() == TIME_RESULT)
     return val_string_from_date(str);
   switch (Item_func_min_max::result_type()) {
@@ -2982,6 +3021,8 @@ String *Item_func_min_max::val_str(String *str)
 double Item_func_min_max::val_real()
 {
   DBUG_ASSERT(fixed == 1);
+  if (!is_traditional_field_type()) // TODO: MDEV-9406
+    return type_handler()->Item_val_real(this);
   double value=0.0;
   if (Item_func_min_max::cmp_type() == TIME_RESULT)
   {
@@ -3011,6 +3052,8 @@ double Item_func_min_max::val_real()
 longlong Item_func_min_max::val_int()
 {
   DBUG_ASSERT(fixed == 1);
+  if (!is_traditional_field_type()) // TODO: MDEV-9406
+    return type_handler()->Item_val_int(this);
   longlong value=0;
   if (Item_func_min_max::cmp_type() == TIME_RESULT)
   {
@@ -3040,6 +3083,8 @@ longlong Item_func_min_max::val_int()
 my_decimal *Item_func_min_max::val_decimal(my_decimal *dec)
 {
   DBUG_ASSERT(fixed == 1);
+  if (!is_traditional_field_type()) // TODO: MDEV-9406
+    return type_handler()->Item_val_decimal(this, dec);
   my_decimal tmp_buf, *tmp, *UNINIT_VAR(res);
 
   if (Item_func_min_max::cmp_type() == TIME_RESULT)
@@ -6912,6 +6957,15 @@ void Item_func_last_value::evaluate_sideeffects()
   DBUG_ASSERT(fixed == 1 && arg_count > 0);
   for (uint i= 0; i < arg_count-1 ; i++)
     args[i]->val_int();
+}
+
+String *Item_func_last_value::val_raw_native(String *str)
+{
+  String *tmp;
+  evaluate_sideeffects();
+  tmp= last_value->val_raw_native(str);
+  null_value= last_value->null_value;
+  return tmp;
 }
 
 String *Item_func_last_value::val_str(String *str)

@@ -963,6 +963,7 @@ bool LEX::set_bincmp(CHARSET_INFO *cs, bool bin)
   st_select_lex *select_lex;
   struct p_elem_val *p_elem_value;
   udf_func *udf;
+  const Type_handler *type_handler;
 
   /* enums */
   enum Condition_information_item::Name cond_info_item_name;
@@ -1858,6 +1859,8 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         collation_name_or_default
         opt_load_data_charset
         UNDERSCORE_CHARSET
+
+%type <type_handler> type_handler
 
 %type <variable> internal_variable_name
 
@@ -6411,6 +6414,18 @@ field_type:
             Lex->last_field->flags|= (AUTO_INCREMENT_FLAG | NOT_NULL_FLAG | UNSIGNED_FLAG |
               UNIQUE_KEY_FLAG);
           }
+        | type_handler { $$.set($1->field_type()); }
+        ;
+
+type_handler:
+           IDENT_sys
+           {
+             if (!($$= Type_handlers.handler($1)))
+             {
+                my_parse_error(thd, ER_SYNTAX_ERROR);
+                MYSQL_YYABORT;
+             }
+           }
         ;
 
 spatial_type:
@@ -9313,17 +9328,12 @@ simple_expr:
           }
         | BINARY simple_expr %prec NEG
           {
-            $$= create_func_cast(thd, $2, ITEM_CAST_CHAR, NULL, NULL,
-                                 &my_charset_bin);
-            if ($$ == NULL)
+            if (!($$= Cast_type(ITEM_CAST_CHAR).create_func_cast(thd, $2)))
               MYSQL_YYABORT;
           }
         | CAST_SYM '(' expr AS cast_type ')'
           {
-            LEX *lex= Lex;
-            $$= create_func_cast(thd, $3, $5.type(), $5.length(), $5.dec(),
-                                 lex->charset);
-            if ($$ == NULL)
+            if (!($$= $5.create_func_cast(thd, $3, Lex->charset)))
               MYSQL_YYABORT;
           }
         | CASE_SYM opt_expr when_list opt_else END
@@ -9334,9 +9344,7 @@ simple_expr:
           }
         | CONVERT_SYM '(' expr ',' cast_type ')'
           {
-            $$= create_func_cast(thd, $3, $5.type(), $5.length(), $5.dec(),
-                                 Lex->charset);
-            if ($$ == NULL)
+            if (!($$= $5.create_func_cast(thd, $3, Lex->charset)))
               MYSQL_YYABORT;
           }
         | CONVERT_SYM '(' expr USING charset_name ')'
@@ -10476,6 +10484,7 @@ cast_type:
           }
         | cast_type_numeric  { $$= $1; Lex->charset= NULL; }
         | cast_type_temporal { $$= $1; Lex->charset= NULL; }
+        | type_handler       { $$.set($1); Lex->charset= NULL; }
         ;
 
 cast_type_numeric:

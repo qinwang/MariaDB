@@ -13878,7 +13878,11 @@ can_change_cond_ref_to_const(Item_bool_func2 *target,
 {
   if (!target_expr->eq(source_expr,0) ||
        target_value == source_const ||
-       target->compare_type() != source->compare_type())
+       target->compare_type() != source->compare_type() ||
+       !Type_handler::is_traditional_type( // TODO: MDEV-9522
+                      target->compare_type_handler()->field_type())||
+       !Type_handler::is_traditional_type( // TODO: MDEV-9522
+                      source->compare_type_handler()->field_type()))
     return false;
   if (target->compare_type() == STRING_RESULT)
   {
@@ -15689,6 +15693,28 @@ Field *Item::create_tmp_field(bool group, TABLE *table,
   Field *UNINIT_VAR(new_field);
   MEM_ROOT *mem_root= table->in_use->mem_root;
 
+  if (!is_traditional_field_type()) // MDEV-9523 split Item::create_tmp_field
+  {
+    /**
+      For the non-traditional types let's assume that for the
+      temporary table purposes we need a field of exactly the same
+      data type with the current Item.
+
+      Note, only a few Items currently override create_tmp_field():
+      - Item_type_holder
+      - Item_sum and its descendants:
+        * Item_sum_avg
+        * Item_sum_variance
+        * Item_sum_hybrid
+        * Item_func_group_concat
+      The other Item types go through this generic Item::create_tmp_field().
+      Some of them can be of non-traditional types (e.g. Item_func_coalesce).
+    */
+    new_field= make_table_field(table->in_use->mem_root, table->s, name,
+                                Record_addr(maybe_null),
+                                *this, Type_ext_attributes(), false);
+    goto end;
+  }
   switch (cmp_type()) {
   case REAL_RESULT:
     new_field= new (mem_root)
@@ -15749,6 +15775,7 @@ Field *Item::create_tmp_field(bool group, TABLE *table,
     new_field= 0;
     break;
   }
+end:
   if (new_field)
     new_field->init(table);
   return new_field;
@@ -15878,9 +15905,15 @@ Field *create_tmp_field(THD *thd, TABLE *table,Item *item, Item::Type type,
     type= Item::FIELD_ITEM;
   }
 
+  /*
+    TODO: MDEV-4912 continue splitting ::create_tmp_field():
+    remove the switch and call virtually item->create_tmp_field() instead.
+    See also MDEV-9523 Split Item::create_tmp_field()...
+  */
   switch (type) {
   case Item::SUM_FUNC_ITEM:
   case Item::TYPE_HOLDER:
+  case Item::CACHE_ITEM:
   {
     result= item->create_tmp_field(group, table, convert_blob_length);
     if (!result)
@@ -15999,7 +16032,6 @@ Field *create_tmp_field(THD *thd, TABLE *table,Item *item, Item::Type type,
   case Item::REF_ITEM:
   case Item::NULL_ITEM:
   case Item::VARBIN_ITEM:
-  case Item::CACHE_ITEM:
   case Item::EXPR_CACHE_ITEM:
     if (make_copy_field)
     {

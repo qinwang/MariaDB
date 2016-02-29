@@ -1977,6 +1977,19 @@ Item_sum_hybrid::val_str(String *str)
 }
 
 
+String *
+Item_sum_hybrid::val_raw_native(String *str)
+{
+  DBUG_ASSERT(fixed == 1);
+  if (null_value)
+    return 0;
+  String *retval= value->val_raw_native(str);
+  if ((null_value= value->null_value))
+    DBUG_ASSERT(retval == NULL);
+  return retval;
+}
+
+
 void Item_sum_hybrid::cleanup()
 {
   DBUG_ENTER("Item_sum_hybrid::cleanup");

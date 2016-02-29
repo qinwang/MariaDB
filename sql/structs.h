@@ -552,7 +552,7 @@ public:
 
 struct Lex_length_and_dec_st
 {
-private:
+protected:
   const char *m_length;
   const char *m_dec;
 public:

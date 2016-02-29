@@ -20,6 +20,7 @@
 #pragma interface			/* gcc class implementation */
 #endif
 
+
 #include "mysqld.h"
 
 class Field;
@@ -29,6 +30,7 @@ class Item_func_hex;
 class Item_func_between;
 class Item_sum_hybrid;
 class Item_type_holder;
+class Item_hex_hybrid;
 class Create_attr;
 class Column_definition;
 class Type_std_attributes;
@@ -40,7 +42,7 @@ class String;
 class Item_func_hybrid_field_type;
 class Arg_comparator;
 
-class Name: private LEX_CSTRING
+class Name: public LEX_CSTRING
 {
 public:
   Name(const char *str_arg, uint length_arg)
@@ -52,6 +54,11 @@ public:
   {
     LEX_CSTRING::str= NULL;
     LEX_CSTRING::length= 0;
+  }
+  Name(const LEX_STRING &name)
+  {
+    LEX_CSTRING::str= name.str;
+    LEX_CSTRING::length= name.length;
   }
   const char *ptr() const { return LEX_CSTRING::str; }
   uint length() const { return LEX_CSTRING::length; }
@@ -138,12 +145,21 @@ public:
        (separate handlers for POINT, POLYGON, LINESTRING, etc).
   */
   virtual const Name type_name() const= 0;
+  /*
+    Currently the set of data types that can not be mixed with
+    non-traditional types is hard-coded.
+    This should evolve to a virtual method eventually.
+  */
+  bool can_merge_with_non_traditional_type() const;
+
   virtual enum_field_types field_type() const= 0;
   virtual enum_field_types real_field_type() const { return field_type(); }
   virtual Item_result result_type() const= 0;
   virtual Item_result cmp_type() const= 0;
+  virtual Item_result cast_to_int_type() const { return cmp_type(); }
   // Requires the engine not to have HA_NO_BLOBS
   virtual bool is_blob_field_type() const= 0;
+  virtual bool is_fixed_length_binary_type() const { return false; }
   virtual const Type_handler*
   type_handler_adjusted_to_max_octet_length(uint max_octet_length,
                                             CHARSET_INFO *cs) const
@@ -199,6 +215,10 @@ public:
   virtual int Item_save_in_field(Item *item, Field *field,
                                  bool no_conversions) const= 0;
   virtual Item_cache *make_cache_item(THD *thd, const Item *item) const= 0;
+  virtual Item *make_typecast_item(THD *thd, Item *arg) const
+  {
+    return NULL;
+  }
   virtual void make_sort_key(uchar *to, Item *item,
                              const SORT_FIELD_ATTR *sort_field,
                              Sort_param *param) const= 0;
@@ -226,11 +246,58 @@ public:
   virtual bool Item_type_holder_join_attributes(THD *thd,
                                                 Item_type_holder *holder,
                                                 Item *item) const= 0;
+  // Item conversion routines
+  virtual String *Item_val_raw(Item *item, String *str) const
+  {
+    DBUG_ASSERT(0);
+    return 0;
+  }
+  virtual String *Item_val_str(Item *item, String *str) const
+  {
+    DBUG_ASSERT(0);
+    return 0;
+  }
+  virtual longlong Item_val_int(Item *item) const
+  {
+    DBUG_ASSERT(0);
+    return 0;
+  }
+  virtual double Item_val_real(Item *item)  const
+  {
+    DBUG_ASSERT(0);
+    return 0;
+  }
+  virtual my_decimal* Item_val_decimal(Item *item, my_decimal *to) const
+  {
+    DBUG_ASSERT(0);
+    return 0;
+  }
+  virtual bool Item_get_date(Item *item, MYSQL_TIME *, ulonglong) const
+  {
+    DBUG_ASSERT(0);
+    return 0;
+  }
+
   // HEX routines
   virtual
   String *Item_func_hex_val_str_ascii(Item_func_hex *item,
                                       String *str) const= 0;
-  // Hybrid function routines;
+  // Hex hybrid routines
+  virtual
+  String *Item_hex_hybrid_val_raw(Item_hex_hybrid *item, String *str) const
+  {
+    DBUG_ASSERT(0);
+    return 0;
+  }
+
+  // Hybrid function routines
+  virtual
+  String *Item_func_hybrid_field_type_val_raw(Item_func_hybrid_field_type *item,
+                                              String *str) const
+  {
+    str->set("", 0, &my_charset_bin);
+    return str;
+  }
   virtual
   String *Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                               String *str) const= 0;
@@ -255,11 +322,24 @@ public:
   virtual longlong
   Item_func_between_val_int(Item_func_between *func) const= 0;
 
+  virtual bool join_type_attributes(Type_std_attributes *std_attr,
+                                    Type_ext_attributes *ext_attr,
+                                    Item **item, uint nitems) const
+  {
+    DBUG_ASSERT(0);
+    return true;
+  }
   virtual bool set_comparator_func(Arg_comparator *cmp) const= 0;
 
   // Hybrid aggregate routines
   virtual bool
   Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const= 0;
+
+  virtual int cmp_raw(const String *a, const String *b) const
+  {
+    DBUG_ASSERT(0);
+    return true;
+  }
 };
 
 
@@ -1096,6 +1176,7 @@ public:
   const Name type_name() const { return Name(C_STRING_WITH_LEN("enum")); }
   enum_field_types field_type() const { return MYSQL_TYPE_VARCHAR; }
   virtual enum_field_types real_field_type() const { return MYSQL_TYPE_ENUM; }
+  Item_result cast_to_int_type() const { return INT_RESULT; }
   uint32 calc_pack_length(uint32 length) const;
   bool prepare_column_definition(Column_definition *def,
                                  longlong table_flags) const;
@@ -1127,6 +1208,7 @@ public:
   enum_field_types field_type() const { return MYSQL_TYPE_VARCHAR; }
   uint32 calc_pack_length(uint32 length) const;
   virtual enum_field_types real_field_type() const { return MYSQL_TYPE_SET; }
+  Item_result cast_to_int_type() const { return INT_RESULT; }
   bool prepare_column_definition(Column_definition *def,
                                  longlong table_flags) const;
   Field *make_table_field(MEM_ROOT *root, TABLE_SHARE *share,
@@ -1168,8 +1250,6 @@ protected:
   bool merge_type(const char *op, const Type_handler *other,
                   bool treat_bit_as_number);
   void finalize_type(uint unsigned_count, uint total_count);
-  bool agg_field_type(const char *op, Item **items, uint nitems,
-                      bool treat_bit_as_number);
 public:
   Type_handler_hybrid_field_type();
   Type_handler_hybrid_field_type(const Type_handler *handler)
@@ -1178,10 +1258,18 @@ public:
   Type_handler_hybrid_field_type(enum_field_types type)
     :m_type_handler(get_handler_by_field_type(type))
   { }
+  Type_handler_hybrid_field_type(Item_result type)
+    :m_type_handler(get_handler_by_result_type(type))
+  { }
   Type_handler_hybrid_field_type(const Type_handler_hybrid_field_type *other)
     :m_type_handler(other->m_type_handler)
   { }
 
+  /**
+    Collect data types of an array of Items to return result.
+  */
+  bool agg_field_type(const char *op, Item **items, uint nitems,
+                      bool treat_bit_as_number);
   bool merge_type_for_comparison(const char *op, const Type_handler *other);
 
   const Type_handler *type_handler() const { return m_type_handler; }
@@ -1191,6 +1279,10 @@ public:
   {
     return m_type_handler->real_field_type();
   }
+  Item_result cast_to_int_type() const
+  {
+    return m_type_handler->cast_to_int_type();
+  }
   Item_result result_type() const { return m_type_handler->result_type(); }
   Item_result cmp_type() const { return m_type_handler->cmp_type(); }
   int Item_save_in_field(Item *item, Field *field, bool no_conversions) const
@@ -1199,6 +1291,9 @@ public:
   }
   bool is_blob_field_type() const
   { return m_type_handler->is_blob_field_type(); }
+  bool is_fixed_length_binary_type() const
+  { return m_type_handler->is_fixed_length_binary_type(); }
+
   void set_handler(const Type_handler *other)
   {
     /*
@@ -1275,6 +1370,10 @@ public:
   {
     return m_type_handler->make_cache_item(thd, item);
   }
+  Item *make_typecast_item(THD *thd, Item *arg) const
+  {
+    return m_type_handler->make_typecast_item(thd, arg);
+  }
   void make_sort_key(uchar *to, Item *item, const SORT_FIELD_ATTR *sort_field,
                      Sort_param *param) const
   {
@@ -1302,6 +1401,45 @@ public:
   String *Item_func_hex_val_str_ascii(Item_func_hex *item, String *str) const
   {
     return m_type_handler->Item_func_hex_val_str_ascii(item, str);
+  }
+  String *Item_val_raw(Item *item, String *str) const
+  {
+    return m_type_handler->Item_val_raw(item, str);
+  }
+  String *Item_val_str(Item *item, String *str) const
+  {
+    return m_type_handler->Item_val_str(item, str);
+  }
+  longlong Item_val_int(Item *item) const
+  {
+    return m_type_handler->Item_val_int(item);
+  }
+  double Item_val_real(Item *item) const
+  {
+    return m_type_handler->Item_val_real(item);
+  }
+  my_decimal* Item_val_decimal(Item *item, my_decimal *to) const
+  {
+    return m_type_handler->Item_val_decimal(item, to);
+  }
+  bool Item_get_date(Item *item, MYSQL_TIME *ltime, ulonglong fuzzy) const
+  {
+    return m_type_handler->Item_get_date(item, ltime, fuzzy);
+  }
+
+
+  virtual
+  String *Item_hex_hybrid_val_raw(Item_hex_hybrid *item, String *str) const
+  {
+    return m_type_handler->Item_hex_hybrid_val_raw(item, str);
+  }
+
+
+  String *
+  Item_func_hybrid_field_type_val_raw(Item_func_hybrid_field_type *item,
+                                      String *str) const
+  {
+    return m_type_handler->Item_func_hybrid_field_type_val_raw(item, str);
   }
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
@@ -1341,6 +1479,13 @@ public:
   {
     return m_type_handler->Item_func_between_val_int(func);
   }
+  bool join_type_attributes(Type_std_attributes *std_attr,
+                            Type_ext_attributes *ext_attr,
+                            Item **item, uint nitems) const
+  {
+    return m_type_handler->join_type_attributes(std_attr, ext_attr,
+                                                item, nitems);
+  }
   bool set_comparator_func(Arg_comparator *cmp) const
   {
     return m_type_handler->set_comparator_func(cmp);
@@ -1348,6 +1493,10 @@ public:
   bool Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const
   {
     return m_type_handler->Item_sum_hybrid_fix_length_and_dec(func);
+  }
+  int cmp_raw(const String *a, const String *b) const
+  {
+    return m_type_handler->cmp_raw(a, b);
   }
 };
 
@@ -1376,6 +1525,12 @@ class Type_handler_register
 {
   class Entry
   {
+    /**
+      Only non-traditional types currently have non-empty name.
+      Traditional types do not need to be looked up by name,
+      as they are handled by dedicated keywords in sql_yacc.yy,
+      so traditional types have m_name.str and m_name.length set to 0.
+    */
     Name m_name;
     const Type_handler *m_handler;
   public:
@@ -1391,16 +1546,34 @@ class Type_handler_register
     {
       m_handler= handler;
     }
+    void set(const Type_handler *handler, const Name &name)
+    {
+      m_handler= handler;
+      m_name= name;
+    }
   };
   Entry m_handlers[256];
-  uint m_min_type;
-  uint m_max_type;
+  uint m_min_non_traditional_type;
+  uint m_max_non_traditional_type;
 public:
   Type_handler_register();
+  /**
+    Find a data type handler by the real field type.
+    Both traditional and non-traditional types can be searched.
+  */
   const Type_handler *handler(enum_field_types type) const
   {
     return m_handlers[type].handler();
   }
+  /**
+    Find a non-traditional type handler by its name.
+    This method is called from sql_yacc.yy.
+    Traditional types do not need to be searched by name.
+  */
+  const Type_handler *handler(const Name &name) const;
+  /**
+    Add a traditional data type whose names has a type name token in sql_yacc.yy
+  */
   bool add(const Type_handler *handler)
   {
     enum_field_types real_type= handler->real_field_type();
@@ -1409,9 +1582,23 @@ public:
       DBUG_ASSERT(0);
       return true;
     }
-    set_if_smaller(m_min_type, real_type);
-    set_if_bigger(m_max_type, real_type);
     m_handlers[real_type].set(handler);
+    return false;
+  }
+  /**
+    Add a non-traditional data type whose name needs to be looked up by name.
+  */
+  bool add(const Type_handler *handler, const Name &name)
+  {
+    enum_field_types real_type= handler->real_field_type();
+    if (m_handlers[real_type].handler())
+    {
+      DBUG_ASSERT(0);
+      return true;
+    }
+    set_if_smaller(m_min_non_traditional_type, handler->field_type());
+    set_if_bigger(m_max_non_traditional_type, handler->field_type());
+    m_handlers[real_type].set(handler, name);
     return false;
   }
 };

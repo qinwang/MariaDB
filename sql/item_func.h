@@ -385,7 +385,8 @@ public:
   Functions whose returned field type is determined at fix_fields() time.
 */
 class Item_hybrid_func: public Item_func,
-                        public Type_handler_hybrid_field_type
+                        public Type_handler_hybrid_field_type,
+                        public Type_ext_attributes
 {
 public:
   Item_hybrid_func(THD *thd): Item_func(thd) { }
@@ -396,8 +397,22 @@ public:
   Item_hybrid_func(THD *thd, List<Item> &list): Item_func(thd, list) { }
   Item_hybrid_func(THD *thd, Item_hybrid_func *item)
     :Item_func(thd, item), Type_handler_hybrid_field_type(item) { }
+
+  /** Start of Type_handler methods ****************************************
+      They all will be gone when we derive Item from Type_handler virtually.
+
+      Note, the default implementation from Item would work in most cases.
+      However, there would be one extra virtual call.
+      - The first call to get type_handler()
+      - The second call to call the actual method of the handler.
+      We call type_handler() statically here, saving one virtual call.
+  */
+  const Type_handler *type_handler() const
+  { return Type_handler_hybrid_field_type::type_handler(); }
   enum_field_types field_type() const
   { return Type_handler_hybrid_field_type::field_type(); }
+  enum_field_types real_field_type() const
+  { return Type_handler_hybrid_field_type::real_field_type(); }
   enum Item_result result_type () const
   { return Type_handler_hybrid_field_type::result_type(); }
   enum Item_result cmp_type () const
@@ -419,7 +434,43 @@ public:
   }
   Item_cache *make_cache_item(THD *thd, const Item *item) const
   { return  Type_handler_hybrid_field_type::make_cache_item(thd, item); }
+  enum Item_result cast_to_int_type () const
+  { return Type_handler_hybrid_field_type::cast_to_int_type(); }
 
+
+  String *Item_val_raw(Item *item, String *str) const
+  {
+    return Type_handler_hybrid_field_type::Item_val_raw(item, str);
+  }
+  String *Item_val_str(Item *item, String *str) const
+  {
+    return Type_handler_hybrid_field_type::Item_val_str(item, str);
+  }
+  longlong Item_val_int(Item *item) const
+  {
+    return Type_handler_hybrid_field_type::Item_val_int(item);
+  }
+  double Item_val_real(Item *item) const
+  {
+    return Type_handler_hybrid_field_type::Item_val_real(item);
+  }
+  my_decimal* Item_val_decimal(Item *item, my_decimal *to) const
+  {
+    return Type_handler_hybrid_field_type::Item_val_decimal(item, to);
+  }
+  bool Item_get_date(Item *item, MYSQL_TIME *ltime, ulonglong fuzzy) const
+  {
+    return Type_handler_hybrid_field_type::Item_get_date(item, ltime, fuzzy);
+  }
+
+  String *
+  Item_func_hybrid_field_type_val_raw(Item_func_hybrid_field_type *item,
+                                      String *str) const
+  {
+    DBUG_ASSERT(fixed);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_val_raw(item, str);
+  }
   String *
   Item_func_hybrid_field_type_val_str(Item_func_hybrid_field_type *item,
                                       String *str) const
@@ -459,6 +510,19 @@ public:
     return Type_handler_hybrid_field_type::
       Item_func_hybrid_field_type_get_date(item, ltime, fuzzydate);
   }
+  bool join_type_attributes(Type_std_attributes *std_attr,
+                            Type_ext_attributes *ext_attr,
+                            Item **item, uint nitems) const
+  {
+    return Type_handler_hybrid_field_type::join_type_attributes(std_attr,
+                                                                ext_attr,
+                                                                item, nitems);
+  }
+
+  Item *make_typecast_item(THD *thd, Item *arg) const
+  {
+    return Type_handler_hybrid_field_type::make_typecast_item(thd, arg);
+  }
   bool set_comparator_func(Arg_comparator *cmp) const
   {
     return Type_handler_hybrid_field_type::set_comparator_func(cmp);
@@ -467,6 +531,11 @@ public:
   {
     return Type_handler_hybrid_field_type::Item_sum_hybrid_fix_length_and_dec(func);
   }
+  int cmp_raw(const String *a, const String *b) const
+  {
+    return Type_handler_hybrid_field_type::cmp_raw(a, b);
+  }
+  /** End of Type_handler methods *****************************************/
 };
 
 
@@ -548,6 +617,12 @@ public:
       Item_func_hybrid_field_type_val_decimal(this, decimal_value);
   }
 
+  String *val_raw_native(String*str)
+  {
+    DBUG_ASSERT(fixed);
+    return Type_handler_hybrid_field_type::
+      Item_func_hybrid_field_type_val_raw(this, str);
+  }
   String *val_str(String*str)
   {
     DBUG_ASSERT(fixed);
@@ -636,6 +711,7 @@ public:
   */
   virtual bool date_op(MYSQL_TIME *res, uint fuzzy_date)= 0;
 
+  virtual String *raw_op(String *)= 0;
 };
 
 
@@ -665,6 +741,7 @@ public:
     Item_func_hybrid_field_type(thd, list)
   { }
   String *str_op(String *str) { DBUG_ASSERT(0); return 0; }
+  String *raw_op(String *str) { DBUG_ASSERT(0); return 0; }
   bool date_op(MYSQL_TIME *ltime, uint fuzzydate) { DBUG_ASSERT(0); return true; }
 };
 
@@ -1197,6 +1274,7 @@ public:
   double val_real();
   longlong val_int();
   String *val_str(String *);
+  String *val_raw_native(String *);
   my_decimal *val_decimal(my_decimal *);
   bool get_date(MYSQL_TIME *res, ulonglong fuzzy_date);
   void fix_length_and_dec();
@@ -1233,6 +1311,7 @@ public:
   double val_real() { return args[0]->val_real(); }
   longlong val_int() { return args[0]->val_int(); }
   String *val_str(String *str) { return args[0]->val_str(str); }
+  String *val_raw_native(String *str) { return args[0]->val_raw_native(str); }
   my_decimal *val_decimal(my_decimal *dec) { return args[0]->val_decimal(dec); }
   const char *func_name() const { return "rollup_const"; }
   bool const_item() const { return 0; }
@@ -2164,23 +2243,26 @@ enum Cast_target
 {
   ITEM_CAST_BINARY, ITEM_CAST_SIGNED_INT, ITEM_CAST_UNSIGNED_INT,
   ITEM_CAST_DATE, ITEM_CAST_TIME, ITEM_CAST_DATETIME, ITEM_CAST_CHAR,
-  ITEM_CAST_DECIMAL, ITEM_CAST_DOUBLE
+  ITEM_CAST_DECIMAL, ITEM_CAST_DOUBLE, ITEM_CAST_HANDLED
 };
 
 
 struct Lex_cast_type_st: public Lex_length_and_dec_st
 {
-private:
-  Cast_target m_type;
+protected:
+  Cast_target m_type:8;
+  enum_field_types m_field_type:8;
 public:
   void set(Cast_target type, const char *length, const char *dec)
   {
     m_type= type;
+    m_field_type= MYSQL_TYPE_NULL;
     Lex_length_and_dec_st::set(length, dec);
   }
   void set(Cast_target type, Lex_length_and_dec_st length_and_dec)
   {
     m_type= type;
+    m_field_type= MYSQL_TYPE_NULL;
     Lex_length_and_dec_st::operator=(length_and_dec);
   }
   void set(Cast_target type, const char *length)
@@ -2191,7 +2273,32 @@ public:
   {
     set(type, 0, 0);
   }
+  void set(const Type_handler *handler)
+  {
+    set(ITEM_CAST_HANDLED, 0, 0);
+    m_field_type= handler->field_type();
+  }
   Cast_target type() const { return m_type; }
+
+  /**
+    Builder for cast expressions.
+    @param thd The current thread
+    @param a The item to cast
+    @param cs The character set
+  */
+  Item *create_func_cast(THD *thd, Item *a, CHARSET_INFO *cs) const;
+  Item *create_func_cast(THD *thd, Item *a) const
+  { return create_func_cast(thd, a, &my_charset_bin); }
+};
+
+
+class Cast_type: public Lex_cast_type_st
+{
+public:
+  Cast_type(Cast_target type, const char *length, const char *dec)
+  { set(type, length, dec); }
+  Cast_type(Cast_target type)
+  { set(type, NULL, NULL); }
 };
 
 
@@ -2310,6 +2417,15 @@ public:
     return str;
   }
 
+  String *val_raw_native(String *str)
+  {
+    if (execute())
+      return NULL;
+    str->copy((const char *) sp_result_field->ptr,
+              sp_result_field->pack_length(), &my_charset_bin);
+    return str;
+  }
+
   void update_null_value()
   { 
     execute();
@@ -2381,6 +2497,7 @@ public:
   double val_real();
   longlong val_int();
   String *val_str(String *);
+  String *val_raw_native(String *);
   my_decimal *val_decimal(my_decimal *);
   void fix_length_and_dec();
   enum Item_result result_type () const { return last_value->result_type(); }

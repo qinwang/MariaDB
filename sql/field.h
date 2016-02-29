@@ -757,6 +757,16 @@ public:
   virtual int  store(longlong nr, bool unsigned_val)=0;
   virtual int  store_decimal(const my_decimal *d)=0;
   virtual int  store_time_dec(MYSQL_TIME *ltime, uint dec);
+  /**
+    Store a value represented in native raw format
+  */
+  virtual int  store_raw_native(const char *str, uint length)
+  {
+    DBUG_ASSERT(0); // Traditional types do not use raw format (yet)
+    reset();
+    set_notnull();
+    return 0;
+  }
   int store_time(MYSQL_TIME *ltime)
   { return store_time_dec(ltime, TIME_SECOND_PART_DIGITS); }
   int store(const char *to, uint length, CHARSET_INFO *cs,
@@ -781,6 +791,18 @@ public:
      This trickery is used to decrease a number of malloc calls.
   */
   virtual String *val_str(String*,String *)=0;
+  String *val_raw_native(String *to)
+  {
+    /**
+      Note, val_raw_native() should not actually include length bytes for
+      VARCHAR and BLOB.
+      We'll fix this when we need raw format for the traditional data types.
+      Currently returning the entire buffer pointed by ptr is Ok.
+    */
+    DBUG_ASSERT(!is_null());
+    to->set((const char *) ptr, pack_length(), &my_charset_bin);
+    return to;
+  }
   String *val_int_as_str(String *val_buffer, bool unsigned_flag);
   fast_field_copier get_fast_field_copier(const Field *from);
   /*

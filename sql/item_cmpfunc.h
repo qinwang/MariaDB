@@ -45,7 +45,13 @@ typedef int (*Item_field_cmpfunc)(Item *f1, Item *f2, void *arg);
 
 class Arg_comparator: public Sql_alloc
 {
+protected:
   Item **a, **b;
+  /**
+    m_compare_type is needed to distinguish between ROW_RESULT and scalar types.
+    All scalar types are further handled by m_compare_handler.
+    Perhaps m_compare_type should be replaced to "bool m_is_row".
+  */
   Item_result m_compare_type;
   Type_handler_hybrid_field_type m_compare_handler;
   CHARSET_INFO *m_compare_collation;
@@ -60,12 +66,16 @@ class Arg_comparator: public Sql_alloc
                                    //   when one of arguments is NULL.
   bool set_cmp_func_for_row_arguments();
   bool set_cmp_func(Item_func_or_sum *owner_arg, Item **a1, Item **a2);
+  void set_func(arg_cmp_func func_arg, const Type_handler *handler)
+  {
+    func= func_arg;
+    m_compare_handler.set_handler(handler);
+  }
 
   int compare_temporal(enum_field_types type);
   int compare_e_temporal(enum_field_types type);
 
-  const Type_handler *compare_type_handler() const
-  { return m_compare_handler.type_handler(); }
+
 public:
   /* Allow owner function to use string buffers. */
   String value1, value2;
@@ -126,6 +136,8 @@ public:
     return (owner->type() == Item::FUNC_ITEM &&
            ((Item_func*)owner)->functype() == Item_func::EQUAL_FUNC);
   }
+  const Type_handler *compare_type_handler() const
+  { return m_compare_handler.type_handler(); }
   Item_result compare_type() const { return m_compare_type; }
   CHARSET_INFO *compare_collation() const { return m_compare_collation; }
   Arg_comparator *subcomparators() const { return comparators; }
@@ -390,6 +402,8 @@ public:
     */
     return STRING_RESULT;
   }
+  virtual const Type_handler *compare_type_handler() const
+  { return get_handler_by_field_type(MYSQL_TYPE_VARCHAR); }
   SEL_TREE *get_mm_tree(RANGE_OPT_PARAM *param, Item **cond_ptr)
   {
     DBUG_ENTER("Item_bool_func2::get_mm_tree");
@@ -496,6 +510,8 @@ public:
   }
   CHARSET_INFO *compare_collation() const { return cmp.compare_collation(); }
   Item_result compare_type() const { return cmp.compare_type(); }
+  const Type_handler *compare_type_handler() const
+  { return cmp.compare_type_handler(); }
   Arg_comparator *get_comparator() { return &cmp; }
   void cleanup()
   {
@@ -795,6 +811,8 @@ protected:
     when m_compare_type is STRING_RESULT.
   */
   DTCollation cmp_collation;
+  const Type_handler *compare_type_handler() const
+  { return m_compare_handler.Type_handler_hybrid_field_type::type_handler(); }
 public:
   bool negated;     /* <=> the item represents NOT <func> */
   bool pred_level;  /* <=> [NOT] <func> is used on a predicate level */
@@ -828,6 +846,7 @@ public:
   longlong val_int_cmp_int();
   longlong val_int_cmp_decimal();
   longlong val_int_cmp_real();
+  longlong val_int_cmp_raw();
   bool fix_length_and_dec_traditional();
   String value0,value1,value2;
   Item_func_between(THD *thd, Item *a, Item *b, Item *c):
@@ -918,6 +937,7 @@ public:
   double real_op();
   longlong int_op();
   String *str_op(String *);
+  String *raw_op(String *);
   my_decimal *decimal_op(my_decimal *);
   bool date_op(MYSQL_TIME *ltime,uint fuzzydate);
   void fix_length_and_dec();
@@ -938,7 +958,7 @@ public:
     Item_func_hybrid_field_type(thd, a, b) { }
   Item_func_case_abbreviation2(THD *thd, Item *a, Item *b, Item *c):
     Item_func_hybrid_field_type(thd, a, b, c) { }
-  void fix_length_and_dec2(Item **args);
+  bool fix_length_and_dec2(Item **args);
   uint decimal_precision2(Item **args) const;
 };
 
@@ -951,11 +971,12 @@ public:
   double real_op();
   longlong int_op();
   String *str_op(String *str);
+  String *raw_op(String *);
   my_decimal *decimal_op(my_decimal *);
   bool date_op(MYSQL_TIME *ltime,uint fuzzydate);
   void fix_length_and_dec()
   {
-    Item_func_case_abbreviation2::fix_length_and_dec2(args);
+    (void) Item_func_case_abbreviation2::fix_length_and_dec2(args);
     maybe_null= args[1]->maybe_null;
   }
   const char *func_name() const { return "ifnull"; }
@@ -983,6 +1004,7 @@ public:
   double real_op();
   my_decimal *decimal_op(my_decimal *);
   String *str_op(String *);
+  String *raw_op(String *);
   bool fix_fields(THD *, Item **);
   void fix_length_and_dec();
   uint decimal_precision() const
@@ -1026,6 +1048,7 @@ public:
   double real_op();
   longlong int_op();
   String *str_op(String *str);
+  String *raw_op(String *);
   my_decimal *decimal_op(my_decimal *);
   void fix_length_and_dec();
   uint decimal_precision() const { return args[2]->decimal_precision(); }
@@ -1455,6 +1478,7 @@ public:
   double real_op();
   longlong int_op();
   String *str_op(String *);
+  String *raw_op(String *);
   my_decimal *decimal_op(my_decimal *);
   bool date_op(MYSQL_TIME *ltime, uint fuzzydate);
   bool fix_fields(THD *thd, Item **ref);

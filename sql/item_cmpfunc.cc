@@ -226,17 +226,23 @@ void Type_handler_hybrid_field_type::finalize_type(uint unsigned_count,
     Bitmap of collected types - otherwise
 */
 
-static uint collect_cmp_types(Item **items, uint nitems, bool skip_nulls= FALSE)
+static uint collect_cmp_types(Item **items, uint nitems,
+                              uint *non_traditional_count,
+                              bool skip_nulls= FALSE)
 {
   uint i;
   uint found_types;
   Item_result left_cmp_type= items[0]->cmp_type();
   DBUG_ASSERT(nitems > 1);
+  *non_traditional_count= left_cmp_type == ROW_RESULT ||
+                          items[0]->is_traditional_field_type() ? 0 : 1;
   found_types= 0;
   for (i= 1; i < nitems ; i++)
   {
     if (skip_nulls && items[i]->type() == Item::NULL_ITEM)
       continue; // Skip NULL constant items
+    *non_traditional_count+= items[i]->cmp_type() == ROW_RESULT ||
+                             items[i]->is_traditional_field_type() ? 0 : 1;
     if ((left_cmp_type == ROW_RESULT ||
          items[i]->cmp_type() == ROW_RESULT) &&
         cmp_row_type(items[0], items[i]))
@@ -482,6 +488,16 @@ void Item_func::convert_const_compared_to_int_field(THD *thd)
 bool Item_func::setup_args_and_comparator(THD *thd, Arg_comparator *cmp)
 {
   DBUG_ASSERT(arg_count >= 2); // Item_func_nullif has arg_count == 3
+
+  /*
+    Don't aggregate charsets for non-traditional types.
+    TODO: modify setup_args_and_comparator() to aggregate
+    charsets *after* or inside cmp->set_cmp_func(). See also MDEV-9406.
+  */
+  if (args[0]->cmp_type() != ROW_RESULT &&
+      (!args[0]->is_traditional_field_type() || // TODO: MDEV-9406
+       !args[1]->is_traditional_field_type()))  // TODO: MDEV-9406
+    return cmp->set_cmp_func(this, &args[0], &args[1], true);
 
   if (args[0]->cmp_type() == STRING_RESULT &&
       args[1]->cmp_type() == STRING_RESULT)
@@ -2149,6 +2165,33 @@ longlong Item_func_between::val_int_cmp_temporal()
 }
 
 
+longlong Item_func_between::val_int_cmp_raw()
+{
+  String *value= args[0]->val_raw(compare_type_handler(), &value0);
+  if ((null_value= args[0]->null_value))
+    return 0;
+  String *a= args[1]->val_raw(compare_type_handler(), &value1);
+  String *b= args[2]->val_raw(compare_type_handler(), &value2);
+  if (!args[1]->null_value && !args[2]->null_value)
+    return (longlong)
+      ((compare_type_handler()->cmp_raw(value, a) >= 0 &&
+        compare_type_handler()->cmp_raw(value, b) <= 0) != negated);
+  if (args[1]->null_value && args[2]->null_value)
+    null_value= 1;
+  else if (args[1]->null_value)
+  {
+    // Set to not null if false range.
+    null_value= compare_type_handler()->cmp_raw(value, b) <= 0;
+  }
+  else
+  {
+    // Set to not null if false range.
+    null_value= compare_type_handler()->cmp_raw(value, a) >= 0;
+  }
+  return (longlong) (!null_value && negated);
+}
+
+
 longlong Item_func_between::val_int_cmp_string()
 {
   String *value,*a,*b;
@@ -2258,12 +2301,14 @@ void Item_func_between::print(String *str, enum_query_type query_type)
 }
 
 
-void
-Item_func_case_abbreviation2::fix_length_and_dec2(Item **args)
+bool Item_func_case_abbreviation2::fix_length_and_dec2(Item **args)
 {
   uint32 char_length;
-  agg_field_type(func_name(), args, 2, true);
   maybe_null=args[0]->maybe_null || args[1]->maybe_null;
+  if (agg_field_type(func_name(), args, 2, true))
+    return true;
+  if (!is_traditional_field_type()) // TODO: MDEV-9406
+    return join_type_attributes(this, this, args, arg_count);
   decimals= MY_MAX(args[0]->decimals, args[1]->decimals);
   unsigned_flag= args[0]->unsigned_flag && args[1]->unsigned_flag;
 
@@ -2285,7 +2330,7 @@ Item_func_case_abbreviation2::fix_length_and_dec2(Item **args)
   case STRING_RESULT:
     if (count_string_result_length(Item_func_case_abbreviation2::field_type(),
                                    args, 2))
-      return;
+      return true;
     break;
   case DECIMAL_RESULT:
   case REAL_RESULT:
@@ -2298,6 +2343,7 @@ Item_func_case_abbreviation2::fix_length_and_dec2(Item **args)
     DBUG_ASSERT(0);
   }
   fix_char_length(char_length);
+  return false;
 }
 
 
@@ -2358,6 +2404,23 @@ my_decimal *Item_func_ifnull::decimal_op(my_decimal *decimal_value)
   if ((null_value= args[1]->null_value))
     return 0;
   return value;
+}
+
+
+String *
+Item_func_ifnull::raw_op(String *str)
+{
+  DBUG_ASSERT(fixed == 1);
+  String *res= Item_func_ifnull::Item_val_raw(args[0], str);
+  if (!args[0]->null_value)
+  {
+    null_value= false;
+    return res;
+  }
+  res= Item_func_ifnull::Item_val_raw(args[1], str);
+  if ((null_value= args[1]->null_value))
+    return 0;
+  return res;
 }
 
 
@@ -2480,7 +2543,7 @@ Item_func_if::fix_length_and_dec()
     maybe_null= true;
     return;
   }
-  Item_func_case_abbreviation2::fix_length_and_dec2(args + 1);
+  (void) Item_func_case_abbreviation2::fix_length_and_dec2(args + 1);
 }
 
 
@@ -2503,6 +2566,17 @@ Item_func_if::int_op()
   null_value=arg->null_value;
   return value;
 }
+
+
+String *
+Item_func_if::raw_op(String *str)
+{
+  DBUG_ASSERT(fixed == 1);
+  Item *arg= args[0]->val_bool() ? args[1] : args[2];
+  String *res= Item_func_if::Item_val_raw(arg, str);
+  return (null_value= arg->null_value) ? NULL : res;
+}
+
 
 String *
 Item_func_if::str_op(String *str)
@@ -2658,6 +2732,22 @@ Item_func_nullif::int_op()
   return value;
 }
 
+
+String *
+Item_func_nullif::raw_op(String *str)
+{
+  DBUG_ASSERT(fixed == 1);
+  if (!cmp.compare())
+  {
+    null_value= true;
+    return 0;
+  }
+  String *res= Item_func_nullif::Item_val_raw(args[2], str);
+  null_value= args[2]->null_value;
+  return res;
+}
+
+
 String *
 Item_func_nullif::str_op(String *str)
 {
@@ -2772,6 +2862,39 @@ Item *Item_func_case::find_item(String *str)
       cmp_type= item_cmp_type(left_cmp_type, args[i]);
       DBUG_ASSERT(cmp_type != ROW_RESULT);
       DBUG_ASSERT(cmp_items[(uint)cmp_type]);
+
+      Type_handler_hybrid_field_type tmp(args[first_expr_num]->type_handler());
+      tmp.merge_type_for_comparison("CASE", args[i]->type_handler());
+      if (!is_traditional_type(tmp.field_type())) // Item_func_case::find_item
+      {
+        /*
+          TODO: get rid of a different execution path.
+          In an expression like this:
+                    CASE case_operand
+                      WHEN when_operand1 THEN result1
+                      WHEN when_operand2 THEN result2
+                      ...
+                      WHEN when_operandN THEN resultN
+                    END
+          case_operand can be of a traditional type, while when_operand[i]
+          can be of non-traditional types, and moreover can be of different
+          non-traditional types!
+          The code for the traditional types caches different representations
+          of case_operand in cmp_items[], according to cmp_type() of the
+          comparison operation between case_operand and when_operand[x].
+
+          It seems cmp_items[] should use enum_field_types as index
+          instead of Item_result.
+          But this array is going to be large (256 elements).
+        */
+        StringBuffer<64> buf1, buf2;
+        String *str1= args[first_expr_num]->val_raw(tmp.type_handler(), &buf1);
+        if ((null_value= (str1 == NULL)))
+          return else_expr_num != -1 ? args[else_expr_num] : 0;
+        String *str2= args[i]->val_raw(tmp.type_handler(), &buf2);
+        if (str2 && !tmp.cmp_raw(str1, str2))
+          return args[i + 1];
+      }
       if (!(value_added_map & (1U << (uint)cmp_type)))
       {
         cmp_items[(uint)cmp_type]->store_value(args[first_expr_num]);
@@ -2785,6 +2908,24 @@ Item *Item_func_case::find_item(String *str)
   }
   // No, WHEN clauses all missed, return ELSE expression
   return else_expr_num != -1 ? args[else_expr_num] : 0;
+}
+
+
+String *Item_func_case::raw_op(String *str)
+{
+  DBUG_ASSERT(fixed == 1);
+  String *res;
+  Item *item= find_item(str);
+
+  if (!item)
+  {
+    null_value=1;
+    return 0;
+  }
+  null_value= 0;
+  if (!(res= Item_func_case::Item_val_raw(item, str)))
+    null_value= true;
+  return res;
 }
 
 
@@ -2955,14 +3096,14 @@ bool Item_func_case::fix_field_type(THD *thd)
   {
     const Item *item= args[total_count * 2 + 1];
     unsigned_count+= item->unsigned_flag;
-    if (merge_type(Item_func_case::func_name(), item, true))
+    if (merge_type(Item_func_case::func_name(), item->type_handler(), true))
       return true;
   }
   if (else_expr_num != -1)
   {
     const Item *item= args[else_expr_num];
     unsigned_count+= item->unsigned_flag;
-    if (merge_type(func_name(), item, true))
+    if (merge_type(func_name(), item->type_handler(), true))
       return true;
     total_count++;
   }
@@ -2976,32 +3117,40 @@ bool Item_func_case::fix_return_arguments(THD *thd)
   if (else_expr_num == -1 || args[else_expr_num]->maybe_null)
     maybe_null= 1;
 
-  if (Item_func_case::result_type() == STRING_RESULT)
+  Item **agg= arg_buffer;
+  uint nagg;
+  /*
+    Aggregate all THEN and ELSE expression types
+    and collations when string result
+  */
+
+  for (nagg= 0 ; nagg < ncases/2 ; nagg++)
+    agg[nagg]= args[nagg*2+1];
+
+  if (else_expr_num != -1)
+    agg[nagg++]= args[else_expr_num];
+
+  /*
+    TODO-4912: refactor hybrid type functions.
+    - Split count_string_result_length() and friends into two steps:
+      a. on the first step it will actually *count* attributes,
+         this step will go into Type_handler_xxx::join_type_attributes()
+      b  on the second step it will install converters into the argument list,
+         e.g. Item_func_conv_charset when character set conversion is needed.
+    - Unify all CASE-alike hybrid functions:
+        CASE, IF, NULLIF, IFNULL, COALESCE and possibly LEAST, GREATEST
+      to go through join_type_attributes(). Currently many of them have their
+      own fix_length_and_dec() implementation, which actually do exactly
+      the same thing, but in different ways.
+  */
+  if (!is_traditional_field_type()) // TODO: MDEV-9406
   {
-    Item **agg= arg_buffer;
-    uint nagg;
-    /*
-      Aggregate all THEN and ELSE expression types
-      and collations when string result
-    */
-
-    for (nagg= 0 ; nagg < ncases/2 ; nagg++)
-      agg[nagg]= args[nagg*2+1];
-
-    if (else_expr_num != -1)
-      agg[nagg++]= args[else_expr_num];
-
+    return join_type_attributes(this, this, args, arg_count);
+  }
+  else if (Item_func_case::result_type() == STRING_RESULT)
+  {
     if (count_string_result_length(Item_func_case::field_type(), agg, nagg))
       return true;
-    /*
-      Copy all THEN and ELSE items back to args[] array.
-      Some of the items might have been changed to Item_func_conv_charset.
-    */
-    for (nagg= 0 ; nagg < ncases / 2 ; nagg++)
-      change_item_tree_if_needed(thd, &args[nagg * 2 + 1], agg[nagg]);
-
-    if (else_expr_num != -1)
-      change_item_tree_if_needed(thd, &args[else_expr_num], agg[nagg++]);
   }
   else
   {
@@ -3018,6 +3167,17 @@ bool Item_func_case::fix_return_arguments(THD *thd)
                                                              decimals,
                                                              unsigned_flag);
   }
+
+  /*
+    Copy all THEN and ELSE items back to args[] array.
+    Some of the items might have been changed to Item_func_conv_charset.
+  */
+  for (nagg= 0 ; nagg < ncases / 2 ; nagg++)
+    change_item_tree_if_needed(thd, &args[nagg * 2 + 1], agg[nagg]);
+
+  if (else_expr_num != -1)
+    change_item_tree_if_needed(thd, &args[else_expr_num], agg[nagg++]);
+
   return false;
 }
 
@@ -3046,8 +3206,25 @@ bool Item_func_case::fix_comparison_arguments(THD *thd)
     for (nagg= 0; nagg < ncases/2 ; nagg++)
       agg[nagg+1]= args[nagg*2];
     nagg++;
-    if (!(m_found_types= collect_cmp_types(agg, nagg)))
+
+    uint non_traditional_count;
+    if (!(m_found_types= collect_cmp_types(agg, nagg, &non_traditional_count)))
       return true;
+
+    if (non_traditional_count)
+    {
+      /*
+        This is needed to avoid mixing of different non-traditional types,
+        as well as non-traditional types with temporal types.
+        MDEV-4912: TODO: this will change.
+        Note, it should collect types for comparison (rather than result) here.
+        But there is no difference (yet) in aggregating for result vs comparison
+        for non-traditional types anyway.
+      */
+      Type_handler_hybrid_field_type tmp;
+      if (tmp.agg_field_type(Item_func_case::func_name(), agg, nagg, false))
+        return true;
+    }
 
     Item *date_arg= 0;
     if (m_found_types & (1U << TIME_RESULT))
@@ -3253,6 +3430,20 @@ void Item_func_case::cleanup()
   Coalesce - return first not NULL argument.
 */
 
+String *Item_func_coalesce::raw_op(String *str)
+{
+  DBUG_ASSERT(fixed == 1);
+  null_value= false;
+  for (uint i= 0 ; i < arg_count ; i++)
+  {
+    String *res;
+    if ((res= Item_func_coalesce::Item_val_raw(args[i], str)))
+      return res;
+  }
+  null_value= true;
+  return 0;
+}
+
 String *Item_func_coalesce::str_op(String *str)
 {
   DBUG_ASSERT(fixed == 1);
@@ -3331,6 +3522,11 @@ void Item_func_coalesce::fix_length_and_dec()
 {
   if (agg_field_type(Item_func_coalesce::func_name(), args, arg_count, true))
     return;
+  if (!is_traditional_field_type()) // TODO: MDEV-9406
+  {
+    (void) join_type_attributes(this, this, args, arg_count);
+    return;
+  }
   switch (Item_func_coalesce::result_type()) {
   case STRING_RESULT:
     if (count_string_result_length(Item_func_coalesce::field_type(),
@@ -4016,9 +4212,52 @@ void Item_func_in::fix_length_and_dec()
   uint type_cnt= 0, i;
   m_compare_handler.set_handler_by_field_type(MYSQL_TYPE_STRING);
   left_cmp_type= args[0]->cmp_type();
-  if (!(found_types= collect_cmp_types(args, arg_count, true)))
+  uint non_traditional_count;
+  if (!(found_types= collect_cmp_types(args, arg_count,
+                                       &non_traditional_count, true)))
     return;
-  
+
+  if (non_traditional_count > 0)
+  {
+    /*
+      TODO: add full support for IN with non-traditional types.
+      Currently only the most common cases are supported.
+
+      x0 IN (x1,x2,x3)
+        is a synonym for:
+      (x0=x1) OR (x0=x2) or (x0=x3)
+
+      For the traditional types it works as follows:
+      Each pair can be compared using different cmp_type, and each cmp_type
+      has a corresponding "class cmp_item_xxx" implementation.
+
+      We don't have a "class cmp_item_non_traditional" yet,
+      so let's allow only the case when all pairs are compared
+      using the same non-traditional handler.
+    */
+    DBUG_ASSERT(args[0]->cmp_type() != ROW_RESULT);
+    m_compare_handler.set_handler(args[0]->type_handler());
+    for (uint i= 1; i < arg_count; i++)
+    {
+      DBUG_ASSERT(args[i]->cmp_type() != ROW_RESULT);
+      /*
+        Currently in each pair at least one of the arguments
+        must be non-traditional.
+        Also, don't allow more than one non-traditional types in the
+        entire args[x] array.
+      */
+      if ((args[0]->is_traditional_field_type() &&   // IN
+           args[i]->is_traditional_field_type()) ||  // IN
+          m_compare_handler.merge_type_for_comparison("IN",
+                                                      args[i]->type_handler()))
+      {
+        error_cant_merge_types("IN", args[0], args[i]);
+        return;
+      }
+    }
+    return;
+  }
+
   for (arg= args + 1, arg_end= args + arg_count; arg != arg_end ; arg++)
   {
     if (!arg[0]->const_item())
@@ -4216,6 +4455,34 @@ void Item_func_in::print(String *str, enum_query_type query_type)
 
 longlong Item_func_in::val_int()
 {
+  if (!is_traditional_type(m_compare_handler.field_type())) // IN
+  {
+    /*
+     TODO: add in_vector for non-traditional types
+     There is no Type_handler::Item_func_in_val_int(), because it's
+     not clear yet what kind of IN related classes API will be needed.
+     Let's implement cmp_item_raw and in_vector_raw first.
+    */
+    have_null= 0;
+    StringBuffer<64> buf0, bufi;
+    String *raw0= args[0]->val_raw(m_compare_handler.type_handler(), &buf0);
+    if ((null_value= (raw0 ==  NULL)))
+      return 0;
+    for (uint i= 1; i < arg_count; i++)
+    {
+      String *rawi= args[i]->val_raw(m_compare_handler.type_handler(), &bufi);
+      if (!rawi)
+      {
+        have_null= true;
+        continue;
+      }
+      if (!m_compare_handler.cmp_raw(raw0, rawi))
+        return !negated;
+    }
+    null_value= have_null;
+    return (longlong) (!null_value && negated);
+  }
+
   cmp_item *in_item;
   DBUG_ASSERT(fixed == 1);
   uint value_added_map= 0;

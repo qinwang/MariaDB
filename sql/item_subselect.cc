@@ -1276,6 +1276,24 @@ longlong Item_singlerow_subselect::val_int()
   }
 }
 
+String *Item_singlerow_subselect::val_raw_native(String *str)
+{
+  DBUG_ASSERT(fixed == 1);
+  if (forced_const)
+    return Item_val_raw(value, str);
+  if (!exec() && !value->null_value)
+  {
+    null_value= FALSE;
+    return Item_val_raw(value, str);
+  }
+  else
+  {
+    reset();
+    return 0;
+  }
+}
+
+
 String *Item_singlerow_subselect::val_str(String *str)
 {
   DBUG_ASSERT(fixed == 1);

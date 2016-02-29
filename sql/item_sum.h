@@ -977,6 +977,8 @@ protected:
   {
     return args[0]->type_handler_for_union();
   }
+  String *val_raw_native(String *);
+  bool keep_field_type(void) const { return 1; }
   enum Item_result result_type () const
   { return Type_handler_hybrid_field_type::result_type(); }
   enum Item_result cmp_type () const

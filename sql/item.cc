@@ -1363,6 +1363,25 @@ longlong Item_sp_variable::val_int()
 }
 
 
+String *Item_sp_variable::val_raw_native(String *sp)
+{
+  DBUG_ASSERT(fixed);
+  Item *it= this_item();
+  String *res= it->val_raw_native(sp);
+  null_value= it->null_value;
+
+  if (!res)
+    return NULL;
+
+  // See val_str()
+  if (res != &str_value)
+    str_value.set(res->ptr(), res->length(), res->charset());
+  else
+    res->mark_as_const();
+  return &str_value;
+}
+
+
 String *Item_sp_variable::val_str(String *sp)
 {
   DBUG_ASSERT(fixed);
@@ -1550,6 +1569,20 @@ String *Item_name_const::val_str(String *sp)
 {
   DBUG_ASSERT(fixed);
   String *ret= value_item->val_str(sp);
+  null_value= value_item->null_value;
+  return ret;
+}
+
+
+String *Item_name_const::val_raw_native(String *sp)
+{
+  /*
+    TODO: MDEV-4912 Item_name_const needs a basic constant item argument.
+    Add a test when this syntax is supported:
+      SELECT INET6'::ff'
+  */
+  DBUG_ASSERT(fixed);
+  String *ret= value_item->val_raw_native(sp);
   null_value= value_item->null_value;
   return ret;
 }
@@ -2483,6 +2516,15 @@ String *Item_field::str_result(String *str)
   str->set_charset(str_value.charset());
   return result_field->val_str(str,&str_value);
 }
+
+
+String *Item_field::val_raw_native_result(String *str)
+{
+  if ((null_value= result_field->is_null()))
+    return 0;
+  return result_field->val_raw_native(str);
+}
+
 
 bool Item_field::get_date(MYSQL_TIME *ltime,ulonglong fuzzydate)
 {
@@ -4142,6 +4184,15 @@ String* Item_ref_null_helper::val_str(String* s)
 {
   DBUG_ASSERT(fixed == 1);
   String* tmp= (*ref)->str_result(s);
+  owner->was_null|= null_value= (*ref)->null_value;
+  return tmp;
+}
+
+
+String* Item_ref_null_helper::val_raw_native(String* s)
+{
+  DBUG_ASSERT(fixed == 1);
+  String* tmp= (*ref)->val_raw_native_result(s);
   owner->was_null|= null_value= (*ref)->null_value;
   return tmp;
 }
@@ -6969,6 +7020,18 @@ String *Item_ref::str_result(String* str)
 }
 
 
+String *Item_ref::val_raw_native_result(String* str)
+{
+  if (result_field)
+  {
+    if ((null_value= result_field->is_null()))
+      return 0;
+    return result_field->val_raw_native(str);
+  }
+  return val_raw_native(str);
+}
+
+
 my_decimal *Item_ref::val_decimal_result(my_decimal *decimal_value)
 {
   if (result_field)
@@ -7044,6 +7107,20 @@ String *Item_ref::val_str(String* tmp)
   DBUG_ASSERT(fixed);
   tmp=(*ref)->str_result(tmp);
   null_value=(*ref)->null_value;
+  return tmp;
+}
+
+
+/**
+  CREATE TABLE t1 (id INT,a INET6);
+  INSERT INTO t1 VALUES (1,1),(2,2),(2,2),(3,3);
+  SELECT id, min(a) AS min_a FROM t1 GROUP BY id HAVING min_a>1;
+*/
+String *Item_ref::val_raw_native(String* tmp)
+{
+  DBUG_ASSERT(fixed);
+  tmp= (*ref)->val_raw_native_result(tmp);
+  null_value= (*ref)->null_value;
   return tmp;
 }
 
@@ -7485,6 +7562,38 @@ String *Item_cache_wrapper::val_str(String* str)
   if ((null_value= expr_value->null_value))
     DBUG_RETURN(NULL);
   DBUG_RETURN(expr_value->val_str(str));
+}
+
+
+/**
+  Get the string value of the possibly cached item
+
+  CREATE OR REPLACE TABLE t1 (a INT, b INET6);
+  INSERT INTO t1 VALUES (1,'::10'),(1,'::11'),(2,'::20');
+  SELECT a,b FROM t1 WHERE b=(SELECT MAX(b) FROM t1 t2 WHERE t1.a=t2.a);
+*/
+
+String *Item_cache_wrapper::val_raw_native(String* str)
+{
+  Item *cached_value;
+  DBUG_ENTER("Item_cache_wrapper::val_raw_native");
+  if (!expr_cache)
+  {
+    String *tmp= orig_item->val_raw_native(str);
+    null_value= orig_item->null_value;
+    DBUG_RETURN(tmp);
+  }
+
+  if ((cached_value= check_cache()))
+  {
+    String *tmp= cached_value->val_raw_native(str);
+    null_value= cached_value->null_value;
+    DBUG_RETURN(tmp);
+  }
+  cache();
+  if ((null_value= expr_value->null_value))
+    DBUG_RETURN(NULL);
+  DBUG_RETURN(expr_value->val_raw_native(str));
 }
 
 
@@ -9208,9 +9317,18 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
   DBUG_PRINT("info:", ("in type %d len %d, dec %d",
                        item->type_handler_for_union()->real_field_type(),
                        item->max_length, item->decimals));
-  set_handler_by_real_type(
-    Field::field_type_merge(real_field_type(),
-                            item->type_handler_for_union()->real_field_type()));
+
+  uint non_traditional_count;
+  if (merge_non_traditional_types("UNION", item->type_handler_for_union(),
+                                  &non_traditional_count))
+    DBUG_RETURN(true);
+  if (!non_traditional_count)
+  {
+    enum_field_types res= real_field_type();
+    enum_field_types cur= item->type_handler_for_union()->real_field_type();
+    set_handler_by_real_type(Field::field_type_merge(res, cur));
+  }
+
   if (real_type_handler()->Item_type_holder_join_attributes(thd, this, item))
     DBUG_RETURN(true);
 

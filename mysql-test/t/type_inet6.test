@@ -1,0 +1,1472 @@
+
+#
+# MariaDB ServerMDEV-274 The data type for IPv6/IPv4 addresses in MariaDB
+#
+
+--echo # Testing that "INET6" is an allowed identifier
+
+CREATE TABLE t1 (INET6 INET6);
+SHOW CREATE TABLE t1;
+DROP TABLE t1;
+
+--echo # Testing character length, Item_typecast_inet6::fix_length_and_dec()
+--echo # Testing Type_handler_inet6::make_typecast_item()
+CREATE TABLE t1 (a INET6);
+CREATE TABLE t2 AS SELECT
+  CONCAT(a),
+  CONCAT(COALESCE(a)),
+  CONCAT(CAST(10 AS INET6))
+FROM t1;
+SHOW CREATE TABLE t2;
+DROP TABLE t2,t1;
+
+--echo # Testing binary_length(), Field_inet6::pack_length()
+--echo # Tesing Type_handler_inet6::calc_pack_length()
+CREATE TABLE t1 (a INET6 NOT NULL);
+INSERT INTO t1 VALUES ('::1'),('::2'),('::3');
+SELECT AVG_ROW_LENGTH FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='t1';
+ALTER TABLE t1 ADD b INET6;
+SELECT AVG_ROW_LENGTH FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME='t1';
+DROP TABLE t1;
+
+--echo # Testing that collation derivation is weaker than derivation of string literals
+SET NAMES latin1;
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::');
+CREATE TABLE t2 AS SELECT CONCAT('a', a), CONCAT(_utf8'a',a) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT COERCIBILITY(a) FROM t1;
+DROP TABLE t2,t1;
+
+-- echo # Testing that cast_to_in_type() is DECIMAL_RESULT
+CREATE TABLE t1 (a INET6);
+CREATE TABLE t2 AS SELECT a+1, CAST('::' AS INET6)+1 FROM t1;
+SHOW CREATE TABLE t2;
+DROP TABLE t2,t1;
+
+--echo # Testing warnings
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (-1);
+INSERT INTO t1 VALUES (1.9);
+INSERT INTO t1 VALUES (340282366920938463463374607431768211456 + 10);
+SELECT a, a+0 FROM t1;
+DROP TABLE t1;
+
+--echo # Testing raw_to_xxx(), Field_inet6::val_xxx()
+--echo # Testing Item_field::val_raw_native()
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::ff:ff');
+SELECT CAST(a AS INET6) FROM t1;
+SELECT CAST(a AS SIGNED) FROM t1;
+SELECT CAST(a AS UNSIGNED) FROM t1;
+SELECT CAST(a AS DECIMAL) FROM t1;
+SELECT CAST(a AS DOUBLE) FROM t1;
+SELECT CAST(a AS CHAR) FROM t1;
+DROP TABLE t1;
+
+--echo # Testing Item_typecast_inet6::val_xxx()
+SELECT CAST(CAST('::ff:ff' AS INET6) AS SIGNED);
+SELECT CAST(CAST('::ff:ff' AS INET6) AS UNSIGNED);
+SELECT CAST(CAST('::ff:ff' AS INET6) AS DECIMAL);
+SELECT CAST(CAST('::ff:ff' AS INET6) AS DOUBLE);
+SELECT CAST(CAST('::ff:ff' AS INET6) AS CHAR);
+SELECT CAST(CAST('::ff:ff' AS INET6) AS INET6);
+
+--echo # Testing Item_func_hybrid_field_type::val_xxx()
+SELECT CAST(COALESCE(CAST('::ff:ff' AS INET6)) AS SIGNED);
+SELECT CAST(COALESCE(CAST('::ff:ff' AS INET6)) AS UNSIGNED);
+SELECT CAST(COALESCE(CAST('::ff:ff' AS INET6)) AS DECIMAL);
+SELECT CAST(COALESCE(CAST('::ff:ff' AS INET6)) AS DOUBLE);
+SELECT CAST(COALESCE(CAST('::ff:ff' AS INET6)) AS CHAR);
+SELECT CAST(COALESCE(CAST('::ff:ff' AS INET6)) AS INET6);
+
+--echo # Testing Item_typecast_inet6::print()
+EXPLAIN EXTENDED SELECT CAST(10 AS INET6);
+
+--echo # Testing Item_typecast_inet6::save_in_field()
+CREATE TABLE t1 (
+  i0 INT,
+  i1 INT UNSIGNED,
+  d0 DOUBLE,
+  d1 DECIMAL(40,5),
+  c1 VARCHAR(40),
+  i6 INET6
+);
+INSERT INTO t1 VALUES (
+  CAST('::ff:ff:ff' AS INET6),
+  CAST('::ff:ff:ff' AS INET6),
+  CAST('::ff:ff:ff' AS INET6),
+  CAST('::ff:ff:ff' AS INET6),
+  CAST('::ff:ff:ff' AS INET6),
+  CAST('::ff:ff:ff' AS INET6));
+SELECT * FROM t1;
+DROP TABLE t1;
+
+--echo # Testing xxx_to_raw(), Field_inet6::store_xxx()
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::100');
+INSERT INTO t1 VALUES (257);
+INSERT INTO t1 VALUES (258e0);
+INSERT INTO t1 VALUES (259.0);
+INSERT INTO t1 VALUES (340282366920938463463374607431768211455);
+SELECT * FROM t1;
+DROP TABLE t1;
+
+--echo # Testing Field_inet6::val_bool()
+CREATE TABLE t1 (id INT, a INET6);
+INSERT INTO t1 VALUES (1, NULL);
+INSERT INTO t1 VALUES (1, '::');
+INSERT INTO t1 VALUES (1, '::ff:ff:ff');
+SELECT id, MAX(a) FROM t1 GROUP BY id HAVING MAX(a) IS TRUE;
+DROP TABLE t1;
+
+--echo # Testing Item_xxx::val_bool()
+
+# Note, this currently goes through the generic Item::val_bool()
+# which for INET6 compares val_real() against 0 (because of STRING_RESULT).
+# This is OK for INET6, but eventually
+# Item::val_bool() should be split into a virtual method in Type_handler.
+#
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (NULL),('::'),('::1');
+SELECT * FROM t1 WHERE a IS TRUE;
+DROP TABLE t1;
+
+
+--echo # Testing Field_inet6::size_of() 
+CREATE TABLE t1 (a INET6 DEFAULT '::1:ffff:ffff');
+INSERT INTO t1 VALUES (DEFAULT(a));
+SELECT * FROM t1;
+DROP TABLE t1;
+
+--echo # Testing Item_func_hex_val_str_ascii
+SELECT HEX(CAST(NULL AS INET6));
+SELECT HEX(CAST('::' AS INET6));
+SELECT HEX(CAST('ff::ff' AS INET6));
+SELECT HEX(CAST('ffff:0:0:1:1:0:0:ffff' AS INET6));
+
+SELECT HEX(COALESCE(CAST('::' AS INET6)));
+SELECT HEX(COALESCE(CAST('ff::ff' AS INET6)));
+SELECT HEX(COALESCE(CAST('ffff:0:0:1:1:0:0:ffff' AS INET6)));
+
+SELECT HEX(LEAST(CAST('::' AS INET6), '::'));
+SELECT HEX(LEAST(CAST('ff::ff' AS INET6), 'ee::ee'));
+SELECT HEX(LEAST(CAST('ffff:0:0:1:1:0:0:ffff' AS INET6), 'fffe:0:0:1:1:0:0:efff'));
+
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (NULL),('::'),('ff::ff'),('ffff:0:0:1:1:0:0:ffff');
+SELECT HEX(a) FROM t1;
+SELECT HEX(COALESCE(a)) FROM t1;
+SELECT HEX(LEAST(a, 'ffff::ffff')) FROM t1;
+SELECT HEX(GREATEST(a, 'ffff::ffff')) FROM t1;
+DROP TABLE t1;
+
+--echo # Testing hex_hybrid_str_to_raw(), val_raw_from_hex_hybrid(),
+--echo # store_hex_hybrid(), hex_hybrid_str_to_raw()
+SELECT CAST(0xFF00FF00 AS INET6);
+SELECT CAST(0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEEEE AS INET6);
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (0xFF00FF00);
+SELECT * FROM t1;
+SELECT * FROM t1 WHERE a=0xFF00FF00;
+DROP TABLE t1;
+
+--echo # Testing Type_handler_inet6::Item_hex_hybrid_val_raw
+SELECT CAST(0x1FF00FF00 AS INET6);
+
+--echo # Testing Field_inet6::validate_value_in_record
+CREATE TABLE t1 (a INET6 DEFAULT '::ee:ee:00');
+INSERT INTO t1 VALUES ();
+SELECT * FROM t1;
+DROP TABLE t1;
+
+--echo # Testing Field_inet6::sql_type(), str_needs_quotes()
+CREATE TABLE t1 (a INET6 DEFAULT '::FF:ff:00');
+SHOW CREATE TABLE t1;
+DROP TABLE t1;
+
+--echo # Testing Field_inet6::store_raw_native()
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (CAST('::1' AS INET6)), (COALESCE(CAST('::2' AS INET6)));
+SELECT * FROM t1;
+DROP TABLE t1;
+
+--echo # Testing Arg_comparator::compare_inet6(), compare_e_inet6(),
+--echo # Testing Arg_comparator::cache_converted_constant()
+--echo # Testing Type_handler_inet6::set_comparator_func, cmp_raw()
+
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (NULL);
+INSERT INTO t1 VALUES ('::ff:ff:f1');
+INSERT INTO t1 VALUES ('::ff:ff:f2');
+INSERT INTO t1 VALUES ('::ff:ff:ff');
+SELECT * FROM t1;
+SELECT * FROM t1 WHERE a='::ff:ff:f2';
+SELECT * FROM t1 WHERE a='::0:ff:ff:f2';
+SELECT * FROM t1 WHERE a='::0:0:ff:ff:f2';
+SELECT * FROM t1 WHERE a='::0:0:0:ff:ff:f2';
+
+# A condition like:
+#   WHERE inet6_field='::0:0:0:ff:ff:f2'
+# *does* create an Item_cache_inet6 internally inside Arg_comparator
+# and uses it for comparison.
+# But args[1] of the owner function still points to the original Item_string.
+# Therefore, the cache is not visible in the EXPLAIN EXTENDED output.
+# Note, the same problem happens with:
+#   WHERE int_field='2'
+#
+EXPLAIN EXTENDED SELECT * FROM t1 WHERE a='::0:0:0:ff:ff:f2';
+EXPLAIN EXTENDED SELECT * FROM t1 WHERE a=CONCAT('::0:0:0:ff:ff:f2');
+SELECT * FROM t1 WHERE a=CONCAT('::0:0:0:ff:ff:f2');
+
+--echo # Testing Type_handler_inet6::make_cache_item
+
+EXPLAIN EXTENDED SELECT * FROM t1 WHERE a=CAST('::0:0:0:ff:ff:f2' AS INET6);
+SELECT * FROM t1 WHERE a=CAST('::0:0:0:ff:ff:f2' AS INET6);
+
+SELECT * FROM t1 WHERE a<'::00:ff:ff:ff';
+SELECT * FROM t1 WHERE a<=>NULL;
+SELECT * FROM t1 WHERE a<=>'::00:ff:ff:ff';
+DROP TABLE IF EXISTS t1;
+
+--echo # Testing comparison for a table with a single row ("system" table)
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::ff:ff:f1');
+SELECT * FROM t1 WHERE a='::ff:ff:f1';
+SELECT * FROM t1 WHERE a='::0:ff:ff:f1';
+SELECT * FROM t1 WHERE a='::0:0:ff:ff:f1';
+SELECT * FROM t1 WHERE a='::0:0:0:ff:ff:f1';
+SELECT * FROM t1 WHERE a='::0:0:0:0:ff:ff:f1';
+SELECT * FROM t1 WHERE a='0:0:0:0:0:ff:ff:f1';
+SELECT * FROM t1 WHERE a='0000:0000:0000:0000:0000:00ff:00ff:00f1';
+EXPLAIN
+SELECT * FROM t1 WHERE a='0000:0000:0000:0000:0000:00ff:00ff:00f1';
+
+--echo ## INET6 + HEX hybrid
+SELECT * FROM t1 WHERE a=0xFF00FF00F1;
+EXPLAIN
+SELECT * FROM t1 WHERE a=0xFF00FF00F1;
+
+--echo ## INET6 + INT
+SELECT * FROM t1 WHERE a=1095233372401;
+EXPLAIN
+SELECT * FROM t1 WHERE a=1095233372401;
+
+--echo ## INET6 + DECIMAL
+SELECT * FROM t1 WHERE a=1095233372401.0;
+EXPLAIN
+SELECT * FROM t1 WHERE a=1095233372401.0;
+
+--echo ## INET6 + DOUBLE
+SELECT * FROM t1 WHERE a=1095233372401e0;
+EXPLAIN
+SELECT * FROM t1 WHERE a=1095233372401e0;
+DROP TABLE t1;
+
+
+--echo # Testing Field_inet6::sort_string()
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (1),(2),(3),('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff');
+SELECT * FROM t1 ORDER BY a;
+SELECT * FROM t1 ORDER BY a DESC;
+
+--echo # Testing Type_handler_inet6::sortlength(), make_sort_key()
+SELECT * FROM t1 ORDER BY CAST(CAST(a AS CHAR) AS INET6);
+SELECT * FROM t1 ORDER BY CAST(CAST(a AS CHAR) AS INET6) DESC;
+DROP TABLE t1;
+
+--echo # Testing Type_handler_inet6::test_if_equality_guarantees_uniqueness
+--echo # can_be_substituted_to_equal_item(), get_equal_const_item().
+
+# Equal field propagation is currently not implemented for INET6
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (NULL);
+INSERT INTO t1 VALUES ('::');
+INSERT INTO t1 VALUES ('::ff:ff:ff');
+EXPLAIN EXTENDED
+SELECT * FROM t1 WHERE a='::0' AND a='::00:0:0';
+SELECT * FROM t1 WHERE a='::0' AND a='::00:0:0';
+DROP TABLE t1;
+
+--echo # Testing Item_typecase_inet6::eq
+
+# Equal expression propagaion is not implemented yet for non-traditional types.
+# Need to split can_change_cond_ref_to_const() into methods in Type_handler.
+# After this the right part of the condition will be removed
+# (currently it's preserved).
+
+CREATE TABLE t1 (a INT);
+INSERT INTO t1 VALUES (1),(2),(3);
+EXPLAIN EXTENDED
+SELECT * FROM t1 WHERE CAST(a AS INET6)='::2' AND CAST(a AS INET6)='::2';
+SELECT * FROM t1 WHERE CAST(a AS INET6)='::2' AND CAST(a AS INET6)='::2';
+
+EXPLAIN EXTENDED
+SELECT * FROM t1 WHERE CAST(a AS INET6)='::2' AND CAST(a AS INET6)='::0:2';
+SELECT * FROM t1 WHERE CAST(a AS INET6)='::2' AND CAST(a AS INET6)='::0:2';
+
+DROP TABLE t1;
+
+
+--echo # Testing Type_handler_inet6::make_num_distinct_aggregator_field()
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (1),(2),(3);
+SELECT AVG(DISTINCT a) FROM t1;
+DROP TABLE t1;
+
+--echo # Testing Type_handler_inet6::Item_func_between_val_int
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (0),(1),(2),(3),(4);
+SELECT * FROM t1 WHERE a BETWEEN 2 and 3;
+SELECT * FROM t1 WHERE a BETWEEN '::2' and '::3';
+SELECT * FROM t1 WHERE a BETWEEN '0::2' and '0::3';
+SELECT * FROM t1 WHERE a BETWEEN '0::0:2' and '0::0:3';
+DROP TABLE t1;
+
+--echo # Testing Type_handler_inet6::Item_val_xxx
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 (a) VALUES ('::'),('::1:ffff:ffff');
+SELECT a, CAST(LEAST(a,'::2') AS SIGNED) FROM t1;
+SELECT a, CAST(LEAST(a,'::2') AS DECIMAL) FROM t1;
+SELECT a, CAST(LEAST(a,'::2') AS DOUBLE) FROM t1;
+SELECT a, CAST(LEAST(a,'::2') AS CHAR) FROM t1;
+SELECT a, CAST(LEAST(a,'::2') AS INET6) FROM t1;
+DROP TABLE t1;
+
+--echo # Testing Type_handler_inet6::Item_sum_hybrid_fix_length_and_dec()
+--echo # Testing Item_field::val_raw_native_result()
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 (a) VALUES ('::'),('::ffff:ffff');
+SELECT MAX(a) FROM t1;
+CREATE TABLE t2 AS SELECT CONCAT(MAX(a)) FROM t1;
+SHOW CREATE TABLE t2;
+DROP TABLE t2,t1;
+
+--echo # Testing Item_cache_inet6::val_xxx(), cache_value()
+--echo # Testing Item_sum_hybrid::val_raw_native()
+--echo # Testing Item_field::val_raw_native_result()
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::1'),('::2'),('::3'),('::1:ffff:ffff');
+SELECT CAST(MAX(a) AS SIGNED) FROM t1;
+SELECT CAST(MAX(a) AS UNSIGNED) FROM t1;
+SELECT CAST(MAX(a) AS DECIMAL(40,0)) FROM t1;
+SELECT CAST(MAX(a) AS DOUBLE) FROM t1;
+SELECT CAST(MAX(a) AS CHAR) FROM t1;
+SELECT CAST(MAX(a) AS INET6) FROM t1;
+DROP TABLE t1;
+
+
+--echo # Testing Type_handler_inet6::join_type_attributes
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 (a) VALUES (NULL),('::'),('::1:ffff:ffff');
+SELECT a, COALESCE(a,'::2') FROM t1;
+DROP TABLE t1;
+
+--echo # Testing Type_handler_inet6::Item_type_holder_join_attributes
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 (a) VALUES (NULL),('::'),('::1:ffff:ffff');
+SELECT a FROM t1 UNION SELECT CAST(a+1 AS INET6) FROM t1;
+DROP TABLE t1;
+
+--echo # Testing Type_handler_inet6::Item_save_in_field()
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::7fff:ffff');
+CREATE TABLE t2
+(
+  in6 INET6,
+  c1  VARCHAR(64),
+  i0  INT,
+  d0  DECIMAL(40),
+  d1  DOUBLE
+);
+INSERT INTO t2 SELECT
+  COALESCE(a),
+  COALESCE(a),
+  COALESCE(a),
+  COALESCE(a),
+  COALESCE(a)
+FROM t1;
+--echo # Testing Field_inet6::save_in_field()
+INSERT INTO t2 SELECT a,a,a,a,a FROM t1;
+SELECT * FROM t2;
+DROP TABLE t1,t2;
+
+
+--echo # Testing Field_inet6::store_field()
+CREATE TABLE t1 (a INET6);
+CREATE TABLE t2 (a INT);
+INSERT INTO t2 VALUES (NULL),(1),(2);
+INSERT INTO t1 SELECT * FROM t2;
+SELECT * FROM t1;
+DROP TABLE t1,t2;
+
+CREATE TABLE t1 (a INET6);
+CREATE TABLE t2 (a DOUBLE);
+INSERT INTO t2 VALUES (NULL),(1),(2);
+INSERT INTO t1 SELECT * FROM t2;
+SELECT * FROM t1;
+DROP TABLE t1,t2;
+
+CREATE TABLE t1 (a INET6);
+CREATE TABLE t2 (a DECIMAL);
+INSERT INTO t2 VALUES (NULL),(1),(2);
+INSERT INTO t1 SELECT * FROM t2;
+SELECT * FROM t1;
+DROP TABLE t1,t2;
+
+CREATE TABLE t1 (a INET6);
+CREATE TABLE t2 (a VARCHAR(10));
+INSERT INTO t2 VALUES (NULL),('::1'),('::2');
+INSERT INTO t1 SELECT * FROM t2;
+SELECT * FROM t1;
+DROP TABLE t1,t2;
+
+CREATE TABLE t1 (a INET6);
+CREATE TABLE t2 (a INET6);
+INSERT INTO t2 VALUES (NULL),('::1'),('::2');
+INSERT INTO t1 SELECT * FROM t2;
+SELECT * FROM t1;
+DROP TABLE t1,t2;
+
+
+--echo # Testing Field_inet6::get_copy_func()
+CREATE TABLE t1 (a INT, b INET6);
+INSERT INTO t1 VALUES (NULL,NULL),(1,'::1'),(2,'::2');
+ALTER TABLE t1 MODIFY a DECIMAL, MODIFY b INET6;
+SELECT * FROM t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INT, b VARCHAR(16));
+INSERT INTO t1 VALUES (NULL,NULL),(1,'::1'),(2,'::2'),(3,'garbage');
+ALTER TABLE t1 MODIFY a DECIMAL, MODIFY b INET6;
+SELECT * FROM t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INT, b VARCHAR(16));
+INSERT INTO t1 VALUES (NULL,NULL),(1,'::1'),(2,'::2'),(3,'garbage');
+ALTER TABLE t1 MODIFY a DECIMAL, MODIFY b INET6 NOT NULL;
+SELECT * FROM t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INT, b INT);
+INSERT INTO t1 VALUES (NULL,NULL),(1,1),(2,2);
+ALTER TABLE t1 MODIFY a DECIMAL, MODIFY b INET6;
+SELECT * FROM t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INT, b DECIMAL);
+INSERT INTO t1 VALUES (NULL,NULL),(1,1),(2,2);
+ALTER TABLE t1 MODIFY a DECIMAL, MODIFY b INET6;
+SELECT * FROM t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INT, b DOUBLE);
+INSERT INTO t1 VALUES (NULL,NULL),(1,1),(2,2);
+ALTER TABLE t1 MODIFY a DECIMAL, MODIFY b INET6;
+SELECT * FROM t1;
+DROP TABLE t1;
+
+
+--echo # Testing Field_inet6::can_optimize_keypart_ref()
+CREATE TABLE t1 (a INET6, KEY(a));
+INSERT INTO t1 VALUES (NULL),(1),(2),(3),(4),(5),(6),(7);
+
+EXPLAIN SELECT * FROM t1 WHERE a=NULL;
+SELECT * FROM t1 WHERE a=NULL;
+
+EXPLAIN SELECT * FROM t1 WHERE a<=>NULL;
+SELECT * FROM t1 WHERE a<=>NULL;
+
+EXPLAIN SELECT * FROM t1 WHERE a=CAST('::2' AS INET6);
+SELECT * FROM t1 WHERE a=CAST('::2' AS INET6);
+EXPLAIN SELECT * FROM t1 WHERE a<=>CAST('::2' AS INET6);
+SELECT * FROM t1 WHERE a<=>CAST('::2' AS INET6);
+
+EXPLAIN SELECT * FROM t1 WHERE a='::2';
+SELECT * FROM t1 WHERE a='::2';
+EXPLAIN SELECT * FROM t1 WHERE a<=>'::2';
+SELECT * FROM t1 WHERE a<=>'::2';
+
+EXPLAIN SELECT * FROM t1 WHERE a=2;
+SELECT * FROM t1 WHERE a=2;
+EXPLAIN SELECT * FROM t1 WHERE a<=>2;
+SELECT * FROM t1 WHERE a<=>2;
+
+EXPLAIN SELECT * FROM t1 WHERE a=2.0;
+SELECT * FROM t1 WHERE a=2.0;
+EXPLAIN SELECT * FROM t1 WHERE a<=>2.0;
+SELECT * FROM t1 WHERE a<=>2.0;
+
+EXPLAIN SELECT * FROM t1 WHERE a=2e0;
+SELECT * FROM t1 WHERE a=2e0;
+EXPLAIN SELECT * FROM t1 WHERE a<=>2e0;
+SELECT * FROM t1 WHERE a<=>2e0;
+
+DROP TABLE t1;
+
+
+--echo # Testing Field_inet6::can_optimize_range()
+CREATE TABLE t1 (a INET6, KEY(a));
+INSERT INTO t1 VALUES (NULL),(1),(2),(3),(4),(5),(6),(7);
+
+EXPLAIN SELECT * FROM t1 WHERE a<CAST('::2' AS INET6);
+SELECT * FROM t1 WHERE a<CAST('::2' AS INET6);
+
+EXPLAIN SELECT * FROM t1 WHERE a<'::2';
+SELECT * FROM t1 WHERE a<'::2';
+
+EXPLAIN SELECT * FROM t1 WHERE a<2;
+SELECT * FROM t1 WHERE a<2;
+
+EXPLAIN SELECT * FROM t1 WHERE a<2.0;
+SELECT * FROM t1 WHERE a<2.0;
+
+EXPLAIN SELECT * FROM t1 WHERE a<2e0;
+SELECT * FROM t1 WHERE a<2e0;
+
+EXPLAIN SELECT * FROM t1 WHERE a BETWEEN CAST('::2' AS INET6) AND CAST('::4' AS INET6);
+SELECT * FROM t1 WHERE a BETWEEN CAST('::2' AS INET6) AND CAST('::4' AS INET6);
+
+EXPLAIN SELECT * FROM t1 WHERE a BETWEEN '::2' AND '::4';
+SELECT * FROM t1 WHERE a BETWEEN '::2' AND '::4';
+
+EXPLAIN SELECT * FROM t1 WHERE a BETWEEN 2 AND 4;
+SELECT * FROM t1 WHERE a BETWEEN 2 AND 4;
+
+EXPLAIN SELECT * FROM t1 WHERE a BETWEEN 2.0 AND 4.0;
+SELECT * FROM t1 WHERE a BETWEEN 2.0 AND 4.0;
+
+EXPLAIN SELECT * FROM t1 WHERE a BETWEEN 2e0 AND 4e0;
+SELECT * FROM t1 WHERE a BETWEEN 2e0 AND 4e0;
+
+DROP TABLE t1;
+
+
+--echo # Testing Field_inet6::can_optimize_hash_join
+SET @join_cache_level_backup=@@join_cache_level;
+SET join_cache_level=8;
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (NULL),(1),(2),(3),(4),(5),(6),(7);
+CREATE TABLE t2 (a INET6);
+INSERT INTO t2 VALUES (NULL),(1),(2),(3),(4),(5),(6),(7);
+INSERT INTO t2 VALUES (NULL),(1),(2),(3),(4),(5),(6),(7);
+EXPLAIN SELECT * FROM t1,t2 WHERE t1.a=t2.a;
+DROP TABLE t1,t2;
+SET @@join_cache_level=@join_cache_level_backup;
+
+
+--echo # Testing can_optimize_group_min_max
+CREATE TABLE t1 (id INT NOT NULL, a INET6);
+INSERT INTO t1 VALUES (1,'::01');
+INSERT INTO t1 VALUES (1,'::02');
+INSERT INTO t1 VALUES (1,'::03');
+INSERT INTO t1 VALUES (1,'::04');
+INSERT INTO t1 VALUES (2,'::01');
+INSERT INTO t1 VALUES (2,'::02');
+INSERT INTO t1 VALUES (2,'::03');
+INSERT INTO t1 VALUES (2,'::04');
+INSERT INTO t1 VALUES (3,'::01');
+INSERT INTO t1 VALUES (3,'::02');
+INSERT INTO t1 VALUES (3,'::03');
+INSERT INTO t1 VALUES (3,'::04');
+INSERT INTO t1 VALUES (4,'::01');
+INSERT INTO t1 VALUES (4,'::02');
+INSERT INTO t1 VALUES (4,'::03');
+INSERT INTO t1 VALUES (4,'::04');
+EXPLAIN
+SELECT id,MIN(a),MAX(a) FROM t1 WHERE a>='::02' GROUP BY id;
+SELECT id,MIN(a),MAX(a) FROM t1 WHERE a>='::02' GROUP BY id;
+ALTER TABLE t1 ADD KEY(id,a);
+EXPLAIN
+SELECT id,MIN(a),MAX(a) FROM t1 WHERE a>='::02' GROUP BY id;
+SELECT id,MIN(a),MAX(a) FROM t1 WHERE a>='::02' GROUP BY id;
+DROP TABLE t1;
+
+
+--echo # Testing outer join table elimination
+CREATE TABLE t1 (a INET6 PRIMARY KEY);
+INSERT INTO t1 VALUES ('::1');
+INSERT INTO t1 VALUES ('::2');
+CREATE TABLE t2 (a INET6 PRIMARY KEY);
+INSERT INTO t2 VALUES ('::1');
+INSERT INTO t2 VALUES ('::2');
+INSERT INTO t2 VALUES ('::3');
+SELECT t1.* FROM t1,t2 WHERE t1.a=t2.a;
+SELECT t1.* FROM t1 LEFT JOIN t2 ON t1.a=t2.a;
+EXPLAIN EXTENDED
+SELECT t1.* FROM t1 LEFT JOIN t2 ON t1.a=t2.a;
+DROP TABLE t1,t2;
+
+
+--echo # Testing Item_ref::val_raw_native()
+CREATE TABLE t1 (id INT,a INET6);
+INSERT INTO t1 VALUES (1,1),(2,2),(2,2),(3,3);
+SELECT id, min(a) AS min_a FROM t1 GROUP BY id HAVING min_a>1;
+DROP TABLE t1;
+
+--echo # Testing Item_direct_view_ref::val_raw_native()
+--echo # Testing Item_direct_ref::val_raw_native()
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::1'),('::2');
+CREATE VIEW v1 AS SELECT COALESCE(a) AS a FROM t1;
+SELECT COALESCE(a) FROM v1;
+DROP VIEW v1;
+DROP TABLE t1;
+
+CREATE TABLE t1(f1 LONGTEXT);
+INSERT INTO t1 VALUES ('::a');
+SELECT 1 AS i6 FROM (SELECT CAST(f1 AS INET6) AS a FROM t1) AS s
+WHERE a BETWEEN '::0' AND '::b';
+DROP TABLE t1;
+
+--echo # Testing Item_func_sp::val_raw_native
+CREATE FUNCTION f1() RETURNS INET6 RETURN '::2';
+SELECT COALESCE(f1());
+DROP FUNCTION f1;
+
+--echo # Testing Item_sp_variable::val_raw_native
+CREATE FUNCTION f1(a INET6) RETURNS INET6 RETURN COALESCE(a);
+SELECT f1('::2');
+DROP FUNCTION f1;
+
+--echo # Testing Item_func_hybrid_field_type::val_raw_native
+SELECT COALESCE(CAST('::2' AS INET6));
+
+--echo # Testing Item_func_last_value::val_raw_native()
+SELECT COALESCE(LAST_VALUE(1, CAST('::1' AS INET6)));
+
+
+--echo # Testing Item_func_rollup_const::val_raw_native()
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES('::'),('::1'),('::2'),('::2');
+SELECT a,CAST('::1' AS INET6) AS c FROM t1 GROUP BY a,c WITH ROLLUP;
+SELECT a,CAST('::1' AS INET6) AS c FROM t1 GROUP BY a,c WITH ROLLUP
+  UNION
+  SELECT '::2','::1';
+DROP TABLE t1;
+
+
+--echo # Testing Item_singlerow_subselect::val_raw_native()
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::1'),('::2');
+SELECT 1, COALESCE((SELECT MAX(a) FROM t1));
+DROP TABLE t1;
+
+--echo # Testing Item_ref_null_helper::val_raw_native()
+SET @join_cache_level_backup=@@join_cache_level;
+SET SESSION join_cache_level=3;
+CREATE TABLE t1 (b INET6);
+INSERT INTO t1 VALUES (NULL),(NULL);
+CREATE TABLE t2 ( a int, b INET6) ;
+INSERT INTO t2 VALUES (8,'::7'),(8,'::7');
+SELECT * FROM t1, t2
+WHERE t2.b IN (SELECT CAST('::3' AS INET6) UNION SELECT CAST('::3' AS INET6))
+       OR t1.b <> SOME (SELECT CAST('::4' AS INET6) UNION
+                        SELECT CAST('::5' AS INET6));
+INSERT INTO t1 VALUES ('::1');
+SELECT * FROM t1, t2
+WHERE t2.b IN (SELECT CAST('::3' AS INET6) UNION SELECT CAST('::3' AS INET6))
+       OR t1.b <> SOME (SELECT CAST('::4' AS INET6) UNION
+                        SELECT CAST('::5' AS INET6));
+DROP TABLE t1,t2;
+SET @@join_cache_level= @join_cache_level_backup;
+
+
+--echo # Testing Item_ref::val_raw_native_result()
+CREATE TABLE t1 (state INET6,INDEX(state));
+INSERT INTO t1 VALUES ('::1'),('::f');
+CREATE TABLE t2 (state VARCHAR(32));
+INSERT INTO t2 VALUES ('::4'),('::8'),('::f');
+CREATE ALGORITHM=MERGE VIEW v1 AS SELECT t1.* FROM t2, t1;
+SELECT * FROM t1 AS outer_t1 LEFT JOIN v1 AS joined_t1
+  ON  joined_t1.state = outer_t1.state
+  AND joined_t1.state IN (SELECT CAST('::f' AS INET6) UNION
+                          SELECT CAST('::2' AS INET6));
+DROP VIEW v1;
+DROP TABLE t1,t2;
+
+CREATE TABLE t1 (
+  col_key INET6 DEFAULT NULL,
+  col_nokey INET6 DEFAULT NULL,
+  KEY col_key (col_key)) 
+;
+INSERT INTO t1 VALUES ('::f','::f'),('::7','::7');
+CREATE TABLE t2 (
+  col_key INET6 DEFAULT NULL,
+  col_nokey INET6 DEFAULT NULL,
+  KEY col_key(col_key)) 
+;
+INSERT INTO t2 VALUES ('::7','::7'),('::2','::2');
+CREATE VIEW v3 AS SELECT * FROM t2;
+SELECT DISTINCT alias2.col_key 
+FROM t1 AS alias1 JOIN v3 AS alias2 
+ON alias2.col_key = alias1.col_key
+HAVING col_key IN (SELECT col_nokey FROM t2);
+DROP TABLE t1, t2;
+DROP VIEW v3;
+
+
+--echo # Testing Item_func::setup_args_and_comparator()
+--echo # Testing Item_func_case_abbreviation2::fix_length_and_dec2()
+--echo # Testing Item_func_coalesce::raw_op(), fix_length_and_dec()
+--echo # Testing Item_func_ifnull::raw_op()
+--echo # Testing Item_func_if::raw_op(), fix_length_and_dec()
+--echo # Testing Item_func_nullif::raw_op()
+--echo # Testing Item_func_case::raw_op(), fix_length_and_dec()
+
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (NULL),('::1'),('::2');
+SELECT CAST(COALESCE(a,'::3') AS INET6) FROM t1;
+SELECT CAST(IFNULL(a,'::3') AS INET6) FROM t1;
+SELECT CAST(IF(TRUE, a,'::3') AS INET6) FROM t1;
+SELECT CAST(IF(FALSE, a,'::3') AS INET6) FROM t1;
+SELECT CAST(NULLIF(a,'::3') AS INET6) FROM t1;
+SELECT CAST(NULLIF(a,'::2') AS INET6) FROM t1;
+SELECT CAST(CASE WHEN TRUE THEN a ELSE '::3' END AS INET6) FROM t1;
+SELECT CAST(CASE WHEN FALSE THEN a ELSE '::3' END AS INET6) FROM t1;
+DROP TABLE t1;
+
+
+--echo # Testing Item_cache_wrapper::val_raw_native()
+
+CREATE TABLE t1 (a INT, b INET6);
+INSERT INTO t1 VALUES (1,'::10'),(1,'::11'),(2,'::20');
+SELECT a,b FROM t1 WHERE b=(SELECT MAX(b) FROM t1 t2 WHERE t1.a=t2.a);
+DROP TABLE t1;
+
+--echo # Testing Item_func_min_max
+
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (NULL),('::1'),('::2');
+SELECT LEAST(a,'::3') FROM t1;
+SELECT CAST(LEAST(a,'::3') AS INET6) FROM t1;
+SELECT CAST(LEAST(a,'::3') AS SIGNED) FROM t1;
+SELECT CAST(LEAST(a,'::3') AS DECIMAL) FROM t1;
+SELECT CAST(LEAST(a,'::3') AS DOUBLE) FROM t1;
+SELECT CAST(LEAST(a,'::3') AS CHAR) FROM t1;
+SELECT GREATEST(a,'::3') FROM t1;
+SELECT CAST(GREATEST(a,'::3') AS INET6) FROM t1;
+SELECT CAST(GREATEST(a,'::3') AS SIGNED) FROM t1;
+SELECT CAST(GREATEST(a,'::3') AS DECIMAL) FROM t1;
+SELECT CAST(GREATEST(a,'::3') AS DOUBLE) FROM t1;
+SELECT CAST(GREATEST(a,'::3') AS CHAR) FROM t1;
+DROP TABLE t1;
+
+
+--echo # Testing disallowed mixture of types
+
+--error ER_UNKNOWN_ERROR
+SELECT CAST('::1' AS INET6) UNION SELECT TIME(123456);
+--error ER_UNKNOWN_ERROR
+SELECT TIME (123456) UNION SELECT CAST('::1' AS INET6);
+
+--error ER_UNKNOWN_ERROR
+SELECT CAST('::1' AS INET6) = TIME(123456);
+--error ER_UNKNOWN_ERROR
+SELECT TIME (123456) =  CAST('::1' AS INET6);
+
+--error ER_UNKNOWN_ERROR
+SELECT COALESCE(CAST('::1' AS INET6), TIME(123456));
+--error ER_UNKNOWN_ERROR
+SELECT COALESCE(TIME (123456), CAST('::1' AS INET6));
+
+--error ER_UNKNOWN_ERROR
+SELECT LEAST(CAST('::1' AS INET6), TIME(123456));
+--error ER_UNKNOWN_ERROR
+SELECT GREATEST(TIME (123456), CAST('::1' AS INET6));
+
+--error ER_UNKNOWN_ERROR
+SELECT NULLIF(CAST('::1' AS INET6), TIME(123456));
+--error ER_UNKNOWN_ERROR
+SELECT NULLIF(TIME (123456), CAST('::1' AS INET6));
+
+--error ER_UNKNOWN_ERROR
+SELECT IFNULL(CAST('::1' AS INET6), TIME(123456));
+--error ER_UNKNOWN_ERROR
+SELECT IFNULL(TIME (123456), CAST('::1' AS INET6));
+
+--error ER_UNKNOWN_ERROR
+SELECT IF(TRUE, CAST('::1' AS INET6), TIME(123456));
+--error ER_UNKNOWN_ERROR
+SELECT IF(FALSE, TIME (123456), CAST('::1' AS INET6));
+
+--error ER_UNKNOWN_ERROR
+SELECT CASE WHEN TRUE THEN CAST('::1' AS INET6) ELSE TIME(123456) END;
+--error ER_UNKNOWN_ERROR
+SELECT CASE WHEN TRUE THEN TIME (123456) ELSE CAST('::1' AS INET6) END;
+
+--error ER_UNKNOWN_ERROR
+SELECT CASE CAST('::1' AS INET6) WHEN TIME(123456) THEN 1 ELSE 0 END;
+--error ER_UNKNOWN_ERROR
+SELECT CASE TIME(123456) WHEN CAST('::1' AS INET6) THEN 1 ELSE 0 END;
+
+CREATE TABLE t1 (a INET6, b YEAR);
+--error ER_UNKNOWN_ERROR
+SELECT COALESCE(a,b) FROM t1;
+DROP TABLE t1;
+
+
+--echo # Testing allowed mixtures of types
+CREATE TABLE t1 AS SELECT CAST('::' AS INET6) UNION SELECT 1;
+SHOW CREATE TABLE t1;
+SELECT * FROM t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INET6, b INT);
+INSERT INTO t1 VALUES (NULL,NULL),('::1', 2);
+CREATE TABLE t2 AS SELECT COALESCE(a,b) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t1,t2;
+
+CREATE TABLE t1 (a INET6, b BIT(8));
+INSERT INTO t1 VALUES (NULL,NULL),('::1', 2);
+CREATE TABLE t2 AS SELECT COALESCE(a,b) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t1,t2;
+
+CREATE TABLE t1 (a INET6, b DOUBLE);
+INSERT INTO t1 VALUES (NULL,NULL),('::1', 2);
+CREATE TABLE t2 AS SELECT COALESCE(a,b) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t1,t2;
+
+CREATE TABLE t1 (a INET6, b DECIMAL);
+INSERT INTO t1 VALUES (NULL,NULL),('::1', 2);
+CREATE TABLE t2 AS SELECT COALESCE(a,b) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t1,t2;
+
+CREATE TABLE t1 (a INET6, b VARCHAR(40));
+INSERT INTO t1 VALUES (NULL,NULL),('::1', '::2');
+CREATE TABLE t2 AS SELECT COALESCE(a,b) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t1,t2;
+
+CREATE TABLE t1 (a INET6, b BLOB);
+INSERT INTO t1 VALUES (NULL,NULL),('::1', '::2');
+CREATE TABLE t2 AS SELECT COALESCE(a,b) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t1,t2;
+
+--echo # Testing IN
+SELECT 0 IN (CAST(NULL AS INET6));
+SELECT 0 IN (CAST(NULL AS INET6), CAST(0 AS INET6));
+SELECT 0 IN (CAST(NULL AS INET6), CAST(1 AS INET6));
+SELECT CAST(NULL AS INET6) IN (CAST(NULL AS INET6));
+SELECT CAST(NULL AS INET6) IN (CAST(NULL AS INET6),0);
+
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (NULL),('::0'),('::1'),('::2'),('::3');
+SELECT * FROM t1 WHERE a IN ('::0:0:0:0:2','::3');
+SELECT * FROM t1 WHERE '::0:3' IN (a, CAST('::4' AS INET6));
+SELECT * FROM t1 WHERE '::0:4' IN (a, CAST('::4' AS INET6));
+
+--error ER_UNKNOWN_ERROR
+SELECT * FROM t1 WHERE '::0:4' IN (a, '::5');
+
+DROP TABLE t1;
+
+
+
+--echo # Miscelaneous tests
+
+CREATE TABLE t1 (
+  a INET6 DEFAULT 'ffff::0001',
+  b INET6 DEFAULT 'ffff::01',
+  c INET6 DEFAULT 'fe80::192.168.1.1'
+);
+SHOW CREATE TABLE t1;
+INSERT INTO t1 VALUES();
+SELECT * FROM t1;
+DROP TABLE t1;
+
+# Testing AUTO_INCREMENT
+--error ER_WRONG_FIELD_SPEC
+CREATE TABLE t1 (a INET6 NOT NULL AUTO_INCREMENT);
+
+
+# Testing bad default values
+--error ER_INVALID_DEFAULT
+CREATE TABLE t1 (a INET6 DEFAULT '');
+
+# Testing bad values
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('bad');
+SELECT * FROM t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INET6 NOT NULL);
+SHOW CREATE TABLE t1;
+INSERT INTO t1 VALUES ('bad');
+SELECT * FROM t1;
+SELECT * FROM t1 WHERE a='bad';
+DROP TABLE t1;
+
+# Testing HEX hybrid
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (0xFF);
+INSERT INTO t1 VALUES (0xFFFF);
+INSERT INTO t1 VALUES (0xFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFFFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFFFFFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF);
+SELECT * FROM t1;
+SELECT * FROM t1 WHERE a=0xFFFF;
+SELECT * FROM t1 WHERE a=0xFFFFFFFFFFFFFFFF;
+SELECT * FROM t1 WHERE a=0xFFFFFFFFFFFFFFFFFFFFFFFF;
+SELECT * FROM t1 WHERE a=0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+SELECT * FROM t1 WHERE a=0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+DROP TABLE t1;
+
+# Testing DECIMAL-INET6 conversion
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (-1.0);
+INSERT INTO t1 VALUES (-0.1);
+INSERT INTO t1 VALUES (0.0);
+INSERT INTO t1 VALUES (1.0);
+INSERT INTO t1 VALUES (1.1);
+INSERT INTO t1 VALUES ((256.0*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)-2);
+INSERT INTO t1 VALUES ((256.0*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)-1);
+INSERT INTO t1 VALUES ((256.0*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256));
+SELECT a FROM t1;
+DELETE FROM t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::'),('::1'),('ffff::ffff'),('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff');
+SELECT * FROM t1 WHERE a=1.1;
+SELECT * FROM t1 WHERE a=340277174624079928635746076935439056895;
+CREATE TABLE t2 AS SELECT a, a-1,a+0,a+1 FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t2;
+ALTER TABLE t1 ADD b INET6;
+UPDATE t1 SET b=a+1;
+SELECT * FROM t1;
+UPDATE t1 SET b=a+0xFFFF0000;
+SELECT * FROM t1;
+UPDATE t1 SET b=a-1;
+SELECT * FROM t1;
+UPDATE t1 SET b=a-0xFFFF0000;
+SELECT * FROM t1;
+SELECT a,b,a-b FROM t1;
+DROP TABLE t1;
+
+# # Testing INT-INET6 conversion
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (-1);
+INSERT INTO t1 VALUES (0);
+INSERT INTO t1 VALUES (1);
+INSERT INTO t1 VALUES (0xFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFF);
+INSERT INTO t1 VALUES (0xFFFFFFFFFFFFFFFF);
+SELECT * FROM t1;
+SELECT * FROM t1 WHERE a=65535;
+SELECT * FROM t1 WHERE a=0xFFFF;
+SELECT * FROM t1 WHERE a=4294967295;
+SELECT * FROM t1 WHERE a=0xFFFFFFFF;
+SELECT * FROM t1 WHERE a=18446744073709551615;
+SELECT * FROM t1 WHERE a=0xFFFFFFFFFFFFFFFF;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::');
+INSERT INTO t1 VALUES ('::1');
+INSERT INTO t1 VALUES ('::1:1');
+INSERT INTO t1 VALUES ('1::1');
+INSERT INTO t1 VALUES ('ffff::ffff');
+SELECT a, CAST(a AS SIGNED) FROM t1;
+SELECT a, CAST(a AS UNSIGNED) FROM t1;
+DROP TABLE t1;
+
+# Testing DOUBLE-INET6 conversion
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (-1e0);
+INSERT INTO t1 VALUES (0e0);
+INSERT INTO t1 VALUES (1e0);
+INSERT INTO t1 VALUES (1.1e0);
+INSERT INTO t1 VALUES (65535e0);
+INSERT INTO t1 VALUES ('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff');
+SELECT a FROM t1;
+SELECT a, a+1e0 FROM t1;
+SELECT * FROM t1 WHERE a=1e0;
+SELECT * FROM t1 WHERE a=1.1e0;
+SELECT * FROM t1 WHERE a=65535e0;
+DROP TABLE t1;
+
+# Testing TIME-INET6 conversion (should probably be disallowed)
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (TIME'-10:10:10');
+INSERT INTO t1 VALUES (TIME'-00:00:00.000001');
+INSERT INTO t1 VALUES (TIME'00:00:00');
+INSERT INTO t1 VALUES (TIME'00:00:00.000001');
+INSERT INTO t1 VALUES (TIME'10:10:10');
+INSERT INTO t1 VALUES (TIME'26:21:44');
+INSERT INTO t1 VALUES (TIME'800:00:00');
+INSERT INTO t1 VALUES (9000000);
+INSERT INTO t1 VALUES (20010101101010);
+INSERT INTO t1 VALUES ('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff');
+SELECT a,a+0,CAST(a AS TIME) FROM t1;
+DROP TABLE t1;
+
+# Testing DATE-INET6 conversion (should probably be disallowed)
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (DATE'0000-00-00');
+INSERT INTO t1 VALUES (DATE'0000-00-01');
+INSERT INTO t1 VALUES (DATE'0000-01-01');
+INSERT INTO t1 VALUES (DATE'2000-01-01');
+INSERT INTO t1 VALUES (DATE'9999-12-31');
+INSERT INTO t1 VALUES (99991232);
+INSERT INTO t1 VALUES ('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff');
+SELECT *,a+0,CAST(a AS DATE) FROM t1;
+DROP TABLE t1;
+
+# Testing DATETIME-INET6 conversion (should probably be disallowed)
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (TIMESTAMP'0000-00-00 00:00:00');
+INSERT INTO t1 VALUES (TIMESTAMP'0000-00-00 00:00:00.000001');
+INSERT INTO t1 VALUES (TIMESTAMP'0000-00-00 00:00:01');
+INSERT INTO t1 VALUES (TIMESTAMP'0000-00-01 00:00:00');
+INSERT INTO t1 VALUES (TIMESTAMP'0000-01-01 00:00:00');
+INSERT INTO t1 VALUES (TIMESTAMP'2000-01-01 00:00:00');
+INSERT INTO t1 VALUES (TIMESTAMP'9999-12-31 00:00:00');
+INSERT INTO t1 VALUES (99991232000000);
+INSERT INTO t1 VALUES ('ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff');
+SELECT *,a+0,CAST(a AS DATETIME) FROM t1;
+DROP TABLE t1;
+
+# Testing comparison operators
+
+CREATE TABLE t1 (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, a INET6) ENGINE=MYISAM;
+SHOW CREATE TABLE t1;
+
+INSERT INTO t1 (a) VALUES
+(NULL),
+('fe80::c0a8:1501'),
+('fe80::c0a8:1502'),
+('fe80::192.168.21.1'),
+('fe80::192.168.21.2'),
+('ffff:eeee:dddd:cccc:bbbb:aaaa:999:888'),
+('0:0:0:0:0:0:0:1'),
+('1::1');
+
+SELECT a FROM t1 ORDER BY a;
+
+SELECT * FROM t1 WHERE a IS NULL ORDER BY id;
+SELECT * FROM t1 WHERE a <=> NULL ORDER BY id;
+SELECT * FROM t1 WHERE a <=> 'xxx' ORDER BY id;
+SELECT * FROM t1 WHERE NOT a <=> 'xxx' ORDER BY id;
+
+SELECT * FROM t1 ORDER BY id;
+SELECT * FROM t1 WHERE a='fe80::192.168.21.1' ORDER BY id;
+SELECT * FROM t1 WHERE a='fe80::192.168.21.2' ORDER BY id;
+SELECT * FROM t1 WHERE a='fe80::c0a8:1501' ORDER BY id;
+SELECT * FROM t1 WHERE a='fe80::c0a8:1502' ORDER BY id;
+SELECT * FROM t1 WHERE a='fe80:00:00:00:00:00:c0a8:1501' ORDER BY id;
+SELECT * FROM t1 WHERE a='fe80:00:00:00:00:00:c0a8:1502' ORDER BY id;
+SELECT * FROM t1 WHERE a='ffff:eeee:dddd:cccc:bbbb:aaaa:999:888' ORDER BY id;
+SELECT * FROM t1 WHERE a='ffff:eeee:dddd:cccc:bbbb:aaaa:0999:0888' ORDER BY id;
+
+SELECT * FROM t1 WHERE a='1:0::0:1' ORDER BY id;
+SELECT * FROM t1 WHERE '1:0::0:1'=a ORDER BY id;
+
+SELECT a FROM t1 WHERE a<'::2';
+SELECT a FROM t1 WHERE a>'ffff::';
+
+ 
+# Testing aggregate functions
+SELECT MIN(a) FROM t1;
+SELECT MAX(a) FROM t1;
+SELECT COUNT(*), a FROM t1 GROUP BY a ORDER BY a;
+
+CREATE TABLE t2 AS SELECT MIN(a) AS min, MAX(a) AS max FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t2;
+ 
+# Testing hybrid type functions
+CREATE TABLE t2 AS SELECT id, COALESCE(a,a) AS a FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2 ORDER BY id;
+DROP TABLE t2;
+
+CREATE TABLE t2 AS SELECT id, COALESCE(a,'eeee::eeee'), COALESCE(a,CONCAT('eeee::eeee')) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2 ORDER BY id;
+DROP TABLE t2;
+
+CREATE TABLE t2 AS SELECT id, COALESCE(a,'xxx'), COALESCE(a,CONCAT('xxx')) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2 ORDER BY id;
+DROP TABLE t2;
+
+CREATE TABLE t2 AS SELECT id, COALESCE(a,id) AS a FROM t1;
+SHOW CREATE TABLE t2;
+DROP TABLE t2;
+
+CREATE TABLE t2 AS SELECT id, IF(1,a,a), IF(0,a,a) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2 ORDER BY id;
+DROP TABLE t2;
+
+CREATE TABLE t2 AS SELECT
+  id,
+  IF(1,a,id),
+  IF(0,a,id),
+  IF(1,id,a),
+  IF(0,id,a),
+  IF(1,a,'eeee::eeee'),
+  IF(0,a,'eeee::eeee'),
+  IF(1,'eeee::eeee',a),
+  IF(0,'eeee::eeee',a),
+  IF(1,a,CONCAT('eeee::eeee')),
+  IF(0,a,CONCAT('eeee::eeee')),
+  IF(1,CONCAT('eeee::eeee'),a),
+  IF(0,CONCAT('eeee::eeee'),a)
+FROM t1;
+SHOW CREATE TABLE t2;
+DROP TABLE t2;
+
+DROP TABLE t1;
+
+# More tests for hybrid type functions
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::'),('::400'),('::401'),('::402'),('::403');
+CREATE TABLE t2 AS SELECT
+  CAST(COALESCE(a,a) AS CHAR) AS `char`,
+  CAST(COALESCE(a,a) AS UNSIGNED) AS `unsigned`,
+  CAST(COALESCE(a,a) AS UNSIGNED) AS `signed`,
+  CAST(COALESCE(a,a) AS DOUBLE) AS `double`,
+  CAST(COALESCE(a,a) AS DECIMAL) AS `decimal`,
+  CAST(COALESCE(a,a) AS TIME) AS `time`,
+  CAST(COALESCE(a,a) AS DATE) AS `date`,
+  CAST(COALESCE(a,a) AS DATETIME) AS `datetime`
+FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t2;
+
+CREATE TABLE t2 AS SELECT
+  CAST(LEAST(a,a) AS CHAR) AS `char`,
+  CAST(LEAST(a,a) AS UNSIGNED) AS `unsigned`,
+  CAST(LEAST(a,a) AS UNSIGNED) AS `signed`,
+  CAST(LEAST(a,a) AS DOUBLE) AS `double`,
+  CAST(LEAST(a,a) AS DECIMAL) AS `decimal`,
+  CAST(LEAST(a,a) AS TIME) AS `time`,
+  CAST(LEAST(a,a) AS DATE) AS `date`,
+  CAST(LEAST(a,a) AS DATETIME) AS `datetime`
+FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t2;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::1');
+CREATE TABLE t2 AS SELECT COALESCE(-1,a) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t2;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::1'),('1::1');
+SELECT * FROM t1 ORDER BY a;
+SELECT * FROM t1 ORDER BY a DESC;
+SELECT * FROM t1 ORDER BY CONCAT(a);
+SELECT * FROM t1 ORDER BY COALESCE(a,a);
+SELECT * FROM t1 ORDER BY IF(1,a,a);
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INET6,b INET6);
+INSERT INTO t1 VALUES ('::1','1::1');
+SELECT LEAST(a,b), GREATEST(a,b) FROM t1;
+SELECT LEAST(a,CONCAT(b)), GREATEST(a,CONCAT(b)) FROM t1;
+SELECT LEAST(CONCAT(a),b), GREATEST(CONCAT(a),b) FROM t1;
+SELECT LEAST(a,'0::1'), LEAST('0::1',a) FROM t1;
+CREATE TABLE t2 AS SELECT
+  LEAST(a,b),
+  LEAST(b,a),
+  LEAST(a,'::1'),
+  LEAST('::1',a),
+  LEAST(a,CONCAT('::1')),
+  LEAST(CONCAT('::1'),a)
+FROM t1;
+SHOW CREATE TABLE t2;
+DROP TABLE t2;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INET6, b INET6 NOT NULL);
+INSERT INTO t1 VALUES (NULL,'10::10');
+SELECT
+  LEAST(a,'xxx'),
+  LEAST('xxx',a),
+  LEAST(b,'xxx'),
+  LEAST('xxx',b)
+FROM t1;
+CREATE TABLE t2 AS SELECT
+  LEAST(a,'xxx'),
+  LEAST('xxx',a),
+  LEAST(b,'xxx'),
+  LEAST('xxx',b)
+FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t1,t2;
+
+# IFNULL
+CREATE TABLE t1 (a INET6,b VARCHAR(10));
+INSERT INTO t1 VALUES ('::1','1::x'),(NULL,'2::x'),('3::1',NULL),(NULL,NULL);
+SELECT IFNULL(a,'a') FROM t1;
+CREATE TABLE t2 AS SELECT
+  IFNULL(a,b),
+  IFNULL(b,a),
+  IFNULL(a,'a'),
+  IFNULL('a',a)
+FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t1,t2;
+
+# Testing result type for CASE
+CREATE TABLE t1 (a INET6,b INET6,c VARCHAR(10));
+INSERT INTO t1 VALUES ('::1','1::1','1::x');
+CREATE TABLE t2 AS
+SELECT
+  CASE WHEN 0 THEN a ELSE b END,
+  CASE WHEN 1 THEN a ELSE b END,
+  CASE WHEN 0 THEN a ELSE 'a' END,
+  CASE WHEN 1 THEN a ELSE 'b' END,
+  CASE WHEN 0 THEN a ELSE CAST('a' AS CHAR) END,
+  CASE WHEN 1 THEN a ELSE CAST('b' AS CHAR) END,
+  CASE WHEN 0 THEN a ELSE c END,
+  CASE WHEN 1 THEN a ELSE c END,
+  CASE WHEN 0 THEN c ELSE a END,
+  CASE WHEN 1 THEN c ELSE a END
+FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t2;
+DROP TABLE t1;
+
+# Testing cmp type for CASE
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (NULL),('::'),('1::1'),('2::2');
+SELECT a,CASE a WHEN NULL THEN 'null' WHEN '0::0' THEN '000' WHEN '1:0::0:1' THEN '111' ELSE 'unknown' END FROM t1;
+DROP TABLE t1;
+
+# Testing the warning: Cast to INET6 converted 'x' to NULL
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES (NULL);
+SELECT CASE WHEN a IS NOT NULL THEN a ELSE 'x' END FROM t1;
+DROP TABLE t1;
+
+ 
+# Testing result type for LAST_VALUE
+CREATE TABLE t1 (a INET6,b VARCHAR(10));
+INSERT INTO t1 VALUES ('::1','1::x');
+CREATE TABLE t2 AS SELECT LAST_VALUE(a,b),LAST_VALUE(b,a) FROM t1;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t1, t2;
+
+# Testing comparison type for NULLIF
+# Note, result data type is bad for NULLIF, see MDEV-5904
+# The result may change after MDEV-5904 is fixed
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::'),('1::1');
+SELECT a,NULLIF(a,'00::00'),NULLIF('00::00',a) FROM t1;
+SELECT a,NULLIF(a,'xx') FROM t1;
+DROP TABLE IF EXISTS t1;
+
+# Testing BETWEEN
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::'),('::1'),('::2'),('::3');
+SELECT * FROM t1 WHERE a BETWEEN '00::01' AND '00::02';
+SELECT a, a BETWEEN NULL AND '00::02' FROM t1;
+SELECT a, a BETWEEN '00::02' AND NULL FROM t1;
+SELECT * FROM t1 WHERE a BETWEEN 'x' AND 'y';
+DROP TABLE t1;
+
+# Testing IN
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::'),('::1'),('::2'),('::3');
+SELECT a, a IN ('00::02'), a NOT IN ('00::02') FROM t1;
+SELECT a, a IN ('00::05'), a NOT IN ('00::05') FROM t1;
+SELECT a, a IN (NULL,'00::02'), a NOT IN (NULL,'00::02') FROM t1;
+SELECT a, a IN (NULL,'00::05'), a NOT IN (NULL,'00::05') FROM t1;
+SELECT a, a IN ('00::02',NULL), a NOT IN ('00::02',NULL) FROM t1;
+SELECT a, a IN ('00::05',NULL), a NOT IN ('00::05',NULL) FROM t1;
+SELECT a, a IN ('00::02','00::01'), a NOT IN ('00::02','00::01') FROM t1;
+DROP TABLE t1;
+
+# Testing UNION between INET6 and the other data types
+CREATE TABLE t1 (a INET6, b INET6, c VARCHAR(20),d INT);
+CREATE TABLE t2 AS SELECT a FROM t1 UNION SELECT b FROM t1;
+SHOW CREATE TABLE t2;
+DROP TABLE t2;
+CREATE TABLE t2 AS SELECT a FROM t1 UNION SELECT c FROM t1;
+SHOW CREATE TABLE t2;
+DROP TABLE t2;
+CREATE TABLE t2 AS SELECT a FROM t1 UNION SELECT d FROM t1;
+SHOW CREATE TABLE t2;
+DROP TABLE t2;
+DROP TABLE t1;
+
+# Testing UNION with INET6 field and literals of other data types
+CREATE TABLE t1 (a INET6, b INET6 NOT NULL);
+INSERT INTO t1 VALUES ('1::1','1::1'),('2::2','2::2');
+CREATE TABLE t2 AS SELECT a FROM t1 UNION SELECT NULL;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2 ORDER BY a;
+DROP TABLE t2;
+CREATE TABLE t2 AS SELECT a FROM t1 UNION SELECT '3::3';
+SHOW CREATE TABLE t2;
+SELECT * FROM t2 ORDER BY a;
+DROP TABLE t2;
+CREATE TABLE t2 AS SELECT a,b FROM t1 UNION SELECT 'x::x','y::y';
+SHOW CREATE TABLE t2;
+SELECT * FROM t2 ORDER BY a;
+DROP TABLE t2;
+CREATE TABLE t2 AS SELECT a,b FROM t1 UNION SELECT CONCAT('x::x'),CONCAT('y::y');
+SHOW CREATE TABLE t2;
+SELECT * FROM t2 ORDER BY a;
+DROP TABLE t2;
+DROP TABLE t1;
+
+# Testing ROW
+CREATE TABLE t1 (a INET6, b INET6);
+INSERT INTO t1 VALUES ('::','::'),('::1','::1');
+SELECT * FROM t1 WHERE (a,b)=('0::1','00:00::00:01');
+DROP TABLE t1;
+
+# TODO: (a,b) IN (('00::01','00:00::00:01'),('::0','00::00'))
+# TODO: where a='00::00' AND a='::'
+
+# Testing param
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::'),('::1');
+PREPARE stmt FROM 'SELECT * FROM t1 WHERE a=?';
+SET @a='00:00::00:01';
+EXECUTE stmt USING @a;
+DEALLOCATE PREPARE stmt;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a INET6);
+INSERT INTO t1 VALUES ('::1'),('::2');
+PREPARE stmt FROM 'CREATE TABLE t2 AS SELECT a FROM t1 UNION SELECT ?';
+SET @a=NULL;
+EXECUTE stmt USING @a;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t2;
+SET @a='::3';
+EXECUTE stmt USING @a;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t2;
+SET @a='xxx';
+EXECUTE stmt USING @a;
+SHOW CREATE TABLE t2;
+SELECT * FROM t2;
+DROP TABLE t2;
+DROP TABLE t1;
+DEALLOCATE PREPARE stmt;
+
+# Testing CAST
+CREATE TABLE t1 (a VARCHAR(32));
+INSERT INTO t1 VALUES ('1::'),('1::1'),('01::01'),('01:00::00:01'),('ffff::ffff'),('xxx');
+SELECT CAST(a AS INET6) FROM t1;
+DROP TABLE t1;
+CREATE TABLE t1 (a INET6);
+CREATE TABLE t2 AS SELECT
+  CAST(a AS CHAR),
+  CAST(COALESCE(a) AS CHAR),
+  CAST(LEAST(a,a) AS CHAR),
+  CAST(CAST(a AS INET6) AS CHAR)
+FROM t1;
+SHOW CREATE TABLE t2;
+DROP TABLE t2;
+DROP TABLE t1;
+
+CREATE TABLE t1 (a DECIMAL(48,1));
+INSERT INTO t1 VALUES (-1.1),(-1),(-0.1),(0),(0.1),(1),
+  (2.4),(2.5),
+  ((256.0*256)*(256*256)*(256*256)*(256*256)-1),
+  ((256.0*256)*(256*256)*(256*256)*(256*256)),
+  ((256.0*256)*(256*256)*(256*256)*(256*256)+1),
+  ((256.0*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)-1),
+  ((256.0*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256)*(256*256));
+SELECT a, CAST(a AS INET6) FROM t1;
+DROP TABLE t1;
+SELECT CAST(2.0 AS INET6), CAST(COALESCE(2.0) AS INET6), CAST(LEAST(2.0,2.0) AS INET6);
+SELECT CAST(2.1 AS INET6), CAST(COALESCE(2.2) AS INET6), CAST(LEAST(2.3,2.4) AS INET6);
+SELECT CAST(2.5 AS INET6), CAST(COALESCE(2.6) AS INET6), CAST(LEAST(2.7,2.8) AS INET6);
+
+CREATE TABLE t1 (a DOUBLE);
+INSERT INTO t1 VALUES (-1e100),(-1.1),(-1),(-0.1),(0),(0.1),(1),(1e100);
+SELECT a, CAST(a AS INET6) FROM t1;
+DROP TABLE t1;
+SELECT CAST(2.0e0 AS INET6), CAST(COALESCE(2.0e0) AS INET6), CAST(LEAST(2.0e0,2.0e0) AS INET6);
+SELECT CAST(2.1e0 AS INET6), CAST(COALESCE(2.2e0) AS INET6), CAST(LEAST(2.3e0,2.4e0) AS INET6);
+SELECT CAST(2.5e0 AS INET6), CAST(COALESCE(2.6e0) AS INET6), CAST(LEAST(2.7e0,2.8e0) AS INET6);
+
+CREATE TABLE t1 (a INT);
+INSERT INTO t1 VALUES (-2147483648),(-1),(0),(1),(2147483647);
+SELECT a, CAST(a AS INET6) FROM t1;
+DROP TABLE t1;
+SELECT CAST(-1 AS INET6), CAST(COALESCE(-1) AS INET6), CAST(LEAST(-1,-1) AS INET6);
+SELECT CAST(0 AS INET6), CAST(COALESCE(0) AS INET6), CAST(LEAST(0,0) AS INET6);
+SELECT CAST(2147483647 AS INET6), CAST(COALESCE(2147483647) AS INET6), CAST(LEAST(2147483647,2147483647) AS INET6);
+
+CREATE TABLE t1 (a INT UNSIGNED);
+INSERT INTO t1 VALUES (0),(1),(2147483647),(4294967295);
+SELECT a, CAST(a AS INET6) FROM t1;
+DROP TABLE t1;
+SELECT CAST(4294967295 AS INET6), CAST(COALESCE(4294967295) AS INET6), CAST(LEAST(4294967295,4294967295) AS INET6);
+
+CREATE TABLE t1 (a DATE);
+INSERT INTO t1 VALUES 
+  ('0000-00-00'),('0000-01-01'),('0001-01-01'),
+  ('2014-06-30'),('2048-08-16'),('2048-10-24'),('9999-12-31');
+SELECT a, CAST(a AS INET6) FROM t1;
+DROP TABLE t1;
+SELECT CAST(DATE'2014-06-30' AS INET6), CAST(COALESCE(DATE'2014-06-30') AS INET6), CAST(LEAST(DATE'2014-06-30',DATE'2014-06-30') AS INET6);
+
+CREATE TABLE t1 (a TIME(6));
+INSERT INTO t1 VALUES 
+  ('-838:59:59.999999'),('-838:59:59'),('-800:00:00'),
+  ('-00:00:01'),('-00:00:00.000006'),
+  ('00:00:00.000001'),('00:00:01'),('00:00:01.000001'),
+  ('800:00:00'),('838:59:59'),('838:59:59.999999');
+SELECT a, CAST(a AS INET6) FROM t1;
+DROP TABLE t1;
+SELECT CAST(TIME'800:59:59' AS INET6), CAST(COALESCE(TIME'800:59:59') AS INET6), CAST(LEAST(TIME'800:59:59',TIME'800:59:59') AS INET6);
+
+CREATE TABLE t1 (a DATETIME(6));
+INSERT INTO t1 VALUES 
+  ('0000-00-00 00:00:00.000001'),('0000-00-00 00:00:01'),
+  ('0000-00-00 00:00:01.000001'),
+  ('2014-06-30 00:00:01.000000'),('2014-06-30 00:00:01.000001'),
+  ('9999-12-31 23:59:59'),
+  ('9999-12-31 23:59:59.000001'), ('9999-12-31 23:59:59.999999');
+SELECT a, CAST(a AS INET6) FROM t1;
+DROP TABLE t1;
+SELECT CAST(TIMESTAMP'9999-12-31 23:59:59' AS INET6), CAST(COALESCE(TIMESTAMP'9999-12-31 23:59:59') AS INET6), CAST(LEAST(TIMESTAMP'9999-12-31 23:59:59',TIMESTAMP'9999-12-31 23:59:59') AS INET6);

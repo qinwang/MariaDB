@@ -36,6 +36,11 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 static bool field_valid_for_tokudb_table(Field* field) {
     bool ret_val = false;
     enum_field_types mysql_type = field->real_type();
+    if (Type_handlers.handler(mysql_type)->is_fixed_length_binary_type())
+    {
+      ret_val= true;
+      goto exit;
+    }
     switch (mysql_type) {
     case MYSQL_TYPE_LONG:
     case MYSQL_TYPE_LONGLONG:
@@ -169,6 +174,11 @@ static void get_blob_field_info(
 static TOKU_TYPE mysql_to_toku_type (Field* field) {
     TOKU_TYPE ret_val = toku_type_unknown;
     enum_field_types mysql_type = field->real_type();
+    if (Type_handlers.handler(mysql_type)->is_fixed_length_binary_type())
+    {
+        ret_val = toku_type_fixbinary;
+        goto exit;
+    }
     switch (mysql_type) {
     case MYSQL_TYPE_LONG:
     case MYSQL_TYPE_LONGLONG:
@@ -3104,6 +3114,13 @@ static bool fields_are_same_type(Field* a, Field* b) {
         retval = false;
         goto cleanup;
     }
+    if (Type_handlers.handler(a_mysql_type)->is_fixed_length_binary_type())
+    {
+        if (!a->eq_def(b))
+            retval = false;
+        goto cleanup;
+    }
+
     switch (a_mysql_type) {
     case MYSQL_TYPE_TINY:
     case MYSQL_TYPE_SHORT:

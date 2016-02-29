@@ -6146,24 +6146,28 @@ find_qualified_function_builder(THD *thd)
 
 
 Item *
-create_func_cast(THD *thd, Item *a, Cast_target cast_type,
-                 const char *c_len, const char *c_dec,
-                 CHARSET_INFO *cs)
+Lex_cast_type_st::create_func_cast(THD *thd, Item *a, CHARSET_INFO *cs) const
 {
   Item *UNINIT_VAR(res);
   ulonglong length= 0, decimals= 0;
   int error;
-  
+
+  /*
+    Lex_cast_type_st is a part of the union in sql_yacc.yy.
+    It should stay as small as possible.
+  */
+  DBUG_ASSERT(sizeof(Lex_cast_type_st) <= 3*sizeof(void*));
+
   /*
     We don't have to check for error here as sql_yacc.yy has guaranteed
     that the values are in range of ulonglong
   */
-  if (c_len)
-    length= (ulonglong) my_strtoll10(c_len, NULL, &error);
-  if (c_dec)
-    decimals= (ulonglong) my_strtoll10(c_dec, NULL, &error);
+  if (m_length)
+    length= (ulonglong) my_strtoll10(m_length, NULL, &error);
+  if (m_dec)
+    decimals= (ulonglong) my_strtoll10(m_dec, NULL, &error);
 
-  switch (cast_type) {
+  switch (m_type) {
   case ITEM_CAST_BINARY:
     res= new (thd->mem_root) Item_func_binary(thd, a);
     break;
@@ -6210,7 +6214,7 @@ create_func_cast(THD *thd, Item *a, Cast_target cast_type,
     ulong len;
     uint dec;
 
-    if (!c_len)
+    if (!m_length)
     {
       length=   DBL_DIG+7;
       decimals= NOT_FIXED_DEC;
@@ -6227,7 +6231,7 @@ create_func_cast(THD *thd, Item *a, Cast_target cast_type,
   {
     int len= -1;
     CHARSET_INFO *real_cs= (cs ? cs : thd->variables.collation_connection);
-    if (c_len)
+    if (m_length)
     {
       if (length > MAX_FIELD_BLOBLENGTH)
       {
@@ -6242,6 +6246,13 @@ create_func_cast(THD *thd, Item *a, Cast_target cast_type,
     res= new (thd->mem_root) Item_char_typecast(thd, a, len, real_cs);
     break;
   }
+  case ITEM_CAST_HANDLED:
+    /*
+      TODO-4912: check if make_typecast_item() returns NULL,
+      which means this type does not support CAST.
+    */
+    res= Type_handlers.handler(m_field_type)->make_typecast_item(thd, a);
+    break;
   default:
   {
     DBUG_ASSERT(0);
@@ -6418,5 +6429,5 @@ Item *create_func_dyncol_get(THD *thd,  Item *str, Item *num,
 
   if (!(res= new (thd->mem_root) Item_dyncol_get(thd, str, num)))
     return res;                                 // Return NULL
-  return create_func_cast(thd, res, cast_type, c_len, c_dec, cs);
+  return Cast_type(cast_type, c_len, c_dec).create_func_cast(thd, res, cs);
 }

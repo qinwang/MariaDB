@@ -79,12 +79,42 @@ Type_handler::error_cant_merge_types(const char *op,
                                      const Type_handler *h1,
                                      const Type_handler *h2) const
 {
+  /**
+    TODO:
+    Discuss the exact error message text and add it to errmsg-utf8.txt.
+    Hmm, this is hard to read:
+
+      Illegal data types time and inet6 for operation '='
+
+    It would be nice to have type names in capital case:
+
+      Illegal data types TIME and INET6 for operation '='
+
+    On the other hand, it would be nice to reuse Type_handler::type_name()
+    in Field::sql_type(), which uses lower case type names.
+    Ideas?
+  */
   my_printf_error(ER_UNKNOWN_ERROR,
                   "Illegal data types %s and %s for operation '%s'", MYF(0),
                   h1->type_name().ptr(), h2->type_name().ptr(), op);
 }
 
 
+/**
+  TODO: this should evolve to some virtual method in Type_handler.
+*/
+bool Type_handler::can_merge_with_non_traditional_type() const
+{
+  enum_field_types type= field_type();
+  return !is_temporal_type(type) &&
+          type != MYSQL_TYPE_YEAR &&
+          type != MYSQL_TYPE_GEOMETRY;
+}
+
+
+/**
+  TODO: this should be split into some virtual methods in Type_handler.
+*/
 bool Type_handler_hybrid_field_type::
        merge_non_traditional_types(const char *op, const Type_handler *other,
                                    uint *non_traditional_count)
@@ -93,18 +123,25 @@ bool Type_handler_hybrid_field_type::
   bool ext2= !Type_handler::is_traditional_type(other->real_field_type());
   if ((non_traditional_count[0]= ext1 + ext2) == 2 &&
       type_handler() != other)
-  {
-    error_cant_merge_types(op, type_handler(), other);
-    return true;  // Two different non-traditional types
-  }
+    goto err; // Two different non-traditional types (not supported yet)
   if (ext1)
+  {
+    if (!other->can_merge_with_non_traditional_type())
+      goto err;   // E.g. non-traditional + temporal (not supported yet)
     return false; // The current type won
+  }
   if (ext2)
   {
+    if (!can_merge_with_non_traditional_type())
+      goto err;    // E.g. non-traditional + temporal (not supported yet)
     set_handler(other);
     return false; // The "other" type won
   }
   return false;   // No non-traditional types were found
+
+err:
+  error_cant_merge_types(op, type_handler(), other);
+  return true;
 }
 
 
@@ -2213,7 +2250,7 @@ Type_handler_string_result::Item_func_hex_val_str_ascii(Item_func_hex *item,
 /*************************************************************************/
 
 Type_handler_register::Type_handler_register()
-  :m_min_type(256), m_max_type(0)
+  :m_min_non_traditional_type(256), m_max_non_traditional_type(0)
 {
   add(&type_handler_tiny);
   add(&type_handler_short);
@@ -2257,5 +2294,17 @@ Type_handler_register::Type_handler_register()
   add(&type_handler_enum);
   add(&type_handler_set);
 }
+
+
+const Type_handler *Type_handler_register::handler(const Name &name) const
+{
+  for (uint i= m_min_non_traditional_type; i <= m_max_non_traditional_type; i++)
+  {
+    if (name.eq(m_handlers[i].name()))
+      return m_handlers[i].handler();
+  }
+  return NULL;
+}
+
 
 Type_handler_register Type_handlers;

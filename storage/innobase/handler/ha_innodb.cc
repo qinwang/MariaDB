@@ -6551,6 +6551,9 @@ get_innobase_type_from_mysql_type(
 		with it and not trigger assertion failure in 5.1 */
 		break;
 	default:
+		if (Type_handlers.handler(field->type())->
+		    is_fixed_length_binary_type())
+			return(DATA_FIXBINARY);
 		ut_error;
 	}
 
