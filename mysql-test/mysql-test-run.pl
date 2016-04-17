@@ -234,6 +234,8 @@ my $opt_debug_common;
 our $opt_debug_server;
 our @opt_cases;                  # The test cases names in argv
 our $opt_embedded_server;
+# Temporary change for MDEV-9909
+our $opt_plugins= 1;             # Run with default plugins
 
 # Options used when connecting to an already running server
 my %opts_extern;
@@ -1234,6 +1236,11 @@ sub command_line_setup {
   usage("") if $opt_usage;
   list_options(\%options) if $opt_list_options;
 
+  # Temporary change for MDEV-9909
+  $opt_max_test_fail= 0;
+  $opt_testcase_timeout= 60;
+  $opt_suite_timeout= 1440;
+
   # --------------------------------------------------------------------------
   # Setup verbosity
   # --------------------------------------------------------------------------
@@ -1867,8 +1874,9 @@ sub collect_mysqld_features {
       # here we want to detect all not mandatory plugins
       # they are listed in the --help output as
       #  --archive[=name]    Enable or disable ARCHIVE plugin. Possible values are ON, OFF, FORCE (don't start if the plugin fails to load).
+      # Temporary change for MDEV-9909
       push @optional_plugins, $1
-        if /^  --([-a-z0-9]+)\[=name\] +Enable or disable \w+ plugin. One of: ON, OFF, FORCE/;
+        if not $opt_plugins and /^  --([-a-z0-9]+)\[=name\] +Enable or disable \w+ plugin. One of: ON, OFF, FORCE/;
       next;
     }
 
