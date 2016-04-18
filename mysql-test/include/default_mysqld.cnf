@@ -106,6 +106,8 @@ binlog-direct-non-transactional-updates
 
 default-storage-engine=myisam
 
+loose-file-key-management-filename=@ENV.MYSQLTEST_VARDIR/std_data/keys.txt
+
 # here, at the end of [mysqld] group mtr will automatically disable
 # all optional plugins.
 
