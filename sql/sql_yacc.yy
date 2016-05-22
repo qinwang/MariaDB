@@ -1672,7 +1672,6 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         opt_if_not_exists
         opt_if_exists
 
-
 /*
   Bit field of MYSQL_START_TRANS_OPT_* flags.
 */
@@ -1883,7 +1882,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         normal_key_options normal_key_opts all_key_opt 
         spatial_key_options fulltext_key_options normal_key_opt 
         fulltext_key_opt spatial_key_opt fulltext_key_opts spatial_key_opts
-    keep_gcc_happy
+        keep_gcc_happy
         key_using_alg
         part_column_list
         server_def server_options_list server_option
@@ -2570,7 +2569,6 @@ create:
           }
         | create_or_replace
           {
-	          printf("CREATING FUNCTION\n");
             Lex->create_info.set($1);
             Lex->create_view_mode= ($1.or_replace() ? VIEW_CREATE_OR_REPLACE :
                                                       VIEW_CREATE_NEW);
@@ -3907,6 +3905,7 @@ sp_proc_stmt_fetch_head:
 
 sp_proc_stmt_fetch:
           sp_proc_stmt_fetch_head sp_fetch_list { }
+          | FETCH_SYM GROUP_SYM NEXT_SYM ROW_SYM {}
         ;
 
 sp_proc_stmt_close:
@@ -16284,7 +16283,7 @@ view_or_trigger_or_sp_or_event:
 definer_tail:
           view_tail
         | trigger_tail
-        | sp_tail 
+        | sp_tail
         | sf_tail
         | event_tail
         ;
@@ -16643,8 +16642,6 @@ sp_tail:
             sp->restore_thd_mem_root(thd);
           }
         ;
-
-
 
 /*************************************************************************/
 
