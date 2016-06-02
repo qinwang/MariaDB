@@ -61,11 +61,6 @@ TABLE_FIELD_TYPE proc_table_fields[MYSQL_PROC_FIELD_COUNT] =
     { C_STRING_WITH_LEN("utf8") }
   },
   {
-    { C_STRING_WITH_LEN("aggregate") },
-    { C_STRING_WITH_LEN("enum('YES','NO')") },
-    { NULL, 0 }
-  },
-  {
     { C_STRING_WITH_LEN("type") },
     { C_STRING_WITH_LEN("enum('FUNCTION','PROCEDURE')") },
     { NULL, 0 }
@@ -163,7 +158,14 @@ TABLE_FIELD_TYPE proc_table_fields[MYSQL_PROC_FIELD_COUNT] =
     { C_STRING_WITH_LEN("body_utf8") },
     { C_STRING_WITH_LEN("longblob") },
     { NULL, 0 }
+
+  },
+  {
+    { C_STRING_WITH_LEN("aggregate") },
+    { C_STRING_WITH_LEN("enum('YES','NO')") },
+    { NULL, 0 }
   }
+
 };
 
 static const TABLE_FIELD_DEF
@@ -634,6 +636,14 @@ db_find_routine(THD *thd, stored_procedure_type type, const sp_name *name,
     goto done;
   }
 
+  if ((ptr= get_field(thd->mem_root,
+          table->field[MYSQL_PROC_FIELD_AGGREGATE])) == NULL)
+  {
+    ret= SP_GET_FIELD_FAILED;
+    goto done;
+  }
+  agg_res= (ptr[0] == 'N' ? FALSE : TRUE);
+
   // Get additional information
   if ((definer= get_field(thd->mem_root,
 			  table->field[MYSQL_PROC_FIELD_DEFINER])) == NULL)
@@ -641,6 +651,8 @@ db_find_routine(THD *thd, stored_procedure_type type, const sp_name *name,
     ret= SP_GET_FIELD_FAILED;
     goto done;
   }
+
+
 
   modified= table->field[MYSQL_PROC_FIELD_MODIFIED]->val_int();
   created= table->field[MYSQL_PROC_FIELD_CREATED]->val_int();
@@ -673,7 +685,7 @@ db_find_routine(THD *thd, stored_procedure_type type, const sp_name *name,
   ret= db_load_routine(thd, type, name, sphp,
                        sql_mode, params, returns, body, chistics,
                        &definer_user_name, &definer_host_name,
-                       created, modified, creation_ctx);
+                       created, modified, creation_ctx,agg_res);
  done:
   /* 
     Restore the time zone flag as the timezone usage in proc table
@@ -855,7 +867,7 @@ db_load_routine(THD *thd, stored_procedure_type type,
                      returns, strlen(returns),
                      body, strlen(body),
                      &chistics, definer_user_name, definer_host_name,
-                     sql_mode))
+                     sql_mode,agg_res))
   {
     ret= SP_INTERNAL_ERROR;
     goto end;
@@ -909,6 +921,7 @@ db_load_routine(THD *thd, stored_procedure_type type,
     (*sphp)->set_definer(definer_user_name, definer_host_name);
     (*sphp)->set_info(created, modified, &chistics, sql_mode);
     (*sphp)->set_creation_ctx(creation_ctx);
+    (*sphp)->is_aggregate= agg_res;
     (*sphp)->optimize();
     /*
       Not strictly necessary to invoke this method here, since we know
@@ -1302,7 +1315,7 @@ log:
                        sp->m_body.str, sp->m_body.length,
                        sp->m_chistics, &(thd->lex->definer->user),
                        &(thd->lex->definer->host),
-                       saved_mode))
+                       saved_mode,sp->is_aggregate))
     {
       my_error(ER_OUT_OF_RESOURCES, MYF(0));
       goto done;
@@ -1804,7 +1817,7 @@ sp_find_routine(THD *thd, stored_procedure_type type, const sp_name *name,
                         sp->m_body.str, *sp->m_chistics,
                         &sp->m_definer_user, &sp->m_definer_host,
                         sp->m_created, sp->m_modified,
-                        sp->get_creation_ctx()) == SP_OK)
+                        sp->get_creation_ctx(),sp->is_aggregate) == SP_OK)
     {
       sp->m_last_cached_sp->m_next_cached_sp= new_sp;
       new_sp->m_recursion_level= level;
@@ -2215,11 +2228,12 @@ show_create_sp(THD *thd, String *buf,
               const LEX_CSTRING *definer_host,
               sql_mode_t sql_mode)
 {
-  sql_mode_t old_sql_mode= thd->variables.sql_mode;
+  ulong agglen= (chistics->agg_type == GROUP_AGGREGATE)? 10 : 0;
+
   /* Make some room to begin with */
   if (buf->alloc(100 + dblen + 1 + namelen + paramslen + returnslen + bodylen +
-		 chistics->comment.length + 10 /* length of " DEFINER= "*/ +
-                 USER_HOST_BUFF_SIZE))
+		 chistics->comment.length + 10 /* length of " DEFINER= "*/ + agglen +
+                      USER_HOST_BUFF_SIZE))
     return FALSE;
 
   thd->variables.sql_mode= sql_mode;
@@ -2227,7 +2241,7 @@ show_create_sp(THD *thd, String *buf,
   if (thd->lex->create_info.or_replace())
     buf->append(STRING_WITH_LEN("OR REPLACE "));
   append_definer(thd, buf, definer_user, definer_host);
-  if(sp->is_aggregate)
+  if (agg_res)
     buf->append(STRING_WITH_LEN("AGGREGATE "));
   if (type == TYPE_ENUM_FUNCTION)
     buf->append(STRING_WITH_LEN("FUNCTION "));
@@ -2345,7 +2359,7 @@ sp_load_for_information_schema(THD *thd, TABLE *proc_table, String *db,
                      params, strlen(params),
                      returns, strlen(returns), 
                      sp_body, strlen(sp_body),
-                     &sp_chistics, &definer_user, &definer_host, sql_mode))
+                     &sp_chistics, &definer_user, &definer_host, sql_mode,FALSE))
     return 0;
 
   thd->lex= &newlex;
