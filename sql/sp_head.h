@@ -174,7 +174,6 @@ public:
   };
 
   stored_procedure_type m_type;
-  bool is_aggregate;
   uint m_flags;                 // Boolean attributes of a stored routine
 
   Column_definition m_return_field_def; /**< This is used for FUNCTIONs only. */
