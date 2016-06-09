@@ -3912,7 +3912,19 @@ sp_proc_stmt_fetch_head:
 
 sp_proc_stmt_fetch:
           sp_proc_stmt_fetch_head sp_fetch_list { }
-          | FETCH_SYM GROUP_SYM NEXT_SYM ROW_SYM {}
+          | FETCH_SYM GROUP_SYM NEXT_SYM ROW_SYM 
+          {
+            LEX *lex= Lex;
+            sp_head *sp= lex->sphead;
+            uint offset=0;
+            sp_instr_cfetch *i;
+
+            i= new (thd->mem_root)
+              sp_instr_cfetch(sp->instructions(), lex->spcont, offset);
+            if (i == NULL ||
+                sp->add_instr(i))
+              MYSQL_YYABORT;
+          }
         ;
 
 sp_proc_stmt_close:
