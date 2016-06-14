@@ -1025,6 +1025,7 @@ void sp_head::recursion_level_error(THD *thd)
 bool
 sp_head::execute(THD *thd, bool merge_da_on_success)
 {
+ // printf("varun\n");
   DBUG_ENTER("sp_head::execute");
   char saved_cur_db_name_buf[SAFE_NAME_LEN+1];
   LEX_STRING saved_cur_db_name=
@@ -1855,6 +1856,7 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
 #endif
 
 err_with_cleanup:
+  //printf("context not deleted");
   delete nctx;
   call_arena.free_items();
   free_root(&call_mem_root, MYF(0));
@@ -4126,15 +4128,16 @@ int
 sp_instr_cfetch::execute(THD *thd, uint *nextp)
 {
   printf("EXECUTION ENTERS HERE");
-  sp_cursor *c= thd->spcont->get_cursor(m_cursor);
+  /*sp_cursor *c= thd->spcont->get_cursor(m_cursor);
   int res;
   Query_arena backup_arena;
   DBUG_ENTER("sp_instr_cfetch::execute");
 
   res= c ? c->fetch(thd, &m_varlist) : -1;
-
+*/
   *nextp= m_ip+1;
-  DBUG_RETURN(res);
+//  DBUG_RETURN(res);*/
+  return 0;
 }
 
 
