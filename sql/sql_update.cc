@@ -555,7 +555,7 @@ int mysql_update(THD *thd,
       table->sort.io_cache = (IO_CACHE *) my_malloc(sizeof(IO_CACHE),
 						    MYF(MY_FAE | MY_ZEROFILL |
                                                         MY_THREAD_SPECIFIC));
-      if (!(sortorder=make_unireg_sortorder(order, &length, NULL)) ||
+      if (!(sortorder=make_unireg_sortorder(NULL, 0, order, &length, NULL)) ||
           (table->sort.found_records= filesort(thd, table, sortorder, length,
                                                select, limit,
                                                true,

@@ -2216,7 +2216,9 @@ export const char *optimizer_switch_names[]=
   "table_elimination",
   "extended_keys",
   "exists_to_in",
-  "default", NullS
+  "orderby_uses_equalities",
+  "default", 
+  NullS
 };
 /** propagates changes to @@engine_condition_pushdown */
 static bool fix_optimizer_switch(sys_var *self, THD *thd,
