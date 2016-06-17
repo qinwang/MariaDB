@@ -1025,7 +1025,6 @@ void sp_head::recursion_level_error(THD *thd)
 bool
 sp_head::execute(THD *thd, bool merge_da_on_success)
 {
- // printf("varun\n");
   DBUG_ENTER("sp_head::execute");
   char saved_cur_db_name_buf[SAFE_NAME_LEN+1];
   LEX_STRING saved_cur_db_name=
@@ -1657,6 +1656,7 @@ bool
 sp_head::execute_function(THD *thd, Item **argp, uint argcount,
                           Field *return_value_fld)
 {
+  int i=0;
   ulonglong UNINIT_VAR(binlog_save_options);
   bool need_binlog_call= FALSE;
   uint arg_no;
@@ -1670,7 +1670,12 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
   Query_arena backup_arena;
   DBUG_ENTER("sp_head::execute_function");
   DBUG_PRINT("info", ("function %s", m_name.str));
+  init_sql_alloc(&call_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
 
+  while(i < 2)
+  {
+  
+    ++i;
   /*
     Check that the function is called with all specified arguments.
 
@@ -1699,7 +1704,7 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
     TODO: we should create sp_rcontext once per command and reuse
     it on subsequent executions of a function/trigger.
   */
-  init_sql_alloc(&call_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
+
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
   if (!(nctx= rcontext_create(thd, false, return_value_fld)))
@@ -1796,6 +1801,7 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
       as one select and not resetting THD::user_var_events before
       each invocation.
     */
+    
     q= get_query_id();
     mysql_bin_log.start_union_events(thd, q + 1);
     binlog_save_options= thd->variables.option_bits;
@@ -1813,6 +1819,7 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
   err_status= execute(thd, TRUE);
+  
 
   thd->restore_active_arena(&call_arena, &backup_arena);
 
@@ -1854,9 +1861,8 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   m_security_ctx.restore_security_context(thd, save_security_ctx);
 #endif
-
+}
 err_with_cleanup:
-  //printf("context not deleted");
   delete nctx;
   call_arena.free_items();
   free_root(&call_mem_root, MYF(0));
