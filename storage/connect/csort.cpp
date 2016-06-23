@@ -775,7 +775,11 @@ void CSORT::Qstc(int *base, int *max)
       /*  Small group. Do special quicker processing.                  */
       /*****************************************************************/
       if ((rc = Qcompare(base, (i = base + 1))) > 0)
-        c = *base, *base = *i, *i = c;
+      {
+        c = *base;
+        *base = *i;
+        *i = c;
+      }
 
       if (Pof)
         Pof[base - Pex] = Pof[i - Pex] = (rc) ? 1 : 2;
