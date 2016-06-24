@@ -1092,7 +1092,8 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  FOLLOWING_SYM                 /* SQL-2011-N */
 %token  FORCE_SYM
 %token  FOREIGN                       /* SQL-2003-R */
-%right  FOR_SYM                       /* SQL-2003-R */
+%token  FOR_SYM                       /* SQL-2003-R */
+%token  FOR_SYSTEM_TIME_SYM           /* internal */
 %token  FORMAT_SYM
 %token  FOUND_SYM                     /* SQL-2003-R */
 %token  FROM
@@ -1190,7 +1191,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  LOCAL_SYM                     /* SQL-2003-R */
 %token  LOCATOR_SYM                   /* SQL-2003-N */
 %token  LOCKS_SYM
-%right  LOCK_SYM
+%token  LOCK_SYM
 %token  LOGFILE_SYM
 %token  LOGS_SYM
 %token  LONGBLOB
@@ -1459,7 +1460,6 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  SQL_SMALL_RESULT
 %token  SQL_SYM                       /* SQL-2003-R */
 %token  SQL_THREAD
-%right  SYSTEM_TIME                   /* 32N2439 */
 %token  REF_SYSTEM_ID_SYM
 %token  SSL_SYM
 %token  STARTING
@@ -1490,6 +1490,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  SWITCHES_SYM
 %token  SYSDATE
 %token  SYSTEM                        /* 32N2439 */
+%token  SYSTEM_TIME                   /* 32N2439 */
 %token  TABLES
 %token  TABLESPACE
 %token  TABLE_REF_PRIORITY
@@ -1893,7 +1894,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 	keep_gcc_happy
         key_using_alg
         part_column_list
-        period_for_system_time
+        period_for_system_time opt_for_system_time_clause
         server_def server_options_list server_option
         definer_opt no_definer definer get_diagnostics
         parse_vcol_expr vcol_opt_specifier vcol_opt_attribute
@@ -8609,6 +8610,7 @@ select_options_and_item_list:
 */
 table_expression:
           from_clause
+          opt_for_system_time_clause
           opt_where_clause
           opt_group_clause
           opt_having_clause
@@ -8644,6 +8646,19 @@ select_options:
           {
             if (Select->options & SELECT_DISTINCT && Select->options & SELECT_ALL)
               my_yyabort_error((ER_WRONG_USAGE, MYF(0), "ALL", "DISTINCT"));
+          }
+        ;
+
+opt_for_system_time_clause:
+          /* empty */
+          {}
+        | FOR_SYSTEM_TIME_SYM
+          SYSTEM_TIME
+          AS
+          OF_SYM
+          TIMESTAMP
+          TEXT_STRING
+          {
           }
         ;
 
