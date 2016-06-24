@@ -1092,7 +1092,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  FOLLOWING_SYM                 /* SQL-2011-N */
 %token  FORCE_SYM
 %token  FOREIGN                       /* SQL-2003-R */
-%token  FOR_SYM                       /* SQL-2003-R */
+%right  FOR_SYM                       /* SQL-2003-R */
 %token  FORMAT_SYM
 %token  FOUND_SYM                     /* SQL-2003-R */
 %token  FROM
@@ -1190,7 +1190,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  LOCAL_SYM                     /* SQL-2003-R */
 %token  LOCATOR_SYM                   /* SQL-2003-N */
 %token  LOCKS_SYM
-%token  LOCK_SYM
+%right  LOCK_SYM
 %token  LOGFILE_SYM
 %token  LOGS_SYM
 %token  LONGBLOB
@@ -1459,7 +1459,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  SQL_SMALL_RESULT
 %token  SQL_SYM                       /* SQL-2003-R */
 %token  SQL_THREAD
-%token  SYSTEM_TIME                   /* 32N2439 */
+%right  SYSTEM_TIME                   /* 32N2439 */
 %token  REF_SYSTEM_ID_SYM
 %token  SSL_SYM
 %token  STARTING
@@ -7591,6 +7591,9 @@ alter_list_item:
           {
             Lex->create_last_non_select_table= Lex->last_table();
             Lex->alter_info.flags|= Alter_info::ALTER_ADD_INDEX;
+          }
+        | ADD period_for_system_time
+          {
           }
         | add_column '(' create_field_list ')'
           {
