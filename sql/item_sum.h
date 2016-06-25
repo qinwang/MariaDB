@@ -351,7 +351,7 @@ public:
   enum Sumfunctype
   { COUNT_FUNC, COUNT_DISTINCT_FUNC, SUM_FUNC, SUM_DISTINCT_FUNC, AVG_FUNC,
     AVG_DISTINCT_FUNC, MIN_FUNC, MAX_FUNC, STD_FUNC,
-    VARIANCE_FUNC, SUM_BIT_FUNC, UDF_SUM_FUNC, GROUP_CONCAT_FUNC,
+    VARIANCE_FUNC, SUM_BIT_FUNC, UDF_SUM_FUNC, GROUP_CONCAT_FUNC,SP_AGGREGATE_FUNC,
     ROW_NUMBER_FUNC, RANK_FUNC, DENSE_RANK_FUNC, PERCENT_RANK_FUNC,
     CUME_DIST_FUNC, NTILE_FUNC, FIRST_VALUE_FUNC, LAST_VALUE_FUNC,
     NTH_VALUE_FUNC, LEAD_FUNC, LAG_FUNC
@@ -1215,6 +1215,43 @@ public:
 
 private:
   void set_bits_from_counters();
+};
+
+class Item_sum_sp :public Item_sum
+{
+
+protected:
+  /* hold type of result */
+  Item_result hybrid_type;
+  longlong y;
+  double x;
+  String *str;
+  my_decimal *v;
+  
+
+public:  
+  /* no parameters */
+  Item_sum_sp(THD *thd): Item_sum(thd){}
+  /*list of parameters */
+  Item_sum_sp(THD *thd, List<Item> &list): Item_sum(thd,list){x=0;}
+  
+  enum Sumfunctype sum_func () const 
+  { 
+    return SP_AGGREGATE_FUNC; // a new type is added  
+  }
+  const char *func_name() const { return "sp aggregate";}
+  enum Item_result result_type () const { return hybrid_type; }
+  
+  void clear(){return;}
+  bool add(){x++;return false;}
+  double val_real(){return x;}
+  longlong val_int(){return y;}
+  String *val_str(String*str){ return val_string_from_real(str);}
+  my_decimal *val_decimal(my_decimal *){ return v;}  
+  void reset_field(){return ;}
+  void update_field(){return ;}  
+  void cleanup(){return ;}  
+  bool fix_fields(THD *thd, Item **ref);
 };
 
 
