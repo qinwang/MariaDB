@@ -641,7 +641,6 @@ struct TABLE_SHARE
     Field *start; /* This field is set when row is inserted */
     Field *end;  /* This field is set when row is updated/removed */
   } period_for_system_time_info;
-  bool with_system_versioning;
 
   plugin_ref db_plugin;			/* storage engine plugin */
   inline handlerton *db_type() const	/* table_type for handler */
@@ -747,6 +746,38 @@ struct TABLE_SHARE
   uint  partition_info_buffer_size;
   plugin_ref default_part_plugin;
 #endif
+
+  /**
+    System versioning support.
+   */
+
+  bool with_system_versioning;
+  uint16 row_start_field;
+  uint16 row_end_field;
+
+  void enable_system_versioning(uint16 row_start, uint row_end)
+  {
+    with_system_versioning = true;
+    row_start_field = row_start;
+    row_end_field = row_end;
+  }
+
+  void disable_system_versioning()
+  {
+    with_system_versioning = false;
+    row_start_field = 0;
+    row_end_field = 0;
+  }
+
+  Field *get_row_start_field()
+  {
+    return with_system_versioning ? field[row_start_field] : NULL;
+  }
+
+  Field *get_row_end_field()
+  {
+    return with_system_versioning ? field[row_end_field] : NULL;
+  }
 
   /**
     Cache the checked structure of this table.
@@ -1454,6 +1485,25 @@ public:
                                       bool with_cleanup);
   Field *find_field_by_name(const char *str) const;
   bool export_structure(THD *thd, class Row_definition_list *defs);
+
+  /**
+    System versioning support.
+   */
+
+  bool is_with_system_versioning()
+  {
+    return s->with_system_versioning;
+  }
+
+  Field *get_row_start_field()
+  {
+    return is_with_system_versioning() ? field[s->row_start_field] : NULL;
+  }
+
+  Field *get_row_end_field()
+  {
+    return is_with_system_versioning() ? field[s->row_end_field] : NULL;
+  }
 };
 
 
