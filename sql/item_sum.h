@@ -1282,11 +1282,12 @@ public:
 
   String *val_str(String *str)
   {
-     String buf;
+    String buf;
     char buff[20];
     buf.set(buff, 20, str->charset());
     buf.length(0);
-    
+    if (execute())
+      return NULL;
     /*
       result_field will set buf pointing to internal buffer
       of the resul_field. Due to this it will change any time
@@ -1294,6 +1295,7 @@ public:
       corruption of returned value, we make here a copy.
     */
     sp_result_field->val_str(&buf);
+    cleanup();
     str->copy(buf);
     return str;
   }
@@ -1302,7 +1304,7 @@ public:
   void update_field(){return ;}  
   void cleanup()
   {
-    // clean call_mem_root;
+    free_root(&call_mem_root, MYF(0));
     return ;
   }
   bool set_arguments(THD *thd);
