@@ -32,7 +32,7 @@
 #include "uniques.h"
 #include "sp_rcontext.h"
 #include "sp.h"
-#include "sql_parse.h" 
+#include "sql_parse.h"
 #include "sp_head.h"
 
 /**
@@ -1257,9 +1257,9 @@ Field *Item_sum_hybrid::create_tmp_field(bool group, TABLE *table)
 ***********************************************************************/
 
 Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
-                           sp_name *name_arg, List<Item> &list):
-  Item_sum(thd, list), context(context_arg), m_name(name_arg), m_sp(NULL),
-  func_ctx(NULL), call_arena(NULL), sp_result_field(NULL)
+                           sp_name *name_arg, List<Item> &list)
+  :Item_sum(thd, list), context(context_arg), m_name(name_arg), m_sp(NULL),
+   func_ctx(NULL), call_arena(NULL), sp_result_field(NULL)
 {
   maybe_null= 1;
   m_name->init_qname(thd);
@@ -1268,9 +1268,9 @@ Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
 }
 
 Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
-                           sp_name *name):
-  Item_sum(thd), context(context_arg), m_name(name), m_sp(NULL),
-  func_ctx(NULL), call_arena(NULL), sp_result_field(NULL)
+                           sp_name *name)
+  :Item_sum(thd), context(context_arg), m_name(name), m_sp(NULL),
+   func_ctx(NULL), call_arena(NULL), sp_result_field(NULL)
 {
   maybe_null= 1;
   m_name->init_qname(thd);
@@ -1333,7 +1333,7 @@ Item_sum_sp::init_result_field(THD *thd)
   {
    DBUG_RETURN(TRUE);
   }
-  
+ 
   if (sp_result_field->pack_length() > sizeof(result_buf))
   {
     void *tmp;
@@ -1343,7 +1343,7 @@ Item_sum_sp::init_result_field(THD *thd)
   }
   else
     sp_result_field->move_field(result_buf);
-  
+
   sp_result_field->null_ptr= (uchar *) &null_value;
   sp_result_field->null_bit= 1;
   DBUG_RETURN(FALSE);
@@ -1392,7 +1392,7 @@ Item_sum_sp::sp_check_access(THD *thd)
   if (check_routine_access(thd, EXECUTE_ACL,
          m_sp->m_db.str, m_sp->m_name.str, 0, FALSE))
     DBUG_RETURN(TRUE);
-  
+ 
   DBUG_RETURN(FALSE);
 }
 
@@ -1400,7 +1400,7 @@ bool
 Item_sum_sp::execute()
 {
   THD *thd= current_thd;
-  
+ 
   /* Execute function and store the return value in the field. */
   bool res;
   uint old_server_status= thd->server_status;
@@ -1461,7 +1461,7 @@ Item_sum_sp::execute_impl(THD *thd)
     Disable the binlogging if this is not a SELECT statement. If this is a
     SELECT, leave binlogging on, so execute_aggregate_function() code writes the
     function call into binlog.
-  */  
+  */
   thd->reset_sub_statement_state(&statement_state, SUB_STMT_FUNCTION);
   err_status= m_sp->execute_aggregate_function(thd, args, arg_count,
                                                sp_result_field, &func_ctx,
@@ -1519,6 +1519,16 @@ Item_sum_sp::cleanup()
   clear();
   dummy_table->alias.free();
   Item_sum::cleanup();
+}
+
+void
+Item_sum_sp::fix_length_and_dec()
+{
+  DBUG_ENTER("Item_sum_sp::fix_length_and_dec");
+  DBUG_ASSERT(sp_result_field);
+  //Type_std_attributes::set(sp_result_field);//TODO
+  Item_sum::fix_length_and_dec();
+  DBUG_VOID_RETURN;
 }
 
 /***********************************************************************

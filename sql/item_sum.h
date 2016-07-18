@@ -1245,17 +1245,17 @@ private:
   bool execute();
   bool execute_impl(THD *thd);
   bool init_result_field(THD *thd);
-   
+ 
 
-public:  
+public:
   Item_sum_sp(THD *thd, Name_resolution_context *context_arg, sp_name *name);
 
   Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
                sp_name *name, List<Item> &list);
   Item_sum_sp(THD *thd, Item_sum_sp *item);
-  
+ 
   enum Sumfunctype sum_func () const
-  { 
+  {
     return SP_AGGREGATE_FUNC;
   }
   
@@ -1265,7 +1265,7 @@ public:
   enum Item_result result_type () const;
   bool add();
   bool sp_check_access(THD *thd);
-  
+ 
   /* val_xx functions */
   longlong val_int()
   {
