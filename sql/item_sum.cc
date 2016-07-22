@@ -1259,23 +1259,27 @@ Field *Item_sum_hybrid::create_tmp_field(bool group, TABLE *table)
 Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
                            sp_name *name_arg, List<Item> &list)
   :Item_sum(thd, list), context(context_arg), m_name(name_arg), m_sp(NULL),
-   func_ctx(NULL), call_arena(NULL), sp_result_field(NULL)
+   func_ctx(NULL), sp_result_field(NULL)
 {
   maybe_null= 1;
+  quick_group= 0;
   m_name->init_qname(thd);
   dummy_table= (TABLE*) thd->calloc(sizeof(TABLE)+ sizeof(TABLE_SHARE));
   dummy_table->s= (TABLE_SHARE*) (dummy_table+1);
+  init_sql_alloc(&caller_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
 }
 
 Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
                            sp_name *name)
   :Item_sum(thd), context(context_arg), m_name(name), m_sp(NULL),
-   func_ctx(NULL), call_arena(NULL), sp_result_field(NULL)
+   func_ctx(NULL), sp_result_field(NULL)
 {
   maybe_null= 1;
+  quick_group= 0;
   m_name->init_qname(thd);
   dummy_table= (TABLE*) thd->calloc(sizeof(TABLE)+ sizeof(TABLE_SHARE));
   dummy_table->s= (TABLE_SHARE*) (dummy_table+1);
+  init_sql_alloc(&caller_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
 }
 
 /**
@@ -1283,7 +1287,7 @@ Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
     and assign it to a newly created field object. Meta data used to
     create the field is fetched from the sp_head belonging to the stored
     proceedure found in the stored procedure functon cache.
-  
+ 
   @note This function should be called from fix_fields to init the result
     field. It is some what related to Item_field.
 
@@ -1316,7 +1320,7 @@ Item_sum_sp::init_result_field(THD *thd)
 
   /*
      A Field need to be attached to a Table.
-     Below we "create" a dummy table by initializing 
+     Below we "create" a dummy table by initializing
      the needed pointers.
    */
   
@@ -1380,7 +1384,6 @@ Item_sum_sp::fix_fields(THD *thd, Item **ref)
 
   memcpy (orig_args, args, sizeof (Item *) * arg_count);
   fixed= 1;
-  init_sql_alloc(&call_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
   return FALSE;
 }
 
@@ -1392,7 +1395,7 @@ Item_sum_sp::sp_check_access(THD *thd)
   if (check_routine_access(thd, EXECUTE_ACL,
          m_sp->m_db.str, m_sp->m_name.str, 0, FALSE))
     DBUG_RETURN(TRUE);
- 
+
   DBUG_RETURN(FALSE);
 }
 
@@ -1400,7 +1403,7 @@ bool
 Item_sum_sp::execute()
 {
   THD *thd= current_thd;
- 
+
   /* Execute function and store the return value in the field. */
   bool res;
   uint old_server_status= thd->server_status;
@@ -1433,7 +1436,7 @@ Item_sum_sp::execute_impl(THD *thd)
     (m_sp->m_chistics->daccess == SP_DEFAULT_ACCESS) ?
      SP_DEFAULT_ACCESS_MAPPING : m_sp->m_chistics->daccess;
 
-  DBUG_ENTER("Item_func_sp::execute_impl");
+  DBUG_ENTER("Item_sum_sp::execute_impl");
 
   if (context->security_ctx)
   {
@@ -1465,11 +1468,7 @@ Item_sum_sp::execute_impl(THD *thd)
   thd->reset_sub_statement_state(&statement_state, SUB_STMT_FUNCTION);
   err_status= m_sp->execute_aggregate_function(thd, args, arg_count,
                                                sp_result_field, &func_ctx,
-                                               &call_mem_root);
-  /*
-    restoring the context(could be done using a pointer to the func_ctx)
-    created in the execute_aggregate_function
-  */
+                                               &caller_mem_root);
   thd->restore_sub_statement_state(&statement_state);
 
 error:
@@ -1493,9 +1492,9 @@ void
 Item_sum_sp::clear()
 {
   if(func_ctx)
-    delete func_ctx;
+     delete func_ctx;
   func_ctx= NULL;
-  free_root(&call_mem_root, MYF(0));
+  free_root(&caller_mem_root, MYF(0));
 }
 
 enum Item_result
