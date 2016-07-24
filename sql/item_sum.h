@@ -26,7 +26,6 @@
 #include <my_tree.h>
 #include "sql_udf.h"                            /* udf_handler */
 
-
 class Item_sum;
 class Aggregator_distinct;
 class Aggregator_simple;
@@ -1223,10 +1222,14 @@ class sp_name;
 class Query_arena;
 struct st_sp_security_context;
 
+/*
+USER DEFINED AGGREGATE FUNCTION CLASS
+*/
+
 class Item_sum_sp :public Item_sum
 {
  private:
-  Item_result hybrid_type;//I think so there is no need of this
+  Item_result hybrid_type;
   Name_resolution_context *context;
   sp_name *m_name;
   mutable sp_head *m_sp;
@@ -1253,10 +1256,10 @@ public:
   {
     return SP_AGGREGATE_FUNC;
   }
-  
-  void fix_length_and_dec();//need to be given a thought
-  bool fix_fields(THD *thd, Item **ref);//need to be given a thought
-  const char *func_name() const { return "sp aggregate";}
+
+  void fix_length_and_dec();
+  bool fix_fields(THD *thd, Item **ref);
+  const char *func_name() const;
   enum Item_result result_type () const;
   bool add();
   bool sp_check_access(THD *thd);
@@ -1273,7 +1276,7 @@ public:
   {
     if(!func_ctx || execute())
       return 0.0;
-    return sp_result_field->val_int();
+    return sp_result_field->val_real();
   }
 
   my_decimal *val_decimal(my_decimal *dec_buf)

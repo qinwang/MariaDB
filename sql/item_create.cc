@@ -3847,7 +3847,6 @@ Create_func_coercibility::create_1_arg(THD *thd, Item *arg1)
 Create_func_dyncol_check Create_func_dyncol_check::s_singleton;
 
 
-
 Item*
 Create_func_dyncol_check::create_1_arg(THD *thd, Item *arg1)
 {
