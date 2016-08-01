@@ -83,7 +83,7 @@ stored_procedure_type_to_str(enum stored_procedure_type type)
 enum
 {
   MYSQL_PROC_FIELD_DB = 0,
-  MYSQL_PROC_FIELD_NAME,  
+  MYSQL_PROC_FIELD_NAME,
   MYSQL_PROC_MYSQL_TYPE,
   MYSQL_PROC_FIELD_SPECIFIC_NAME,
   MYSQL_PROC_FIELD_LANGUAGE,

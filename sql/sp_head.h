@@ -172,7 +172,7 @@ public:
     */
     HAS_COLUMN_TYPE_REFS= 8192
   };
-  
+
   stored_procedure_type m_type;
   uint m_flags;                 // Boolean attributes of a stored routine
 
@@ -779,7 +779,6 @@ private:
   THD *m_thd;			///< Set if we have reset mem_root
 
   sp_pcontext *m_pcont;		///< Parse context
-  sp_rcontext *m_rcont;
   List<LEX> m_lex;		///< Temp. store for the other lex
   DYNAMIC_ARRAY m_instr;	///< The "instructions"
 
