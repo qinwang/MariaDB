@@ -7485,4 +7485,4 @@ ER_UNKNOWN_SEQUENCES 42S02
 ER_UNKNOWN_VIEW 42S02
         eng "Unknown VIEW: '%-.300s'"
 ER_NOT_AGGREGATE_FUNCTION
-        eng "FETCH GROUP NEXT ROW instruction is only allowed in aggregate functions"
+        eng "Non-aggregate function contains aggregate specific instructions: (FETCH GROUP NEXT ROW)"
