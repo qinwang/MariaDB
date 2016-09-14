@@ -2224,10 +2224,10 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
                           hton->index_options);
   }
 
-  if (table->is_with_system_versioning())
+  if (table->versioned())
   {
-    const Field *fs = table->get_row_start_field();
-    const Field *fe = table->get_row_end_field();
+    const Field *fs = table->vers_start_field();
+    const Field *fe = table->vers_end_field();
     packet->append(STRING_WITH_LEN(",\n  PERIOD FOR SYSTEM_TIME ("));
     append_identifier(thd,packet,fs->field_name, strlen(fs->field_name));
     packet->append(STRING_WITH_LEN(", "));
@@ -2273,7 +2273,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
     add_table_options(thd, table, create_info_arg,
                       table_list->schema_table != 0, 0, packet);
 
-  if (table->is_with_system_versioning())
+  if (table->versioned())
   {
     packet->append(STRING_WITH_LEN(" WITH SYSTEM VERSIONING"));
   }
