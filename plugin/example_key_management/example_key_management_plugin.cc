@@ -29,7 +29,7 @@
 #include <my_pthread.h>
 #include <mysql/plugin_encryption.h>
 #include <my_rnd.h>
-#include <my_crypt.h>
+#include <ma_crypto.h>
 
 /* rotate key randomly between 45 and 90 seconds */
 #define KEY_ROTATION_MIN 45
@@ -80,7 +80,7 @@ get_key(unsigned int key_id, unsigned int version,
   for the sake of an example, let's use different encryption algorithms/modes
   for different keys versions:
 */
-static inline enum my_aes_mode mode(unsigned int key_version)
+static inline enum ma_crypto_aes_mode mode(unsigned int key_version)
 {
   return key_version & 1 ? MY_AES_ECB : MY_AES_CBC;
 }
@@ -89,13 +89,13 @@ int ctx_init(void *ctx, const unsigned char* key, unsigned int klen, const
              unsigned char* iv, unsigned int ivlen, int flags, unsigned int
              key_id, unsigned int key_version)
 {
-  return my_aes_crypt_init(ctx, mode(key_version), flags, key, klen, iv, ivlen);
+  return ma_crypto_crypt_init(ctx, mode(key_version), flags, key, klen, iv, ivlen);
 }
 
 static unsigned int get_length(unsigned int slen, unsigned int key_id,
                                unsigned int key_version)
 {
-  return my_aes_get_size(mode(key_version), slen);
+  return ma_crypto_crypt_digest_size(mode(key_version), slen);
 }
 
 static int example_key_management_plugin_init(void *p)
@@ -118,11 +118,12 @@ struct st_mariadb_encryption example_key_management_plugin= {
   MariaDB_ENCRYPTION_INTERFACE_VERSION,
   get_latest_key_version,
   get_key,
-  (uint (*)(unsigned int, unsigned int))my_aes_ctx_size,
+  ma_crypto_crypt_ctx_size,
   ctx_init,
-  my_aes_crypt_update,
-  my_aes_crypt_finish,
-  get_length
+  ma_crypto_crypt_update,
+  ma_crypto_crypt_finish,
+  get_length,
+  ma_crypto_crypt_deinit
 };
 
 /*
@@ -138,10 +139,10 @@ maria_declare_plugin(example_key_management)
   PLUGIN_LICENSE_GPL,
   example_key_management_plugin_init,
   example_key_management_plugin_deinit,
-  0x0100 /* 1.0 */,
+  0x0101 /* 1.0 */,
   NULL,	/* status variables */
   NULL,	/* system variables */
-  "1.0",
+  "1.1",
   MariaDB_PLUGIN_MATURITY_EXPERIMENTAL
 }
 maria_declare_plugin_end;

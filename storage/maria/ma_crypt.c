@@ -18,7 +18,7 @@
 #include <my_global.h>
 #include "maria_def.h"
 #include "ma_blockrec.h"
-#include <my_crypt.h>
+#include <ma_crypto.h>
 
 #define CRYPT_SCHEME_1         1
 #define CRYPT_SCHEME_1_ID_LEN  4 /* 4 bytes for counter-block */
@@ -107,8 +107,8 @@ ma_crypt_create(MARIA_SHARE* share)
   crypt_data->scheme.locker= crypt_data_scheme_locker;
   mysql_mutex_init(key_CRYPT_DATA_lock, &crypt_data->lock, MY_MUTEX_INIT_FAST);
   crypt_data->scheme.key_id= get_encryption_key_id(share);
-  my_random_bytes(crypt_data->scheme.iv, sizeof(crypt_data->scheme.iv));
-  my_random_bytes((uchar*)&crypt_data->space, sizeof(crypt_data->space));
+  ma_crypto_random_bytes(crypt_data->scheme.iv, sizeof(crypt_data->scheme.iv));
+  ma_crypto_random_bytes((uchar*)&crypt_data->space, sizeof(crypt_data->space));
   share->crypt_data= crypt_data;
   share->crypt_page_header_space= CRYPT_SCHEME_1_KEY_VERSION_SIZE;
   return 0;

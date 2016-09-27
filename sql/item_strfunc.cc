@@ -223,7 +223,6 @@ void Item_func_sha::fix_length_and_dec()
 String *Item_func_sha2::val_str_ascii(String *str)
 {
   DBUG_ASSERT(fixed == 1);
-#if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
   unsigned char digest_buf[SHA512_DIGEST_LENGTH];
   String *input_string;
   unsigned char *input_ptr;
@@ -247,27 +246,25 @@ String *Item_func_sha2::val_str_ascii(String *str)
   input_len= input_string->length();
 
   switch ((uint) args[1]->val_int()) {
-#ifndef OPENSSL_NO_SHA512
   case 512:
     digest_length= SHA512_DIGEST_LENGTH;
-    (void) SHA512(input_ptr, input_len, digest_buf);
+    ma_crypto_hash(MA_CRYPTO_HASH_SHA512, digest_buf, input_ptr, input_len);
     break;
   case 384:
     digest_length= SHA384_DIGEST_LENGTH;
-    (void) SHA384(input_ptr, input_len, digest_buf);
+    ma_crypto_hash(MA_CRYPTO_HASH_SHA384, digest_buf, input_ptr, input_len);
     break;
-#endif
-#ifndef OPENSSL_NO_SHA256
+#ifdef HAVE_SHA224
   case 224:
     digest_length= SHA224_DIGEST_LENGTH;
-    (void) SHA224(input_ptr, input_len, digest_buf);
+    ma_crypto_hash(MA_CRYPTO_HASH_SHA224, digest_buf, input_ptr, input_len);
     break;
+#endif
   case 256:
   case 0: // SHA-256 is the default
     digest_length= SHA256_DIGEST_LENGTH;
-    (void) SHA256(input_ptr, input_len, digest_buf);
+    ma_crypto_hash(MA_CRYPTO_HASH_SHA256, digest_buf, input_ptr, input_len);
     break;
-#endif
   default:
     if (!args[1]->const_item())
     {
@@ -296,17 +293,6 @@ String *Item_func_sha2::val_str_ascii(String *str)
 
   null_value= FALSE;
   return str;
-
-#else
-  THD *thd= current_thd;
-  push_warning_printf(thd,
-                      Sql_condition::WARN_LEVEL_WARN,
-                      ER_FEATURE_DISABLED,
-                      ER_THD(thd, ER_FEATURE_DISABLED),
-                      "sha2", "--with-ssl");
-  null_value= TRUE;
-  return (String *) NULL;
-#endif /* defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY) */
 }
 
 
@@ -315,23 +301,20 @@ void Item_func_sha2::fix_length_and_dec()
   maybe_null= 1;
   max_length = 0;
 
-#if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
   int sha_variant= args[1]->const_item() ? args[1]->val_int() : 512;
 
   switch (sha_variant) {
-#ifndef OPENSSL_NO_SHA512
   case 512:
     fix_length_and_charset(SHA512_DIGEST_LENGTH * 2, default_charset());
     break;
   case 384:
     fix_length_and_charset(SHA384_DIGEST_LENGTH * 2, default_charset());
     break;
-#endif
-#ifndef OPENSSL_NO_SHA256
   case 256:
   case 0: // SHA-256 is the default
     fix_length_and_charset(SHA256_DIGEST_LENGTH * 2, default_charset());
     break;
+#ifdef HAVE_SHA224
   case 224:
     fix_length_and_charset(SHA224_DIGEST_LENGTH * 2, default_charset());
     break;
@@ -347,15 +330,6 @@ void Item_func_sha2::fix_length_and_dec()
 
   CHARSET_INFO *cs= get_checksum_charset(args[0]->collation.collation->csname);
   args[0]->collation.set(cs, DERIVATION_COERCIBLE);
-
-#else
-  THD *thd= current_thd;
-  push_warning_printf(thd,
-                      Sql_condition::WARN_LEVEL_WARN,
-                      ER_FEATURE_DISABLED,
-                      ER_THD(thd, ER_FEATURE_DISABLED),
-                      "sha2", "--with-ssl");
-#endif /* defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY) */
 }
 
 /* Implementation of AES encryption routines */
@@ -388,14 +362,14 @@ String *Item_aes_crypt::val_str(String *str)
   if (sptr && user_key) // we need both arguments to be not NULL
   {
     null_value=0;
-    aes_length=my_aes_get_size(MY_AES_ECB, sptr->length());
+    aes_length=ma_crypto_crypt_digest_size(MA_AES_ECB, sptr->length());
 
     if (!str_value.alloc(aes_length))		// Ensure that memory is free
     {
       uchar rkey[AES_KEY_LENGTH / 8];
       create_key(user_key, rkey);
 
-      if (!my_aes_crypt(MY_AES_ECB, what, (uchar*)sptr->ptr(), sptr->length(),
+      if (!ma_crypto_crypt(MA_AES_ECB, what, (uchar*)sptr->ptr(), sptr->length(),
                  (uchar*)str_value.ptr(), &aes_length,
                  rkey, AES_KEY_LENGTH / 8, 0, 0))
       {
@@ -410,8 +384,8 @@ String *Item_aes_crypt::val_str(String *str)
 
 void Item_func_aes_encrypt::fix_length_and_dec()
 {
-  max_length=my_aes_get_size(MY_AES_ECB, args[0]->max_length);
-  what= ENCRYPTION_FLAG_ENCRYPT;
+  max_length=ma_crypto_crypt_digest_size(MY_AES_ECB, args[0]->max_length);
+  what= MA_CRYPTO_ENCRYPT;
 }
 
 
@@ -419,7 +393,7 @@ void Item_func_aes_decrypt::fix_length_and_dec()
 {
   max_length=args[0]->max_length;
   maybe_null= 1;
-  what= ENCRYPTION_FLAG_DECRYPT;
+  what= MA_CRYPTO_DECRYPT;
 }
 
 

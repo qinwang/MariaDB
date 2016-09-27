@@ -9747,8 +9747,8 @@ wsrep_calc_row_hash(
 	ulint		col_type;
 	uint		i;
 
-	void *ctx = alloca(my_md5_context_size());
-	my_md5_init(ctx);
+	MA_CRYPTO_HASH_CTX ctx = ma_crypto_hash_new();
+	ma_crypto_hash_init(ctx, MA_CRYPTO_HASH_MD5);
 
 	n_fields = table->s->fields;
 
@@ -9797,14 +9797,15 @@ wsrep_calc_row_hash(
 		*/
 
 		if (field->is_null_in_record(row)) {
-			my_md5_input(ctx, &null_byte, 1);
+			ma_crypto_hash_input(ctx, &null_byte, 1);
 		} else {
-			my_md5_input(ctx, &true_byte, 1);
-			my_md5_input(ctx, ptr, len);
+			ma_crypto_hash_input(ctx, &true_byte, 1);
+			ma_crypto_hash_input(ctx, ptr, len);
 		}
 	}
 
-	my_md5_result(ctx, digest);
+	ma_crypto_hash_result(ctx, digest);
+  ma_crypto_hash_free(ctx);
 
 	return(0);
 }

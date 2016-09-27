@@ -52,7 +52,7 @@ Created 1/8/1996 Heikki Tuuri
 #include "ut0new.h"
 
 #include "fil0fil.h"
-#include <my_crypt.h>
+#include <ma_crypto.h>
 #include "fil0crypt.h"
 #include <set>
 #include <algorithm>

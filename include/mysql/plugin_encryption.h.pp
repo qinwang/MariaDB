@@ -105,6 +105,7 @@ extern struct my_sha1_service_st {
   void (*my_sha1_init_type)(void *);
   void (*my_sha1_input_type)(void *, const unsigned char *, size_t);
   void (*my_sha1_result_type)(void *, unsigned char *);
+  void (*my_sha1_deinit)(void *);
 } *my_sha1_service;
 void my_sha1(unsigned char*, const char*, size_t);
 void my_sha1_multi(unsigned char*, ...);
@@ -112,6 +113,7 @@ size_t my_sha1_context_size();
 void my_sha1_init(void *context);
 void my_sha1_input(void *context, const unsigned char *buf, size_t len);
 void my_sha1_result(void *context, unsigned char *digest);
+void my_sha1_deinit(void *context);
 extern struct my_md5_service_st {
   void (*my_md5_type)(unsigned char*, const char*, size_t);
   void (*my_md5_multi_type)(unsigned char*, ...);
@@ -119,6 +121,7 @@ extern struct my_md5_service_st {
   void (*my_md5_init_type)(void *);
   void (*my_md5_input_type)(void *, const unsigned char *, size_t);
   void (*my_md5_result_type)(void *, unsigned char *);
+  void (*my_md5_deinit_type)(void *);
 } *my_md5_service;
 void my_md5(unsigned char*, const char*, size_t);
 void my_md5_multi(unsigned char*, ...);
@@ -126,6 +129,7 @@ size_t my_md5_context_size();
 void my_md5_init(void *context);
 void my_md5_input(void *context, const unsigned char *buf, size_t len);
 void my_md5_result(void *context, unsigned char *digest);
+void my_md5_deinit(void *context);
 typedef struct logger_handle_st LOGGER_HANDLE;
 extern struct logger_service_st {
   void (*logger_init_mutexes)();
@@ -194,6 +198,7 @@ struct encryption_service_st {
                                     unsigned char* dst, unsigned int* dlen);
   int (*encryption_ctx_finish_func)(void *ctx, unsigned char* dst, unsigned int* dlen);
   unsigned int (*encryption_encrypted_length_func)(unsigned int slen, unsigned int key_id, unsigned int key_version);
+  void (*encryption_ctx_deinit_func)(void *ctx);
 };
 extern struct encryption_service_st encryption_handler;
 static inline unsigned int encryption_key_id_exists(unsigned int id)
@@ -427,4 +432,5 @@ struct st_mariadb_encryption
                           unsigned char* dst, unsigned int* dlen);
   int (*crypt_ctx_finish)(void *ctx, unsigned char* dst, unsigned int* dlen);
   unsigned int (*encrypted_length)(unsigned int slen, unsigned int key_id, unsigned int key_version);
+  void (*crypt_ctx_deinit)(void *ctx);
 };

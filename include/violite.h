@@ -147,7 +147,11 @@ typedef my_socket YASSL_SOCKET_T;
 #include <openssl/err.h>
 
 #ifdef HAVE_ERR_remove_thread_state
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
 #define ERR_remove_state(X) ERR_remove_thread_state(NULL)
+#else
+#define ERR_remove_state(X) {}
+#endif
 #endif
 
 enum enum_ssl_init_error

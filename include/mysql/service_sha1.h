@@ -38,6 +38,7 @@ extern struct my_sha1_service_st {
   void (*my_sha1_init_type)(void *);
   void (*my_sha1_input_type)(void *, const unsigned char *, size_t);
   void (*my_sha1_result_type)(void *, unsigned char *);
+  void (*my_sha1_deinit)(void *);
 } *my_sha1_service;
 
 #ifdef MYSQL_DYNAMIC_PLUGIN
@@ -48,7 +49,7 @@ extern struct my_sha1_service_st {
 #define my_sha1_init(A) my_sha1_service->my_sha1_init_type(A)
 #define my_sha1_input(A,B,C) my_sha1_service->my_sha1_input_type(A,B,C)
 #define my_sha1_result(A,B) my_sha1_service->my_sha1_result_type(A,B)
-
+#define my_sha1_deinit(A) my_sha1_service->my_sha1_deinit((A)
 #else
 
 void my_sha1(unsigned char*, const char*, size_t);
@@ -57,6 +58,7 @@ size_t my_sha1_context_size();
 void my_sha1_init(void *context);
 void my_sha1_input(void *context, const unsigned char *buf, size_t len);
 void my_sha1_result(void *context, unsigned char *digest);
+void my_sha1_deinit(void *context);
 
 #endif
 

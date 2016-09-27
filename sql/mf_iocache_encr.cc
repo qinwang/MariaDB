@@ -42,7 +42,7 @@ static int my_b_encr_read(IO_CACHE *info, uchar *Buffer, size_t Count)
   my_off_t pos_in_file= info->pos_in_file + (info->read_end - info->buffer);
   my_off_t old_pos_in_file= pos_in_file, pos_offset= 0;
   IO_CACHE_CRYPT *crypt_data=
-    (IO_CACHE_CRYPT *)(info->buffer + info->buffer_length + MY_AES_BLOCK_SIZE);
+    (IO_CACHE_CRYPT *)(info->buffer + info->buffer_length + MA_AES_BLOCK_SIZE);
   uchar *wbuffer= (uchar*)&(crypt_data->inbuf_counter);
   uchar *ebuffer= (uchar*)(crypt_data + 1);
   DBUG_ENTER("my_b_encr_read");
@@ -77,7 +77,7 @@ static int my_b_encr_read(IO_CACHE *info, uchar *Buffer, size_t Count)
   {
     size_t copied;
     uint elength, wlength, length;
-    uchar iv[MY_AES_BLOCK_SIZE]= {0};
+    uchar iv[MA_AES_BLOCK_SIZE]= {0};
 
     DBUG_ASSERT(pos_in_file % info->buffer_length == 0);
 
@@ -97,7 +97,7 @@ static int my_b_encr_read(IO_CACHE *info, uchar *Buffer, size_t Count)
 
     if (encryption_crypt(ebuffer, elength, info->buffer, &length,
                          crypt_data->key, sizeof(crypt_data->key),
-                         iv, sizeof(iv), ENCRYPTION_FLAG_DECRYPT,
+                         iv, sizeof(iv), MA_CRYPTO_DECRYPT,
                          keyid, keyver))
     {
       my_errno= 1;
@@ -131,7 +131,7 @@ static int my_b_encr_read(IO_CACHE *info, uchar *Buffer, size_t Count)
 static int my_b_encr_write(IO_CACHE *info, const uchar *Buffer, size_t Count)
 {
   IO_CACHE_CRYPT *crypt_data=
-    (IO_CACHE_CRYPT *)(info->buffer + info->buffer_length + MY_AES_BLOCK_SIZE);
+    (IO_CACHE_CRYPT *)(info->buffer + info->buffer_length + MA_AES_BLOCK_SIZE);
   uchar *wbuffer= (uchar*)&(crypt_data->inbuf_counter);
   uchar *ebuffer= (uchar*)(crypt_data + 1);
   DBUG_ENTER("my_b_encr_write");
@@ -157,7 +157,7 @@ static int my_b_encr_write(IO_CACHE *info, const uchar *Buffer, size_t Count)
 
   if (info->pos_in_file == 0)
   {
-    if (my_random_bytes(crypt_data->key, sizeof(crypt_data->key)))
+    if (ma_crypto_random_bytes(crypt_data->key, sizeof(crypt_data->key)))
     {
       my_errno= 1;
       DBUG_RETURN(info->error= -1);
@@ -171,14 +171,14 @@ static int my_b_encr_write(IO_CACHE *info, const uchar *Buffer, size_t Count)
   {
     size_t length= MY_MIN(info->buffer_length, Count);
     uint elength, wlength;
-    uchar iv[MY_AES_BLOCK_SIZE]= {0};
+    uchar iv[MA_AES_BLOCK_SIZE]= {0};
 
     crypt_data->inbuf_counter= crypt_data->counter;
     set_iv(iv, info->pos_in_file, crypt_data->inbuf_counter);
 
     if (encryption_crypt(Buffer, length, ebuffer, &elength,
                          crypt_data->key, sizeof(crypt_data->key),
-                         iv, sizeof(iv), ENCRYPTION_FLAG_ENCRYPT,
+                         iv, sizeof(iv), MA_CRYPTO_ENCRYPT,
                          keyid, keyver))
     {
       my_errno= 1;

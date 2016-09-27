@@ -38,7 +38,7 @@ Modified           Jan Lindström jan.lindstrom@mariadb.com
 #include "fil0pagecompress.h"
 #include "ha_prototypes.h" // IB_LOG_
 
-#include <my_crypt.h>
+#include <ma_crypto.h>
 
 /** Mutex for keys */
 UNIV_INTERN ib_mutex_t fil_crypt_key_mutex;
@@ -204,7 +204,7 @@ fil_space_create_crypt_data(
 
 	mutex_create(LATCH_ID_FIL_CRYPT_DATA_MUTEX, &crypt_data->mutex);
 	crypt_data->locker = crypt_data_scheme_locker;
-	my_random_bytes(crypt_data->iv, sizeof(crypt_data->iv));
+	ma_crypto_random_bytes(crypt_data->iv, sizeof(crypt_data->iv));
 	crypt_data->encryption = encrypt_mode;
 	crypt_data->inited = true;
 	crypt_data->key_id = key_id;

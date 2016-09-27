@@ -71,7 +71,7 @@ struct key_struct
 {
 	uint key_version;			/*!< Version of the key */
 	uint key_length;			/*!< Key length */
-	unsigned char key[MY_AES_MAX_KEY_LENGTH]; /*!< Cached key
+	unsigned char key[MA_AES_MAX_KEY_LENGTH]; /*!< Cached key
                                                 (that is L in CRYPT_SCHEME_1) */
 };
 

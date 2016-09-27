@@ -3521,7 +3521,7 @@ bool MYSQL_BIN_LOG::open(const char *log_name,
 
         if (key_version != ENCRYPTION_KEY_NOT_ENCRYPTED)
         {
-          if (my_random_bytes(crypto.nonce, sizeof(crypto.nonce)))
+          if (ma_crypto_random_bytes(crypto.nonce, sizeof(crypto.nonce)))
             goto err;
 
           Start_encryption_log_event sele(1, key_version, crypto.nonce);
@@ -5280,7 +5280,7 @@ bool MYSQL_BIN_LOG::write_event_buffer(uchar* buf, uint len)
     if (encryption_crypt(buf + 4, len - 4,
                          ebuf + 4, &elen,
                          crypto.key, crypto.key_length, iv, sizeof(iv),
-                         ENCRYPTION_FLAG_ENCRYPT | ENCRYPTION_FLAG_NOPAD,
+                         MA_CRYPTO_ENCRYPT | MA_CRYPTO_NOPAD,
                          ENCRYPTION_KEY_SYSTEM_DATA, crypto.key_version))
       goto err;
 

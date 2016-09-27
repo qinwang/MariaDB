@@ -25,4 +25,3 @@ MY_ADD_TESTS(ma_dyncol LINK_LIBRARIES  mysys)
 IF(WIN32)
   MY_ADD_TESTS(my_delete LINK_LIBRARIES mysys)
 ENDIF()
-

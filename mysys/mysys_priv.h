@@ -18,7 +18,7 @@
 
 #include <my_global.h>
 #include <my_sys.h>
-#include <my_crypt.h>
+#include <ma_crypto.h>
 
 C_MODE_START
 
@@ -80,7 +80,7 @@ extern PSI_file_key key_file_charset, key_file_cnf;
 typedef struct {
   ulonglong counter;
   uint block_length, last_block_length;
-  uchar key[MY_AES_BLOCK_SIZE];
+  uchar key[MA_AES_BLOCK_SIZE];
   ulonglong inbuf_counter;
 } IO_CACHE_CRYPT;
 

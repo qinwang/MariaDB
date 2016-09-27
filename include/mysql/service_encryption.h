@@ -51,9 +51,9 @@ extern "C" {
 /* returned from encryption_key_get()  */
 #define ENCRYPTION_KEY_BUFFER_TOO_SMALL    (100)
 
-#define ENCRYPTION_FLAG_DECRYPT     0
 #define ENCRYPTION_FLAG_ENCRYPT     1
-#define ENCRYPTION_FLAG_NOPAD       2
+#define ENCRYPTION_FLAG_DECRYPT     2
+#define ENCRYPTION_FLAG_NOPAD       4
 
 struct encryption_service_st {
   unsigned int (*encryption_key_get_latest_version_func)(unsigned int key_id);
@@ -68,6 +68,7 @@ struct encryption_service_st {
                                     unsigned char* dst, unsigned int* dlen);
   int (*encryption_ctx_finish_func)(void *ctx, unsigned char* dst, unsigned int* dlen);
   unsigned int (*encryption_encrypted_length_func)(unsigned int slen, unsigned int key_id, unsigned int key_version);
+  void (*encryption_ctx_deinit_func)(void *ctx);
 };
 
 #ifdef MYSQL_DYNAMIC_PLUGIN
@@ -81,6 +82,7 @@ extern struct encryption_service_st *encryption_service;
 #define encryption_ctx_update(CTX,S,SL,D,DL) encryption_service->encryption_ctx_update_func((CTX),(S),(SL),(D),(DL))
 #define encryption_ctx_finish(CTX,D,DL) encryption_service->encryption_ctx_finish_func((CTX),(D),(DL))
 #define encryption_encrypted_length(SL,KI,KV) encryption_service->encryption_encrypted_length_func((SL),(KI),(KV))
+#define encryption_encrypted_ctx_deinit(CTX) encryption_service->encryption_ctx_deinit((CTX))
 #else
 
 extern struct encryption_service_st encryption_handler;
@@ -92,6 +94,7 @@ extern struct encryption_service_st encryption_handler;
 #define encryption_ctx_update(CTX,S,SL,D,DL) encryption_handler.encryption_ctx_update_func((CTX),(S),(SL),(D),(DL))
 #define encryption_ctx_finish(CTX,D,DL) encryption_handler.encryption_ctx_finish_func((CTX),(D),(DL))
 #define encryption_encrypted_length(SL,KI,KV) encryption_handler.encryption_encrypted_length_func((SL),(KI),(KV))
+#define encryption_encrypted_ctx_deinit(CTX) encryption_handler.encryption_ctx_deinit((CTX))
 #endif
 
 static inline unsigned int encryption_key_id_exists(unsigned int id)

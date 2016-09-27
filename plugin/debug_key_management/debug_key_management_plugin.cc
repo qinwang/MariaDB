@@ -75,7 +75,7 @@ struct st_mariadb_encryption debug_key_management_plugin= {
   get_latest_key_version,
   get_key,
   // use default encrypt/decrypt functions
-  0, 0, 0, 0, 0
+  0, 0, 0, 0, 0, 0
 };
 
 /*

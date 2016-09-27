@@ -25,16 +25,13 @@ Modified           Jan Lindström jan.lindstrom@mariadb.com
 *******************************************************/
 #include "m_string.h"
 #include "log0crypt.h"
-#include <my_crypt.h>
-#include <my_crypt.h>
+#include <ma_crypto.h>
 
 #include "log0log.h"
 #include "srv0start.h" // for srv_start_lsn
 #include "log0recv.h"  // for recv_sys
 
 #include "ha_prototypes.h" // IB_LOG_
-
-#include "my_crypt.h"
 
 /* Used for debugging */
 // #define DEBUG_CRYPT 1
@@ -65,9 +62,9 @@ static const size_t kMaxSavedKeys = LOG_CRYPT_MAX_ENTRIES;
 struct crypt_info_t {
 	ib_uint64_t     checkpoint_no; /*!< checkpoint no */
 	uint		key_version;   /*!< mysqld key version */
-	byte            crypt_msg[MY_AES_BLOCK_SIZE];
-	byte		crypt_key[MY_AES_BLOCK_SIZE];
-	byte            crypt_nonce[MY_AES_BLOCK_SIZE];
+	byte            crypt_msg[MA_AES_BLOCK_SIZE];
+	byte		crypt_key[MA_AES_BLOCK_SIZE];
+	byte            crypt_nonce[MA_AES_BLOCK_SIZE];
 };
 
 static std::deque<crypt_info_t> crypt_info;
@@ -168,9 +165,9 @@ log_blocks_crypt(
 	byte *log_block = (byte*)block;
 	Crypt_result rc = MY_AES_OK;
 	uint dst_len;
-	byte aes_ctr_counter[MY_AES_BLOCK_SIZE];
-	byte is_encrypt= what == ENCRYPTION_FLAG_ENCRYPT;
-	lsn_t lsn = is_encrypt ? log_sys->lsn : srv_start_lsn;
+	byte aes_ctr_counter[MA_AES_BLOCK_SIZE];
+	byte is_encrypt= what == MA_CRYPTO_ENCRYPT;
+	lsn_t lsn = (is_encrypt & MA_CRYPTO_ENCRYPT) ? log_sys->lsn : srv_start_lsn;
 
 	const uint src_len = OS_FILE_LOG_BLOCK_SIZE - LOG_BLOCK_HDR_SIZE;
 	for (ulint i = 0; i < size ; i += OS_FILE_LOG_BLOCK_SIZE) {
@@ -183,7 +180,7 @@ log_blocks_crypt(
 #ifdef DEBUG_CRYPT
 		fprintf(stderr,
 			"%s %lu chkpt: %lu key: %u lsn: %lu\n",
-			is_encrypt ? "crypt" : "decrypt",
+			is_encrypt & MA_CRYPTO_ENCRYPT ? "crypt" : "decrypt",
 			log_block_no,
 			log_block_get_checkpoint_no(log_block),
 			info ? info->key_version : 0,
@@ -196,12 +193,12 @@ log_blocks_crypt(
 		if (info == NULL ||
 		    info->key_version == UNENCRYPTED_KEY_VER ||
 			(log_block_checksum_is_ok(log_block, false) &&
-			 what == ENCRYPTION_FLAG_DECRYPT)) {
+			 (what & MA_CRYPTO_DECRYPT))) {
 			memcpy(dst_block, log_block, OS_FILE_LOG_BLOCK_SIZE);
 			goto next;
 		}
 
-		ut_ad(what == ENCRYPTION_FLAG_DECRYPT ? !log_block_checksum_is_ok(log_block, false) :
+		ut_ad(what & MA_CRYPTO_DECRYPT ? !log_block_checksum_is_ok(log_block, false) :
 			log_block_checksum_is_ok(log_block, false));
 
 		// Assume log block header is not encrypted
@@ -210,7 +207,7 @@ log_blocks_crypt(
 		// aes_ctr_counter = nonce(3-byte) + start lsn to a log block
 		// (8-byte) + lbn (4-byte) + abn
 		// (1-byte, only 5 bits are used). "+" means concatenate.
-		bzero(aes_ctr_counter, MY_AES_BLOCK_SIZE);
+		bzero(aes_ctr_counter, MA_AES_BLOCK_SIZE);
 		memcpy(aes_ctr_counter, info->crypt_nonce, 3);
 		mach_write_to_8(aes_ctr_counter + 3, log_block_start_lsn);
 		mach_write_to_4(aes_ctr_counter + 11, log_block_no);
@@ -220,8 +217,8 @@ log_blocks_crypt(
 		rc = encryption_crypt(log_block + LOG_BLOCK_HDR_SIZE, src_len,
 					dst_block + LOG_BLOCK_HDR_SIZE, &dst_len,
 					(unsigned char*)(info->crypt_key), 16,
-					aes_ctr_counter, MY_AES_BLOCK_SIZE,
-					what | ENCRYPTION_FLAG_NOPAD,
+					aes_ctr_counter, MA_AES_BLOCK_SIZE,
+					what | MA_CRYPTO_NOPAD,
 					LOG_DEFAULT_ENCRYPTION_KEY,
 					info->key_version);
 
@@ -251,7 +248,7 @@ init_crypt_key(
 		return true;
 	}
 
-	byte mysqld_key[MY_AES_MAX_KEY_LENGTH] = {0};
+	byte mysqld_key[MA_AES_MAX_KEY_LENGTH] = {0};
 	uint keylen= sizeof(mysqld_key);
 	uint rc;
 
@@ -269,13 +266,13 @@ init_crypt_key(
 	}
 
 	uint dst_len;
-	int err= my_aes_crypt(MY_AES_ECB, ENCRYPTION_FLAG_NOPAD|ENCRYPTION_FLAG_ENCRYPT,
-                             info->crypt_msg, sizeof(info->crypt_msg), //src, srclen
-                             info->crypt_key, &dst_len, //dst, &dstlen
-                             (unsigned char*)&mysqld_key, sizeof(mysqld_key),
-                             NULL, 0);
+	int err= ma_crypto_crypt(MA_AES_ECB, MA_CRYPTO_NOPAD|MA_CRYPTO_ENCRYPT,
+                           info->crypt_msg, sizeof(info->crypt_msg), //src, srclen
+                           info->crypt_key, &dst_len, //dst, &dstlen
+                           (unsigned char*)&mysqld_key, sizeof(mysqld_key),
+                           NULL, 0);
 
-	if (err != MY_AES_OK || dst_len != MY_AES_BLOCK_SIZE) {
+	if (err != MY_AES_OK || dst_len != MA_AES_BLOCK_SIZE) {
 		fprintf(stderr,
 			"\nInnodb redo log crypto: getting redo log crypto key "
 			"failed err = %d len = %u.\n", err, dst_len);
@@ -346,7 +343,7 @@ log_blocks_encrypt(
 	const ulint size,		/*!< in: size of blocks, must be multiple of a log block */
 	byte* dst_block)		/*!< out: blocks after encryption */
 {
-	return log_blocks_crypt(block, size, dst_block, ENCRYPTION_FLAG_ENCRYPT, NULL);
+	return log_blocks_crypt(block, size, dst_block, MA_CRYPTO_ENCRYPT, NULL);
 }
 
 /*********************************************************************//**
@@ -371,18 +368,18 @@ log_crypt_set_ver_and_key(
 		memset(info.crypt_msg, 0, sizeof(info.crypt_msg));
 		memset(info.crypt_nonce, 0, sizeof(info.crypt_nonce));
 	} else {
-		if (my_random_bytes(info.crypt_msg, MY_AES_BLOCK_SIZE) != MY_AES_OK) {
+		if (ma_crypto_random_bytes(info.crypt_msg, MA_AES_BLOCK_SIZE) != MY_AES_OK) {
 			ib::error()
 				<< "Redo log crypto: generate "
-				<< MY_AES_BLOCK_SIZE
+				<< MA_AES_BLOCK_SIZE
 				<< "-byte random number as crypto msg failed.";
 			ut_error;
 		}
 
-		if (my_random_bytes(info.crypt_nonce, MY_AES_BLOCK_SIZE) != MY_AES_OK) {
+		if (ma_crypto_random_bytes(info.crypt_nonce, MA_AES_BLOCK_SIZE) != MY_AES_OK) {
 			ib::error()
 				<< "Redo log crypto: generate "
-				<< MY_AES_BLOCK_SIZE
+				<< MA_AES_BLOCK_SIZE
 				<< "-byte random number as AES_CTR nonce failed.";
 			ut_error;
 		}
@@ -418,7 +415,7 @@ log_encrypt_before_write(
 	byte* dst_frame = (byte*)malloc(size);
 
 	//encrypt log blocks content
-	Crypt_result result = log_blocks_crypt(block, size, dst_frame, ENCRYPTION_FLAG_ENCRYPT, NULL);
+	Crypt_result result = log_blocks_crypt(block, size, dst_frame, MA_CRYPTO_ENCRYPT, NULL);
 
 	if (result == MY_AES_OK) {
 		ut_ad(block[0] == dst_frame[0]);
@@ -444,7 +441,7 @@ log_decrypt_after_read(
 	byte* dst_frame = (byte*)malloc(size);
 
 	// decrypt log blocks content
-	Crypt_result result = log_blocks_crypt(frame, size, dst_frame, ENCRYPTION_FLAG_DECRYPT, NULL);
+	Crypt_result result = log_blocks_crypt(frame, size, dst_frame, MA_CRYPTO_DECRYPT, NULL);
 
 	if (result == MY_AES_OK) {
 		memcpy(frame, dst_frame, size);
@@ -500,8 +497,8 @@ log_crypt_write_checkpoint_buf(
 		struct crypt_info_t* it = &crypt_info[i];
 		mach_write_to_4(buf + 0, it->checkpoint_no);
 		mach_write_to_4(buf + 4, it->key_version);
-		memcpy(buf + 8, it->crypt_msg, MY_AES_BLOCK_SIZE);
-		memcpy(buf + 24, it->crypt_nonce, MY_AES_BLOCK_SIZE);
+		memcpy(buf + 8, it->crypt_msg, MA_AES_BLOCK_SIZE);
+		memcpy(buf + 24, it->crypt_nonce, MA_AES_BLOCK_SIZE);
 		buf += LOG_CRYPT_ENTRY_SIZE;
 	}
 
@@ -544,8 +541,8 @@ log_crypt_read_checkpoint_buf(
 		struct crypt_info_t info;
 		info.checkpoint_no = mach_read_from_4(buf + 0);
 		info.key_version = mach_read_from_4(buf + 4);
-		memcpy(info.crypt_msg, buf + 8, MY_AES_BLOCK_SIZE);
-		memcpy(info.crypt_nonce, buf + 24, MY_AES_BLOCK_SIZE);
+		memcpy(info.crypt_msg, buf + 8, MA_AES_BLOCK_SIZE);
+		memcpy(info.crypt_nonce, buf + 24, MA_AES_BLOCK_SIZE);
 
 		if (!add_crypt_info(&info, true)) {
 			return false;
@@ -592,7 +589,7 @@ log_crypt_block_maybe_encrypted(
 
 	if (crypt_info &&
 	    crypt_info->key_version != UNENCRYPTED_KEY_VER) {
-		byte mysqld_key[MY_AES_BLOCK_SIZE] = {0};
+		byte mysqld_key[MA_AES_BLOCK_SIZE] = {0};
 		uint keylen= sizeof(mysqld_key);
 
 		/* Log block contains crypt info and based on key

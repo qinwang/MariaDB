@@ -38,7 +38,7 @@ Modified           Jan Lindström jan.lindstrom@mariadb.com
 #include "fil0pagecompress.h"
 #include "ha_prototypes.h" // IB_LOG_
 
-#include <my_crypt.h>
+#include <ma_crypto.h>
 
 /** Mutex for keys */
 UNIV_INTERN ib_mutex_t fil_crypt_key_mutex;

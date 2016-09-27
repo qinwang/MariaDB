@@ -20,7 +20,7 @@
 #include <my_sys.h>
 #include <my_dir.h>
 #include <mysql/plugin_encryption.h>
-#include <my_crypt.h>
+#include <ma_crypto.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
