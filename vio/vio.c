@@ -137,7 +137,7 @@ static void vio_init(Vio *vio, enum enum_vio_type type,
     DBUG_VOID_RETURN;
   }
 #endif
-#ifdef HAVE_OPENSSL
+#ifdef HAVE_TLS
   if (type == VIO_TYPE_SSL)
   {
     vio->viodelete	=vio_ssl_delete;
@@ -159,7 +159,7 @@ static void vio_init(Vio *vio, enum enum_vio_type type,
     vio->timeout        =vio_socket_timeout;
     DBUG_VOID_RETURN;
   }
-#endif /* HAVE_OPENSSL */
+#endif /* HAVE_TLS */
   vio->viodelete        =vio_delete;
   vio->vioerrno         =vio_errno;
   vio->read=            (flags & VIO_BUFFERED_READ) ? vio_read_buff : vio_read;
@@ -219,7 +219,7 @@ my_bool vio_reset(Vio* vio, enum enum_vio_type type,
   /* Preserve perfschema info for this connection */
   vio->mysql_socket.m_psi= old_vio.mysql_socket.m_psi;
 
-#ifdef HAVE_OPENSSL
+#ifdef HAVE_TLS
   vio->ssl_arg= ssl;
 #endif
 
@@ -385,9 +385,7 @@ void vio_delete(Vio* vio)
 */
 void vio_end(void)
 {
-#ifdef HAVE_YASSL
-  yaSSL_CleanUp();
-#elif defined(HAVE_OPENSSL)
+#if defined(HAVE_OPENSSL)
   // This one is needed on the client side
   ERR_remove_state(0);
   ERR_free_strings();

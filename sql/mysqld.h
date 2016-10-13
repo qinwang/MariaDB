@@ -519,9 +519,9 @@ void init_com_statement_info();
 extern pthread_t signal_thread;
 #endif
 
-#ifdef HAVE_OPENSSL
+#ifdef HAVE_TLS
 extern struct st_VioSSLFd * ssl_acceptor_fd;
-#endif /* HAVE_OPENSSL */
+#endif /* HAVE_TLS */
 
 /*
   The following variables were under INNODB_COMPABILITY_HOOKS

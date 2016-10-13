@@ -3127,7 +3127,7 @@ static Sys_var_set Sys_old_behavior(
        SESSION_VAR(old_behavior), CMD_LINE(REQUIRED_ARG),
        old_mode_names, DEFAULT(0));
 
-#if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
+#if defined(HAVE_TLS) && !defined(EMBEDDED_LIBRARY)
 #define SSL_OPT(X) CMD_LINE(REQUIRED_ARG,X)
 #else
 #define SSL_OPT(X) NO_CMD_LINE
@@ -3476,12 +3476,12 @@ static Sys_var_charptr Sys_malloc_library(
        READ_ONLY GLOBAL_VAR(malloc_library), CMD_LINE_HELP_ONLY,
        IN_SYSTEM_CHARSET, DEFAULT(MALLOC_LIBRARY));
 
-#ifdef HAVE_YASSL
-#include <openssl/ssl.h>
-#define SSL_LIBRARY "YaSSL " YASSL_VERSION
-#elif HAVE_OPENSSL
+#if defined(HAVE_OPENSSL)
 #include <openssl/crypto.h>
 #define SSL_LIBRARY SSLeay_version(SSLEAY_VERSION)
+#elif defined(HAVE_GNUTLS)
+#include <gnutls/gnutls.h>
+#define SSL_LIBRARY "GnuTLS " GNUTLS_VERSION
 #else
 #error No SSL?
 #endif
@@ -4168,6 +4168,10 @@ static Sys_var_have Sys_have_geometry(
 static Sys_var_have Sys_have_openssl(
        "have_openssl", "have_openssl",
        READ_ONLY GLOBAL_VAR(have_openssl), NO_CMD_LINE);
+
+static Sys_var_have Sys_have_gnutls(
+       "have_gnutls", "have_gnutls",
+       READ_ONLY GLOBAL_VAR(have_gnutls), NO_CMD_LINE);
 
 static Sys_var_have Sys_have_profiling(
        "have_profiling", "have_profiling",

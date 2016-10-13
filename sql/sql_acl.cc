@@ -57,6 +57,8 @@
 
 #include "sql_plugin_compat.h"
 
+#include <ma_tls_vio.h>
+
 bool mysql_user_table_is_in_short_password_format= false;
 
 static const
@@ -680,7 +682,7 @@ bool ROLE_GRANT_PAIR::init(MEM_ROOT *mem, char *username,
 #define ACL_KEY_LENGTH (IP_ADDR_STRLEN + 1 + NAME_LEN + \
                         1 + USERNAME_LENGTH + 1)
 
-#if defined(HAVE_OPENSSL)
+#if defined(HAVE_TLS)
 /*
   Without SSL the handshake consists of one packet. This packet
   has both client capabilities and scrambled password.
@@ -695,7 +697,7 @@ bool ROLE_GRANT_PAIR::init(MEM_ROOT *mem, char *username,
 #define MIN_HANDSHAKE_SIZE      2
 #else
 #define MIN_HANDSHAKE_SIZE      6
-#endif /* HAVE_OPENSSL && !EMBEDDED_LIBRARY */
+#endif /* HAVE_TLS && !EMBEDDED_LIBRARY */
 #define NORMAL_HANDSHAKE_SIZE   6
 
 #define ROLE_ASSIGN_COLUMN_IDX  43
@@ -11308,7 +11310,7 @@ get_cached_table_access(GRANT_INTERNAL_INFO *grant_internal_info,
 #define get_or_create_user_conn(A,B,C,D) 0
 #endif
 #endif
-#ifndef HAVE_OPENSSL
+#ifndef HAVE_TLS
 #define ssl_acceptor_fd 0
 #define sslaccept(A,B,C,D) 1
 #endif
@@ -12293,12 +12295,41 @@ static void server_mpvio_info(MYSQL_PLUGIN_VIO *vio,
   mpvio_info(mpvio->thd->net.vio, info);
 }
 
+/*
+   X509 verification for subject and issuer
+   Tokenizes the verification string and checks if the key value
+   pairs are present in corresponding peer attribute.
+   The comparison of strings is case insensitive (RFC 5280)
+ */
+static bool acl_check_x509_names(char *verify, const char *peer)
+{
+  char delimiter[] = "/"; /* OpenSSL uses slash, GnuTLS comma */
+  char *saveptr,
+       *token= strtok_r(verify, delimiter, &saveptr);
+
+  /* no delimiter, only 1 key value pair (or empty) */
+  if (!token)
+  {
+    if (strchr(verify, '=') &&
+        strcasestr(verify, peer) == 0)
+      return 1;
+    return 0;
+  }
+  while (token)
+  {
+    if (strcasestr(token, verify) != 0)
+      return 0;
+    token= strtok_r(NULL, delimiter, &saveptr);
+  }
+  return 1;
+}
+
 static bool acl_check_ssl(THD *thd, const ACL_USER *acl_user)
 {
-#ifdef HAVE_OPENSSL
+#ifdef HAVE_TLS
   Vio *vio= thd->net.vio;
-  SSL *ssl= (SSL *) vio->ssl_arg;
-  X509 *cert;
+  MA_TLS_SESSION ssl= vio->ssl_arg;
+  MA_TLS_CERT cert;
 #endif
 
   /*
@@ -12311,7 +12342,7 @@ static bool acl_check_ssl(THD *thd, const ACL_USER *acl_user)
   case SSL_TYPE_NOT_SPECIFIED:                  // Impossible
   case SSL_TYPE_NONE:                           // SSL is not required
     return 0;
-#ifdef HAVE_OPENSSL
+#ifdef HAVE_TLS
   case SSL_TYPE_ANY:                            // Any kind of SSL is ok
     return vio_type(vio) != VIO_TYPE_SSL;
   case SSL_TYPE_X509: /* Client should have any valid certificate. */
@@ -12322,28 +12353,36 @@ static bool acl_check_ssl(THD *thd, const ACL_USER *acl_user)
       We need to check for absence of SSL because without SSL
       we should reject connection.
     */
-    if (vio_type(vio) == VIO_TYPE_SSL &&
-        SSL_get_verify_result(ssl) == X509_V_OK &&
-        (cert= SSL_get_peer_certificate(ssl)))
+    if (vio_type(vio) == VIO_TYPE_SSL)
     {
-      X509_free(cert);
-      return 0;
+      if (ma_tls_verify_peer(ssl) &&
+          (!ma_tls_get_peer_cert(ssl, &cert)))
+      {
+        ma_tls_cert_free(cert);
+        return 0;
+      }
     }
     return 1;
   case SSL_TYPE_SPECIFIED: /* Client should have specified attrib */
     /* If a cipher name is specified, we compare it to actual cipher in use. */
-    if (vio_type(vio) != VIO_TYPE_SSL ||
-        SSL_get_verify_result(ssl) != X509_V_OK)
+    if (vio_type(vio) != VIO_TYPE_SSL)
       return 1;
     if (acl_user->ssl_cipher)
     {
+      size_t len= 64;
+      char cipher[64];
+      ma_tls_get_info(MA_TLS_INFO_CIPHER,
+                      MA_TLS_INFO_TYPE_CHAR,
+                      ssl,
+                      &cipher,
+                      &len);
       DBUG_PRINT("info", ("comparing ciphers: '%s' and '%s'",
-                         acl_user->ssl_cipher, SSL_get_cipher(ssl)));
-      if (strcmp(acl_user->ssl_cipher, SSL_get_cipher(ssl)))
+                         acl_user->ssl_cipher, cipher));
+      if (strcmp(acl_user->ssl_cipher, cipher))
       {
         if (global_system_variables.log_warnings)
           sql_print_information("X509 ciphers mismatch: should be '%s' but is '%s'",
-                            acl_user->ssl_cipher, SSL_get_cipher(ssl));
+                            acl_user->ssl_cipher, cipher);
         return 1;
       }
     }
@@ -12351,21 +12390,27 @@ static bool acl_check_ssl(THD *thd, const ACL_USER *acl_user)
       return 0; // all done
 
     /* Prepare certificate (if exists) */
-    if (!(cert= SSL_get_peer_certificate(ssl)))
+    if (!ma_tls_verify_peer(ssl) ||
+        ma_tls_get_peer_cert(ssl, &cert))
       return 1;
     /* If X509 issuer is specified, we check it... */
     if (acl_user->x509_issuer)
     {
-      char *ptr= X509_NAME_oneline(X509_get_issuer_name(cert), 0, 0);
+      char *ptr;
+      ma_tls_get_info(MA_TLS_INFO_CERT_ISSUER,
+                      MA_TLS_INFO_TYPE_CONST,
+                      cert,
+                      &ptr, NULL);
       DBUG_PRINT("info", ("comparing issuers: '%s' and '%s'",
                          acl_user->x509_issuer, ptr));
-      if (strcmp(acl_user->x509_issuer, ptr))
+      if (!ptr ||
+          !acl_check_x509_names((char *)acl_user->x509_issuer, ptr))
       {
         if (global_system_variables.log_warnings)
           sql_print_information("X509 issuer mismatch: should be '%s' "
                             "but is '%s'", acl_user->x509_issuer, ptr);
         free(ptr);
-        X509_free(cert);
+        ma_tls_cert_free(cert);
         return 1;
       }
       free(ptr);
@@ -12373,30 +12418,35 @@ static bool acl_check_ssl(THD *thd, const ACL_USER *acl_user)
     /* X509 subject is specified, we check it .. */
     if (acl_user->x509_subject)
     {
-      char *ptr= X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
+      char *ptr;
+      ma_tls_get_info(MA_TLS_INFO_CERT_SUBJECT,
+                      MA_TLS_INFO_TYPE_CONST,
+                      cert,
+                      &ptr, NULL);
       DBUG_PRINT("info", ("comparing subjects: '%s' and '%s'",
                          acl_user->x509_subject, ptr));
-      if (strcmp(acl_user->x509_subject, ptr))
+      if (!ptr ||
+          !acl_check_x509_names((char *)acl_user->x509_subject, ptr))
       {
         if (global_system_variables.log_warnings)
           sql_print_information("X509 subject mismatch: should be '%s' but is '%s'",
                           acl_user->x509_subject, ptr);
         free(ptr);
-        X509_free(cert);
+        ma_tls_cert_free(cert);
         return 1;
       }
       free(ptr);
     }
-    X509_free(cert);
+    ma_tls_cert_free(cert);
     return 0;
-#else  /* HAVE_OPENSSL */
+#else  /* HAVE_TLS */
   default:
     /*
       If we don't have SSL but SSL is required for this user the
       authentication should fail.
     */
     return 1;
-#endif /* HAVE_OPENSSL */
+#endif /* HAVE_TLS */
   }
   return 1;
 }

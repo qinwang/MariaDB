@@ -26,6 +26,8 @@
 #include <nettle/nettle-meta.h>
 #include <nettle/yarrow.h>
 #include <nettle/macros.h>
+#include <nettle/des.h>
+#include <nettle/des-compat.h>
 
 #include <gnutls/gnutls.h>
 #include <gnutls/crypto.h>
@@ -49,13 +51,14 @@ struct st_crypto_crypt_ctx {
   unsigned int key_len;
   const unsigned char *iv;
   unsigned int iv_len;
+  unsigned char is_pad;
+  unsigned char pad[AES_BLOCK_SIZE];
 };
 #elif defined(HAVE_CRYPTO_OPENSSL)
 #include <openssl/evp.h>
 #include <openssl/aes.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
-#include <openssl/evp.h>
 
 struct st_crypto_hash_ctx {
   EVP_MD_CTX *ctx;

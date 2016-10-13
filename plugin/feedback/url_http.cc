@@ -211,13 +211,13 @@ int Url_http::send(const char* data, size_t data_length)
     return 1;
   }
 
-#ifdef HAVE_OPENSSL
+#ifdef HAVE_TLS
   struct st_VioSSLFd *UNINIT_VAR(ssl_fd);
   if (ssl)
   {
     enum enum_ssl_init_error ssl_init_error= SSL_INITERR_NOERROR;
     ulong ssl_error= 0;
-    if (!(ssl_fd= new_VioSSLConnectorFd(0, 0, 0, 0, 0, &ssl_init_error, 0, 0)) ||
+    if (!(ssl_fd= new_VioSSLConnectorFd(0, 0, 0, 0, 0, &ssl_init_error, 0, 0, 0)) ||
         sslconnect(ssl_fd, vio, send_timeout, &ssl_error))
     {
       const char *err;
@@ -225,8 +225,12 @@ int Url_http::send(const char* data, size_t data_length)
         err= sslGetErrString(ssl_init_error);
       else
       {
+#if defined(HAVE_OPENSSL)        
         ERR_error_string_n(ssl_error, buf, sizeof(buf));
         buf[sizeof(buf)-1]= 0;
+#elif defined(HAVE_GNUTLS)
+        strcpy(buf, "Unknwon TLS error (gnutls)");
+#endif
         err= buf;
       }
 

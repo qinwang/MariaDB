@@ -19,7 +19,6 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/sql
                     ${CMAKE_SOURCE_DIR}/include
                     ${CMAKE_SOURCE_DIR}/unittest/mytap
                     ${CMAKE_SOURCE_DIR}/extra/yassl/include)
-
 IF(WIN32)
   ADD_EXECUTABLE(explain_filename-t explain_filename-t.cc
                                     ../../sql/nt_servc.cc)

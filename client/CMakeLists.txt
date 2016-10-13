@@ -30,7 +30,9 @@ INCLUDE_DIRECTORIES(BEFORE
   ${CMAKE_SOURCE_DIR}/libmariadb/include)
 
 ## We will need libeay32.dll and ssleay32.dll when running client executables.
+IF(WITH_SSL STREQUAL "openssl")
 COPY_OPENSSL_DLLS(copy_openssl_client)
+ENDIF()
 
 SET(CLIENT_LIB mariadbclient mysys)
 

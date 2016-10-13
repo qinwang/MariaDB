@@ -39,15 +39,6 @@ extern "C" {
 #define SHA224_DIGEST_LENGTH MA_CRYPTO_SHA224_HASH_SIZE
 #endif
 
-#ifdef HAVE_YASSL
-
-#define SHA224(a,b,c) ma_crypto_hash(MA_CRYPTO_HASH_SHA224,(c),(const char *)(a),(b))
-#define SHA256(a,b,c) ma_crypto_hash(MA_CRYPTO_HASH_SHA256,(c),(const char *)(a),(b))
-#define SHA384(a,b,c) ma_crypto_hash(MA_CRYPTO_HASH_SHA384,(c),(const char *)(a),(b))
-#define SHA512(a,b,c) ma_crypto_hash(MA_CRYPTO_HASH_SHA512,(c),(const char *)(a),(b))
-
-#endif
-
 #    ifdef __cplusplus
 }
 #    endif

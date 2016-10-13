@@ -1714,6 +1714,7 @@ sub command_line_setup {
   {
     # Set valgrind_option unless already defined
     push(@valgrind_args, ("--show-reachable=yes", "--leak-check=yes",
+                          "--track-origins=yes", "-v",
                           "--num-callers=16"))
       unless @valgrind_args;
     unshift(@valgrind_args, "--tool=memcheck");

@@ -94,6 +94,7 @@ enum options_client
   OPT_REPORT_PROGRESS,
   OPT_SKIP_ANNOTATE_ROWS_EVENTS,
   OPT_SSL_CRL, OPT_SSL_CRLPATH,
+  OPT_SSL_PASSPHRASE,
   OPT_MAX_CLIENT_OPTION /* should be always the last */
 };
 

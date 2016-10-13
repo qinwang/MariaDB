@@ -23,73 +23,9 @@
 #include "vio_priv.h"
 #include "my_context.h"
 #include <mysql_async.h>
+#include <ma_tls_vio.h>
 
-#ifdef HAVE_OPENSSL
-
-#ifdef HAVE_YASSL
-/*
-  yassl seem to be different here, SSL_get_error() value can be
-  directly passed to ERR_error_string(), and these errors don't go
-  into ERR_get_error() stack.
-  in openssl, apparently, SSL_get_error() values live in a different
-  namespace, one needs to use ERR_get_error() as an argument
-  for ERR_error_string().
-*/
-#define SSL_errno(X,Y) SSL_get_error(X,Y)
-#else
-#define SSL_errno(X,Y) ERR_get_error()
-#endif
-
-/**
-  Obtain the equivalent system error status for the last SSL I/O operation.
-
-  @param ssl_error  The result code of the failed TLS/SSL I/O operation.
-*/
-
-static void ssl_set_sys_error(int ssl_error)
-{
-  int error= 0;
-
-  switch (ssl_error)
-  {
-  case SSL_ERROR_ZERO_RETURN:
-    error= SOCKET_ECONNRESET;
-    break;
-  case SSL_ERROR_WANT_READ:
-  case SSL_ERROR_WANT_WRITE:
-#ifdef SSL_ERROR_WANT_CONNECT
-  case SSL_ERROR_WANT_CONNECT:
-#endif
-#ifdef SSL_ERROR_WANT_ACCEPT
-  case SSL_ERROR_WANT_ACCEPT:
-#endif
-    error= SOCKET_EWOULDBLOCK;
-    break;
-  case SSL_ERROR_SSL:
-    /* Protocol error. */
-#ifdef EPROTO
-    error= EPROTO;
-#else
-    error= SOCKET_ECONNRESET;
-#endif
-    break;
-  case SSL_ERROR_SYSCALL:
-  case SSL_ERROR_NONE:
-  default:
-    break;
-  };
-
-  /* Set error status to a equivalent of the SSL error. */
-  if (error)
-  {
-#ifdef _WIN32
-    WSASetLastError(error);
-#else
-    errno= error;
-#endif
-  }
-}
-
+#ifdef HAVE_TLS
 
 /**
   Indicate whether a SSL I/O operation must be retried later.
@@ -103,53 +39,25 @@ static void ssl_set_sys_error(int ssl_error)
   @retval FALSE   Indeterminate failure.
 */
 
-static my_bool ssl_should_retry(Vio *vio, int ret, enum enum_vio_io_event *event)
-{
-  int ssl_error;
-  SSL *ssl= vio->ssl_arg;
-  my_bool should_retry= TRUE;
-
-  /* Retrieve the result for the SSL I/O operation. */
-  ssl_error= SSL_get_error(ssl, ret);
-
-  /* Retrieve the result for the SSL I/O operation. */
-  switch (ssl_error)
-  {
-  case SSL_ERROR_WANT_READ:
-    *event= VIO_IO_EVENT_READ;
-    break;
-  case SSL_ERROR_WANT_WRITE:
-    *event= VIO_IO_EVENT_WRITE;
-    break;
-  default:
-    should_retry= FALSE;
-    ssl_set_sys_error(ssl_error);
-    break;
-  }
-
-  return should_retry;
-}
-
-
 size_t vio_ssl_read(Vio *vio, uchar *buf, size_t size)
 {
   int ret;
-  SSL *ssl= vio->ssl_arg;
+  MA_TLS_SESSION sess= vio->ssl_arg;
   DBUG_ENTER("vio_ssl_read");
   DBUG_PRINT("enter", ("sd: %d  buf: %p  size: %d  ssl: %p",
 		       mysql_socket_getfd(vio->mysql_socket), buf, (int) size,
                        vio->ssl_arg));
 
   if (vio->async_context && vio->async_context->active)
-    ret= my_ssl_read_async(vio->async_context, (SSL *)vio->ssl_arg, buf, size);
+    ret= my_ssl_read_async(vio->async_context, vio->ssl_arg, buf, size);
   else
   {
-    while ((ret= SSL_read(ssl, buf, size)) < 0)
+    while ((ret= ma_tls_read(sess, buf, size)) < 0)
     {
       enum enum_vio_io_event event;
       
       /* Process the SSL I/O error. */
-      if (!ssl_should_retry(vio, ret, &event))
+      if (!ma_tls_should_retry(vio->ssl_arg, ret, &event))
         break;
       /* Attempt to wait for an I/O event. */
       if (vio_socket_io_wait(vio, event))
@@ -166,23 +74,23 @@ size_t vio_ssl_read(Vio *vio, uchar *buf, size_t size)
 size_t vio_ssl_write(Vio *vio, const uchar *buf, size_t size)
 {
   int ret;
-  SSL *ssl= vio->ssl_arg;
+  MA_TLS_SESSION sess= vio->ssl_arg;
   DBUG_ENTER("vio_ssl_write");
   DBUG_PRINT("enter", ("sd: %d  buf: %p  size: %d",
                        mysql_socket_getfd(vio->mysql_socket),
                        buf, (int) size));
 
   if (vio->async_context && vio->async_context->active)
-    ret= my_ssl_write_async(vio->async_context, (SSL *)vio->ssl_arg, buf,
+    ret= my_ssl_write_async(vio->async_context, vio->ssl_arg, buf,
                             size);
   else
   {
-    while ((ret= SSL_write(ssl, buf, size)) < 0)
+    while ((ret= ma_tls_write(sess, buf, size)) < 0)
     {
       enum enum_vio_io_event event;
 
       /* Process the SSL I/O error. */
-      if (!ssl_should_retry(vio, ret, &event))
+      if (!ma_tls_should_retry(vio->ssl_arg, ret, &event))
         break;
 
       /* Attempt to wait for an I/O event. */
@@ -194,60 +102,10 @@ size_t vio_ssl_write(Vio *vio, const uchar *buf, size_t size)
   DBUG_RETURN(ret < 0 ? -1 : ret);
 }
 
-#ifdef HAVE_YASSL
-
-/* Emulate a blocking recv() call with vio_read(). */
-static long yassl_recv(void *ptr, void *buf, size_t len,
-                       int flag __attribute__((unused)))
-{
-  return vio_read(ptr, buf, len);
-}
-
-
-/* Emulate a blocking send() call with vio_write(). */
-static long yassl_send(void *ptr, const void *buf, size_t len,
-                       int flag __attribute__((unused)))
-{
-  return vio_write(ptr, buf, len);
-}
-
-#endif
-
 int vio_ssl_close(Vio *vio)
 {
-  int r= 0;
-  SSL *ssl= (SSL*)vio->ssl_arg;
   DBUG_ENTER("vio_ssl_close");
-
-  if (ssl)
-  {
-    /*
-    THE SSL standard says that SSL sockets must send and receive a close_notify
-    alert on socket shutdown to avoid truncation attacks. However, this can
-    cause problems since we often hold a lock during shutdown and this IO can
-    take an unbounded amount of time to complete. Since our packets are self
-    describing with length, we aren't vunerable to these attacks. Therefore,
-    we just shutdown by closing the socket (quiet shutdown).
-    */
-    SSL_set_quiet_shutdown(ssl, 1); 
-    
-    switch ((r= SSL_shutdown(ssl))) {
-    case 1:
-      /* Shutdown successful */
-      break;
-    case 0:
-      /*
-        Shutdown not yet finished - since the socket is going to
-        be closed there is no need to call SSL_shutdown() a second
-        time to wait for the other side to respond
-      */
-      break;
-    default: /* Shutdown failed */
-      DBUG_PRINT("vio_error", ("SSL_shutdown() failed, error: %d",
-                               SSL_get_error(ssl, r)));
-      break;
-    }
-  }
+  ma_tls_sess_close(vio->ssl_arg);
   DBUG_RETURN(vio_close(vio));
 }
 
@@ -262,41 +120,36 @@ void vio_ssl_delete(Vio *vio)
 
   if (vio->ssl_arg)
   {
-    SSL_free((SSL*) vio->ssl_arg);
+    ma_tls_sess_free(vio->ssl_arg);
     vio->ssl_arg= 0;
   }
 
   vio_delete(vio);
 }
 
-
-/** SSL handshake handler. */
-typedef int (*ssl_handshake_func_t)(SSL*);
-
-
 /**
   Loop and wait until a SSL handshake is completed.
 
   @param vio    VIO object representing a SSL connection.
-  @param ssl    SSL structure for the connection.
-  @param func   SSL handshake handler.
+  @param sess   session structure for the tls connection.
+  @param flags  flags for client or server  
 
   @return Return value is 1 on success.
 */
 
-static int ssl_handshake_loop(Vio *vio, SSL *ssl, ssl_handshake_func_t func)
+static int ssl_handshake_loop(Vio *vio, MA_TLS_SESSION sess, int flags)
 {
   int ret;
 
-  vio->ssl_arg= ssl;
+  vio->ssl_arg= sess;
 
   /* Initiate the SSL handshake. */
-  while ((ret= func(ssl)) < 1)
+  while ((ret= ma_tls_handshake(sess, flags)) < 1)
   {
     enum enum_vio_io_event event;
 
     /* Process the SSL I/O error. */
-    if (!ssl_should_retry(vio, ret, &event))
+    if (!ma_tls_should_retry(sess, ret, &event))
       break;
 
     /* Wait for I/O so that the handshake can proceed. */
@@ -305,16 +158,15 @@ static int ssl_handshake_loop(Vio *vio, SSL *ssl, ssl_handshake_func_t func)
   }
 
   vio->ssl_arg= NULL;
-
   return ret;
 }
 
 
 static int ssl_do(struct st_VioSSLFd *ptr, Vio *vio, long timeout,
-                  ssl_handshake_func_t func, unsigned long *errptr)
+                  int flags, unsigned long *errptr)
 {
   int r;
-  SSL *ssl;
+  MA_TLS_SESSION sess= 0;
   my_bool unused;
   my_bool was_blocking;
   my_socket sd= mysql_socket_getfd(vio->mysql_socket);
@@ -325,41 +177,44 @@ static int ssl_do(struct st_VioSSLFd *ptr, Vio *vio, long timeout,
   /* Set socket to blocking if not already set */
   vio_blocking(vio, 1, &was_blocking);
 
-  if (!(ssl= SSL_new(ptr->ssl_context)))
+  if ((*errptr= ma_tls_sess_new(&sess, ptr->ssl_context, flags)))
   {
-    DBUG_PRINT("error", ("SSL_new failure"));
-    *errptr= ERR_get_error();
+    DBUG_PRINT("error", ("Failed to create session object"));
     vio_blocking(vio, was_blocking, &unused);
     DBUG_RETURN(1);
   }
-  DBUG_PRINT("info", ("ssl: 0x%lx timeout: %ld", (long) ssl, timeout));
-  SSL_clear(ssl);
-  SSL_SESSION_set_timeout(SSL_get_session(ssl), timeout);
-  SSL_set_fd(ssl, sd);
+  DBUG_PRINT("info", ("ssl: 0x%lx timeout: %ld", (long) sess, timeout));
 
-  /*
-    Since yaSSL does not support non-blocking send operations, use
-    special transport functions that properly handles non-blocking
-    sockets. These functions emulate the behavior of blocking I/O
-    operations by waiting for I/O to become available.
-  */
-#ifdef HAVE_YASSL
-  /* Set first argument of the transport functions. */
-  yaSSL_transport_set_ptr(ssl, vio);
-  /* Set functions to use in order to send and receive data. */
-  yaSSL_transport_set_recv_function(ssl, yassl_recv);
-  yaSSL_transport_set_send_function(ssl, yassl_send);
-#endif
-
-#if !defined(HAVE_YASSL) && defined(SSL_OP_NO_COMPRESSION)
-  SSL_set_options(ssl, SSL_OP_NO_COMPRESSION);
-#endif
-
-  if ((r= ssl_handshake_loop(vio, ssl, func)) < 1)
+#if !defined(HAVE_OPENSSL)
+  if (ma_tls_sess_set_cipher(sess, ptr->cipher, flags))
   {
-    DBUG_PRINT("error", ("SSL_connect/accept failure"));
-    *errptr= SSL_errno(ssl, r);
-    SSL_free(ssl);
+    DBUG_PRINT("error", ("Failed to set cipher"));
+    ma_tls_sess_free(sess);
+    DBUG_RETURN(1);
+  }
+#endif
+
+  ma_tls_set_context(sess, ptr->ssl_context);
+
+/* ToDo: fix connect timeout in OpenSSL */
+#if defined(HAVE_GNUTLS)
+  if (timeout)
+    gnutls_handshake_set_timeout(sess, timeout * 1000);
+#endif
+
+  if ((*errptr= ma_tls_sess_transport_set(sess, &sd, NULL, NULL)))
+  {
+    DBUG_PRINT("error", ("Failed to set session transport mechanism"));
+    vio_blocking(vio, was_blocking, &unused);
+    ma_tls_sess_free(sess);
+    DBUG_RETURN(1);
+  }
+
+  if ((r= ssl_handshake_loop(vio, sess, flags)) < 1)
+  {
+    DBUG_PRINT("error", ("SSL handshake failure"));
+    ma_tls_sess_free(sess);
+    *errptr= r;
     vio_blocking(vio, was_blocking, &unused);
     DBUG_RETURN(1);
   }
@@ -369,41 +224,11 @@ static int ssl_do(struct st_VioSSLFd *ptr, Vio *vio, long timeout,
     change type, set sd to the fd used when connecting
     and set pointer to the SSL structure
   */
-  if (vio_reset(vio, VIO_TYPE_SSL, SSL_get_fd(ssl), ssl, 0))
+  if (vio_reset(vio, VIO_TYPE_SSL, ma_tls_transport_get_int(sess), sess, 0))
   {
     vio_blocking(vio, was_blocking, &unused);
     DBUG_RETURN(1);
   }
-
-#ifndef DBUG_OFF
-  {
-    /* Print some info about the peer */
-    X509 *cert;
-    char buf[512];
-
-    DBUG_PRINT("info",("SSL connection succeeded"));
-    DBUG_PRINT("info",("Using cipher: '%s'" , SSL_get_cipher_name(ssl)));
-
-    if ((cert= SSL_get_peer_certificate (ssl)))
-    {
-      DBUG_PRINT("info",("Peer certificate:"));
-      X509_NAME_oneline(X509_get_subject_name(cert), buf, sizeof(buf));
-      DBUG_PRINT("info",("\t subject: '%s'", buf));
-      X509_NAME_oneline(X509_get_issuer_name(cert), buf, sizeof(buf));
-      DBUG_PRINT("info",("\t issuer: '%s'", buf));
-      X509_free(cert);
-    }
-    else
-      DBUG_PRINT("info",("Peer does not have certificate."));
-
-    if (SSL_get_shared_ciphers(ssl, buf, sizeof(buf)))
-    {
-      DBUG_PRINT("info",("shared_ciphers: '%s'", buf));
-    }
-    else
-      DBUG_PRINT("info",("no shared ciphers!"));
-  }
-#endif
 
   DBUG_RETURN(0);
 }
@@ -412,14 +237,14 @@ static int ssl_do(struct st_VioSSLFd *ptr, Vio *vio, long timeout,
 int sslaccept(struct st_VioSSLFd *ptr, Vio *vio, long timeout, unsigned long *errptr)
 {
   DBUG_ENTER("sslaccept");
-  DBUG_RETURN(ssl_do(ptr, vio, timeout, SSL_accept, errptr));
+  DBUG_RETURN(ssl_do(ptr, vio, timeout, MA_TLS_SERVER, errptr));
 }
 
 
 int sslconnect(struct st_VioSSLFd *ptr, Vio *vio, long timeout, unsigned long *errptr)
 {
   DBUG_ENTER("sslconnect");
-  DBUG_RETURN(ssl_do(ptr, vio, timeout, SSL_connect, errptr));
+  DBUG_RETURN(ssl_do(ptr, vio, timeout, MA_TLS_CLIENT, errptr));
 }
 
 
@@ -435,7 +260,7 @@ int vio_ssl_blocking(Vio *vio __attribute__((unused)),
 
 my_bool vio_ssl_has_data(Vio *vio)
 {
-  return SSL_pending(vio->ssl_arg) > 0 ? TRUE : FALSE;
+  return ma_tls_has_data(vio->ssl_arg);
 }
 
-#endif /* HAVE_OPENSSL */
+#endif

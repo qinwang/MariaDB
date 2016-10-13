@@ -237,6 +237,7 @@ struct LEX_MASTER_INFO
   char *host, *user, *password, *log_file_name;
   char *ssl_key, *ssl_cert, *ssl_ca, *ssl_capath, *ssl_cipher;
   char *ssl_crl, *ssl_crlpath;
+  char *ssl_passphrase;
   char *relay_log_name;
   LEX_STRING connection_name;
   /* Value in START SLAVE UNTIL master_gtid_pos=xxx */

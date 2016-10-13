@@ -1650,7 +1650,7 @@ static int connect_to_db(char *host, char *user,char *passwd)
   mysql_init(&mysql_connection);
   if (opt_compress)
     mysql_options(&mysql_connection,MYSQL_OPT_COMPRESS,NullS);
-#ifdef HAVE_OPENSSL
+#ifdef HAVE_TLS
   if (opt_use_ssl)
   {
     mysql_ssl_set(&mysql_connection, opt_ssl_key, opt_ssl_cert, opt_ssl_ca,

@@ -1054,7 +1054,7 @@ static int add_init_command(struct st_mysql_options *options, const char *cmd)
   EXTENSION_SET_STRING_X(OPTS, X, STR, my_strdup)
 
 
-#if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
+#if defined(HAVE_TLS) && !defined(EMBEDDED_LIBRARY)
 #define SET_SSL_OPTION_X(OPTS, opt_var, arg, dup)                \
   my_free((OPTS)->opt_var);                                      \
   (OPTS)->opt_var= arg ? dup(arg, MYF(MY_WME)) : NULL;
@@ -1071,7 +1071,7 @@ static char *set_ssl_option_unpack_path(const char *arg, myf flags)
 #else
 #define SET_SSL_OPTION_X(OPTS, opt_var,arg, dup) do { } while(0)
 #define EXTENSION_SET_SSL_STRING_X(OPTS, X, STR, dup) do { } while(0)
-#endif /* defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY) */
+#endif /* defined(HAVE_TLS) && !defined(EMBEDDED_LIBRARY) */
 
 #define SET_SSL_OPTION(OPTS, opt_var,arg) SET_SSL_OPTION_X(OPTS, opt_var, arg, my_strdup)
 #define EXTENSION_SET_SSL_STRING(OPTS, X, STR) EXTENSION_SET_SSL_STRING_X(OPTS, X, STR, my_strdup)
@@ -1666,7 +1666,7 @@ mysql_ssl_set(MYSQL *mysql __attribute__((unused)) ,
 {
   my_bool result= 0;
   DBUG_ENTER("mysql_ssl_set");
-#if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
+#if defined(HAVE_TLS) && !defined(EMBEDDED_LIBRARY)
   result= (mysql_options(mysql, MYSQL_OPT_SSL_KEY, key) |
            mysql_options(mysql, MYSQL_OPT_SSL_CERT,   cert) |
            mysql_options(mysql, MYSQL_OPT_SSL_CA,     ca) |
@@ -1674,7 +1674,7 @@ mysql_ssl_set(MYSQL *mysql __attribute__((unused)) ,
            mysql_options(mysql, MYSQL_OPT_SSL_CIPHER, cipher) ?
            1 : 0);
   mysql->options.use_ssl= TRUE;
-#endif /* HAVE_OPENSSL && !EMBEDDED_LIBRARY */
+#endif /* HAVE_TLS && !EMBEDDED_LIBRARY */
   DBUG_RETURN(result);
 }
 
@@ -1684,7 +1684,7 @@ mysql_ssl_set(MYSQL *mysql __attribute__((unused)) ,
   NB! Errors are not reported until you do mysql_real_connect.
 */
 
-#if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
+#if defined(HAVE_TLS) && !defined(EMBEDDED_LIBRARY)
 
 static void
 mysql_ssl_free(MYSQL *mysql __attribute__((unused)))
@@ -1702,8 +1702,10 @@ mysql_ssl_free(MYSQL *mysql __attribute__((unused)))
     my_free(mysql->options.extension->ssl_crl);
     my_free(mysql->options.extension->ssl_crlpath);
   }
+#if defined(HAVE_OPENSSL)
   if (ssl_fd)
     SSL_CTX_free(ssl_fd->ssl_context);
+#endif
   my_free(mysql->connector_fd);
   mysql->options.ssl_key = 0;
   mysql->options.ssl_cert = 0;
@@ -2585,7 +2587,8 @@ static int send_client_reply_packet(MCPVIO_EXT *mpvio,
                                         options->extension ? 
                                         options->extension->ssl_crl : NULL,
                                         options->extension ? 
-                                        options->extension->ssl_crlpath : NULL)))
+                                        options->extension->ssl_crlpath : NULL,
+                                        0)))
     {
       set_mysql_extended_error(mysql, CR_SSL_CONNECTION_ERROR, unknown_sqlstate,
                                ER(CR_SSL_CONNECTION_ERROR), sslGetErrString(ssl_init_error));

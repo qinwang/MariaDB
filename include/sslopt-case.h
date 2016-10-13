@@ -16,7 +16,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
-#if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
+#if defined(HAVE_TLS) && !defined(EMBEDDED_LIBRARY)
     case OPT_SSL_KEY:
     case OPT_SSL_CERT:
     case OPT_SSL_CA:
@@ -30,10 +30,6 @@
     */
       opt_use_ssl= 1;
     /* crl has no effect in yaSSL */  
-#ifdef HAVE_YASSL
-      opt_ssl_crl= NULL;
-      opt_ssl_crlpath= NULL;
-#endif
       break;
 #endif
 #endif /* SSLOPT_CASE_INCLUDED */

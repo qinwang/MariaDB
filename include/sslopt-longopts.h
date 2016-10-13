@@ -17,7 +17,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
-#if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
+#if defined(HAVE_TLS) && !defined(EMBEDDED_LIBRARY)
 
   {"ssl", OPT_SSL_SSL,
    "Enable SSL for connection (automatically enabled with other flags).",
@@ -39,6 +39,9 @@
   {"ssl-key", OPT_SSL_KEY, "X509 key in PEM format (implies --ssl).",
    &opt_ssl_key, &opt_ssl_key, 0, GET_STR, REQUIRED_ARG,
    0, 0, 0, 0, 0, 0},
+  {"ssl-passphrase", OPT_SSL_PASSPHRASE, "Passphrase for protected PEM files (implies --ssl).",
+   &opt_ssl_passphrase, &opt_ssl_passphrase, 0, GET_STR, REQUIRED_ARG,
+   0, 0, 0, 0, 0, 0},
   {"ssl-crl", OPT_SSL_KEY, "Certificate revocation list (implies --ssl).",
    &opt_ssl_crl, &opt_ssl_crl, 0, GET_STR, REQUIRED_ARG,
    0, 0, 0, 0, 0, 0},
@@ -53,5 +56,5 @@
    &opt_ssl_verify_server_cert, &opt_ssl_verify_server_cert,
    0, GET_BOOL, OPT_ARG, 0, 0, 0, 0, 0, 0},
 #endif
-#endif /* HAVE_OPENSSL */
+#endif /* HAVE_TLS */
 #endif /* SSLOPT_LONGOPTS_INCLUDED */

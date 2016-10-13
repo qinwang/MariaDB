@@ -28,10 +28,12 @@ extern ssize_t my_send_async(struct mysql_async_context *b, int fd,
                              int timeout);
 extern my_bool my_io_wait_async(struct mysql_async_context *b,
                                 enum enum_vio_io_event event, int timeout);
-#ifdef HAVE_OPENSSL
-extern int my_ssl_read_async(struct mysql_async_context *b, SSL *ssl,
+#ifdef HAVE_TLS
+extern int my_ssl_read_async(struct mysql_async_context *b,
+                             MA_TLS_SESSION ssl,
                              void *buf, int size);
-extern int my_ssl_write_async(struct mysql_async_context *b, SSL *ssl,
+extern int my_ssl_write_async(struct mysql_async_context *b,
+                              MA_TLS_SESSION ssl,
                               const void *buf, int size);
 #endif
 

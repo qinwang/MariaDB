@@ -29,6 +29,7 @@
 #include "mysql_async.h"
 
 
+
 #ifdef __WIN__
 /*
   Windows does not support MSG_DONTWAIT for send()/recv(). So we need to ensure
@@ -214,19 +215,29 @@ my_io_wait_async(struct mysql_async_context *b, enum enum_vio_io_event event,
 }
 
 
-#ifdef HAVE_OPENSSL
+#ifdef HAVE_TLS
 static my_bool
-my_ssl_async_check_result(int res, struct mysql_async_context *b, SSL *ssl)
+my_ssl_async_check_result(int res, struct mysql_async_context *b,
+                          MA_TLS_SESSION ssl)
 {
   int ssl_err;
   b->events_to_wait_for= 0;
   if (res >= 0)
     return 1;
+#if defined(HAVE_OPENSSL)
   ssl_err= SSL_get_error(ssl, res);
   if (ssl_err == SSL_ERROR_WANT_READ)
     b->events_to_wait_for|= MYSQL_WAIT_READ;
   else if (ssl_err == SSL_ERROR_WANT_WRITE)
     b->events_to_wait_for|= MYSQL_WAIT_WRITE;
+#elif defined(HAVE_GNUTLS)
+  if (res == GNUTLS_E_AGAIN)
+  {
+    b->events_to_wait_for|= gnutls_record_get_direction(ssl) ?
+                            MYSQL_WAIT_WRITE : MYSQL_WAIT_READ;
+
+  }
+#endif
   else
     return 1;
   if (b->suspend_resume_hook)
@@ -238,33 +249,33 @@ my_ssl_async_check_result(int res, struct mysql_async_context *b, SSL *ssl)
 }
 
 int
-my_ssl_read_async(struct mysql_async_context *b, SSL *ssl,
+my_ssl_read_async(struct mysql_async_context *b, MA_TLS_SESSION ssl,
                   void *buf, int size)
 {
   int res;
 
   for (;;)
   {
-    res= SSL_read(ssl, buf, size);
+    res= ma_tls_read(ssl, buf, size);
     if (my_ssl_async_check_result(res, b, ssl))
       return res;
   }
 }
 
 int
-my_ssl_write_async(struct mysql_async_context *b, SSL *ssl,
+my_ssl_write_async(struct mysql_async_context *b, MA_TLS_SESSION ssl,
                    const void *buf, int size)
 {
   int res;
 
   for (;;)
   {
-    res= SSL_write(ssl, buf, size);
+    res= ma_tls_write(ssl, buf, size);
     if (my_ssl_async_check_result(res, b, ssl))
       return res;
   }
 }
-#endif  /* HAVE_OPENSSL */
+#endif  /* HAVE_TLS */
 
 /*
   Legacy support of the MariaDB 5.5 version, where timeouts where only in

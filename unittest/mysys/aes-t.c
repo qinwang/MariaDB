@@ -26,12 +26,12 @@
   {                                                                     \
     memset(src, fill, src_len= slen);                                   \
     ok(ma_crypto_crypt(mode, nopad | MA_CRYPTO_ENCRYPT,                 \
-                    src, src_len, dst, &dst_len,                        \
+                    (const unsigned char *)src, src_len, dst, &dst_len, \
                     key, sizeof(key), iv, sizeof(iv)) == MY_AES_OK,     \
       "encrypt " #mode " %u %s", src_len, nopad ? "nopad" : "pad");     \
     if (!nopad)                                                         \
       ok (dst_len == ma_crypto_crypt_digest_size(mode, src_len), "ma_crypto_digest_size");\
-    ma_crypto_hash(MA_CRYPTO_HASH_MD5, md5, (char*)dst, dst_len);                                   \
+    ma_crypto_hash(MA_CRYPTO_HASH_MD5, md5, (unsigned char*)dst, dst_len); \
     ok(dst_len == dlen && memcmp(md5, hash, sizeof(md5)) == 0, "md5");  \
     ok(ma_crypto_crypt(mode, nopad | MA_CRYPTO_DECRYPT,                 \
                     dst, dst_len, ddst, &ddst_len,                      \

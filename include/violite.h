@@ -31,6 +31,7 @@
 extern "C" {
 #endif /* __cplusplus */
 
+
 #ifdef __cplusplus
 typedef struct st_vio Vio;
 #endif /* __cplusplus */
@@ -121,14 +122,16 @@ int vio_getnameinfo(const struct sockaddr *sa,
                     char *hostname, size_t hostname_size,
                     char *port, size_t port_size,
                     int flags);
-
-#ifdef HAVE_OPENSSL
+#if defined(HAVE_TLS)
+#include <ma_tls_vio.h>
+#if defined(HAVE_OPENSSL)
 #include <openssl/opensslv.h>
 #if OPENSSL_VERSION_NUMBER < 0x0090700f
 #define DES_cblock des_cblock
 #define DES_key_schedule des_key_schedule
 #define DES_set_key_unchecked(k,ks) des_set_key_unchecked((k),*(ks))
 #define DES_ede3_cbc_encrypt(i,o,l,k1,k2,k3,iv,e) des_ede3_cbc_encrypt((i),(o),(l),*(k1),*(k2),*(k3),(iv),(e))
+
 #endif
 /* apple deprecated openssl in MacOSX Lion */
 #ifdef __APPLE__
@@ -136,13 +139,6 @@ int vio_getnameinfo(const struct sockaddr *sa,
 #endif
 
 #define HEADER_DES_LOCL_H dummy_something
-#define YASSL_MYSQL_COMPATIBLE
-#ifndef YASSL_PREFIX
-#define YASSL_PREFIX
-#endif
-/* Set yaSSL to use same type as MySQL do for socket handles */
-typedef my_socket YASSL_SOCKET_T;
-#define YASSL_SOCKET_T_DEFINED
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
@@ -153,18 +149,25 @@ typedef my_socket YASSL_SOCKET_T;
 #define ERR_remove_state(X) {}
 #endif
 #endif
+#endif
 
 enum enum_ssl_init_error
 {
   SSL_INITERR_NOERROR= 0, SSL_INITERR_CERT, SSL_INITERR_KEY, 
   SSL_INITERR_NOMATCH, SSL_INITERR_BAD_PATHS, SSL_INITERR_CIPHERS, 
-  SSL_INITERR_MEMFAIL, SSL_INITERR_DH, SSL_INITERR_LASTERR
+  SSL_INITERR_MEMFAIL, SSL_INITERR_DH, SSL_INITERR_UNSUPPORTED,
+  SSL_INITERR_LASTERR
 };
 const char* sslGetErrString(enum enum_ssl_init_error err);
 
 struct st_VioSSLFd
 {
-  SSL_CTX *ssl_context;
+  MA_TLS_CTX ssl_context;
+#if !defined(HAVE_OPENSSL)
+  const char* cipher;
+  const char* key;
+  const char* cert;
+#endif 
 };
 
 int sslaccept(struct st_VioSSLFd*, Vio *, long timeout, unsigned long *errptr);
@@ -174,15 +177,16 @@ struct st_VioSSLFd
 *new_VioSSLConnectorFd(const char *key_file, const char *cert_file,
 		       const char *ca_file,  const char *ca_path,
 		       const char *cipher, enum enum_ssl_init_error *error,
-                       const char *crl_file, const char *crl_path);
+           const char *crl_file, const char *crl_path,
+           const char *passphrase);
 struct st_VioSSLFd
 *new_VioSSLAcceptorFd(const char *key_file, const char *cert_file,
 		      const char *ca_file,const char *ca_path,
 		      const char *cipher, enum enum_ssl_init_error *error,
-                      const char *crl_file, const char *crl_path);
+          const char *crl_file, const char *crl_path,
+          const char *passphrase);
 void free_vio_ssl_acceptor_fd(struct st_VioSSLFd *fd);
-#endif /* HAVE_OPENSSL */
-
+#endif
 void vio_end(void);
 
 #ifdef	__cplusplus
@@ -267,8 +271,10 @@ struct st_vio
   my_bool (*has_data) (Vio*);
   int (*io_wait)(Vio*, enum enum_vio_io_event, int);
   my_bool (*connect)(Vio*, struct sockaddr *, socklen_t, int);
-#ifdef HAVE_OPENSSL
-  void	  *ssl_arg;
+#ifdef HAVE_TLS
+  MA_TLS_SESSION ssl_arg;
+#else
+  void *ssl_arg;
 #endif
 #ifdef HAVE_SMEM
   HANDLE  handle_file_map;

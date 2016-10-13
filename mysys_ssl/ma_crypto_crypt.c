@@ -78,7 +78,7 @@ static const WCHAR *bcrypt_chain_modes[MA_AES_CTR + 1] = {
    This function is used for nettle only.
  */
 #ifdef HAVE_CRYPTO_NETTLE
-static void ma_crypto_nettle_pkcs7_pad(unsigned char *src,
+static int ma_crypto_nettle_pkcs7_pad(unsigned char *src,
     unsigned int *len,
     unsigned int block_size,
     unsigned char add)
@@ -96,10 +96,16 @@ static void ma_crypto_nettle_pkcs7_pad(unsigned char *src,
   } else {
     unsigned char pad[AES_BLOCK_SIZE];
     unsigned char pad_len= *(src - 1);
+    /* Either we are in wrong mode or decrypted string
+       doesn't has padding - so we will return an error */
+    if (pad_len > AES_BLOCK_SIZE ||
+        pad_len >= *len)
+      return 1;
     memset(pad, pad_len, pad_len);
     if (memcmp(src - pad_len, pad, pad_len) == 0)
-      *len= -pad_len;
+      *len= pad_len;
   }
+  return 0;
 }
 #endif
 /* }}} */
@@ -443,6 +449,45 @@ static void bcrypt_ctr_crypt(struct st_crypto_crypt_ctx *ctx,
 }
 #endif
 
+#if defined(HAVE_CRYPTO_NETTLE)
+static int ma_crypto_nettle_crypt(MA_CRYPTO_CRYPT_CTX cctx,
+                                   unsigned char *src,
+                                   unsigned int slen,
+                                   unsigned char *dst)
+{
+  struct st_crypto_crypt_ctx *ctx= (struct st_crypto_crypt_ctx *)cctx;
+  switch(ctx->mode) {
+    case MA_AES_ECB:
+      (ctx->flags & MA_CRYPTO_ENCRYPT) ?
+      ctx->cipher.c->encrypt(ctx->ctx, slen, dst, src) :
+      ctx->cipher.c->decrypt(ctx->ctx, slen, dst, src);
+      break;
+    case MA_AES_CBC:
+    {
+      unsigned char *iiv= alloca(ctx->cipher.c->block_size);
+      if (!iiv)
+        return MA_CRYPTO_ENOMEM;
+      /* this is safe, we already checked iv_len during init */
+      memcpy(iiv, ctx->iv, ctx->cipher.c->block_size);
+      (ctx->flags & MA_CRYPTO_ENCRYPT) ? 
+      cbc_encrypt(ctx->ctx, ctx->cipher.c->encrypt, 
+                  ctx->cipher.c->block_size, iiv, slen, dst, src) :
+      cbc_decrypt(ctx->ctx, ctx->cipher.c->decrypt, 
+                  ctx->cipher.c->block_size, iiv, slen, dst, src);
+      break;
+    }
+    case MA_AES_GCM:
+      (ctx->flags & MA_CRYPTO_ENCRYPT) ?
+      ctx->cipher.a->encrypt(ctx->ctx, slen, dst, src) :
+      ctx->cipher.a->decrypt(ctx->ctx, slen, dst, src);
+      break;
+    default:
+      break;
+  }
+  return 0;
+}
+#endif
+
 /* {{{ ma_crypto_update */
 int ma_crypto_crypt_update(MA_CRYPTO_CRYPT_CTX cctx,
     const unsigned char *src,
@@ -461,58 +506,58 @@ int ma_crypto_crypt_update(MA_CRYPTO_CRYPT_CTX cctx,
   *dlen= 0;
 
 #ifdef HAVE_CRYPTO_NETTLE
-  switch(ctx->mode) {
-    case MA_AES_ECB:
-    case MA_AES_CBC:
-      if (ctx->flags & MA_CRYPTO_NOPAD)
-      {
-        if (slen % AES_BLOCK_SIZE)
-          *dlen= ma_crypto_internal_pad(ctx, (unsigned char *)src, dst, &slen);
-        if (slen < AES_BLOCK_SIZE)
-          return rc;
-      }
-      else if (ctx->flags & MA_CRYPTO_ENCRYPT)
-        ma_crypto_nettle_pkcs7_pad((unsigned char *)src, &slen, AES_BLOCK_SIZE, 1);
-      if (ctx->mode == MA_AES_ECB)
-      {
-        if (ctx->flags & MA_CRYPTO_ENCRYPT)
-          ctx->cipher.c->encrypt(ctx->ctx, slen, dst, src);
-        else
-          ctx->cipher.c->decrypt(ctx->ctx, slen, dst, src);
-      } else {
-        unsigned char *iiv;
-        if (!(iiv= alloca(ctx->cipher.c->block_size)))
-          return MA_CRYPTO_ENOMEM;
-        /* this is safe, we already checked iv_len during init */
-        memcpy(iiv, ctx->iv, ctx->cipher.c->block_size);
-        if (ctx->flags & MA_CRYPTO_ENCRYPT)
-          cbc_encrypt(ctx->ctx, ctx->cipher.c->encrypt, ctx->cipher.c->block_size,
-              iiv, slen, dst, src);
-        else
-          cbc_decrypt(ctx->ctx, ctx->cipher.c->decrypt, ctx->cipher.c->block_size,
-              iiv, slen, dst, src);
+  switch (ctx->mode) {
+  case MA_AES_ECB:
+  case MA_AES_CBC:
+  {
+    unsigned int len;
+    len= slen / AES_BLOCK_SIZE * AES_BLOCK_SIZE;
 
-      }
-      break;
-    case MA_AES_GCM:
-      if (ctx->flags & MA_CRYPTO_ENCRYPT)
-        ctx->cipher.a->encrypt(ctx->ctx, slen, dst, src);
-      else
-        ctx->cipher.a->decrypt(ctx->ctx, slen, dst, src);
-      break;
-    case MA_AES_CTR:
-      {
-        /* prevent reuse of modified iv */
-        unsigned char *ctr= alloca(ctx->cipher.c->block_size);
-        memcpy(ctr, ctx->iv, ctx->cipher.c->block_size);
-        ctr_crypt(ctx->ctx, ctx->cipher.c->encrypt, ctx->cipher.c->block_size,
-            ctr, slen, dst, src);
-        break;    
-      }
+    /* nettle doesn't support padding, we need to pad before encryption */
+    if ((ctx->flags & MA_CRYPTO_ENCRYPT) &&
+        !(ctx->flags & MA_CRYPTO_NOPAD))
+    {
+      unsigned int left= slen - len;
+      ma_crypto_nettle_pkcs7_pad(dst + len, &left, AES_BLOCK_SIZE, 1);
+      len= ma_crypto_crypt_digest_size(ctx->mode, slen);
+    }
+    ma_crypto_nettle_crypt(ctx, dst, len, dst);
+    *dlen= len;
+
+    /* after decryption we need to remove padding */
+    if ((ctx->flags & MA_CRYPTO_DECRYPT) &&
+        !(ctx->flags & MA_CRYPTO_NOPAD))
+    {
+      unsigned int remove_len;
+      if (ma_crypto_nettle_pkcs7_pad(dst + len, &remove_len, AES_BLOCK_SIZE, 0))
+        return 1;
+      *dlen-= remove_len;
+    }
+
+    if ((ctx->flags & MA_CRYPTO_NOPAD))
+    {
+      unsigned int left= slen - len;
+      *dlen+= ma_crypto_internal_pad(ctx, dst + len, dst + len, &left);
+    }
+    break;
   }
-  if (!rc)
-    *dlen+= slen;
-  ctx->src_len= slen;
+  case MA_AES_CTR:
+  {
+    /* prevent reuse of modified iv */
+    unsigned char *ctr= alloca(ctx->cipher.c->block_size);
+    memcpy(ctr, ctx->iv, ctx->cipher.c->block_size);
+    ctr_crypt(ctx->ctx, ctx->cipher.c->encrypt, ctx->cipher.c->block_size,
+        ctr, slen, dst, src);
+    *dlen= slen;
+    break;
+  }
+  case MA_AES_GCM:
+    ma_crypto_nettle_crypt(ctx, dst, slen, dst);
+    *dlen= slen;
+    break;
+  }
+
+  return 0;
 #elif defined(HAVE_CRYPTO_OPENSSL)
   {
     *dlen= 0;
@@ -702,9 +747,16 @@ int ma_crypto_crypt(enum ma_crypto_aes_mode mode,
   void *ctx= ma_crypto_crypt_new();
   int res1= 0, res2= 0;
   unsigned int d1= 0, d2= 0;
+
+  if (slen < AES_BLOCK_SIZE &&
+      (flags & MA_CRYPTO_DECRYPT) &&
+      !(flags & MA_CRYPTO_NOPAD))
+    return MA_CRYPTO_EBADDATA;
+
+  memcpy(dst, src, slen);
   if ((res1= ma_crypto_crypt_init(ctx, mode, flags, key, klen, iv, ivlen)))
     return res1;
-  res1= ma_crypto_crypt_update(ctx, src, slen, dst, &d1);
+  res1= ma_crypto_crypt_update(ctx, dst, slen, dst, &d1);
   res2= ma_crypto_crypt_finish(ctx, dst + d1, &d2);
   *dlen= d1 + d2;
   ma_crypto_crypt_free(ctx);

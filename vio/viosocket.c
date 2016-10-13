@@ -1188,10 +1188,14 @@ my_bool vio_is_connected(Vio *vio)
       DBUG_RETURN(FALSE);
   }
 
-#ifdef HAVE_OPENSSL
+#ifdef HAVE_TLS
   /* There might be buffered data at the SSL layer. */
   if (!bytes && vio->type == VIO_TYPE_SSL)
-    bytes= SSL_pending((SSL*) vio->ssl_arg);
+#if defined(HAVE_OPEBSSL)    
+    bytes= SSL_pending(vio->ssl_arg);
+#elif defined(HAVE_GNUTLS)
+    bytes= gnutls_record_check_pending(vio->ssl_arg);
+#endif
 #endif
 
   DBUG_RETURN(bytes ? TRUE : FALSE);
@@ -1222,12 +1226,6 @@ ssize_t vio_pending(Vio *vio)
     if (socket_peek_read(vio, &bytes))
       return -1;
   }
-
-  /*
-    SSL not checked due to a yaSSL bug in SSL_pending that
-    causes it to attempt to read from the socket.
-  */
-
   return (ssize_t) bytes;
 }
 

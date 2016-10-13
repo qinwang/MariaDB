@@ -14,14 +14,16 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA 
 
 # We support different versions of SSL:
-# - "bundled" uses source code in <source dir>/extra/yassl
+# - "gnutls" uses gnutls and nettle libraries
+# - "openssl" uses openssl libraries
+# - "schannel" uses windows schannel and bcrypt libraries
 # - "system"  (typically) uses headers/libraries in /usr/lib and /usr/lib64
 # - a custom installation of openssl can be used like this
 #     - cmake -DCMAKE_PREFIX_PATH=</path/to/custom/openssl> -DWITH_SSL="system"
 #   or
 #     - cmake -DWITH_SSL=</path/to/custom/openssl>
 #
-# The default value for WITH_SSL is "bundled"
+# The default value for WITH_SSL is "openssl"
 # set in cmake/build_configurations/feature_set.cmake
 #
 # For custom build/install of openssl, see the accompanying README and
@@ -46,28 +48,13 @@ MACRO (CHANGE_SSL_SETTINGS string)
   SET(WITH_SSL ${string} CACHE STRING ${WITH_SSL_DOC} FORCE)
 ENDMACRO()
 
-MACRO (MYSQL_USE_BUNDLED_SSL)
-  SET(INC_DIRS 
-    ${CMAKE_SOURCE_DIR}/extra/yassl/include
-    ${CMAKE_SOURCE_DIR}/extra/yassl/taocrypt/include
-  )
-  SET(SSL_LIBRARIES  yassl taocrypt)
-  SET(SSL_INCLUDE_DIRS ${INC_DIRS})
-  SET(SSL_INTERNAL_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/extra/yassl/taocrypt/mySTL)
-  SET(SSL_DEFINES "-DHAVE_YASSL -DYASSL_PREFIX -DHAVE_OPENSSL -DMULTI_THREADED")
-  SET(HAVE_ERR_remove_thread_state OFF CACHE INTERNAL "yassl doesn't have ERR_remove_thread_state")
-  CHANGE_SSL_SETTINGS("bundled")
-  ADD_SUBDIRECTORY(extra/yassl)
-  ADD_SUBDIRECTORY(extra/yassl/taocrypt)
-  GET_TARGET_PROPERTY(src yassl SOURCES)
-  FOREACH(file ${src})
-    SET(SSL_SOURCES ${SSL_SOURCES} ${CMAKE_SOURCE_DIR}/extra/yassl/${file})
-  ENDFOREACH()
-  GET_TARGET_PROPERTY(src taocrypt SOURCES)
-  FOREACH(file ${src})
-    SET(SSL_SOURCES ${SSL_SOURCES}
-      ${CMAKE_SOURCE_DIR}/extra/yassl/taocrypt/${file})
-  ENDFOREACH()
+MACRO (MYSQL_USE_GNUTLS)
+  pkg_check_modules(GNUTLS REQUIRED gnutls)
+  SET(CRYPTO_LIBRARIES ${GNUTLS_STATIC_LIBRARIES})
+  SET(SSL_LIBRARIES ${GNUTLS_STATIC_LIBRARIES})
+  SET(SSL_DEFINES "-DHAVE_TLS -DHAVE_GNUTLS -DHAVE_CRYPTO_NETTLE")
+  SET(HAVE_ERR_remove_thread_state OFF CACHE INTERNAL "gnutls doesn't have ERR_remove_thread_state")
+  CHANGE_SSL_SETTINGS("gnutls")
   MESSAGE_ONCE(SSL_LIBRARIES "SSL_LIBRARIES = ${SSL_LIBRARIES}")
 ENDMACRO()
 
@@ -78,9 +65,9 @@ ENDMACRO()
 MACRO (MYSQL_CHECK_SSL)
   IF(NOT WITH_SSL)
    IF(WIN32)
-     CHANGE_SSL_SETTINGS("bundled")
+     CHANGE_SSL_SETTINGS("schannel")
    ELSE()
-     SET(WITH_SSL "yes")
+     SET(WITH_TLS "yes")
    ENDIF()
   ENDIF()
 
@@ -90,8 +77,8 @@ MACRO (MYSQL_CHECK_SSL)
     SET(WITH_SSL_PATH ${WITH_SSL} CACHE PATH "path to custom SSL installation")
   ENDIF()
 
-  IF(WITH_SSL STREQUAL "bundled")
-    MYSQL_USE_BUNDLED_SSL()
+  IF(WITH_SSL STREQUAL "gnutls")
+    MYSQL_USE_GNUTLS()
     # Reset some variables, in case we switch from /path/to/ssl to "bundled".
     IF (WITH_SSL_PATH)
       UNSET(WITH_SSL_PATH)
@@ -115,6 +102,7 @@ MACRO (MYSQL_CHECK_SSL)
     ENDIF()
   ELSEIF(WITH_SSL STREQUAL "system" OR
          WITH_SSL STREQUAL "yes" OR
+         WITH_SSL STREQUAL "openssl" OR
          WITH_SSL_PATH
          )
     # First search in WITH_SSL_PATH.
@@ -192,7 +180,8 @@ MACRO (MYSQL_CHECK_SSL)
       MESSAGE_ONCE(SSL_LIBRARIES "SSL_LIBRARIES = ${SSL_LIBRARIES}")
       SET(SSL_INCLUDE_DIRS ${OPENSSL_INCLUDE_DIR})
       SET(SSL_INTERNAL_INCLUDE_DIRS "")
-      SET(SSL_DEFINES "-DHAVE_OPENSSL")
+      SET(SSL_DEFINES "-DHAVE_TLS -DHAVE_OPENSSL -DHAVE_CRYPTO_OPENSSL")
+      SET(CRYPTO_LIBRARIES ${OPENSSL_CRYPTO_LIBRARY})
 
       SET(CMAKE_REQUIRED_LIBRARIES ${SSL_LIBRARIES})
       CHECK_SYMBOL_EXISTS(ERR_remove_thread_state "openssl/err.h"
@@ -201,7 +190,7 @@ MACRO (MYSQL_CHECK_SSL)
       IF(WITH_SSL STREQUAL "system")
         MESSAGE(SEND_ERROR "Cannot find appropriate system libraries for SSL. Use  WITH_SSL=bundled to enable SSL support")
       ENDIF()
-      MYSQL_USE_BUNDLED_SSL()
+      MYSQL_USE_GNUTLS()
     ENDIF()
   ELSE()
     MESSAGE(SEND_ERROR

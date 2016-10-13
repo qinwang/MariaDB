@@ -382,6 +382,7 @@ extern SHOW_COMP_OPTION have_geometry, have_rtree_keys;
 extern SHOW_COMP_OPTION have_crypt;
 extern SHOW_COMP_OPTION have_compress;
 extern SHOW_COMP_OPTION have_openssl;
+extern SHOW_COMP_OPTION have_gnutls;
 
 /*
   Prototypes for helper functions

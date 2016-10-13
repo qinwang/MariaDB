@@ -839,8 +839,8 @@ error:
   THD *thd= current_thd;
   push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
                       ER_FEATURE_DISABLED, ER_THD(thd, ER_FEATURE_DISABLED),
-                      "des_encrypt", "--with-ssl");
-#endif /* defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY) */
+                      "des_encrypt", "--with-ssl=openssl");
+#endif /* defined(HAVE_TLS) && !defined(EMBEDDED_LIBRARY) */
   null_value=1;
   return 0;
 }
@@ -926,7 +926,7 @@ wrong_key:
                         ER_FEATURE_DISABLED, ER_THD(thd, ER_FEATURE_DISABLED),
                         "des_decrypt", "--with-ssl");
   }
-#endif /* defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY) */
+#endif /* defined(HAVE_TLS) && !defined(EMBEDDED_LIBRARY) */
   null_value=1;
   return 0;
 }

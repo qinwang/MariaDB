@@ -26,6 +26,10 @@
 #include <m_string.h>
 #include <violite.h>
 
+#if defined(HAVE_GNUTLS)
+extern gnutls_priority_t priority_cache;
+#endif
+
 #ifdef _WIN32
 size_t vio_read_pipe(Vio *vio, uchar * buf, size_t size);
 size_t vio_write_pipe(Vio *vio, const uchar * buf, size_t size);
@@ -49,11 +53,14 @@ my_bool	vio_buff_has_data(Vio *vio);
 int	vio_socket_io_wait(Vio *vio, enum enum_vio_io_event event);
 int	vio_socket_timeout(Vio *vio, uint which, my_bool old_mode);
 
-#ifdef HAVE_OPENSSL
+#ifdef HAVE_TLS
 #include "my_net.h"			/* needed because of struct in_addr */
 
 size_t	vio_ssl_read(Vio *vio,uchar* buf,	size_t size);
 size_t	vio_ssl_write(Vio *vio,const uchar* buf, size_t size);
+
+const char *vio_ssl_get_cipher(Vio *vio);
+int vio_ssl_set_cipher(void *, const char *cipher_str, unsigned char);
 
 /* When the workday is over... */
 int vio_ssl_close(Vio *vio);

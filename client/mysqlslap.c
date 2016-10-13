@@ -298,7 +298,7 @@ void set_mysql_connect_options(MYSQL *mysql)
 {
   if (opt_compress)
     mysql_options(mysql,MYSQL_OPT_COMPRESS,NullS);
-#ifdef HAVE_OPENSSL
+#ifdef HAVE_TLS
   if (opt_use_ssl)
   {
     mysql_ssl_set(mysql, opt_ssl_key, opt_ssl_cert, opt_ssl_ca,
