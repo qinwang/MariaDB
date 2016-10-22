@@ -1010,7 +1010,6 @@ os_file_lock(
 #ifndef UNIV_HOTBACKUP
 /****************************************************************//**
 Creates the seek mutexes used in positioned reads and writes. */
-static
 void
 os_io_init_simple(void)
 /*===================*/
@@ -1961,7 +1960,10 @@ os_file_create_func(
 
 	create_mode &= ~OS_FILE_ON_ERROR_NO_EXIT;
 	create_mode &= ~OS_FILE_ON_ERROR_SILENT;
-
+	if (srv_backup_mode){
+		/* Permit others to write, while I'm reading. */
+		share_mode |= FILE_SHARE_WRITE;
+	}
 	if (create_mode == OS_FILE_OPEN_RAW) {
 
 		ut_a(!srv_read_only_mode);
@@ -2031,7 +2033,7 @@ os_file_create_func(
 #ifdef UNIV_NON_BUFFERED_IO
 	// TODO: Create a bug, this looks wrong. The flush log
 	// parameter is dynamic.
-	if (type == OS_LOG_FILE && thd_flush_log_at_trx_commit(NULL) == 2) {
+	if (type == OS_LOG_FILE && !srv_backup_mode && thd_flush_log_at_trx_commit(NULL) == 2) {
 
 		/* Do not use unbuffered i/o for the log files because
 		value 2 denotes that we do not flush the log at every
@@ -3648,7 +3650,7 @@ os_file_get_status(
 			fh = CreateFile(
 				(LPCTSTR) path,		// File to open
 				access,
-				0,			// No sharing
+				FILE_SHARE_READ|FILE_SHARE_WRITE,
 				NULL,			// Default security
 				OPEN_EXISTING,		// Existing file only
 				FILE_ATTRIBUTE_NORMAL,	// Normal file
