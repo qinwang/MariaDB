@@ -25,10 +25,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 extern "C" {
 #endif
 
-  extern ibool srv_compact_backup;
-  extern ibool srv_rebuild_indexes;
-  extern  ibool	srv_backup_mode;
-  extern  ibool	srv_close_files;
   /******************************************************************************
   Callback used in buf_page_io_complete() to detect compacted pages.
   @return TRUE if the page is marked as compacted, FALSE otherwise. */

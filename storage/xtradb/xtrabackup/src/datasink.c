@@ -50,6 +50,7 @@ ds_create(const char *root, ds_type_t type)
 		ds = &datasink_archive;
 #else
 		msg("Error : Xtrabackup was built without archive support");
+		exit(EXIT_FAILURE);
 #endif
 		break;
 	case DS_TYPE_XBSTREAM:
@@ -61,6 +62,7 @@ ds_create(const char *root, ds_type_t type)
 #ifdef HAVE_GCYPT
 	case DS_TYPE_ENCRYPT:
 		ds = &datasink_encrypt;
+		exit(EXIT_FAILURE);
 		break;
 #endif
 	case DS_TYPE_TMPFILE:

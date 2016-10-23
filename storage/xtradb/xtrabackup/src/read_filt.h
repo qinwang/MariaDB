@@ -39,8 +39,8 @@ struct xb_read_filt_ctxt_t {
 	/* Move these to union if any other filters are added in future */
 	xb_page_bitmap_range	*bitmap_range;	/*!< changed page bitmap range
 						iterator for space_id */
-	size_t			page_size;	/*!< page size */
-	ib_int64_t		filter_batch_end;/*!< the ending page id of the
+	size_t		page_size;	/*!< page size */
+	ulint		filter_batch_end;/*!< the ending page id of the
 						 current changed page block in
 						 the bitmap */
 };

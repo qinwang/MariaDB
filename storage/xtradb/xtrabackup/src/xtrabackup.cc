@@ -290,8 +290,8 @@ it every INNOBASE_WAKE_INTERVAL'th step. */
 #define INNOBASE_WAKE_INTERVAL	32
 ulong	innobase_active_counter	= 0;
 
-extern "C" ibool srv_compact_backup = FALSE;
-extern "C" ibool srv_rebuild_indexes = FALSE;
+ibool srv_compact_backup = FALSE;
+ibool srv_rebuild_indexes = FALSE;
 
 static char *xtrabackup_debug_sync = NULL;
 
@@ -3775,7 +3775,7 @@ xtrabackup_backup_func(void)
 	/* We can only use synchronous unbuffered IO on Windows for now */
 	if (srv_file_flush_method_str != NULL) {
 		msg("xtrabackupp: Warning: "
-		    "ignoring innodb_flush_method = %s on Windows.\n");
+		    "ignoring innodb_flush_method = %s on Windows.\n", srv_file_flush_method_str);
 	}
 
 #ifdef _WIN32

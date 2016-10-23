@@ -126,9 +126,9 @@ rf_bitmap_get_next_batch(
 							bytes of the next batch
 							of pages */
 {
-	ib_int64_t 	start_page_id;
+	ulint 	start_page_id;
 
-	start_page_id = ctxt->offset / ctxt->page_size;
+	start_page_id = (ulint)(ctxt->offset / ctxt->page_size);
 
 	xb_a (ctxt->offset % ctxt->page_size == 0);
 
@@ -153,7 +153,7 @@ rf_bitmap_get_next_batch(
 		ctxt->filter_batch_end
 			= xb_page_bitmap_range_get_next_bit(ctxt->bitmap_range,
 							    FALSE);
-		xb_a((ib_int64_t)next_page_id < ctxt->filter_batch_end);
+		xb_a(next_page_id < ctxt->filter_batch_end);
 	}
 
 	*read_batch_start = ctxt->offset;
