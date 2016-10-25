@@ -2834,7 +2834,7 @@ err:
 
 struct encryption_service_st encryption_handler=
 {
-  0, 0, 0, 0, 0, 0, 0
+  0, 0, 0, 0, 0, 0, 0, 0
 };
 
 /*

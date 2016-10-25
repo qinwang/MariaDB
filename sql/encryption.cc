@@ -17,7 +17,7 @@
 #include <mysql/plugin_encryption.h>
 #include "log.h"
 #include "sql_plugin.h"
-#include <my_crypt.h>
+#include <ma_crypto.h>
 
 /* there can be only one encryption plugin enabled */
 static plugin_ref encryption_manager= 0;
@@ -30,17 +30,32 @@ uint no_key(uint)
   return ENCRYPTION_KEY_VERSION_INVALID;
 }
 
+void *ctx_new()
+{
+  return ma_crypto_crypt_new();
+}
+
 static int ctx_init(void *ctx, const unsigned char* key, unsigned int klen,
                     const unsigned char* iv, unsigned int ivlen, int flags,
                     unsigned int key_id, unsigned int key_version)
 {
-  return my_aes_crypt_init(ctx, MY_AES_CBC, flags, key, klen, iv, ivlen);
+  return ma_crypto_crypt_init(ctx, MY_AES_CBC, flags, key, klen, iv, ivlen);
+}
+
+void ctx_deinit(void *ctx)
+{
+  ma_crypto_crypt_deinit(ctx);
+}
+
+unsigned int ctx_size(unsigned int unused1, unsigned int unused2)
+{
+  return ma_crypto_crypt_ctx_size(unused1, unused2);
 }
 
 static unsigned int get_length(unsigned int slen, unsigned int key_id,
                                unsigned int key_version)
 {
-  return my_aes_get_size(MY_AES_CBC, slen);
+  return ma_crypto_crypt_digest_size(MY_AES_CBC, slen);
 }
 
 } /* extern "C" */
@@ -65,20 +80,27 @@ int initialize_encryption_plugin(st_plugin_int *plugin)
     Copmiler on Spark doesn't like the '?' operator here as it
     belives the (uint (*)...) implies the C++ call model.
   */
+ /* 
   if (handle->crypt_ctx_size)
     encryption_handler.encryption_ctx_size_func= handle->crypt_ctx_size;
   else
     encryption_handler.encryption_ctx_size_func=
       (uint (*)(unsigned int, unsigned int))my_aes_ctx_size;
-
+*/
   encryption_handler.encryption_ctx_init_func=
     handle->crypt_ctx_init ? handle->crypt_ctx_init : ctx_init;
 
+  encryption_handler.encryption_ctx_deinit_func=
+    handle->crypt_ctx_deinit ? handle->crypt_ctx_deinit : ctx_deinit;
+
+  encryption_handler.encryption_ctx_size_func=
+    handle->crypt_ctx_size ? handle->crypt_ctx_size : ctx_size;
+
   encryption_handler.encryption_ctx_update_func=
-    handle->crypt_ctx_update ? handle->crypt_ctx_update : my_aes_crypt_update;
+    handle->crypt_ctx_update ? handle->crypt_ctx_update : ma_crypto_crypt_update;
 
   encryption_handler.encryption_ctx_finish_func=
-    handle->crypt_ctx_finish ? handle->crypt_ctx_finish : my_aes_crypt_finish;
+    handle->crypt_ctx_finish ? handle->crypt_ctx_finish : ma_crypto_crypt_finish;
 
   encryption_handler.encryption_encrypted_length_func=
     handle->encrypted_length ? handle->encrypted_length : get_length;
@@ -136,7 +158,7 @@ static uint scheme_get_key(st_encryption_scheme *scheme,
   // Not found!
   scheme->keyserver_requests++;
 
-  uchar global_key[MY_AES_MAX_KEY_LENGTH];
+  uchar global_key[MA_AES_MAX_KEY_LENGTH];
   uint  global_key_len= sizeof(global_key), key_len;
 
   uint rc = encryption_key_get(scheme->key_id, key->version,
@@ -145,9 +167,9 @@ static uint scheme_get_key(st_encryption_scheme *scheme,
     goto ret;
 
   /* Now generate the local key by encrypting IV using the global key */
-  rc = my_aes_crypt(MY_AES_ECB, ENCRYPTION_FLAG_ENCRYPT | ENCRYPTION_FLAG_NOPAD,
-                    scheme->iv, sizeof(scheme->iv), key->key, &key_len,
-                    global_key, global_key_len, NULL, 0);
+  rc = ma_crypto_crypt(MA_AES_ECB, MA_CRYPTO_ENCRYPT | MA_CRYPTO_NOPAD,
+                       scheme->iv, sizeof(scheme->iv), key->key, &key_len,
+                       global_key, global_key_len, NULL, 0);
 
   DBUG_ASSERT(key_len == sizeof(key->key));
 
@@ -210,7 +232,7 @@ int encryption_scheme_encrypt(const unsigned char* src, unsigned int slen,
                               unsigned int i32_2, unsigned long long i64)
 {
   return do_crypt(src, slen, dst, dlen, scheme, key_version, i32_1,
-                  i32_2, i64, ENCRYPTION_FLAG_NOPAD | ENCRYPTION_FLAG_ENCRYPT);
+                  i32_2, i64, MA_CRYPTO_NOPAD | MA_CRYPTO_ENCRYPT);
 }
 
 
@@ -221,5 +243,5 @@ int encryption_scheme_decrypt(const unsigned char* src, unsigned int slen,
                               unsigned int i32_2, unsigned long long i64)
 {
   return do_crypt(src, slen, dst, dlen, scheme, key_version, i32_1,
-                  i32_2, i64, ENCRYPTION_FLAG_NOPAD | ENCRYPTION_FLAG_DECRYPT);
+                  i32_2, i64, MA_CRYPTO_NOPAD | MA_CRYPTO_DECRYPT);
 }

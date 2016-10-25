@@ -28,7 +28,7 @@ Modified           Jan Lindström jan.lindstrom@mariadb.com
 
 #include "univ.i"
 #include "ut0byte.h"
-#include "my_crypt.h"
+#include "ma_crypto.h"
 
 typedef int Crypt_result;
 

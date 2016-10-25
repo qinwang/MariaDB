@@ -13,7 +13,6 @@
  along with this program; if not, write to the Free Software
  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
-
 #include "parser.h"
 #include <mysql/plugin_encryption.h>
 #include <string.h>
@@ -25,9 +24,7 @@ static unsigned long encryption_algorithm;
 static const char *encryption_algorithm_names[]=
 {
   "aes_cbc",
-#ifdef HAVE_EncryptAes128Ctr
   "aes_ctr",
-#endif
   0
 };
 
@@ -48,11 +45,8 @@ static MYSQL_SYSVAR_STR(filekey, filekey,
   "Key to encrypt / decrypt the keyfile.",
   NULL, NULL, "");
 
-#ifdef HAVE_EncryptAes128Ctr
 #define recommendation  ", aes_ctr is the recommended one"
-#else
-#define recommendation  ""
-#endif
+
 static MYSQL_SYSVAR_ENUM(encryption_algorithm, encryption_algorithm,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "Encryption algorithm to use" recommendation ".",
@@ -113,15 +107,8 @@ static unsigned int get_key_from_key_file(unsigned int key_id,
   return 0;
 }
 
-// let's simplify the condition below
-#ifndef HAVE_EncryptAes128Gcm
-#define MY_AES_GCM MY_AES_CTR
-#ifndef HAVE_EncryptAes128Ctr
-#define MY_AES_CTR MY_AES_CBC
-#endif
-#endif
 
-static inline enum my_aes_mode mode(int flags)
+static inline enum ma_crypto_aes_mode mode(int flags)
 {
   /*
     If encryption_algorithm is AES_CTR then
@@ -131,36 +118,37 @@ static inline enum my_aes_mode mode(int flags)
       use AES_CBC
   */
   if (encryption_algorithm)
-    if (flags & ENCRYPTION_FLAG_NOPAD)
-      return MY_AES_CTR;
+    if (flags & MA_CRYPTO_NOPAD)
+      return MA_AES_CTR;
     else
-      return MY_AES_GCM;
+      return MA_AES_GCM;
   else
-    return MY_AES_CBC;
+    return MA_AES_CBC;
 }
 
 static int ctx_init(void *ctx, const unsigned char* key, unsigned int klen,
-                    const unsigned char* iv, unsigned int ivlen, int flags,
-                    unsigned int key_id, unsigned int key_version)
-{
-  return my_aes_crypt_init(ctx, mode(flags), flags, key, klen, iv, ivlen);
-}
+                     const unsigned char* iv, unsigned int ivlen, int flags,
+                     unsigned int key_id, unsigned int key_version)
+ {
+  return ma_crypto_crypt_init(ctx, mode(flags), flags, key, klen, iv, ivlen);
+ }
 
 static unsigned int get_length(unsigned int slen, unsigned int key_id,
                                unsigned int key_version)
 {
-  return my_aes_get_size(mode(0), slen);
+  return ma_crypto_crypt_digest_size(mode(0), slen);
 }
 
 struct st_mariadb_encryption file_key_management_plugin= {
   MariaDB_ENCRYPTION_INTERFACE_VERSION,
   get_latest_version,
   get_key_from_key_file,
-  (uint (*)(unsigned int, unsigned int))my_aes_ctx_size,
+  ma_crypto_crypt_ctx_size,
   ctx_init,
-  my_aes_crypt_update,
-  my_aes_crypt_finish,
-  get_length
+  ma_crypto_crypt_update,
+  ma_crypto_crypt_finish,
+  get_length,
+  ma_crypto_crypt_deinit
 };
 
 static int file_key_management_plugin_init(void *p)
@@ -188,10 +176,10 @@ maria_declare_plugin(file_key_management)
   PLUGIN_LICENSE_GPL,
   file_key_management_plugin_init,
   file_key_management_plugin_deinit,
-  0x0100 /* 1.0 */,
+  0x0101 /* 1.1 */,
   NULL,	/* status variables */
   settings,
-  "1.0",
+  "1.1",
   MariaDB_PLUGIN_MATURITY_STABLE
 }
 maria_declare_plugin_end;

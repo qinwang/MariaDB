@@ -14,7 +14,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 #include <my_sys.h>
-#include <my_crypt.h>
+#include <ma_crypto.h>
 #include <tap.h>
 
 /*** tweaks and stubs for encryption code to compile ***************/
@@ -49,34 +49,31 @@ uint encryption_key_get_func(uint, uint, uchar* key, uint* size)
   return 0;
 }
 
-#ifdef HAVE_EncryptAes128Gcm
-enum my_aes_mode aes_mode= MY_AES_GCM;
-#else
-enum my_aes_mode aes_mode= MY_AES_CBC;
-#endif
+enum ma_crypto_aes_mode aes_mode= MA_AES_GCM;
 
 int encryption_ctx_init_func(void *ctx, const unsigned char* key, unsigned int klen,
                                 const unsigned char* iv, unsigned int ivlen,
                                 int flags, unsigned int key_id,
                                 unsigned int key_version)
 {
-  return my_aes_crypt_init(ctx, aes_mode, flags, key, klen, iv, ivlen);
+  return ma_crypto_crypt_init(ctx, aes_mode, flags, key, klen, iv, ivlen);
 }
 
 uint encryption_encrypted_length_func(unsigned int slen, unsigned int key_id, unsigned int key_version)
 {
-  return my_aes_get_size(aes_mode, slen);
+  return ma_crypto_crypt_digest_size(aes_mode, slen);
 }
 
 struct encryption_service_st encryption_handler=
 {
   encryption_key_get_latest_version_func,
   encryption_key_get_func,
-  (uint (*)(unsigned int, unsigned int))my_aes_ctx_size,
+  ma_crypto_crypt_ctx_size,
   encryption_ctx_init_func,
-  my_aes_crypt_update,
-  my_aes_crypt_finish,
-  encryption_encrypted_length_func
+  ma_crypto_crypt_update,
+  ma_crypto_crypt_finish,
+  encryption_encrypted_length_func,
+  ma_crypto_crypt_deinit,  
 };
 
 void sql_print_information(const char *format, ...)

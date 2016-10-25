@@ -25,16 +25,13 @@ Modified           Jan Lindström jan.lindstrom@mariadb.com
 *******************************************************/
 #include "m_string.h"
 #include "log0crypt.h"
-#include <my_crypt.h>
-#include <my_crypt.h>
+#include <ma_crypto.h>
 
 #include "log0log.h"
 #include "srv0start.h" // for srv_start_lsn
 #include "log0recv.h"  // for recv_sys
 
 #include "ha_prototypes.h" // IB_LOG_
-
-#include "my_crypt.h"
 
 /* Used for debugging */
 // #define DEBUG_CRYPT 1
@@ -171,7 +168,7 @@ log_blocks_crypt(
 	Crypt_result rc = MY_AES_OK;
 	uint dst_len;
 	byte aes_ctr_counter[MY_AES_BLOCK_SIZE];
-	byte is_encrypt= what == ENCRYPTION_FLAG_ENCRYPT;
+	byte is_encrypt= what == MA_CRYPTO_ENCRYPT;
 	lsn_t lsn = is_encrypt ? log_sys->lsn : srv_start_lsn;
 
 	const uint src_len = OS_FILE_LOG_BLOCK_SIZE - LOG_BLOCK_HDR_SIZE;
@@ -198,12 +195,12 @@ log_blocks_crypt(
 		if (info == NULL ||
 		    info->key_version == UNENCRYPTED_KEY_VER ||
 			(log_block_checksum_is_ok_or_old_format(log_block, false) &&
-			 what == ENCRYPTION_FLAG_DECRYPT)) {
+			 what == MA_CRYPTO_DECRYPT)) {
 			memcpy(dst_block, log_block, OS_FILE_LOG_BLOCK_SIZE);
 			goto next;
 		}
 
-		ut_ad(what == ENCRYPTION_FLAG_DECRYPT ? !log_block_checksum_is_ok_or_old_format(log_block, false) :
+		ut_ad(what == MA_CRYPTO_DECRYPT ? !log_block_checksum_is_ok_or_old_format(log_block, false) :
 			log_block_checksum_is_ok_or_old_format(log_block, false));
 
 		// Assume log block header is not encrypted
@@ -223,7 +220,7 @@ log_blocks_crypt(
 					dst_block + LOG_BLOCK_HDR_SIZE, &dst_len,
 					(unsigned char*)(info->crypt_key), 16,
 					aes_ctr_counter, MY_AES_BLOCK_SIZE,
-					what | ENCRYPTION_FLAG_NOPAD,
+					what | MA_CRYPTO_NOPAD,
 					LOG_DEFAULT_ENCRYPTION_KEY,
 					info->key_version);
 
@@ -269,7 +266,7 @@ init_crypt_key(
 	}
 
 	uint dst_len;
-	int err= my_aes_crypt(MY_AES_ECB, ENCRYPTION_FLAG_NOPAD|ENCRYPTION_FLAG_ENCRYPT,
+	int err= my_aes_crypt(MY_AES_ECB, MA_CRYPTO_NOPAD | MA_CRYPTO_ENCRYPT,
                              info->crypt_msg, sizeof(info->crypt_msg), //src, srclen
                              info->crypt_key, &dst_len, //dst, &dstlen
                              (unsigned char*)&mysqld_key, sizeof(mysqld_key),
@@ -346,7 +343,7 @@ log_blocks_encrypt(
 	const ulint size,		/*!< in: size of blocks, must be multiple of a log block */
 	byte* dst_block)		/*!< out: blocks after encryption */
 {
-	return log_blocks_crypt(block, size, dst_block, ENCRYPTION_FLAG_ENCRYPT, NULL);
+	return log_blocks_crypt(block, size, dst_block, MA_CRYPTO_ENCRYPT, NULL);
 }
 
 /*********************************************************************//**
@@ -418,7 +415,7 @@ log_encrypt_before_write(
 	byte* dst_frame = (byte*)malloc(size);
 
 	//encrypt log blocks content
-	Crypt_result result = log_blocks_crypt(block, size, dst_frame, ENCRYPTION_FLAG_ENCRYPT, NULL);
+	Crypt_result result = log_blocks_crypt(block, size, dst_frame, MA_CRYPTO_ENCRYPT, NULL);
 
 	if (result == MY_AES_OK) {
 		ut_ad(block[0] == dst_frame[0]);
@@ -444,7 +441,7 @@ log_decrypt_after_read(
 	byte* dst_frame = (byte*)malloc(size);
 
 	// decrypt log blocks content
-	Crypt_result result = log_blocks_crypt(frame, size, dst_frame, ENCRYPTION_FLAG_DECRYPT, NULL);
+	Crypt_result result = log_blocks_crypt(frame, size, dst_frame, MA_CRYPTO_DECRYPT, NULL);
 
 	if (result == MY_AES_OK) {
 		memcpy(frame, dst_frame, size);

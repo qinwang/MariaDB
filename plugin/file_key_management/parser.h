@@ -20,13 +20,14 @@ A structure and class to keep keys for encryption/decryption.
 Created 09/15/2014
 ***********************************************************************/
 
-#include <my_crypt.h>
+#include <my_config.h>
+#include <ma_crypto.h>
 #include <ctype.h>
 #include <sql_array.h>
 
 struct keyentry {
   unsigned int id;
-  unsigned char key[MY_AES_MAX_KEY_LENGTH];
+  unsigned char key[MA_AES_MAX_KEY_LENGTH];
   unsigned int length;
 };
 

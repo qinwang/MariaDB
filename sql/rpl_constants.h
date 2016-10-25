@@ -18,7 +18,7 @@
 #define RPL_CONSTANTS_H
 
 #include <my_sys.h>
-#include <my_crypt.h>
+#include <ma_crypto.h>
 
 /**
    Enumeration of the incidents that can occur for the server.
@@ -83,14 +83,14 @@ enum enum_binlog_checksum_alg {
 
 #define BINLOG_CRYPTO_SCHEME_LENGTH 1
 #define BINLOG_KEY_VERSION_LENGTH   4
-#define BINLOG_IV_LENGTH            MY_AES_BLOCK_SIZE
+#define BINLOG_IV_LENGTH            MA_AES_BLOCK_SIZE
 #define BINLOG_IV_OFFS_LENGTH       4
 #define BINLOG_NONCE_LENGTH         (BINLOG_IV_LENGTH - BINLOG_IV_OFFS_LENGTH)
 
 struct Binlog_crypt_data {
   uint  scheme;
   uint  key_version, key_length, ctx_size;
-  uchar key[MY_AES_MAX_KEY_LENGTH];
+  uchar key[MA_AES_MAX_KEY_LENGTH];
   uchar nonce[BINLOG_NONCE_LENGTH];
 
   int init(uint sch, uint kv)

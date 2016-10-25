@@ -38,6 +38,7 @@ extern struct my_md5_service_st {
   void (*my_md5_init_type)(void *);
   void (*my_md5_input_type)(void *, const unsigned char *, size_t);
   void (*my_md5_result_type)(void *, unsigned char *);
+  void (*my_md5_deinit_type)(void *);
 } *my_md5_service;
 
 #ifdef MYSQL_DYNAMIC_PLUGIN
@@ -48,6 +49,7 @@ extern struct my_md5_service_st {
 #define my_md5_init(A) my_md5_service->my_md5_init_type(A)
 #define my_md5_input(A,B,C) my_md5_service->my_md5_input_type(A,B,C)
 #define my_md5_result(A,B) my_md5_service->my_md5_result_type(A,B)
+#define my_md5_deinit(A) my_md5_service->my_md5_deinit_type(A)
 
 #else
 
@@ -57,7 +59,7 @@ size_t my_md5_context_size();
 void my_md5_init(void *context);
 void my_md5_input(void *context, const unsigned char *buf, size_t len);
 void my_md5_result(void *context, unsigned char *digest);
-
+void my_md5_deinit(void *context);
 #endif
 
 #ifdef __cplusplus

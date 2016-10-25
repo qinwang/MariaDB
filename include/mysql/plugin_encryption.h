@@ -117,6 +117,10 @@ struct st_mariadb_encryption
     input (a.k.a. compression is not supported).
   */
   unsigned int (*encrypted_length)(unsigned int slen, unsigned int key_id, unsigned int key_version);
+  /**
+    clear crypto context
+  */
+  void (*crypt_ctx_deinit)(void *ctx);
 };
 
 #ifdef __cplusplus

@@ -566,7 +566,7 @@ Stored in LOG_HEADER_FORMAT. */
 #define LOG_CHECKPOINT_ARRAY_END	(32 + 32 * 8)
 #define LOG_CRYPT_VER			(20 + LOG_CHECKPOINT_ARRAY_END)
 #define LOG_CRYPT_MAX_ENTRIES           (5)
-#define LOG_CRYPT_ENTRY_SIZE            (4 + 4 + 2 * MY_AES_BLOCK_SIZE)
+#define LOG_CRYPT_ENTRY_SIZE            (4 + 4 + 2 * MA_AES_BLOCK_SIZE)
 #define LOG_CRYPT_SIZE                  (1 + 1 +			\
 					 (LOG_CRYPT_MAX_ENTRIES *	\
 					  LOG_CRYPT_ENTRY_SIZE))

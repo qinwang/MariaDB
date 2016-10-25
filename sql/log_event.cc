@@ -1235,7 +1235,7 @@ int Log_event_writer::write_header(uchar *pos, size_t len)
     uchar iv[BINLOG_IV_LENGTH];
     crypto->set_iv(iv, my_b_safe_tell(file));
     if (encryption_ctx_init(ctx, crypto->key, crypto->key_length,
-           iv, sizeof(iv), ENCRYPTION_FLAG_ENCRYPT | ENCRYPTION_FLAG_NOPAD,
+           iv, sizeof(iv), MA_CRYPTO_ENCRYPT | MA_CRYPTO_NOPAD,
            ENCRYPTION_KEY_SYSTEM_DATA, crypto->key_version))
       DBUG_RETURN(1);
 
@@ -1271,7 +1271,7 @@ int Log_event_writer::write_footer()
   if (ctx)
   {
     uint dstlen;
-    uchar dst[MY_AES_BLOCK_SIZE*2];
+    uchar dst[MA_AES_BLOCK_SIZE*2];
     if (encryption_ctx_finish(ctx, dst, &dstlen))
       DBUG_RETURN(1);
     if (maybe_write_event_len(dst, dstlen) || write_internal(dst, dstlen))
@@ -1425,7 +1425,7 @@ int Log_event::read_log_event(IO_CACHE* file, String* packet,
     memcpy(src + EVENT_LEN_OFFSET, src, 4);
     if (encryption_crypt(src + 4, data_len - 4, dst + 4, &dstlen,
             fdle->crypto_data.key, fdle->crypto_data.key_length, iv,
-            sizeof(iv), ENCRYPTION_FLAG_DECRYPT | ENCRYPTION_FLAG_NOPAD,
+            sizeof(iv), MA_CRYPTO_DECRYPT | MA_CRYPTO_NOPAD,
             ENCRYPTION_KEY_SYSTEM_DATA, fdle->crypto_data.key_version))
     {
       my_free(newpkt);

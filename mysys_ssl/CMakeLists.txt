@@ -21,25 +21,29 @@ IF(SSL_DEFINES)
 ADD_DEFINITIONS(${SSL_DEFINES})
 ENDIF()
 
-# We do RESTRICT_SYMBOL_EXPORTS(yassl) elsewhere.
-# In order to get correct symbol visibility, these files
-# must be compiled with "-fvisibility=hidden"
-IF(WITH_SSL STREQUAL "bundled" AND HAVE_VISIBILITY_HIDDEN)
-  SET_SOURCE_FILES_PROPERTIES(
-    my_md5.cc
-    my_sha1.cc
-    my_sha2.cc
-    PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
-ENDIF()
+# this needs to be removed - after viossl support for gnutls and schannel
+# was implemented
+  IF(WITH_CRYPTO STREQUAL "gnutls")
+    pkg_check_modules(GNUTLS REQUIRED gnutls)
+    SET(CRYPTO_LIBRARIES ${GNUTLS_LDFLAGS})
+    pkg_check_modules(NETTLE REQUIRED nettle)
+    SET(CRYPTO_LIBRARIES ${CRYPTO_LIBRARIES} ${NETTLE_LDFLAGS})
+    MESSAGE("CRYPTO_LIBRARIES ${CRYPTO_LIBRARIES}")
+    ADD_DEFINITIONS(-DHAVE_CRYPTO_GNUTLS)
+  ELSEIF(WITH_CRYPTO STREQUAL "bcrypt")
+  	ADD_DEFINITIONS(-DHAVE_CRYPTO_BCRYPT)
+  ELSE()
+    ADD_DEFINITIONS(-DHAVE_CRYPTO_OPENSSL)
+  	SET(CRYPTO_LIBRARIES ${SSL_LIBRARIES})
+  ENDIF()        
 
 SET(MYSYS_SSL_SOURCES
-    my_sha1.cc
-    my_sha2.cc
     my_md5.cc
-    my_rnd.cc
-    my_crypt.cc
+    my_sha1.cc
+    ma_crypto_hash.c
+    ma_crypto_crypt.c
    )
 
 ADD_CONVENIENCE_LIBRARY(mysys_ssl ${MYSYS_SSL_SOURCES})
-TARGET_LINK_LIBRARIES(mysys_ssl dbug strings ${SSL_LIBRARIES})
+TARGET_LINK_LIBRARIES(mysys_ssl dbug strings ${CRYPTO_LIBRARIES})
 DTRACE_INSTRUMENT(mysys_ssl)

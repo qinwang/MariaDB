@@ -16,7 +16,7 @@
 
 #include <my_global.h>
 #include <my_sys.h>
-#include <my_crypt.h>
+#include <ma_crypto.h>
 #include <tap.h>
 #include <string.h>
 #include <ctype.h>
@@ -25,15 +25,15 @@
   SKIP_BLOCK_IF(mode == 0xDEADBEAF, nopad ? 4 : 5, #mode " not supported")     \
   {                                                                     \
     memset(src, fill, src_len= slen);                                   \
-    ok(my_aes_crypt(mode, nopad | ENCRYPTION_FLAG_ENCRYPT,              \
+    ok(ma_crypto_crypt(mode, nopad | MA_CRYPTO_ENCRYPT,                 \
                     src, src_len, dst, &dst_len,                        \
                     key, sizeof(key), iv, sizeof(iv)) == MY_AES_OK,     \
       "encrypt " #mode " %u %s", src_len, nopad ? "nopad" : "pad");     \
     if (!nopad)                                                         \
-      ok (dst_len == my_aes_get_size(mode, src_len), "my_aes_get_size");\
-    my_md5(md5, (char*)dst, dst_len);                                   \
+      ok (dst_len == ma_crypto_crypt_digest_size(mode, src_len), "ma_crypto_digest_size");\
+    ma_crypto_hash(MA_CRYPTO_HASH_MD5, md5, (unsigned char*)dst, dst_len);                                   \
     ok(dst_len == dlen && memcmp(md5, hash, sizeof(md5)) == 0, "md5");  \
-    ok(my_aes_crypt(mode, nopad | ENCRYPTION_FLAG_DECRYPT,              \
+    ok(ma_crypto_crypt(mode, nopad | MA_CRYPTO_DECRYPT,                 \
                     dst, dst_len, ddst, &ddst_len,                      \
                     key, sizeof(key), iv, sizeof(iv)) == MY_AES_OK,     \
        "decrypt " #mode " %u", dst_len);                                \
@@ -41,24 +41,19 @@
   }
 
 #define DO_TEST_P(M,S,F,D,H) DO_TEST(M,0,S,F,D,H)
-#define DO_TEST_N(M,S,F,D,H) DO_TEST(M,ENCRYPTION_FLAG_NOPAD,S,F,D,H)
+#define DO_TEST_N(M,S,F,D,H) DO_TEST(M,MA_CRYPTO_NOPAD,S,F,D,H)
 
 /* useful macro for debugging */
 #define PRINT_MD5()                                     \
   do {                                                  \
     uint i;                                             \
     printf("\"");                                       \
-    for (i=0; i < sizeof(md5); i++)                     \
+    for (i=0; i < sizeof(md5); i++)             :        \
       printf("\\x%02x", md5[i]);                        \
     printf("\"\n");                                     \
   } while(0);
 
-#ifndef HAVE_EncryptAes128Ctr
-const uint MY_AES_CTR=0xDEADBEAF;
-#endif
-#ifndef HAVE_EncryptAes128Gcm
-const uint MY_AES_GCM=0xDEADBEAF;
-#endif
+
 
 int
 main(int argc __attribute__((unused)),char *argv[])
@@ -70,6 +65,7 @@ main(int argc __attribute__((unused)),char *argv[])
   uint src_len, dst_len, ddst_len;
 
   MY_INIT(argv[0]);
+  ma_crypto_init();
 
   plan(87);
   DO_TEST_P(MY_AES_ECB, 200, '.', 208, "\xd8\x73\x8e\x3a\xbc\x66\x99\x13\x7f\x90\x23\x52\xee\x97\x6f\x9a");
@@ -94,6 +90,7 @@ main(int argc __attribute__((unused)),char *argv[])
   DO_TEST_N(MY_AES_CBC, 8, '@',  8, "\xb8\x53\x97\xb9\x40\xa6\x98\xaf\x0c\x7b\x9a\xac\xad\x7e\x3c\xe0");
   DO_TEST_P(MY_AES_GCM, 9, '?', 25, "\x5e\x05\xfd\xb2\x8e\x17\x04\x1e\xff\x6d\x71\x81\xcd\x85\x8d\xb5");
 
+  ma_crypto_deinit();
   my_end(0);
   return exit_status();
 }

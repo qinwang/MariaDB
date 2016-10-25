@@ -2136,6 +2136,7 @@ static void mysqld_exit(int exit_code)
     but if a kill -15 signal was sent, the signal thread did
     spawn the kill_server_thread thread, which is running concurrently.
   */
+  ma_crypto_deinit();
   rpl_deinit_gtid_waiting();
   rpl_deinit_gtid_slave_state();
   wait_for_signal_thread_to_end();
@@ -3113,7 +3114,7 @@ bool one_thread_per_connection_end(THD *thd, bool put_in_cache)
 
   DBUG_PRINT("info", ("killing thread"));
   DBUG_LEAVE;                                   // Must match DBUG_ENTER()
-#if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
+#if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY) && OPENSSL_VERSION_NUMBER < 0x10100000L
   ERR_remove_state(0);
 #endif
   my_thread_end();
@@ -4980,6 +4981,12 @@ static int init_server_components()
   mdl_init();
   if (tdc_init() || hostname_cache_init())
     unireg_abort(1);
+
+  if (ma_crypto_init())
+  {
+    sql_print_error("couldn't initialize crypto subsystem");
+    unireg_abort(1);
+  }
 
   query_cache_set_min_res_unit(query_cache_min_res_unit);
   query_cache_result_size_limit(query_cache_limit);

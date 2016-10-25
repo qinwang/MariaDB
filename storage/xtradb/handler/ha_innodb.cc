@@ -9258,6 +9258,7 @@ wsrep_calc_row_hash(
 	}
 
 	my_md5_result(ctx, digest);
+  my_md5_deinit(ctx);
 
 	return(0);
 }

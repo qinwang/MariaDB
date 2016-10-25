@@ -66,7 +66,8 @@ static struct my_sha1_service_st my_sha1_handler = {
   my_sha1_context_size,
   my_sha1_init,
   my_sha1_input,
-  my_sha1_result
+  my_sha1_result,
+  ma_crypto_hash_deinit
 };
 
 static struct my_md5_service_st my_md5_handler = {
@@ -75,7 +76,8 @@ static struct my_md5_service_st my_md5_handler = {
   my_md5_context_size,
   my_md5_init,
   my_md5_input,
-  my_md5_result
+  my_md5_result,
+  ma_crypto_hash_deinit
 };
 
 static struct logger_service_st logger_service_handler= {
