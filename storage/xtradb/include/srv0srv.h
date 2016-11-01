@@ -550,6 +550,11 @@ extern ibool	srv_apply_log_only;
 
 extern ibool	srv_backup_mode;
 extern ibool	srv_close_files;
+extern ibool	srv_compact_backup;
+extern ibool	srv_rebuild_indexes;
+extern ibool	srv_xtrabackup;
+
+#define IS_XTRABACKUP() (srv_xtrabackup)
 
 extern my_bool	srv_force_primary_key;
 

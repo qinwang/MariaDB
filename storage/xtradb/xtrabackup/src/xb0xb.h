@@ -25,13 +25,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 extern "C" {
 #endif
 
-  /******************************************************************************
-  Callback used in buf_page_io_complete() to detect compacted pages.
-  @return TRUE if the page is marked as compacted, FALSE otherwise. */
-  ibool
-    buf_page_is_compacted(
-    /*==================*/
-    const byte*	page);	/*!< in: a database page */
 
   /******************************************************************************
   Rebuild all secondary indexes in all tables in separate spaces. Called from

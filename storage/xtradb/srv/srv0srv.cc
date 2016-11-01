@@ -540,6 +540,9 @@ UNIV_INTERN ibool	srv_apply_log_only	= FALSE;
 
 UNIV_INTERN ibool	srv_backup_mode	= FALSE;
 UNIV_INTERN ibool	srv_close_files = TRUE;
+UNIV_INTERN ibool srv_compact_backup = FALSE;
+UNIV_INTERN ibool srv_rebuild_indexes = FALSE;
+UNIV_INTERN ibool	srv_xtrabackup = FALSE;
 
 UNIV_INTERN ulong	srv_pass_corrupt_table = 0; /* 0:disable 1:enable */
 

@@ -964,6 +964,18 @@ dict_get_first_path(
 	mtr_start(&mtr);
 
 	sys_datafiles = dict_table_get_low("SYS_DATAFILES");
+
+	/* SYS_DATAFILES does not necessarily exist on XtraBackup recovery. See
+	comments around dict_create_or_check_foreign_constraint_tables() in
+	innobase_start_or_create_for_mysql(). */
+	if (IS_XTRABACKUP() && !sys_datafiles) {
+
+		mtr_commit(&mtr);
+		mem_heap_free(heap);
+
+		return(NULL);
+	}
+
 	sys_index = UT_LIST_GET_FIRST(sys_datafiles->indexes);
 	ut_ad(!dict_table_is_comp(sys_datafiles));
 	ut_ad(name_of_col_is(sys_datafiles, sys_index,
@@ -1102,6 +1114,10 @@ dict_insert_tablespace_and_filepath(
 	return(err);
 }
 
+/* Set by Xtrabackup */
+my_bool (*dict_check_if_skip_table)(const char*	name) = 0;
+
+
 /********************************************************************//**
 This function looks at each table defined in SYS_TABLES.  It checks the
 tablespace for any table with a space_id > 0.  It looks up the tablespace
@@ -1223,6 +1239,9 @@ loop:
 
 		bool		is_temp = false;
 		bool		discarded = false;
+		bool		print_error_if_does_not_exist;
+		bool		remove_from_data_dict_if_does_not_exist;
+
 		ib_uint32_t	flags2 = static_cast<ib_uint32_t>(
 			mach_read_from_4(field));
 
@@ -1247,13 +1266,25 @@ loop:
 			goto next_tablespace;
 		}
 
+		ut_a(!IS_XTRABACKUP() || dict_check_if_skip_table);
+
+		if (is_temp || discarded || 
+			(IS_XTRABACKUP() && dict_check_if_skip_table(name))) {
+			print_error_if_does_not_exist = false;
+		}
+		else {
+			print_error_if_does_not_exist = true;
+		}
+
+		remove_from_data_dict_if_does_not_exist = !(is_temp || discarded);
+
 		switch (dict_check) {
 		case DICT_CHECK_ALL_LOADED:
 			/* All tablespaces should have been found in
 			fil_load_single_table_tablespaces(). */
 			if (fil_space_for_table_exists_in_mem(
-				space_id, name, TRUE, !(is_temp || discarded),
-				false, NULL, 0)
+				space_id, name, TRUE, print_error_if_does_not_exist,
+				remove_from_data_dict_if_does_not_exist , false, NULL, 0)
 			    && !(is_temp || discarded)) {
 				/* If user changes the path of .ibd files in
 				   *.isl files before doing crash recovery ,
@@ -1286,7 +1317,7 @@ loop:
 			trx_resurrect_table_locks(). */
 			if (fil_space_for_table_exists_in_mem(
 				    space_id, name, FALSE, FALSE,
-				    false, NULL, 0)) {
+				    false, false, NULL, 0)) {
 				break;
 			}
 			/* fall through */
@@ -2540,7 +2571,7 @@ err_exit:
 		table->ibd_file_missing = TRUE;
 
 	} else if (!fil_space_for_table_exists_in_mem(
-			table->space, name, FALSE, FALSE, true, heap,
+			table->space, name, FALSE, FALSE, IS_XTRABACKUP(), false, heap,
 			table->id)) {
 
 		if (DICT_TF2_FLAG_IS_SET(table, DICT_TF2_TEMPORARY)) {

@@ -290,8 +290,6 @@ it every INNOBASE_WAKE_INTERVAL'th step. */
 #define INNOBASE_WAKE_INTERVAL	32
 ulong	innobase_active_counter	= 0;
 
-ibool srv_compact_backup = FALSE;
-ibool srv_rebuild_indexes = FALSE;
 
 static char *xtrabackup_debug_sync = NULL;
 
@@ -6753,12 +6751,19 @@ xb_init()
 	return(true);
 }
 
+extern my_bool(*dict_check_if_skip_table)(const char*	name);
+
 /* ================= main =================== */
 
 int main(int argc, char **argv)
 {
 	int ho_error;
 	char **argv_defaults;
+
+	/* Setup some variables for Innodb.*/
+
+	srv_xtrabackup = TRUE;
+	dict_check_if_skip_table = check_if_skip_table;
 
 	setup_signals();
 

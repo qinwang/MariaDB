@@ -882,11 +882,16 @@ buf_read_ibuf_merge_pages(
 		if (UNIV_UNLIKELY(err == DB_TABLESPACE_DELETED)) {
 tablespace_deleted:
 			/* We have deleted or are deleting the single-table
-			tablespace: remove the entries for that page */
-
-			ibuf_merge_or_delete_for_page(NULL, space_ids[i],
-						      page_nos[i],
-						      zip_size, FALSE);
+			tablespace: remove the entries for that page. in Xtrabackup.
+			remove entries for tablespace. */
+			if (!IS_XTRABACKUP()) {
+				ibuf_merge_or_delete_for_page(NULL, space_ids[i],
+					page_nos[i],
+					zip_size, FALSE);
+			}
+			else {
+				ibuf_delete_for_discarded_space(space_ids[i]);
+			}
 		}
 	}
 

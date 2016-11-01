@@ -1083,8 +1083,10 @@ skip_size_check:
 			/* This is the earliest location where we can load
 			the double write buffer. */
 			if (i == 0) {
+				/* XtraBackup never loads corrupted pages from
+				the doublewrite buffer */
 				buf_dblwr_init_or_load_pages(
-					files[i], srv_data_file_names[i], true);
+					files[i], srv_data_file_names[i], IS_XTRABACKUP()?false: true);
 			}
 
 			bool retry = true;

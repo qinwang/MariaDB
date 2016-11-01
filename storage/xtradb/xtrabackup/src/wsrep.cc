@@ -180,7 +180,9 @@ xb_write_galera_info()
 	memset(&xid, 0, sizeof(xid));
 	xid.formatID = -1;
 
-	trx_sys_read_wsrep_checkpoint(&xid);
+	if (!trx_sys_read_wsrep_checkpoint(&xid)) {
+		return;
+	}
 
 	if (wsrep_uuid_print(wsrep_xid_uuid(&xid), uuid_str,
 			     sizeof(uuid_str)) < 0) {

@@ -2033,7 +2033,7 @@ os_file_create_func(
 #ifdef UNIV_NON_BUFFERED_IO
 	// TODO: Create a bug, this looks wrong. The flush log
 	// parameter is dynamic.
-	if (type == OS_LOG_FILE && !srv_backup_mode && thd_flush_log_at_trx_commit(NULL) == 2) {
+	if (type == OS_LOG_FILE && !IS_XTRABACKUP() && thd_flush_log_at_trx_commit(NULL) == 2) {
 
 		/* Do not use unbuffered i/o for the log files because
 		value 2 denotes that we do not flush the log at every

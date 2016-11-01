@@ -116,6 +116,16 @@ _increment_page_get_statistics(buf_block_t* block, trx_t* trx)
 	return;
 }
 
+/******************************************************************************
+Callback used in buf_page_io_complete() to detect compacted pages.
+@return TRUE if the page is marked as compacted, FALSE otherwise. */
+static ibool buf_page_is_compacted(
+/*==================*/
+const byte*	page)	/*!< in: a database page */
+{
+	return !memcmp(page + FIL_PAGE_DATA, "COMPACTP", 8);
+}
+
 #ifdef HAVE_LZO
 #include "lzo/lzo1x.h"
 #endif
@@ -796,13 +806,18 @@ buf_page_is_corrupted(
 	if (checksum_field1 == 0 && checksum_field2 == 0
 	    && *reinterpret_cast<const ib_uint64_t*>(read_buf +
 						     FIL_PAGE_LSN) == 0) {
-		/* make sure that the page is really empty */
-		for (ulint i = 0; i < UNIV_PAGE_SIZE; i++) {
-			if (read_buf[i] != 0) {
-				ib_logf(IB_LOG_LEVEL_INFO,
-					"Checksum fields zero but page is not empty.");
-
-				return(TRUE);
+		/* make sure that the page is really empty .
+			But in Xtrabackup, skip this check.
+			is incompatible with 1st newly-created tablespace pages, which
+			have FIL_PAGE_FIL_FLUSH_LSN != 0, FIL_PAGE_OR_CHKSUM == 0,
+			FIL_PAGE_END_LSN_OLD_CHKSUM == 0 */
+		if (!IS_XTRABACKUP()) {
+			for (ulint i = 0; i < UNIV_PAGE_SIZE; i++) {
+				if (read_buf[i] != 0) {
+					ib_logf(IB_LOG_LEVEL_INFO,
+					"Checksum fields zero but page is not empty.");´
+					return(TRUE);
+				}
 			}
 		}
 
@@ -1217,6 +1232,7 @@ buf_block_init(
 	block->page.in_flush_list = FALSE;
 	block->page.in_free_list = FALSE;
 	block->page.in_LRU_list = FALSE;
+	block->page.is_compacted = FALSE;
 	block->in_unzip_LRU_list = FALSE;
 #endif /* UNIV_DEBUG */
 #if defined UNIV_AHI_DEBUG || defined UNIV_DEBUG
@@ -4735,6 +4751,12 @@ buf_page_io_complete(
 			frame = ((buf_block_t*) bpage)->frame;
 		}
 
+		/* Do not validate, recover and apply change buffer entries to
+		bogus pages which replace skipped pages in compact backups. */
+		if (IS_XTRABACKUP() && srv_compact_backup && buf_page_is_compacted(frame)) {
+			bpage->is_compacted = TRUE;
+		}
+
 		/* If this page is not uninitialized and not in the
 		doublewrite buffer, then the page number and space id
 		should be the same as in block. */
@@ -4902,7 +4924,8 @@ database_corrupted:
 
 		if (uncompressed && !recv_no_ibuf_operations
 		    && fil_page_get_type(frame) == FIL_PAGE_INDEX
-		    && page_is_leaf(frame)) {
+		    && page_is_leaf(frame))
+		    && !(IS_XTRABACKUP() && bpage->is_compacted)) {
 
 			buf_block_t*	block;
 			ibool		update_ibuf_bitmap;
