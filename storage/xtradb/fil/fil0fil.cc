@@ -4160,7 +4160,7 @@ fil_open_single_table_tablespace(
 			"See " REFMAN "innodb-troubleshooting-datadict.html "
 			"for how to resolve the issue.",
 			tablename);
-		if (!IS_XTRABACKUP()) {
+		if (IS_XTRABACKUP()) {
 			ib_logf(IB_LOG_LEVEL_WARN,
 			"It will be removed from the data dictionary.");
 
