@@ -1683,6 +1683,10 @@ os_file_create_simple_no_error_handling_func(
 		return((os_file_t) -1);
 	}
 
+	if (IS_XTRABACKUP()) {
+		share_mode |= FILE_SHARE_DELETE | FILE_SHARE_WRITE;
+	}
+
 	file = CreateFile((LPCTSTR) name,
 			  access,
 			  share_mode,

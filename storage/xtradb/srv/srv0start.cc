@@ -1431,7 +1431,7 @@ srv_undo_tablespaces_init(
 	we build the undo_tablespace_ids ourselves since they don't
 	already exist. */
 
-	if (!create_new_db) {
+	if (!create_new_db && !backup_mode) {
 		n_undo_tablespaces = trx_rseg_get_n_undo_tablespaces(
 			undo_tablespace_ids);
 	} else {
