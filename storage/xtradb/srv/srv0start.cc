@@ -2320,7 +2320,7 @@ innobase_start_or_create_for_mysql(void)
 					max_flushed_lsn = min_flushed_lsn
 						= log_get_lsn();
 					goto files_checked;
-				} else if (i < 2) {
+				} else if (i < 2 && !IS_XTRABACKUP()) {
 					/* must have at least 2 log files */
 					ib_logf(IB_LOG_LEVEL_ERROR,
 						"Only one log file found.");
@@ -3367,7 +3367,7 @@ innobase_shutdown_for_mysql(void)
 
 	srv_was_started = FALSE;
 	srv_start_has_been_called = FALSE;
-
+	io_tid_i = 0;
 	return(DB_SUCCESS);
 }
 #endif /* !UNIV_HOTBACKUP */

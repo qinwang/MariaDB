@@ -1088,7 +1088,7 @@ trx_start_low(
 	lifetime. Any change in session/global fake_changes configuration during
 	lifetime of transaction will not be honored by already started
 	transaction. */
-	trx->fake_changes = thd_fake_changes(trx->mysql_thd);
+	trx->fake_changes = IS_XTRABACKUP() ? FALSE: thd_fake_changes(trx->mysql_thd);
 
 	ut_ad(!trx->in_rw_trx_list);
 	ut_ad(!trx->in_ro_trx_list);

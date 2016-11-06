@@ -4615,7 +4615,7 @@ xtrabackup_init_temp_log(void)
 	ibool		success;
 
 	ulint		field;
-	byte		log_buf[UNIV_PAGE_SIZE_MAX * 128]; /* 2 MB */
+	byte*		log_buf= (byte *)malloc(UNIV_PAGE_SIZE_MAX * 128); /* 2 MB */
 
 	ib_int64_t	file_size;
 
@@ -4628,6 +4628,10 @@ xtrabackup_init_temp_log(void)
 	bool		checkpoint_found;
 
 	max_no = 0;
+
+	if (!log_buf) {
+		goto error;
+	}
 
 	if (!xb_init_log_block_size()) {
 		goto error;
@@ -4876,15 +4880,17 @@ not_consistent:
 		goto error;
 	}
 	xtrabackup_logfile_is_renamed = TRUE;
-
+	free(log_buf);
 	return(FALSE);
 
 skip_modify:
+	free(log_buf);
 	os_file_close(src_file);
 	src_file = XB_FILE_UNDEFINED;
 	return(FALSE);
 
 error:
+	free(log_buf);
 	if (src_file != XB_FILE_UNDEFINED)
 		os_file_close(src_file);
 	msg("xtrabackup: Error: xtrabackup_init_temp_log() failed.\n");
@@ -6221,8 +6227,6 @@ skip_check:
 
 		xb_filter_hash_free(inc_dir_tables_hash);
 	}
-	sync_close();
-	sync_initialized = FALSE;
 	if (fil_system) {
 		fil_close();
 	}
@@ -6231,6 +6235,8 @@ skip_check:
 	ut_free_all_mem();
 
 	innodb_free_param();
+	sync_close();
+	sync_initialized = FALSE;
 
 	/* Reset the configuration as it might have been changed by
 	xb_data_files_init(). */
@@ -6245,6 +6251,12 @@ skip_check:
 	if(srv_n_file_io_threads < 10) {
 		srv_n_read_io_threads = 4;
 		srv_n_write_io_threads = 4;
+	}
+
+	btr_search_index_num = 1;
+	if (!innobase_log_arch_dir) {
+		static char default_dir[3] = "./";
+		srv_arch_dir = default_dir;
 	}
 
 	if (innobase_log_arch_dir) {
