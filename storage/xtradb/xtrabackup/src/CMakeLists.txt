@@ -24,7 +24,7 @@ OPTION(WITH_XTRABACKUP_ARCHIVE "Include xtrabackup streaming features" ON)
 IF(WITH_XTRABACKUP_ARCHIVE)
   FIND_PACKAGE(libArchive QUIET)
   IF(LibArchive_FOUND)
-    ADD_DEFINITIONS(-DHAVE_EXTRABACKUP_ARCHIVE)
+    ADD_DEFINITIONS(-DHAVE_XTRABACKUP_ARCHIVE)
     INCLUDE_DIRECTORIES(LibArchive_INCLUDE_DIRS)
     LINK_LIBRARIES(LibArchive_LIBRARIES)
     SET(DS_ARCHIVE_SOURCE ds_archive.c)
@@ -39,7 +39,6 @@ INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}/storage/xtradb/include
   ${CMAKE_SOURCE_DIR}/sql
   ${CMAKE_CURRENT_SOURCE_DIR}/quicklz
-  #${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}
   )
 
@@ -86,13 +85,14 @@ TARGET_LINK_LIBRARIES(xtrabackup
   )
 
 IF(UNIX)
-########################################################################
-# innobackupex symlink
-########################################################################
-ADD_CUSTOM_COMMAND(TARGET xtrabackup
+  # innobackupex symlink
+  ADD_CUSTOM_COMMAND(TARGET xtrabackup
                    COMMAND ${CMAKE_COMMAND} ARGS -E create_symlink
                            xtrabackup innobackupex)
-INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/innobackupex DESTINATION ${INSTALL_BINDIR})
+  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/innobackupex DESTINATION ${INSTALL_BINDIR})
+ELSE()
+  # Windows
+  INSTALL(FILES innobackupex.bat DESTINATION ${INSTALL_BINDIR})
 ENDIF(UNIX)
 
 ########################################################################
