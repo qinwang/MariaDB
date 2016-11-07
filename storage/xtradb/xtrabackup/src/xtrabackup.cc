@@ -6646,42 +6646,6 @@ error:
 }
 
 /**************************************************************************
-Signals-related setup. */
-static
-void
-setup_signals()
-/*===========*/
-{
-#ifndef _WIN32
-  struct sigaction sa;
-	/* Print a stacktrace on some signals */
-	sa.sa_flags = SA_RESETHAND | SA_NODEFER;
-	sigemptyset(&sa.sa_mask);
-	sigprocmask(SIG_SETMASK,&sa.sa_mask,NULL);
-#endif
-#ifdef HAVE_STACKTRACE
-	my_init_stacktrace();
-#endif
-#ifndef _WIN32
-	sa.sa_handler = handle_fatal_signal;
-	sigaction(SIGSEGV, &sa, NULL);
-	sigaction(SIGABRT, &sa, NULL);
-	sigaction(SIGBUS, &sa, NULL);
-	sigaction(SIGILL, &sa, NULL);
-	sigaction(SIGFPE, &sa, NULL);
-#endif
-#ifdef __linux__
-	/* Ensure xtrabackup process is killed when the parent one
-	(innobackupex) is terminated with an unhandled signal */
-
-	if (prctl(PR_SET_PDEATHSIG, SIGKILL)) {
-		msg("prctl() failed with errno = %d\n", errno);
-		exit(EXIT_FAILURE);
-	}
-#endif
-}
-
-/**************************************************************************
 Append group name to xb_load_default_groups list. */
 static
 void
@@ -6766,6 +6730,7 @@ xb_init()
 extern my_bool(*dict_check_if_skip_table)(const char*	name);
 
 /* ================= main =================== */
+extern void init_signals(void);
 
 int main(int argc, char **argv)
 {
@@ -6776,8 +6741,8 @@ int main(int argc, char **argv)
 
 	srv_xtrabackup = TRUE;
 	dict_check_if_skip_table = check_if_skip_table;
-
-	setup_signals();
+	opt_stack_trace = 1;
+	init_signals();
 
 	MY_INIT(argv[0]);
 

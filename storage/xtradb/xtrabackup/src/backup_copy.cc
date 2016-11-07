@@ -1626,7 +1626,7 @@ copy_back()
 	/* temporally dummy value to avoid crash */
 	srv_page_size_shift = 14;
 	srv_page_size = (1 << srv_page_size_shift);
-	//os_sync_init();
+	os_sync_init();
 	sync_init();
 	os_io_init_simple();
 	mem_init(srv_mem_pool_size);
@@ -1814,13 +1814,12 @@ cleanup:
 
 	ds_data = NULL;
 
-	sync_close();
-	sync_initialized = FALSE;
 	//os_sync_free();
 	mem_close();
 	//os_sync_mutex = NULL;
 	ut_free_all_mem();
-
+	sync_close();
+	sync_initialized = FALSE;
 	return(ret);
 }
 

@@ -3166,7 +3166,7 @@ LONG WINAPI my_unhandler_exception_filter(EXCEPTION_POINTERS *ex_pointers)
 }
 
 
-static void init_signals(void)
+void init_signals(void)
 {
   if(opt_console)
     SetConsoleCtrlHandler(console_event_handler,TRUE);
@@ -3297,7 +3297,7 @@ static size_t my_setstacksize(pthread_attr_t *attr, size_t stacksize)
 
 #ifndef EMBEDDED_LIBRARY
 
-static void init_signals(void)
+void init_signals(void)
 {
   sigset_t set;
   struct sigaction sa;
