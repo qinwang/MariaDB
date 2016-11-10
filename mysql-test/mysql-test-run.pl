@@ -2043,6 +2043,20 @@ sub mysqlbinlog_arguments () {
   return mtr_args2str($exe, @$args);
 }
 
+sub xtrabackup_arguments () {
+  my $exe=
+    mtr_exe_maybe_exists(
+      "$bindir/storage/xtradb/xtrabackup/src$opt_vs_config/xtrabackup",
+      "$path_client_bindir/xtrabackup");
+  if (!$exe) {
+    return "";
+  }
+  my $args;
+  mtr_init_args(\$args);
+  mtr_add_arg($args, "--defaults-file=%s", $path_config_file);
+  client_debug_arg($args, "xtrabackup");
+  return mtr_args2str($exe, @$args);
+}
 
 sub mysqlslap_arguments () {
   my $exe= mtr_exe_maybe_exists("$path_client_bindir/mysqlslap");
@@ -2297,6 +2311,7 @@ sub environment_setup {
   $ENV{'MYSQL_UPGRADE'}=            client_arguments("mysql_upgrade");
   $ENV{'MYSQLADMIN'}=               client_arguments("mysqladmin");
   $ENV{'MYSQL_CLIENT_TEST'}=        mysql_client_test_arguments();
+  $ENV{'XTRABACKUP'}=               xtrabackup_arguments();
   $ENV{'EXE_MYSQL'}=                $exe_mysql;
   $ENV{'MYSQL_PLUGIN'}=             $exe_mysql_plugin;
   $ENV{'MYSQL_EMBEDDED'}=           $exe_mysql_embedded;
