@@ -1,0 +1,35 @@
+call mtr.add_suppression("InnoDB: New log files created");
+--enable_quiet_exec
+
+let $basedir=$MYSQLTEST_VARDIR/tmp/backup;
+let $incremental_dir=$MYSQLTEST_VARDIR/tmp/backup_inc1;
+
+
+CREATE TABLE t(i INT) ENGINE INNODB;
+INSERT INTO t VALUES(1);
+
+
+# Create full backup , modify table, then create incremental/differential backup
+exec $XTRABACKUP --user=root --backup --target-dir=$basedir;
+
+INSERT INTO t VALUES(2);
+SELECT * FROM t;
+exec $XTRABACKUP --user=root --backup --target-dir=$incremental_dir --incremental-basedir=$basedir;
+
+
+# Prepare full backup, apply incremental one
+exec $XTRABACKUP --prepare --apply-log-only --target-dir=$basedir;
+exec $XTRABACKUP --prepare --target-dir=$basedir --incremental-dir=$incremental_dir >$MYSQLTEST_VARDIR/log/excremental.log ;
+
+# Restore and check results
+let $targetdir=$basedir;
+-- source include/restart_and_restore.inc
+
+SELECT * FROM t;
+DROP TABLE t;
+
+# Cleanup
+force-rmdir $basedir;
+force-rmdir $incremental_dir;
+
+--disable_quiet_exec
