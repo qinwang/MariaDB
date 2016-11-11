@@ -6820,6 +6820,14 @@ int main(int argc, char **argv)
 		if (prepare && target_dir) {
 			snprintf(conf_file, sizeof(conf_file),
 				 "%s/backup-my.cnf", target_dir);
+			if (!strncmp(argv[1], "--defaults-file=", 16)) {
+				/* Remove defaults-file*/
+				for (int i = 2; ; i++) {
+					if ((argv[i-1]= argv[i]) == 0)
+						break;
+				}
+				argc--;
+			}
 		}
 		if (load_defaults(conf_file, xb_load_default_groups,
 				  &argc, &argv)) {

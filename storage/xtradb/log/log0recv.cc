@@ -3557,6 +3557,7 @@ recv_recovery_from_checkpoint_finish(void)
 #ifdef __WIN__
 	if (recv_writer_thread_handle) {
 		CloseHandle(recv_writer_thread_handle);
+		recv_writer_thread_handle = 0;
 	}
 #endif /* __WIN__ */
 
