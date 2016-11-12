@@ -3088,6 +3088,7 @@ xb_fil_io_init(void)
 	fil_init(srv_file_per_table ? 50000 : 5000, LONG_MAX);
 
 	fsp_init();
+
 }
 
 /****************************************************************************
@@ -3800,6 +3801,11 @@ xtrabackup_backup_func(void)
 
 	srv_general_init();
 	ut_crc32_init();
+
+#ifdef WITH_INNODB_DISALLOW_WRITES
+	srv_allow_writes_event = os_event_create();
+	os_event_set(srv_allow_writes_event);
+#endif
 
 	xb_filters_init();
 
@@ -6168,6 +6174,11 @@ skip_check:
 	os_io_init_simple();
 	mem_init(srv_mem_pool_size);
 	ut_crc32_init();
+
+#ifdef WITH_INNODB_DISALLOW_WRITES
+	srv_allow_writes_event = os_event_create();
+	os_event_set(srv_allow_writes_event);
+#endif
 
 	xb_filters_init();
 
