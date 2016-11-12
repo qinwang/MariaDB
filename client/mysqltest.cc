@@ -4012,7 +4012,7 @@ void do_rmdir(struct st_command *command, bool force)
   int error=force ? rmdir_force(ds_dirname.str): rmdir(ds_dirname.str) ;
 
   if (error)
-    handle_command_error(command, error, errno);
+    handle_command_error(command, 1, errno);
   dynstr_free(&ds_dirname);
   DBUG_VOID_RETURN;
 }
