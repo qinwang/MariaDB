@@ -9,7 +9,7 @@ CREATE TABLE t(i INT) ENGINE INNODB;
 INSERT INTO t VALUES(1);
 
 
-# Create full backup , modify table, then create incremental/differential backup
+echo # Create full backup , modify table, then create incremental/differential backup;
 exec $XTRABACKUP --user=root --backup --target-dir=$basedir;
 
 INSERT INTO t VALUES(2);
@@ -17,11 +17,11 @@ SELECT * FROM t;
 exec $XTRABACKUP --user=root --backup --target-dir=$incremental_dir --incremental-basedir=$basedir;
 
 
-# Prepare full backup, apply incremental one
+echo # Prepare full backup, apply incremental one;
 exec $XTRABACKUP --prepare --apply-log-only --target-dir=$basedir;
 exec $XTRABACKUP --prepare --target-dir=$basedir --incremental-dir=$incremental_dir >$MYSQLTEST_VARDIR/log/excremental.log ;
 
-# Restore and check results
+echo # Restore and check results;
 let $targetdir=$basedir;
 -- source include/restart_and_restore.inc
 
