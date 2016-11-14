@@ -130,7 +130,7 @@ UNIV_INTERN os_ib_mutex_t	os_file_seek_mutexes[OS_FILE_N_SEEK_MUTEXES];
 #define OS_AIO_MERGE_N_CONSECUTIVE	64
 
 #ifdef WITH_INNODB_DISALLOW_WRITES
-#define WAIT_ALLOW_WRITES() os_event_wait(srv_allow_writes_event)
+#define WAIT_ALLOW_WRITES() if (!IS_XTRABACKUP()) os_event_wait(srv_allow_writes_event)
 #else
 #define WAIT_ALLOW_WRITES() do { } while (0)
 #endif /* WITH_INNODB_DISALLOW_WRITES */
