@@ -1830,7 +1830,7 @@ decrypt_decompress_file(const char *filepath, uint thread_n)
 	char *dest_filepath = strdup(filepath);
 	bool needs_action = false;
 
-	cmd << "cat " << filepath;
+	cmd << IF_WIN("type ","cat ") << filepath;
 
  	if (ends_with(filepath, ".xbcrypt") && opt_decrypt) {
  		cmd << " | xbcrypt --decrypt --encrypt-algo="

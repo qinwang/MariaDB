@@ -108,10 +108,11 @@ MYSQL_ADD_EXECUTABLE(xbstream
   xbstream_write.c
   )
 
-SET_TARGET_PROPERTIES(xbstream
-        PROPERTIES LINKER_LANGUAGE CXX
-        )
 
 TARGET_LINK_LIBRARIES(xbstream
   mysys
 )
+
+IF(MSVC)
+  SET_TARGET_PROPERTIES(xbstream PROPERTIES LINK_FLAGS setargv.obj)
+ENDIF()

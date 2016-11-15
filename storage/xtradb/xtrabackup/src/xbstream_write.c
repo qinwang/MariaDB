@@ -54,7 +54,7 @@ xb_stream_default_write_callback(xb_wstream_file_t *file __attribute__((unused))
 				 void *userdata __attribute__((unused)),
 				 const void *buf, size_t len)
 {
-	if (my_write(fileno(stdout), buf, len, MYF(MY_WME | MY_NABP)))
+	if (my_write(my_fileno(stdout), buf, len, MYF(MY_WME | MY_NABP)))
 		return -1;
 	return len;
 }
@@ -90,7 +90,19 @@ xb_stream_write_open(xb_wstream_t *stream, const char *path,
 					       path_len + 1, MYF(MY_FAE));
 
 	file->path = (char *) (file + 1);
+#ifdef _WIN32
+	/* Normalize path on Windows, so we can restore elsewhere.*/
+	{
+		int i;
+		for (i = 0; ; i++) {
+			file->path[i] = (path[i] == '\\') ? '/' : path[i];
+			if (!path[i])
+				break;
+		}
+	}
+#else
 	memcpy(file->path, path, path_len + 1);
+#endif
 	file->path_len = path_len;
 
 	file->stream = stream;

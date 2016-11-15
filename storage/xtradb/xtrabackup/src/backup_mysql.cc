@@ -1423,7 +1423,7 @@ write_xtrabackup_info(MYSQL *connection)
 		server_version,  /* server_version */
 		buf_start_time,  /* start_time */
 		buf_end_time,  /* end_time */
-		history_lock_time, /* lock_time */
+		(int)history_lock_time, /* lock_time */
 		mysql_binlog_position ?
 			mysql_binlog_position : "", /* binlog_pos */
 		incremental_lsn, /* innodb_from_lsn */
