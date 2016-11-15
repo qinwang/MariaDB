@@ -6404,6 +6404,11 @@ skip_check:
 
 			/* node exist == file exist, here */
 			strcpy(info_file_path, node->name);
+#ifdef _WIN32
+			for (int i = 0; info_file_path[i]; i++)
+				if (info_file_path[i] == '\\')
+					info_file_path[i]= '/';
+#endif
 			strcpy(info_file_path +
 			       strlen(info_file_path) -
 			       4, ".exp");
@@ -6412,7 +6417,7 @@ skip_check:
 
 			p = info_file_path;
 			prev = NULL;
-			while ((next = strchr(p, SRV_PATH_SEPARATOR)) != NULL)
+			while ((next = strchr(p, '/')) != NULL)
 			{
 				prev = p;
 				p = next + 1;
