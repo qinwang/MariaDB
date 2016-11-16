@@ -11,5 +11,3 @@ SELECT * FROM t;
 i
 1
 DROP TABLE t;
-# backup/unpack compressed stream
-mkdir D:/work/10.1/xxx/mysql-test/var/tmp/backup
