@@ -1,0 +1,27 @@
+# Export single table from backup
+# (xtrabackup with --prepare --export)
+--enable_quiet_exec
+CREATE TABLE t1(i INT) ENGINE INNODB;
+INSERT INTO t1 VALUES(1);
+CREATE TABLE t2(i int) ENGINE INNODB;
+
+echo # xtrabackup backup;
+let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
+exec $XTRABACKUP --backup "--tables=test.*1" --target-dir=$targetdir;
+INSERT INTO t1 VALUES(2);
+
+echo # xtrabackup prepare;
+exec $XTRABACKUP --prepare --export --target-dir=$targetdir;
+
+
+ALTER TABLE t1 DISCARD TABLESPACE;
+let $MYSQLD_DATADIR= `select @@datadir`;
+copy_file $targetdir/test/t1.ibd $MYSQLD_DATADIR/test/t1.ibd;
+copy_file $targetdir/test/t1.cfg $MYSQLD_DATADIR/test/t1.cfg;
+ALTER TABLE t1 IMPORT TABLESPACE;
+
+SELECT * FROM t1;
+DROP TABLE t1;
+DROP TABLE t2;
+force-rmdir $targetdir;
+--disable_quiet_exec

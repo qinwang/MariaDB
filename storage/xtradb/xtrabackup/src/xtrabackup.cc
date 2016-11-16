@@ -3507,7 +3507,7 @@ xb_filters_free()
 	while (UT_LIST_GET_LEN(regex_list) > 0) {
 		xb_regex_list_node_t*	node = UT_LIST_GET_FIRST(regex_list);
 		UT_LIST_REMOVE(regex_list, regex_list, node);
-		pcre_free(&node->regex);
+		regfree(&node->regex);
 		ut_free(node);
 	}
 
