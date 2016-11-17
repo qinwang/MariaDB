@@ -2107,7 +2107,7 @@ thd_flush_log_at_trx_commit(
 /*================================*/
 	void*	thd)
 {
-	return(THDVAR((THD*) thd, flush_log_at_trx_commit));
+	return(IS_XTRABACKUP() ? 0 : THDVAR((THD*)thd, flush_log_at_trx_commit));
 }
 
 /********************************************************************//**

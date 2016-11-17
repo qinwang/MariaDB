@@ -8,7 +8,7 @@ CREATE TABLE t2(i int) ENGINE INNODB;
 echo # xtrabackup backup;
 let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
 exec $XTRABACKUP --backup "--tables=test.*1" --target-dir=$targetdir;
-INSERT INTO t1 VALUES(2);
+list_files $targetdir/test *.ibd;
 
 echo # xtrabackup prepare;
 exec $XTRABACKUP --prepare --export --target-dir=$targetdir;

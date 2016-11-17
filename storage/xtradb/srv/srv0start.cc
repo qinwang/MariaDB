@@ -2800,6 +2800,9 @@ files_checked:
 		thread_started[4 + SRV_MAX_N_IO_THREADS] = true;
 	}
 
+	if (!IS_XTRABACKUP()) {
+	/* Do not re-create system tables in XtraBackup */
+
 	/* Create the SYS_FOREIGN and SYS_FOREIGN_COLS system tables */
 	err = dict_create_or_check_foreign_constraint_tables();
 	if (err != DB_SUCCESS) {
@@ -2820,6 +2823,8 @@ files_checked:
 	if (err != DB_SUCCESS) {
 		return(err);
 	}
+
+	} /* !IS_XTRABACKUP() */
 
 	srv_is_being_started = FALSE;
 

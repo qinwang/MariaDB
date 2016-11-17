@@ -2175,7 +2175,7 @@ check_if_skip_table(
 
 	dbname = NULL;
 	tbname = name;
-	while ((ptr = strchr(tbname, SRV_PATH_SEPARATOR)) != NULL) {
+	while ((ptr = strchr(tbname, '/')) != NULL) {
 		dbname = tbname;
 		tbname = ptr + 1;
 	}
@@ -6758,6 +6758,7 @@ int main(int argc, char **argv)
 	srv_xtrabackup = TRUE;
 	dict_check_if_skip_table = check_if_skip_table;
 	opt_stack_trace = 1;
+	sf_leaking_memory = 0; /* don't report memory leaks on early exist */
 	init_signals();
 
 	MY_INIT(argv[0]);
