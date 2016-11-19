@@ -4367,6 +4367,32 @@ bool select_create::send_eof()
   */
   if (!table->s->tmp_table)
   {
+#ifdef WITH_WSREP
+    /*
+      Append table level exclusive key for CTAS.
+    */
+    wsrep_key_arr_t key_arr= {0, 0};
+    wsrep_prepare_keys_for_isolation(thd,
+				     create_table->db,
+				     create_table->table_name,
+				     table_list,
+				     &key_arr);
+    int rcode = wsrep->append_key(
+			      wsrep,
+			      &thd->wsrep_ws_handle,
+			      key_arr.keys, //&wkey,
+			      key_arr.keys_len,
+			      WSREP_KEY_EXCLUSIVE,
+			      false);
+    wsrep_keys_free(&key_arr);
+    if (rcode) {
+      DBUG_PRINT("wsrep", ("row key failed: %d", rcode));
+      WSREP_ERROR("Appending table key for CTAS failed: %s, %d",
+                  thd->query() ? thd->query() : "void", rcode);
+      abort_result_set();
+      DBUG_RETURN(true);
+    }
+#endif /* WITH_WSREP */
     trans_commit_stmt(thd);
     if (!(thd->variables.option_bits & OPTION_GTID_BEGIN))
       trans_commit_implicit(thd);

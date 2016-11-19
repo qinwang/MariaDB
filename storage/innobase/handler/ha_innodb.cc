@@ -8328,6 +8328,7 @@ report_error:
 	    wsrep_thd_exec_mode(user_thd) == LOCAL_STATE &&
 	    wsrep_on(user_thd)                           &&
 	    !wsrep_consistency_check(user_thd)           &&
+	    (sql_command != SQLCOM_CREATE_TABLE)         &&
 	    !wsrep_thd_ignore_table(user_thd))
 	{
 		if (wsrep_append_keys(user_thd, false, record, NULL))
