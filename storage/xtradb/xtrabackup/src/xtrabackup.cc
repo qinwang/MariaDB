@@ -140,6 +140,8 @@ lsn_t xtrabackup_archived_to_lsn = 0; /* for --archived-to-lsn */
 
 char *xtrabackup_tables = NULL;
 
+char *xtrabackup_tmpdir;
+
 /* List of regular expressions for filtering */
 typedef struct xb_regex_list_node_struct xb_regex_list_node_t;
 struct xb_regex_list_node_struct {
@@ -683,7 +685,13 @@ struct my_option xb_long_options[] =
    REQUIRED_ARG, 1, 1, INT_MAX, 0, 0, 0},
 
   {"stream", OPT_XTRA_STREAM, "Stream all backup files to the standard output "
-   "in the specified format. Currently the only supported format is 'tar'.",
+   "in the specified format." 
+#ifdef HAVE_LIBARCHIVE
+   "Supported formats are 'tar' and 'xbstream'."
+#else
+   "Supported format is 'xbstream'."
+#endif
+   ,
    (G_PTR*) &xtrabackup_stream_str, (G_PTR*) &xtrabackup_stream_str, 0, GET_STR,
    REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 
@@ -1510,7 +1518,7 @@ innodb_init_param(void)
 
 	if (init_tmpdir(&mysql_tmpdir_list, opt_mysql_tmpdir))
 		exit(EXIT_FAILURE);
-
+	xtrabackup_tmpdir = my_tmpdir(&mysql_tmpdir_list);
 	/* dummy for initialize all_charsets[] */
 	get_charset_name(0);
 

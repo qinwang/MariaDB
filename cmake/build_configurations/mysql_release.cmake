@@ -141,6 +141,9 @@ IF(UNIX)
 
 ENDIF()
 
+# Xtrabackup with libarchive for tar suppport
+SET(WITH_LIBARCHIVE ON CACHE STRING "")
+
 # Compiler options
 IF(UNIX)  
 

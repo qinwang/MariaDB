@@ -158,7 +158,7 @@ END {
 
 sub env_or_val($$) { defined $ENV{$_[0]} ? $ENV{$_[0]} : $_[1] }
 
-my $path_config_file;           # The generated config file, var/my.cnf
+our $path_config_file;           # The generated config file, var/my.cnf
 
 # Visual Studio produces executables in different sub-directories based on the
 # configuration used to build them.  To make life easier, an environment
@@ -1972,9 +1972,6 @@ sub executable_setup () {
   $exe_mysqladmin=     mtr_exe_exists("$path_client_bindir/mysqladmin");
   $exe_mysql=          mtr_exe_exists("$path_client_bindir/mysql");
   $exe_mysql_plugin=   mtr_exe_exists("$path_client_bindir/mysql_plugin");
-  $exe_xbstream=       mtr_exe_maybe_exists(
-      "$bindir/storage/xtradb/xtrabackup/src$opt_vs_config/xbstream",
-      "$path_client_bindir/xbstream");
   $exe_mysql_embedded= mtr_exe_maybe_exists("$basedir/libmysqld/examples/mysql_embedded");
 
   # Look for mysqltest executable
@@ -2047,20 +2044,6 @@ sub mysqlbinlog_arguments () {
   return mtr_args2str($exe, @$args);
 }
 
-sub xtrabackup_arguments () {
-  my $exe=
-    mtr_exe_maybe_exists(
-      "$bindir/storage/xtradb/xtrabackup/src$opt_vs_config/xtrabackup",
-      "$path_client_bindir/xtrabackup");
-  if (!$exe) {
-    return "";
-  }
-  my $args;
-  mtr_init_args(\$args);
-  mtr_add_arg($args, "--defaults-file=%s", $path_config_file);
-  client_debug_arg($args, "xtrabackup");
-  return mtr_args2str($exe, @$args);
-}
 
 sub mysqlslap_arguments () {
   my $exe= mtr_exe_maybe_exists("$path_client_bindir/mysqlslap");
@@ -2315,9 +2298,7 @@ sub environment_setup {
   $ENV{'MYSQL_UPGRADE'}=            client_arguments("mysql_upgrade");
   $ENV{'MYSQLADMIN'}=               client_arguments("mysqladmin");
   $ENV{'MYSQL_CLIENT_TEST'}=        mysql_client_test_arguments();
-  $ENV{'XTRABACKUP'}=               xtrabackup_arguments();
 
-  $ENV{'XBSTREAM'}=                 native_path($exe_xbstream);
   $ENV{'EXE_MYSQL'}=                $exe_mysql;
   $ENV{'MYSQL_PLUGIN'}=             $exe_mysql_plugin;
   $ENV{'MYSQL_EMBEDDED'}=           $exe_mysql_embedded;

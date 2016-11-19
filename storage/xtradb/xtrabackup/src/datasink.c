@@ -46,10 +46,10 @@ ds_create(const char *root, ds_type_t type)
 		ds = &datasink_local;
 		break;
 	case DS_TYPE_ARCHIVE:
-#ifdef HAVE_EXTRABACKUP_ARCHIVE
+#ifdef HAVE_LIBARCHIVE
 		ds = &datasink_archive;
 #else
-		msg("Error : Xtrabackup was built without archive support");
+		msg("Error : Xtrabackup was built without libarchive support");
 		exit(EXIT_FAILURE);
 #endif
 		break;

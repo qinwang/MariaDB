@@ -1,13 +1,22 @@
+if (`select $HAVE_TAR = 0`) 
+{
+  --skip No tar
+}
+if (`select $HAVE_XTRABACKUP_TAR_SUPPORT = 0`)
+{
+  --skip Compiled without libarchive
+}
+
 --enable_quiet_exec
 CREATE TABLE t(i INT) ENGINE INNODB;
 INSERT INTO t VALUES(1);
+
 echo # xtrabackup backup;
 let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
-exec $XTRABACKUP --backup --target-dir=$targetdir;
+mkdir $targetdir;
 
-INSERT INTO t VALUES(2);
+exec $XTRABACKUP --backup --stream=tar |  tar -C $targetdir -x ;
 echo # xtrabackup prepare;
-
 exec $XTRABACKUP --prepare --target-dir=$targetdir;
 
 -- source include/restart_and_restore.inc
@@ -15,4 +24,4 @@ exec $XTRABACKUP --prepare --target-dir=$targetdir;
 SELECT * FROM t;
 DROP TABLE t;
 force-rmdir $targetdir;
---enable_quiet_exec
+--disable_quiet_exec
