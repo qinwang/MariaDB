@@ -24,7 +24,7 @@ SELECT (VARIABLE_VALUE >= 0) AS HAVE_COMPRESSED_PAGES
 
 echo # xtrabackup backup;
 let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
-exec $XTRABACKUP --backup "--tables=test.*1" --target-dir=$targetdir;
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf  --backup "--tables=test.*1" --target-dir=$targetdir;
 
 echo # xtrabackup prepare;
 exec $XTRABACKUP --prepare --export --target-dir=$targetdir;

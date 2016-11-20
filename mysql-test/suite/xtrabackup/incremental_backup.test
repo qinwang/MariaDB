@@ -10,16 +10,16 @@ INSERT INTO t VALUES(1);
 
 
 echo # Create full backup , modify table, then create incremental/differential backup;
-exec $XTRABACKUP --user=root --backup --target-dir=$basedir;
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf  --backup --target-dir=$basedir;
 
 INSERT INTO t VALUES(2);
 SELECT * FROM t;
-exec $XTRABACKUP --user=root --backup --target-dir=$incremental_dir --incremental-basedir=$basedir;
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf  --backup --target-dir=$incremental_dir --incremental-basedir=$basedir;
 
 
 echo # Prepare full backup, apply incremental one;
 exec $XTRABACKUP --prepare --apply-log-only --target-dir=$basedir;
-exec $XTRABACKUP --prepare --target-dir=$basedir --incremental-dir=$incremental_dir >$MYSQLTEST_VARDIR/log/excremental.log ;
+exec $XTRABACKUP --prepare --target-dir=$basedir --incremental-dir=$incremental_dir ;
 
 echo # Restore and check results;
 let $targetdir=$basedir;

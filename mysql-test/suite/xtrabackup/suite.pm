@@ -14,11 +14,8 @@ my $xtrabackup_exe=
 
 return "No xtrabackup" if !$xtrabackup_exe;
 
-my $args;
-::mtr_init_args(\$args);
-::mtr_add_arg($args, "--defaults-file=%s", $::path_config_file);
-::client_debug_arg($args, "xtrabackup");
-$ENV{XTRABACKUP}= ::mtr_args2str($xtrabackup_exe, @$args);
+
+$ENV{XTRABACKUP}= $xtrabackup_exe;
 
 $ENV{XBSTREAM}= ::mtr_exe_maybe_exists(
       "$::bindir/storage/xtradb/xtrabackup/src$::opt_vs_config/xbstream",
