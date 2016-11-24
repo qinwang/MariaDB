@@ -92,6 +92,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "backup_copy.h"
 #include "backup_mysql.h"
 #include "xb0xb.h"
+#include "encryption_plugin.h"
 
 /* TODO: replace with appropriate macros used in InnoDB 5.6 */
 #define PAGE_ZIP_MIN_SIZE_SHIFT	10
@@ -312,6 +313,8 @@ lsn_t xtrabackup_arch_first_file_lsn = 0ULL;
 lsn_t xtrabackup_arch_last_file_lsn = 0ULL;
 
 ulong xb_open_files_limit= 0;
+char *xb_plugin_dir;
+char *xb_plugin_load;
 my_bool xb_close_files= FALSE;
 
 /* Datasinks */
@@ -561,6 +564,8 @@ enum options_xtrabackup
   OPT_XTRA_INCREMENTAL_FORCE_SCAN,
   OPT_DEFAULTS_GROUP,
   OPT_OPEN_FILES_LIMIT,
+  OPT_PLUGIN_DIR,
+  OPT_PLUGIN_LOAD,
   OPT_CLOSE_FILES,
   OPT_CORE_FILE,
 
@@ -957,6 +962,15 @@ Disable with --skip-innodb-doublewrite.", (G_PTR*) &innobase_use_doublewrite,
    "descriptors to reserve with setrlimit().",
    (G_PTR*) &xb_open_files_limit, (G_PTR*) &xb_open_files_limit, 0, GET_ULONG,
    REQUIRED_ARG, 0, 0, UINT_MAX, 0, 1, 0},
+
+
+   { "plugin-dir", OPT_PLUGIN_LOAD, "Server plugin directory",
+      &xb_plugin_dir, &xb_plugin_dir,
+       0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0 },
+
+   { "plugin-load", OPT_PLUGIN_LOAD, "encrypton plugin to load",
+      &xb_plugin_load, &xb_plugin_load, 
+      0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0 },
 
   {"close_files", OPT_CLOSE_FILES, "do not keep files opened. Use at your own "
    "risk.", (G_PTR*) &xb_close_files, (G_PTR*) &xb_close_files, 0, GET_BOOL,
@@ -6744,6 +6758,8 @@ xb_init()
 			return(false);
 		}
 
+		encryption_plugin_read_vars(mysql_connection);
+		encryption_plugin_init(0, 0);
 		history_start_time = time(NULL);
 
 	}
@@ -7097,8 +7113,10 @@ int main(int argc, char **argv)
 		xtrabackup_stats_func();
 
 	/* --prepare */
-	if (xtrabackup_prepare)
+	if (xtrabackup_prepare) {
+		encryption_plugin_init(argc, argv);
 		xtrabackup_prepare_func();
+	}
 
 	if (xtrabackup_copy_back || xtrabackup_move_back) {
 		if (!check_if_param_set("datadir")) {

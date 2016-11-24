@@ -138,6 +138,7 @@ MYSQL_ADD_EXECUTABLE(xtrabackup
   xbstream_write.c
   backup_mysql.cc
   backup_copy.cc
+  encryption_plugin.cc
   ${PROJECT_SOURCE_DIR}/libmysql/libmysql.c
   )
 

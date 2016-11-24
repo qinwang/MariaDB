@@ -328,6 +328,9 @@ static void reap_plugins(void);
 
 static void report_error(int where_to, uint error, ...)
 {
+   if (!my_default_lc_messages)
+    return;
+
   va_list args;
   DBUG_ASSERT(where_to & (REPORT_TO_USER | REPORT_TO_LOG));
   if (where_to & REPORT_TO_USER)
@@ -1614,23 +1617,29 @@ int plugin_init(int *argc, char **argv, int flags)
     }
   }
 
-  /* First, we initialize only MyISAM - that should always succeed */
-  plugin_ptr= plugin_find_internal(&MyISAM, MYSQL_STORAGE_ENGINE_PLUGIN);
-  DBUG_ASSERT(plugin_ptr);
-  DBUG_ASSERT(plugin_ptr->load_option == PLUGIN_FORCE);
-
-  if (plugin_initialize(&tmp_root, plugin_ptr, argc, argv, false))
-    goto err_unlock;
-
   /*
-    set the global default storage engine variable so that it will
-    not be null in any child thread.
+    First, we initialize only MyISAM - that should almost always succeed
+    (almost always, because plugins can be loaded outside of the server, too.
   */
-  global_system_variables.table_plugin=
-    intern_plugin_lock(NULL, plugin_int_to_ref(plugin_ptr));
-  DBUG_ASSERT(plugin_ptr->ref_count == 1);
+  plugin_ptr= plugin_find_internal(&MyISAM, MYSQL_STORAGE_ENGINE_PLUGIN);
+  DBUG_ASSERT(plugin_ptr || !mysql_mandatory_plugins[0]);
+  if (plugin_ptr)
+  {
+    DBUG_ASSERT(plugin_ptr->load_option == PLUGIN_FORCE);
 
-  mysql_mutex_unlock(&LOCK_plugin);
+    if (plugin_initialize(&tmp_root, plugin_ptr, argc, argv, false))
+      goto err_unlock;
+
+    /*
+      set the global default storage engine variable so that it will
+      not be null in any child thread.
+    */
+    global_system_variables.table_plugin =
+      intern_plugin_lock(NULL, plugin_int_to_ref(plugin_ptr));
+      DBUG_ASSERT(plugin_ptr->ref_count == 1);
+
+    mysql_mutex_unlock(&LOCK_plugin);
+  }
 
   /* Register (not initialize!) all dynamic plugins */
   if (!(flags & PLUGIN_INIT_SKIP_DYNAMIC_LOADING))
