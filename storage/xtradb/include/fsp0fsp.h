@@ -153,6 +153,9 @@ dictionary */
 
 		((~(~0U << FSP_FLAGS_WIDTH_ATOMIC_WRITES))	\
 		<< FSP_FLAGS_POS_ATOMIC_WRITES)
+
+		((~(~0U << FSP_FLAGS_WIDTH_ATOMIC_WRITES))	\
+		<< FSP_FLAGS_POS_ATOMIC_WRITES)
 /** Return the value of the POST_ANTELOPE field */
 #define FSP_FLAGS_GET_POST_ANTELOPE(flags)			\
 		((flags & FSP_FLAGS_MASK_POST_ANTELOPE)		\
