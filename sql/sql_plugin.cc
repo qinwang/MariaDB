@@ -1638,8 +1638,8 @@ int plugin_init(int *argc, char **argv, int flags)
       intern_plugin_lock(NULL, plugin_int_to_ref(plugin_ptr));
       DBUG_ASSERT(plugin_ptr->ref_count == 1);
 
-    mysql_mutex_unlock(&LOCK_plugin);
   }
+  mysql_mutex_unlock(&LOCK_plugin);
 
   /* Register (not initialize!) all dynamic plugins */
   if (!(flags & PLUGIN_INIT_SKIP_DYNAMIC_LOADING))
