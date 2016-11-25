@@ -93,6 +93,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "backup_mysql.h"
 #include "xb0xb.h"
 #include "encryption_plugin.h"
+#include <sql_plugin.h>
 
 /* TODO: replace with appropriate macros used in InnoDB 5.6 */
 #define PAGE_ZIP_MIN_SIZE_SHIFT	10
@@ -6116,7 +6117,7 @@ store_binlog_info(
 }
 
 static void
-xtrabackup_prepare_func(void)
+xtrabackup_prepare_func(int argc, char ** argv)
 {
 	ulint	err;
 	datafiles_iter_t	*it;
@@ -6132,7 +6133,10 @@ xtrabackup_prepare_func(void)
 		    xtrabackup_real_target_dir);
 		exit(EXIT_FAILURE);
 	}
-	msg("xtrabackup: cd to %s\n", xtrabackup_real_target_dir);
+
+  msg("xtrabackup: cd to %s\n", xtrabackup_real_target_dir);
+
+  encryption_plugin_prepare_init(argc, argv);
 
 	xtrabackup_target_dir= mysql_data_home_buff;
 	xtrabackup_target_dir[0]=FN_CURLIB;		// all paths are relative from here
@@ -6758,8 +6762,7 @@ xb_init()
 			return(false);
 		}
 
-		encryption_plugin_read_vars(mysql_connection);
-		encryption_plugin_init(0, 0);
+		encryption_plugin_backup_init(mysql_connection);
 		history_start_time = time(NULL);
 
 	}
@@ -6772,6 +6775,46 @@ extern my_bool(*dict_check_if_skip_table)(const char*	name);
 /* ================= main =================== */
 extern void init_signals(void);
 
+#include <sql_locale.h>
+
+/* Messages . Avoid loading errmsg.sys file */
+void setup_error_messages()
+{
+  static  const char *all_msgs[ER_ERROR_LAST - ER_ERROR_FIRST +1];
+  my_default_lc_messages = &my_locale_en_US;
+  my_default_lc_messages->errmsgs->errmsgs = all_msgs;
+
+  /* Populate the necessary error messages */
+  struct {
+    int id;
+    const char *fmt;
+  }
+  xb_msgs[] =
+  {
+  { ER_DATABASE_NAME,"Database" },
+  { ER_TABLE_NAME,"Table"},
+  { ER_PARTITION_NAME, "Partition" },
+  { ER_SUBPARTITION_NAME, "Subpartition" },
+  { ER_TEMPORARY_NAME, "Temporary"},
+  { ER_RENAMED_NAME, "Renamed"},
+  { ER_CANT_FIND_DL_ENTRY, "Can't find symbol '%-.128s' in library"},
+  { ER_CANT_OPEN_LIBRARY, "Can't open shared library '%-.192s' (errno: %d, %-.128s)" },
+  { ER_OUTOFMEMORY, "Out of memory; restart server and try again (needed %d bytes)" },
+  { ER_CANT_OPEN_LIBRARY, "Can't open shared library '%-.192s' (errno: %d, %-.128s)" },
+  { ER_UDF_NO_PATHS, "No paths allowed for shared library" },
+  { ER_CANT_INITIALIZE_UDF,"Can't initialize function '%-.192s'; %-.80s"},
+  { ER_PLUGIN_IS_NOT_LOADED,"Plugin '%-.192s' is not loaded" }
+  };
+
+  for (int i = 0; i < array_elements(all_msgs); i++)
+    all_msgs[i] = "Unknown error";
+
+  for (int i = 0; i < array_elements(xb_msgs); i++)
+    all_msgs[xb_msgs[i].id - ER_ERROR_FIRST] = xb_msgs[i].fmt;
+}
+
+
+
 int main(int argc, char **argv)
 {
 	int ho_error;
@@ -6780,10 +6823,8 @@ int main(int argc, char **argv)
 	/* Setup some variables for Innodb.*/
 
 	srv_xtrabackup = TRUE;
-	dict_check_if_skip_table = check_if_skip_table;
-	opt_stack_trace = 1;
-	sf_leaking_memory = 0; /* don't report memory leaks on early exist */
-	init_signals();
+
+
 
 	MY_INIT(argv[0]);
 
@@ -6798,7 +6839,19 @@ int main(int argc, char **argv)
 	}
 
 	system_charset_info= &my_charset_utf8_general_ci;
+  files_charset_info = &my_charset_utf8_general_ci;
+
+  dict_check_if_skip_table = check_if_skip_table;
+
+  init_signals();
 	key_map_full.set_all();
+
+  setup_error_messages();
+  sys_var_init();
+  plugin_mutex_init();
+  mysql_rwlock_init(key_rwlock_LOCK_system_variables_hash, &LOCK_system_variables_hash);
+  opt_stack_trace = 1;
+  sf_leaking_memory = 0; /* don't report memory leaks on early exist */
 
 	/* scan options for group and config file to load defaults from */
 	{
@@ -7114,8 +7167,7 @@ int main(int argc, char **argv)
 
 	/* --prepare */
 	if (xtrabackup_prepare) {
-		encryption_plugin_init(argc, argv);
-		xtrabackup_prepare_func();
+		xtrabackup_prepare_func(argc, argv);
 	}
 
 	if (xtrabackup_copy_back || xtrabackup_move_back) {

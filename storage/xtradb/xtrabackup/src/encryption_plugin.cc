@@ -1,42 +1,59 @@
 #include <mysqld.h>
 #include <mysql.h>
 #include <xtrabackup.h>
-
+#include <encryption_plugin.h>
+#include <backup_copy.h>
 #include <sql_plugin.h>
-#include <vector>
+#include <sstream>
 #include <common.h>
 
 
 extern struct st_maria_plugin *mysql_optional_plugins[];
 extern struct st_maria_plugin *mysql_mandatory_plugins[];
+static void encryption_plugin_init(int argc, char **argv);
 
 extern char *xb_plugin_load;
 extern char *xb_plugin_dir;
 
-static char *plugin_name;
-static char *plugin_library;
+const int PLUGIN_MAX_ARGS = 1024;
 
-static int plugin_argc;
-#define MAX_PLUGIN_VARS 1024
-static char *plugin_argv[MAX_PLUGIN_VARS];
+const char *QUERY_PLUGIN =
+"SELECT plugin_name, plugin_library, @@plugin_dir"
+" FROM information_schema.plugins WHERE plugin_type='ENCRYPTION'"
+" AND plugin_status='ACTIVE'";
 
-string all_params;
+string encryption_plugin_config;
 
-void encryption_plugin_read_vars(MYSQL *mysql)
+static void add_to_plugin_load_list(const char *plugin_def)
+{
+  opt_plugin_load_list_ptr->push_back(new i_string(plugin_def));
+}
+
+static char XTRABACKUP_EXE[] = "xtrabackup";
+
+void encryption_plugin_backup_init(MYSQL *mysql)
 {
   MYSQL_RES *result;
   MYSQL_ROW row;
+  ostringstream oss;
+  char *argv[PLUGIN_MAX_ARGS];
+  int argc;
 
-  if (mysql_query(mysql, 
-    "SELECT plugin_name, plugin_library, @@plugin_dir"
-    " FROM information_schema.plugins WHERE plugin_type='ENCRYPTION'"
-    " AND plugin_status='ACTIVE'"))
 
-    return;
+  if (mysql_query(mysql, QUERY_PLUGIN))
+  {
+    msg("xtrabackup : Error query %s failed - could not read plugin data : %s", 
+      QUERY_PLUGIN,
+      mysql_error(mysql));
+    exit(EXIT_FAILURE);
+  }
 
   result = mysql_store_result(mysql);
   if (!result)
-    return;
+  {
+    msg("xtrabackup : Error : mysql_store_result failed : %s", mysql_error(mysql));
+    exit(EXIT_FAILURE);
+  }
 
   row = mysql_fetch_row(result);
   if (!row)
@@ -45,84 +62,95 @@ void encryption_plugin_read_vars(MYSQL *mysql)
     return;
   }
 
-  plugin_name = strdup(row[0]);
-  plugin_library = strdup(row[1]);
-  xb_plugin_dir = strdup(row[2]);
+  char *name= row[0];
+  char *library= row[1];
+  char *dir= row[2];
+
 #ifdef _WIN32
-  /* Damn, we get a sysvar that we cannot set in my.ini without mmessing up with slash conversion. */
-  for (char *p = xb_plugin_dir; *p; p++)
+  for (char *p = dir; *p; p++)
     if (*p == '\\') *p = '/';
 #endif
-  all_params += string("plugin_dir=\"") + xb_plugin_dir + "\"\n";
 
-  asprintf(&xb_plugin_load, "%s=%s", plugin_name, plugin_library);
-  all_params += string("plugin_load=") + xb_plugin_load + "\n";
-  mysql_free_result(result);
+  string plugin_load(name);
+  if (library)
+    plugin_load += string("=") + library;
 
-  result = 0;
+  oss << "plugin_load=" << plugin_load << endl;
+
+  /* Required  to load the plugin later.*/
+  add_to_plugin_load_list(plugin_load.c_str());
+  strncpy(opt_plugin_dir, dir, FN_REFLEN);
+
+  oss << "plugin_dir=" << '"' << dir << '"' << endl;
 
   char query[1024];
-  snprintf(query, 1024, "SHOW variables like '%s_%%'",plugin_name);
+  snprintf(query, 1024, "SHOW variables like '%s_%%'", name);
+	mysql_free_result(result);
 
   if (mysql_query(mysql, query))
-    return;
+  {
+    msg("xtrabackup : Error query %s failed - could not read plugin vars : %s",
+      query,  mysql_error(mysql));
+    exit(EXIT_FAILURE);
+  }
+
   result = mysql_store_result(mysql);
   if (!result)
-    return;
+  {
+    msg("xtrabackup : mysql_store_result failed %s",
+      query, mysql_error(mysql));
+    exit(EXIT_FAILURE);
+  }
 
-  plugin_argv[plugin_argc++]=strdup("xtrabackup");
-
+  argc = 0;
+  argv[argc++] =XTRABACKUP_EXE;
   while ((row = mysql_fetch_row(result)))
   {
-    asprintf(&plugin_argv[plugin_argc],"--loose-%s=%s", row[0], row[1]);
-    all_params += (plugin_argv[plugin_argc] + 2);
-    plugin_argc++;
-    if (plugin_argc == MAX_PLUGIN_VARS)
+    asprintf(&argv[argc], "%s=%s", row[0], row[1]);
+    oss << argv[argc] << endl;
+    argc++;
+    if (argc == PLUGIN_MAX_ARGS - 1)
       break;
-    
   }
+  argv[argc] = 0;
 
   mysql_free_result(result);
+
+  encryption_plugin_init(argc, argv);
+  for (int i = 1; i < argc; i++)
+    free(argv[i]);
+
+  encryption_plugin_config = oss.str();
 }
 
-
-extern int sys_var_init();
-
-const char *encryption_plugin_cnf_parameters()
+const char *encryption_plugin_get_config()
 {
-  return all_params.c_str();
-
+  return encryption_plugin_config.c_str();
 }
 
-void encryption_plugin_init(int argc, char **argv)
+void encryption_plugin_prepare_init(int argc, char **argv)
 {
-  if (!argv)
-  {
-    argc = plugin_argc;
-    argv = plugin_argv;
-  }
-  else
-  {
-    memcpy(plugin_argv + 1, argv, argc * sizeof(char*));
-    plugin_argv[0] = "xtrabackup";
-    argc++;
-    argv = plugin_argv;
-  }
-
   if (!xb_plugin_load)
     return;
-  sys_var_init();
+
+  add_to_plugin_load_list(xb_plugin_load);
 
   if (xb_plugin_dir)
     strncpy(opt_plugin_dir, xb_plugin_dir, FN_REFLEN);
 
-  opt_plugin_load_list_ptr->push_back(new i_string(xb_plugin_load));
+  char **new_argv = new char *[argc + 1];
+  new_argv[0] = XTRABACKUP_EXE;
+  memcpy(&new_argv[1], argv, argc*sizeof(char *));
 
+  encryption_plugin_init(argc+1, new_argv);
+
+  delete[] new_argv;
+}
+
+static void encryption_plugin_init(int argc, char **argv)
+{
   /* Patch optional and mandatory plugins, we only need to load the one in xb_plugin_load. */
   mysql_optional_plugins[0] = mysql_mandatory_plugins[0] = 0;
-  mysql_rwlock_init(key_rwlock_LOCK_system_variables_hash, &LOCK_system_variables_hash);
-  plugin_mutex_init();
-  files_charset_info = &my_charset_utf8_general_ci;
-
   plugin_init(&argc, argv, PLUGIN_INIT_SKIP_PLUGIN_TABLE);
 }
+

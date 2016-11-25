@@ -3,4 +3,4 @@
 --innodb-encryption-threads=4
 --innodb-tablespaces-encryption
 --plugin-load-add=$DEBUG_KEY_MANAGEMENT_SO
---loose-debug_key_management_version=1
+--loose-debug_key_management_version=2

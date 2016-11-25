@@ -1,4 +1,7 @@
 #include <mysql.h>
-extern void encryption_plugin_read_vars(MYSQL *mysql);
-extern const char *encryption_plugin_cnf_parameters();
-extern  void encryption_plugin_init(int argc, char **argv);
+#include <string>
+extern void encryption_plugin_backup_init(MYSQL *mysql);
+extern const char* encryption_plugin_get_config();
+extern void encryption_plugin_prepare_init(int argc, char **argv);
+
+//extern  void encryption_plugin_init(int argc, char **argv);

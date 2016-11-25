@@ -50,6 +50,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "backup_copy.h"
 #include "backup_mysql.h"
 #include "mysqld.h"
+#include "encryption_plugin.h"
 
 
 char *tool_name;
@@ -86,15 +87,6 @@ time_t history_end_time;
 time_t history_lock_time;
 
 MYSQL *mysql_connection;
-
-extern "C" {
-MYSQL * STDCALL
-cli_mysql_real_connect(MYSQL *mysql,const char *host, const char *user,
-		       const char *passwd, const char *db,
-		       uint port, const char *unix_socket,ulong client_flag);
-}
-
-//#define mysql_real_connect cli_mysql_real_connect
 
 
 MYSQL *
@@ -1614,8 +1606,6 @@ cleanup:
 
 extern const char *innodb_checksum_algorithm_names[];
 
-extern const char *encryption_plugin_cnf_parameters();
-
 bool write_backup_config_file()
 {
 	int rc= backup_file_printf("backup-my.cnf",
@@ -1633,7 +1623,7 @@ bool write_backup_config_file()
 		"innodb_undo_tablespaces=%lu\n"
 		"%s%s\n"
 		"%s%s\n"
-		"%s",
+    "%s\n",
 		innodb_checksum_algorithm_names[srv_checksum_algorithm],
 		innodb_checksum_algorithm_names[srv_log_checksum_algorithm],
 		innobase_data_file_path,
@@ -1648,8 +1638,8 @@ bool write_backup_config_file()
 		innobase_buffer_pool_filename ?
 			"innodb_buffer_pool_filename=" : "",
 		innobase_buffer_pool_filename ?
-		innobase_buffer_pool_filename : "",
-		encryption_plugin_cnf_parameters());
+    innobase_buffer_pool_filename : "",
+    encryption_plugin_get_config());
 	return rc;
 }
 

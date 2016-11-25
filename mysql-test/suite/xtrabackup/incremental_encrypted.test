@@ -17,7 +17,7 @@ INSERT INTO t VALUES(1);
 
 
 echo # Create full backup , modify table, then create incremental/differential backup;
-exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf  --backup --target-dir=$basedir;
+exec devenv /debugexe $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf  --backup --target-dir=$basedir;
 
 INSERT INTO t VALUES(2);
 SELECT * FROM t;
