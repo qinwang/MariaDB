@@ -717,16 +717,20 @@ buf_page_is_corrupted(
 	ulint		checksum_field2;
 	ulint 		space_id = mach_read_from_4(
 		read_buf + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);
-	fil_space_crypt_t* crypt_data = fil_space_get_crypt_data(space_id);
+
 	bool page_encrypted = false;
 
-	/* Page is encrypted if encryption information is found from
-	tablespace and page contains used key_version. This is true
-	also for pages first compressed and then encrypted. */
-	if (crypt_data &&
-	    crypt_data->type != CRYPT_SCHEME_UNENCRYPTED &&
-	    fil_page_is_encrypted(read_buf)) {
-		page_encrypted = true;
+	if (fil_page_is_encrypted(read_buf)) {
+		fil_space_crypt_t* crypt_data = fil_space_get_crypt_data(space_id);
+
+		if (crypt_data &&
+		    crypt_data->type != CRYPT_SCHEME_UNENCRYPTED) {
+
+			/* Page is encrypted if encryption information is found from
+			tablespace and page contains used key_version. This is true
+			also for pages first compressed and then encrypted. */
+			page_encrypted = true;
+		}
 	}
 
 	if (!page_encrypted && !zip_size
@@ -815,7 +819,7 @@ buf_page_is_corrupted(
 			for (ulint i = 0; i < UNIV_PAGE_SIZE; i++) {
 				if (read_buf[i] != 0) {
 					ib_logf(IB_LOG_LEVEL_INFO,
-					"Checksum fields zero but page is not empty.");´
+					"Checksum fields zero but page is not empty.");
 					return(TRUE);
 				}
 			}
@@ -4924,7 +4928,7 @@ database_corrupted:
 
 		if (uncompressed && !recv_no_ibuf_operations
 		    && fil_page_get_type(frame) == FIL_PAGE_INDEX
-		    && page_is_leaf(frame))
+		    && page_is_leaf(frame)
 		    && !(IS_XTRABACKUP() && bpage->is_compacted)) {
 
 			buf_block_t*	block;

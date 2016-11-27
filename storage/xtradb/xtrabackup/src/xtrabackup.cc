@@ -1527,7 +1527,7 @@ innodb_init_param(void)
 	static char	current_dir[3];		/* Set if using current lib */
 	my_bool		ret;
 	char		*default_path;
-
+	srv_is_being_started = TRUE;
 	/* === some variables from mysqld === */
 	memset((G_PTR) &mysql_tmpdir_list, 0, sizeof(mysql_tmpdir_list));
 
@@ -1837,7 +1837,7 @@ static my_bool
 innodb_init(void)
 {
 	int	err;
-
+	srv_is_being_started = TRUE;
 	err = innobase_start_or_create_for_mysql();
 
 	if (err != DB_SUCCESS) {
@@ -4030,7 +4030,6 @@ reread_log_header:
 
 	log_copying_stop = os_event_create();
 	os_thread_create(log_copying_thread, NULL, &log_copying_thread_id);
-
 	/* Populate fil_system with tablespaces to copy */
 	err = xb_load_tablespaces();
 	if (err != DB_SUCCESS) {
