@@ -1,0 +1,47 @@
+#
+# simple test of group_concat function
+#
+--disable_warnings
+drop table if exists t1, t2;
+--enable_warnings
+
+create table t1 (grp int, a bigint unsigned, c char(10) not null, d char(10) not null);
+insert into t1 values (1,1,"a","a");
+insert into t1 values (1,10,"b","a");
+insert into t1 values (1,11,"c","a");
+insert into t1 values (2,2,"c","a");
+insert into t1 values (2,3,"b","b");
+insert into t1 values (3,4,"E","a");
+insert into t1 values (3,5,"C","b");
+insert into t1 values (3,6,"D","c");
+insert into t1 values (3,7,"E","c");
+
+# Test of MySQL simple request
+
+select grp,group_concat(c limit 1 ) from t1 group by grp;
+select grp,group_concat(c limit 1,1 ) from t1 group by grp;
+
+select grp,group_concat(c limit 1,10 ) from t1 group by grp;
+select grp,group_concat(distinct c limit 1,10 ) from t1 group by grp;
+
+select grp,group_concat(c order by a) from t1 group by grp;
+elect grp,group_concat(c order by a limit 2 ) from t1 group by grp;
+
+select grp,group_concat(c order by a limit 1,1 ) from t1 group by grp;
+select grp,group_concat(c order by a limit 1,2 ) from t1 group by grp;
+select grp,group_concat(c order by a limit 10 ) from t1 group by grp;
+
+#select grp,group_concat(c order by c) from t1 group by grp;
+#select grp,group_concat(c order by c limit 2) from t1 group by grp;
+
+#select grp,group_concat(c order by c desc) from t1 group by grp;
+#select grp,group_concat(c order by c desc limit 2) from t1 group by grp;
+
+#select grp,group_concat(d order by a) from t1 group by grp;
+#select grp,group_concat(d order by a limit 2) from t1 group by grp;
+
+#select grp,group_concat(d order by a desc) from t1 group by grp;
+#select grp,group_concat(d order by a desc limit 1) from t1 group by grp;
+
+
+drop table t1;
