@@ -2600,6 +2600,17 @@ files_checked:
 			dict_check_tablespaces_and_store_max_id(dict_check);
 		}
 
+		if (IS_XTRABACKUP()
+			&& !srv_backup_mode
+			&& srv_read_only_mode
+			&& srv_log_file_size_requested != srv_log_file_size) {
+
+			ib_logf(IB_LOG_LEVEL_WARN,
+				"Log files size mismatch, ignored in readonly mode");
+			srv_log_file_size_requested = srv_log_file_size;
+		}
+
+
 		if (!srv_force_recovery
 		    && !recv_sys->found_corrupt_log
 		    && (srv_log_file_size_requested != srv_log_file_size

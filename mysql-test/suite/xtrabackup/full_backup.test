@@ -9,7 +9,7 @@ INSERT INTO t VALUES(2);
 echo # xtrabackup prepare;
 
 exec $XTRABACKUP  --prepare --target-dir=$targetdir;
-
+exec $XTRABACKUP  --stats --datadir=$targetdir;
 -- source include/restart_and_restore.inc
 
 SELECT * FROM t;

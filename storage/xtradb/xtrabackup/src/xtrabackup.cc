@@ -1722,10 +1722,15 @@ mem_free_and_error:
 	}
 
 	btr_search_enabled = (char) innobase_adaptive_hash_index;
+	btr_search_index_num = 1;
 
 	os_use_large_pages = (ibool) innobase_use_large_pages;
 	os_large_page_size = (ulint) innobase_large_page_size;
 
+	if (!innobase_log_arch_dir) {
+		static char default_dir[3] = "./";
+		srv_arch_dir = default_dir;
+	}
 	row_rollback_on_timeout = (ibool) innobase_rollback_on_timeout;
 
 	srv_file_per_table = (my_bool) innobase_file_per_table;
@@ -4417,7 +4422,7 @@ loop:
 }
 
 static void
-xtrabackup_stats_func(void)
+xtrabackup_stats_func(int argc, char **argv)
 {
 	ulint n;
 
@@ -4429,7 +4434,7 @@ xtrabackup_stats_func(void)
 		exit(EXIT_FAILURE);
 	}
 	msg("xtrabackup: cd to %s\n", mysql_real_data_home);
-
+	encryption_plugin_prepare_init(argc, argv);
 	mysql_data_home= mysql_data_home_buff;
 	mysql_data_home[0]=FN_CURLIB;		// all paths are relative from here
 	mysql_data_home[1]=0;
@@ -6290,12 +6295,6 @@ skip_check:
 		srv_n_write_io_threads = 4;
 	}
 
-	btr_search_index_num = 1;
-	if (!innobase_log_arch_dir) {
-		static char default_dir[3] = "./";
-		srv_arch_dir = default_dir;
-	}
-
 	if (innobase_log_arch_dir) {
 		srv_arch_dir = innobase_log_arch_dir;
 		srv_archive_recovery = TRUE;
@@ -7163,7 +7162,7 @@ int main(int argc, char **argv)
 
 	/* --stats */
 	if (xtrabackup_stats)
-		xtrabackup_stats_func();
+		xtrabackup_stats_func(argc, argv);
 
 	/* --prepare */
 	if (xtrabackup_prepare) {
