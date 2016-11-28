@@ -1786,7 +1786,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %type <num>
         order_dir lock_option
         udf_type opt_local opt_no_write_to_binlog
-        opt_temporary all_or_any opt_distinct
+        opt_temporary all_or_any opt_distinct opt_glimit_clause
         opt_ignore_leaves fulltext_options union_option
         opt_not
         select_derived_init transaction_access_mode_types
@@ -1844,7 +1844,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         opt_escape
         sp_opt_default
         simple_ident_nospvar simple_ident_q
-        field_or_var limit_option
+        field_or_var limit_option glimit_option
         part_func_expr
         window_func_expr
         window_func
@@ -10449,16 +10449,36 @@ sum_expr:
         | GROUP_CONCAT_SYM '(' opt_distinct
           { Select->in_sum_expr++; }
           expr_list opt_gorder_clause
-          opt_gconcat_separator
+          opt_gconcat_separator opt_glimit_clause
           ')'
           {
             SELECT_LEX *sel= Select;
             sel->in_sum_expr--;
-            $$= new (thd->mem_root)
-                  Item_func_group_concat(thd, Lex->current_context(), $3, $5,
-                                         sel->gorder_list, $7);
-            if ($$ == NULL)
-              MYSQL_YYABORT;
+            if(!$8)
+             $$= new (thd->mem_root)
+                   Item_func_group_concat(thd, Lex->current_context(), $3, $5,
+                                        sel->gorder_list, $7, FALSE, 0, 0);
+            else
+            {
+              if(sel->select_limit && sel->offset_limit)
+                 $$= new (thd->mem_root)
+                        Item_func_group_concat(thd, Lex->current_context(), $3, $5,
+                                         sel->gorder_list, $7, TRUE, sel->select_limit->val_int(),
+                                         sel->offset_limit->val_int());
+              else if(sel->select_limit)
+                 $$= new (thd->mem_root)
+                        Item_func_group_concat(thd, Lex->current_context(), $3, $5,
+                                         sel->gorder_list, $7, TRUE, sel->select_limit->val_int(),0);
+              else
+                 $$ = NULL; //need more thinking and maybe some error handling to inform the user the problem with the query
+            }
+             if ($$ == NULL)
+               MYSQL_YYABORT;
+
+            sel->select_limit= NULL;
+            sel->offset_limit= NULL;
+            sel->explicit_limit= 0;
+
             $5->empty();
             sel->gorder_list.empty();
           }
@@ -10679,6 +10699,105 @@ gorder_list:
         | order_ident order_dir
           { if (add_gorder_to_list(thd, $1,(bool) $2)) MYSQL_YYABORT; }
         ;
+
+opt_glimit_clause:
+          /* empty */ { $$ = 0; }
+        | glimit_clause { $$ = 1; }
+        ;
+
+glimit_clause_init:
+          LIMIT{}
+        ;
+
+glimit_clause:
+          glimit_clause_init glimit_options{}
+        | glimit_clause_init glimit_options
+          ROWS_SYM EXAMINED_SYM glimit_rows_option{}
+        | glimit_clause_init ROWS_SYM EXAMINED_SYM glimit_rows_option{}
+        ;
+
+glimit_options:
+          glimit_option
+          {
+            SELECT_LEX *sel= Select;
+            sel->select_limit= $1;
+            sel->offset_limit= 0;
+            sel->explicit_limit= 1;
+          }
+        | glimit_option ',' glimit_option
+          {
+            SELECT_LEX *sel= Select;
+            sel->select_limit= $3;
+            sel->offset_limit= $1;
+            sel->explicit_limit= 1;
+          }
+        | glimit_option OFFSET_SYM glimit_option
+          {
+            SELECT_LEX *sel= Select;
+            sel->select_limit= $1;
+            sel->offset_limit= $3;
+            sel->explicit_limit= 1;
+          }
+        ;
+
+glimit_option:
+        ident
+        {
+          Item_splocal *splocal;
+          LEX *lex= thd->lex;
+          Lex_input_stream *lip= & thd->m_parser_state->m_lip;
+          sp_variable *spv;
+          sp_pcontext *spc = lex->spcont;
+          if (spc && (spv = spc->find_variable($1, false)))
+          {
+            splocal= new (thd->mem_root)
+              Item_splocal(thd, $1, spv->offset, spv->sql_type(),
+                  lip->get_tok_start() - lex->sphead->m_tmp_query,
+                  lip->get_ptr() - lip->get_tok_start());
+            if (splocal == NULL)
+              MYSQL_YYABORT;
+#ifndef DBUG_OFF
+            splocal->m_sp= lex->sphead;
+#endif
+            lex->safe_to_cache_query=0;
+          }
+          else
+            my_yyabort_error((ER_SP_UNDECLARED_VAR, MYF(0), $1.str));
+          if (splocal->type() != Item::INT_ITEM)
+            my_yyabort_error((ER_WRONG_SPVAR_TYPE_IN_LIMIT, MYF(0)));
+          splocal->limit_clause_param= TRUE;
+          $$= splocal;
+        }
+        | param_marker
+        {
+          $1->limit_clause_param= TRUE;
+        }
+        | ULONGLONG_NUM
+          {
+            $$= new (thd->mem_root) Item_uint(thd, $1.str, $1.length);
+            if ($$ == NULL)
+              MYSQL_YYABORT;
+          }
+        | LONG_NUM
+          {
+            $$= new (thd->mem_root) Item_uint(thd, $1.str, $1.length);
+            if ($$ == NULL)
+              MYSQL_YYABORT;
+          }
+        | NUM
+          {
+            $$= new (thd->mem_root) Item_uint(thd, $1.str, $1.length);
+            if ($$ == NULL)
+              MYSQL_YYABORT;
+          }
+        ;
+
+glimit_rows_option:
+          glimit_option
+          {
+            LEX *lex=Lex;
+            lex->limit_rows_examined= $1;
+          }
 
 in_sum_expr:
           opt_all

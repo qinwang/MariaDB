@@ -18,30 +18,30 @@ insert into t1 values (3,7,"E","c");
 
 # Test of MySQL simple request
 
-select grp,group_concat(c limit 1 ) from t1 group by grp;
+select grp,group_concat(c limit 0 ) from t1 group by grp;
 select grp,group_concat(c limit 1,1 ) from t1 group by grp;
 
 select grp,group_concat(c limit 1,10 ) from t1 group by grp;
 select grp,group_concat(distinct c limit 1,10 ) from t1 group by grp;
 
 select grp,group_concat(c order by a) from t1 group by grp;
-elect grp,group_concat(c order by a limit 2 ) from t1 group by grp;
+select grp,group_concat(c order by a limit 2 ) from t1 group by grp;
 
 select grp,group_concat(c order by a limit 1,1 ) from t1 group by grp;
 select grp,group_concat(c order by a limit 1,2 ) from t1 group by grp;
 select grp,group_concat(c order by a limit 10 ) from t1 group by grp;
 
-#select grp,group_concat(c order by c) from t1 group by grp;
-#select grp,group_concat(c order by c limit 2) from t1 group by grp;
+select grp,group_concat(c order by c) from t1 group by grp;
+select grp,group_concat(c order by c limit 2) from t1 group by grp;
 
-#select grp,group_concat(c order by c desc) from t1 group by grp;
-#select grp,group_concat(c order by c desc limit 2) from t1 group by grp;
+select grp,group_concat(c order by c desc) from t1 group by grp;
+select grp,group_concat(c order by c desc limit 2) from t1 group by grp;
 
-#select grp,group_concat(d order by a) from t1 group by grp;
-#select grp,group_concat(d order by a limit 2) from t1 group by grp;
+select grp,group_concat(d order by a) from t1 group by grp;
+select grp,group_concat(d order by a limit 2) from t1 group by grp;
 
-#select grp,group_concat(d order by a desc) from t1 group by grp;
-#select grp,group_concat(d order by a desc limit 1) from t1 group by grp;
+select grp,group_concat(d order by a desc) from t1 group by grp;
+select grp,group_concat(d order by a desc limit 1) from t1 group by grp;
 
 
 drop table t1;
