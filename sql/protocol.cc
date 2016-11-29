@@ -562,6 +562,7 @@ void Protocol::end_statement()
 
   switch (thd->get_stmt_da()->status()) {
   case Diagnostics_area::DA_ERROR:
+    thd->stop_collecting_insert_id();
     /* The query failed, send error to log and abort bootstrap. */
     error= send_error(thd->get_stmt_da()->sql_errno(),
                       thd->get_stmt_da()->message(),
@@ -573,12 +574,21 @@ void Protocol::end_statement()
     break;
   case Diagnostics_area::DA_OK:
   case Diagnostics_area::DA_OK_BULK:
-    error= send_ok(thd->server_status,
-                   thd->get_stmt_da()->statement_warn_count(),
-                   thd->get_stmt_da()->affected_rows(),
-                   thd->get_stmt_da()->last_insert_id(),
-                   thd->get_stmt_da()->message(),
-                   thd->get_stmt_da()->skip_flush());
+    if (thd->report_collected_insert_id())
+      if (thd->is_error())
+        error= send_error(thd->get_stmt_da()->sql_errno(),
+                          thd->get_stmt_da()->message(),
+                          thd->get_stmt_da()->get_sqlstate());
+      else
+        error= send_eof(thd->server_status,
+                        thd->get_stmt_da()->statement_warn_count());
+    else
+      error= send_ok(thd->server_status,
+                     thd->get_stmt_da()->statement_warn_count(),
+                     thd->get_stmt_da()->affected_rows(),
+                     thd->get_stmt_da()->last_insert_id(),
+                     thd->get_stmt_da()->message(),
+                     thd->get_stmt_da()->skip_flush());
     break;
   case Diagnostics_area::DA_DISABLED:
     break;

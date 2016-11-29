@@ -1474,6 +1474,7 @@ void THD::init(void)
 #endif //EMBEDDED_LIBRARY
 
   apc_target.init(&LOCK_thd_data);
+  insert_ids= NULL;
   DBUG_VOID_RETURN;
 }
 
@@ -7363,6 +7364,121 @@ bool Discrete_intervals_list::append(Discrete_interval *new_interval)
   tail= new_interval;
   elements++;
   DBUG_RETURN(0);
+}
+
+bool THD::init_collecting_insert_id()
+{
+  if (!insert_ids)
+  {
+    void *buff;
+    if (!(my_multi_malloc(MYF(MY_WME), &insert_ids, sizeof(DYNAMIC_ARRAY),
+                          &buff, sizeof(insert_id_desc) * 10,
+                          NullS)) ||
+        my_init_dynamic_array2(insert_ids, sizeof(insert_id_desc),
+                               buff, 10, 100, MYF(MY_WME)))
+    {
+      if (insert_ids)
+        my_free(insert_ids);
+      insert_ids= NULL;
+      return TRUE;
+    }
+    collect_auto_increment_increment= variables.auto_increment_increment;
+  }
+  return FALSE;
+}
+
+void THD::stop_collecting_insert_id()
+{
+  if (insert_ids)
+  {
+    delete_dynamic(insert_ids);
+    my_free(insert_ids);
+    insert_ids= NULL;
+  }
+}
+
+bool THD::collect_insert_id(ulonglong id)
+{
+  if (insert_ids)
+  {
+    if (insert_ids->elements)
+    {
+      insert_id_desc *last=
+        (insert_id_desc *)dynamic_array_ptr(insert_ids,
+                                            insert_ids->elements - 1);
+      if (id == last->first_id)
+      {
+        return FALSE; // no new insert id
+      }
+      if (id == last->first_id + (last->sequence *
+                                  collect_auto_increment_increment))
+      {
+        last->sequence++;
+        return FALSE;
+      }
+    }
+    insert_id_desc el;
+    el.first_id= id;
+    el.sequence= 1;
+    if (insert_dynamic(insert_ids, &el))
+    {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+
+bool THD::report_collected_insert_id()
+{
+  if (insert_ids)
+  {
+    List<Item> field_list;
+    MEM_ROOT tmp_mem_root;
+    Query_arena arena(&tmp_mem_root, Query_arena::STMT_INITIALIZED), backup;
+
+    init_alloc_root(arena.mem_root, 2048, 4096, MYF(0));
+    set_n_backup_active_arena(&arena, &backup);
+    DBUG_ASSERT(mem_root == &tmp_mem_root);
+
+    field_list.push_back(new (mem_root)
+                         Item_int(this, "Id", 0, MY_INT64_NUM_DECIMAL_DIGITS),
+                         mem_root);
+    field_list.push_back(new (mem_root)
+                         Item_int(this, "Len", 0, MY_INT64_NUM_DECIMAL_DIGITS),
+                         mem_root);
+    field_list.push_back(new (mem_root)
+                         Item_return_int(this, "Inc", 0, MYSQL_TYPE_LONG),
+                         mem_root);
+
+    if (protocol_binary.send_result_set_metadata(&field_list,
+                                                  Protocol::SEND_NUM_ROWS))
+      goto error;
+
+    for (ulonglong i= 0; i < insert_ids->elements; i++)
+    {
+      insert_id_desc *last=
+        (insert_id_desc *)dynamic_array_ptr(insert_ids, i);
+      if (insert_ids->elements == 1 && last->first_id == 0 &&
+          get_stmt_da()->affected_rows() != 1)
+        continue; // No insert IDs
+      protocol_binary.prepare_for_resend();
+      protocol_binary.store_longlong(last->first_id, TRUE);
+      protocol_binary.store_longlong(last->sequence, TRUE);
+      protocol_binary.store_long(collect_auto_increment_increment);
+      if (protocol_binary.write())
+        goto error;
+    }
+error:
+    restore_active_arena(&arena, &backup);
+    DBUG_ASSERT(arena.mem_root == &tmp_mem_root);
+    // no need free Items because they was only constants
+    free_root(arena.mem_root, MYF(0));
+    stop_collecting_insert_id();
+    return TRUE;
+  }
+  return FALSE;
+
 }
 
 #endif /* !defined(MYSQL_CLIENT) */

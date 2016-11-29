@@ -87,7 +87,8 @@ enum enum_cursor_type
   CURSOR_TYPE_NO_CURSOR= 0,
   CURSOR_TYPE_READ_ONLY= 1,
   CURSOR_TYPE_FOR_UPDATE= 2,
-  CURSOR_TYPE_SCROLLABLE= 4
+  CURSOR_TYPE_SCROLLABLE= 4,
+  INSERT_ID_REQUEST= 128
 };
 enum enum_mysql_set_option
 {
