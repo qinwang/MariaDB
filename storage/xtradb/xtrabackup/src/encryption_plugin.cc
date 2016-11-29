@@ -106,8 +106,8 @@ void encryption_plugin_backup_init(MYSQL *mysql)
   argv[argc++] =XTRABACKUP_EXE;
   while ((row = mysql_fetch_row(result)))
   {
-    asprintf(&argv[argc], "%s=%s", row[0], row[1]);
-    oss << argv[argc] << endl;
+    asprintf(&argv[argc], "--%s=%s", row[0], row[1]);
+    oss << row[0] << "=" << row[1] << endl;
     argc++;
     if (argc == PLUGIN_MAX_ARGS - 1)
       break;
@@ -128,10 +128,18 @@ const char *encryption_plugin_get_config()
   return encryption_plugin_config.c_str();
 }
 
+extern int finalize_encryption_plugin(st_plugin_int *plugin);
+
+
 void encryption_plugin_prepare_init(int argc, char **argv)
 {
+
   if (!xb_plugin_load)
+  {
+    /* This prevents crashes e.g in --stats with wrong my.cnf*/
+    finalize_encryption_plugin(0);
     return;
+  }
 
   add_to_plugin_load_list(xb_plugin_load);
 
