@@ -1,0 +1,16 @@
+# Bug 1509812: backup fails with history on server enabled
+#              and binary log disabled
+
+
+let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf --history --backup --target-dir=$targetdir;
+
+exec cat $targetdir/xtrabackup_info;
+
+SELECT * FROM PERCONA_SCHEMA.xtrabackup_history;
+
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf --history --target-dir=$targetdir;
+
+exec cat $targetdir/xtrabackup_info;
+
+SELECT * FROM PERCONA_SCHEMA.xtrabackup_history;
