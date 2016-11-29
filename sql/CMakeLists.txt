@@ -179,7 +179,11 @@ TARGET_LINK_LIBRARIES(sql ${MYSQLD_STATIC_PLUGIN_LIBS}
   ${LIBSYSTEMD})
 
 IF(WIN32)
-  SET(MYSQLD_SOURCE main.cc message.rc)
+  IF(MSVC AND NOT WITHOUT_DYNAMIC_PLUGINS)
+    SET(mysqld_def ${PROJECT_BINARY_DIR}/sql/mysqld.def)
+    SET_SOURCE_FILES_PROPERTIES(${mysqld_def} PROPERTIES GENERATED TRUE)
+  ENDIF()
+  SET(MYSQLD_SOURCE main.cc message.rc ${mysqld_def})
   TARGET_LINK_LIBRARIES(sql psapi)
 ELSE()
   SET(MYSQLD_SOURCE main.cc ${DTRACE_PROBES_ALL})
@@ -205,23 +209,26 @@ IF(NOT WITHOUT_DYNAMIC_PLUGINS)
     SET_TARGET_PROPERTIES(mysqld PROPERTIES LINK_FLAGS "${mysqld_link_flags} -Wl,--export-all-symbols")
   ENDIF()
   IF(MSVC)
-    # Set module definition file. Also use non-incremental linker, 
-    # incremental appears to crash from time to time,if used with /DEF option
-    SET_TARGET_PROPERTIES(mysqld PROPERTIES LINK_FLAGS "${mysqld_link_flags} /DEF:mysqld.def /INCREMENTAL:NO")
-
-    FOREACH (CORELIB sql mysys mysys_ssl dbug strings)
+    SET(MYSQLD_CORELIBS sql mysys mysys_ssl dbug strings)
+    FOREACH (CORELIB ${MYSQLD_CORELIBS})
       GET_TARGET_PROPERTY(LOC ${CORELIB} LOCATION)
       FILE(TO_NATIVE_PATH ${LOC} LOC)
       SET (LIB_LOCATIONS ${LIB_LOCATIONS} ${LOC}) 
-    ENDFOREACH (CORELIB ${MYSQLD_CORE_LIBS})
+    ENDFOREACH()
     SET(_PLATFORM x86)
     IF(CMAKE_SIZEOF_VOID_P EQUAL 8)
       SET(_PLATFORM  x64)
     ENDIF()
-    ADD_CUSTOM_COMMAND(TARGET mysqld PRE_LINK
-      COMMAND echo ${_PLATFORM} && cscript ARGS //nologo ${PROJECT_SOURCE_DIR}/win/create_def_file.js
-                  ${_PLATFORM}  ${LIB_LOCATIONS} > mysqld.def 
-      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+    ADD_CUSTOM_COMMAND(
+      OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/mysqld.def
+      COMMAND cscript ARGS //nologo ${PROJECT_SOURCE_DIR}/win/create_def_file.js ${_PLATFORM}  ${LIB_LOCATIONS} > mysqld.def
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      DEPENDS ${MYSQLD_CORELIBS}
+    )
+
+    ADD_CUSTOM_TARGET(GenMysqldDef DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/mysqld.def)
+    ADD_DEPENDENCIES(mysqld GenMysqldDef)
     ADD_DEPENDENCIES(sql GenError)
   ENDIF(MSVC)
 ENDIF(NOT WITHOUT_DYNAMIC_PLUGINS)

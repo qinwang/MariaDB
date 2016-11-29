@@ -114,6 +114,11 @@ ADD_DEFINITIONS(-UMYSQL_SERVER)
 
 ADD_DEFINITIONS(-DPCRE_STATIC=1)
 
+IF(MSVC AND NOT WITHOUT_DYNAMIC_PLUGINS)
+  SET(mysqld_def ${PROJECT_BINARY_DIR}/sql/mysqld.def)
+  SET_SOURCE_FILES_PROPERTIES(${mysqld_def} PROPERTIES GENERATED TRUE)
+ENDIF()
+
 MYSQL_ADD_EXECUTABLE(xtrabackup
   xtrabackup.cc
   innobackupex.cc
@@ -140,9 +145,17 @@ MYSQL_ADD_EXECUTABLE(xtrabackup
   backup_copy.cc
   encryption_plugin.cc
   ${PROJECT_SOURCE_DIR}/libmysql/libmysql.c
+  ${mysqld_def}
   )
 
-SET_TARGET_PROPERTIES(xtrabackup PROPERTIES ENABLE_EXPORTS TRUE)
+IF(NOT WITHOUT_DYNAMIC_PLUGINS)
+  # Export all symbols just like mysqld does, for use with encryption plugins
+  SET_TARGET_PROPERTIES(xtrabackup PROPERTIES ENABLE_EXPORTS TRUE)
+  IF(MSVC)
+    ADD_DEPENDENCIES(xtrabackup GenMysqldDef)
+    #SET_TARGET_PROPERTIES(xtrabackup PROPERTIES LINK_FLAGS "/DEF:${PROJECT_BINARY_DIR}/sql/mysqld.def /INCREMENTAL:NO")  
+  ENDIF()
+ENDIF()
 
 TARGET_LINK_LIBRARIES(xtrabackup 
   sql

@@ -16,7 +16,6 @@
 
 
 #include <my_global.h>
-#include <my_pthread.h>
 #include <my_sys.h>
 #include <my_dir.h>
 #include <mysql/plugin_encryption.h>
@@ -91,14 +90,8 @@ static int extract_id_and_version(const char *name, uint *id, uint *ver);
 static unsigned int get_latest_key_version(unsigned int key_id);
 static unsigned int get_latest_key_version_nolock(unsigned int key_id);
 static int load_key(KEY_INFO *info);
+static std::mutex mtx;
 
-/* Mutex to serialize access to caches */
-static mysql_mutex_t mtx;
-
-#ifdef HAVE_PSI_INTERFACE
-static uint mtx_key;
-static PSI_mutex_info mtx_info = {&mtx_key, "mtx", 0};
-#endif
 
 static Aws::KMS::KMSClient *client;
 
@@ -180,10 +173,6 @@ static int plugin_init(void *p)
     DBUG_RETURN(-1);
   }
   
-#ifdef HAVE_PSI_INTERFACE
-  mysql_mutex_register("aws_key_management", &mtx_info, 1);
-#endif
-  mysql_mutex_init(mtx_key, &mtx, NULL);
 
   MY_DIR *dirp = my_dir(".", MYF(0));
   if (!dirp)
@@ -211,7 +200,6 @@ static int plugin_deinit(void *p)
   DBUG_ENTER("plugin_deinit");
   latest_version_cache.clear();
   key_info_cache.clear();
-  mysql_mutex_destroy(&mtx);
   delete client;
   ShutdownAWSLogging();
 
@@ -283,9 +271,9 @@ static unsigned int get_latest_key_version(unsigned int key_id)
 {
   unsigned int ret;
   DBUG_ENTER("get_latest_key_version");
-  mysql_mutex_lock(&mtx);
+  mtx.lock();
   ret= get_latest_key_version_nolock(key_id);
-  mysql_mutex_unlock(&mtx);
+  mtx.unlock();
   DBUG_PRINT("info", ("key=%u,ret=%u", key_id, ret));
   DBUG_RETURN(ret);
 }
@@ -480,7 +468,7 @@ static void update_rotate(MYSQL_THD, struct st_mysql_sys_var *, void *, const vo
       "aws_key_management_master_key_id must be set to generate new data keys", MYF(ME_JUST_WARNING));
     return;
   }
-  mysql_mutex_lock(&mtx);
+  mtx.lock();
   rotate_key= *(int *)val;
   switch (rotate_key)
   {
@@ -494,7 +482,7 @@ static void update_rotate(MYSQL_THD, struct st_mysql_sys_var *, void *, const vo
     break;
   }
   rotate_key= 0;
-  mysql_mutex_unlock(&mtx);
+  mtx.unlock();
 }
 
 static unsigned int get_key(
@@ -506,7 +494,7 @@ static unsigned int get_key(
   KEY_INFO info;
 
   DBUG_ENTER("get_key");
-  mysql_mutex_lock(&mtx);
+  mtx.lock();
   info= key_info_cache[KEY_ID_AND_VERSION(key_id, version)];
   if (info.length == 0 && !info.load_failed)
   {
@@ -514,7 +502,7 @@ static unsigned int get_key(
     info.key_version= version;
     load_key(&info);
   }
-  mysql_mutex_unlock(&mtx);
+  mtx.unlock();
   if (info.load_failed)
     DBUG_RETURN(ENCRYPTION_KEY_VERSION_INVALID);
   if (*buflen < info.length)
