@@ -4286,6 +4286,14 @@ public:
     current_linfo= 0;
     mysql_mutex_unlock(&LOCK_thread_count);
   }
+
+  /* Data and methods for buld INSERT IDs reporting */
+  DYNAMIC_ARRAY *insert_ids;
+  ulong collect_auto_increment_increment;
+  bool init_collecting_insert_id();
+  bool collect_insert_id(ulonglong id);
+  bool report_collected_insert_id();
+  void stop_collecting_insert_id();
 };
 
 inline void add_to_active_threads(THD *thd)

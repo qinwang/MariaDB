@@ -1054,6 +1054,12 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
     }
     its.rewind();
     iteration++;
+
+    if (!error && thd->bulk_param)
+    {
+      thd->collect_insert_id(table->file->insert_id_for_cur_row);
+    }
+
   } while (iteration < bulk_iterations);
 
 values_loop_end:
@@ -1201,8 +1207,9 @@ values_loop_end:
     retval= thd->lex->explain->send_explain(thd);
     goto abort;
   }
-  if ((bulk_iterations * values_list.elements) == 1 && (!(thd->variables.option_bits & OPTION_WARNINGS) ||
-				    !thd->cuted_fields))
+  if ((bulk_iterations * values_list.elements) == 1 &&
+      (!(thd->variables.option_bits & OPTION_WARNINGS) ||
+       !thd->cuted_fields))
   {
     my_ok(thd, info.copied + info.deleted +
                ((thd->client_capabilities & CLIENT_FOUND_ROWS) ?

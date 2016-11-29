@@ -214,7 +214,7 @@ public:
   bool execute_bulk_loop(String *expanded_query,
                          bool open_cursor,
                          uchar *packet_arg, uchar *packet_end_arg,
-                         ulong iterations);
+                         ulong iterations, bool insert_id_request);
   bool execute_server_runnable(Server_runnable *server_runnable);
   my_bool set_bulk_parameters(bool reset);
   ulong bulk_iterations();
@@ -3089,11 +3089,20 @@ void mysqld_stmt_execute(THD *thd, char *packet_arg, uint packet_length)
   open_cursor= MY_TEST(flags & (ulong) CURSOR_TYPE_READ_ONLY);
 
   thd->protocol= &thd->protocol_binary;
+
+  if (!(thd->client_capabilities & MARIADB_CLIENT_STMT_BULK_OPERATIONS))
+  {
+    DBUG_PRINT("info",
+               ("There is no bulk capability so reset iteration counter"));
+    iterations= 0;
+  }
   if (iterations <= 1)
     stmt->execute_loop(&expanded_query, open_cursor, packet, packet_end);
   else
     stmt->execute_bulk_loop(&expanded_query, open_cursor, packet, packet_end,
-                            iterations);
+                            iterations,
+                            MY_TEST((flags &
+                                     (ulong) STMTFLG_INSERT_ID_REQUEST)));
   thd->protocol= save_protocol;
 
   sp_cache_enforce_limit(thd->sp_proc_cache, stored_program_cache_size);
@@ -4170,7 +4179,8 @@ Prepared_statement::execute_bulk_loop(String *expanded_query,
                                       bool open_cursor,
                                       uchar *packet_arg,
                                       uchar *packet_end_arg,
-                                      ulong iterations_arg)
+                                      ulong iterations_arg,
+                                      bool insert_id_request)
 {
   Reprepare_observer reprepare_observer;
   bool error= 0;
@@ -4194,6 +4204,12 @@ Prepared_statement::execute_bulk_loop(String *expanded_query,
   if (!(sql_command_flags[lex->sql_command] & CF_SP_BULK_SAFE))
   {
     my_error(ER_UNSUPPORTED_PS, MYF(0));
+    thd->set_bulk_execution(0);
+    return TRUE;
+  }
+  if (lex->sql_command == SQLCOM_INSERT && insert_id_request &&
+      thd->init_collecting_insert_id())
+  {
     thd->set_bulk_execution(0);
     return TRUE;
   }
