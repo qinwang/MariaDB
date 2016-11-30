@@ -3896,8 +3896,7 @@ xtrabackup_backup_func(void)
 	}
 
 	/* create target dir if not exist */
-	if (!xtrabackup_stream &&
-		my_stat(xtrabackup_target_dir, &stat_info, MYF(0))
+	if (!my_stat(xtrabackup_target_dir,&stat_info,MYF(0))
 		&& (my_mkdir(xtrabackup_target_dir,0777,MYF(0)) < 0)){
 		msg("xtrabackup: Error: cannot mkdir %d: %s\n",
 		    my_errno, xtrabackup_target_dir);
