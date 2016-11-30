@@ -51,6 +51,7 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "backup_mysql.h"
 #include "mysqld.h"
 #include "encryption_plugin.h"
+#include <sstream>
 
 
 char *tool_name;
@@ -277,7 +278,7 @@ check_server_version(unsigned long version_number,
 	version_supported = version_supported
 		|| (version_number > 50500 && version_number < 50700);
 	version_supported = version_supported
-		|| ((version_number > 100000 && version_number < 100200)
+		|| ((version_number > 100000)
 		    && server_flavor == FLAVOR_MARIADB);
 
 	if (mysql51 && innodb_version == NULL) {
@@ -1345,7 +1346,18 @@ cleanup:
 	return(result);
 }
 
-
+static string escape_and_quote(MYSQL *mysql,const char *str)
+{
+	if (!str)
+		return "NULL";
+	size_t len = strlen(str);
+	char* escaped = (char *)alloca(2 * len + 3);
+	escaped[0] = '\'';
+	size_t new_len = mysql_real_escape_string(mysql, escaped+1, str, len);
+	escaped[new_len + 1] = '\'';
+	escaped[new_len + 2] = 0;
+	return string(escaped);
+}
 
 /*********************************************************************//**
 Writes xtrabackup_info file and if backup_history is enable creates
@@ -1355,25 +1367,16 @@ backup. */
 bool
 write_xtrabackup_info(MYSQL *connection)
 {
-	MYSQL_STMT *stmt;
-	MYSQL_BIND bind[19];
+
 	char *uuid = NULL;
 	char *server_version = NULL;
 	char buf_start_time[100];
 	char buf_end_time[100];
-	int idx;
 	tm tm;
 	my_bool null = TRUE;
-
+	ostringstream oss;
 	const char *xb_stream_name[] = {"file", "tar", "xbstream"};
-	const char *ins_query = "insert into PERCONA_SCHEMA.xtrabackup_history("
-		"uuid, name, tool_name, tool_command, tool_version, "
-		"ibbackup_version, server_version, start_time, end_time, "
-		"lock_time, binlog_pos, innodb_from_lsn, innodb_to_lsn, "
-		"partial, incremental, format, compact, compressed, "
-		"encrypted) "
-		"values(?,?,?,?,?,?,?,from_unixtime(?),from_unixtime(?),"
-		"?,?,?,?,?,?,?,?,?,?)";
+
 
 	ut_ad(xtrabackup_stream_fmt < 3);
 
@@ -1386,6 +1389,11 @@ write_xtrabackup_info(MYSQL *connection)
 	localtime_r(&history_end_time, &tm);
 	strftime(buf_end_time, sizeof(buf_end_time),
 		 "%Y-%m-%d %H:%M:%S", &tm);
+	bool is_partial = (xtrabackup_tables
+		|| xtrabackup_tables_file
+		|| xtrabackup_databases
+		|| xtrabackup_databases_file);
+
 	backup_file_printf(XTRABACKUP_INFO,
 		"uuid = %s\n"
 		"name = %s\n"
@@ -1420,10 +1428,7 @@ write_xtrabackup_info(MYSQL *connection)
 			mysql_binlog_position : "", /* binlog_pos */
 		incremental_lsn, /* innodb_from_lsn */
 		metadata_to_lsn, /* innodb_to_lsn */
-		(xtrabackup_tables /* partial */
-		 || xtrabackup_tables_file
-		 || xtrabackup_databases
-		 || xtrabackup_databases_file) ? "Y" : "N",
+		is_partial? "Y" : "N",
 		xtrabackup_incremental ? "Y" : "N", /* incremental */
 		xb_stream_name[xtrabackup_stream_fmt], /* format */
 		xtrabackup_compact ? "Y" : "N", /* compact */
@@ -1459,142 +1464,36 @@ write_xtrabackup_info(MYSQL *connection)
 		"encrypted ENUM('Y', 'N') DEFAULT NULL"
 		") CHARACTER SET utf8 ENGINE=innodb", false);
 
-	stmt = mysql_stmt_init(connection);
 
-	mysql_stmt_prepare(stmt, ins_query, (unsigned long)strlen(ins_query));
+#define ESCAPE_BOOL(expr) ((expr)?"'Y'":"'N'")
 
-	memset(bind, 0, sizeof(bind));
-	idx = 0;
+	oss << "insert into PERCONA_SCHEMA.xtrabackup_history("
+		<< "uuid, name, tool_name, tool_command, tool_version,"
+		<< "ibbackup_version, server_version, start_time, end_time,"
+		<< "lock_time, binlog_pos, innodb_from_lsn, innodb_to_lsn,"
+		<< "partial, incremental, format, compact, compressed, "
+		<< "encrypted) values("
+		<< escape_and_quote(connection, uuid) << ","
+		<< escape_and_quote(connection, opt_history) << ","
+		<< escape_and_quote(connection, tool_name) << ","
+		<< escape_and_quote(connection, tool_args) << ","
+		<< escape_and_quote(connection, MYSQL_SERVER_VERSION) << ","
+		<< escape_and_quote(connection, MYSQL_SERVER_VERSION) << ","
+		<< escape_and_quote(connection, server_version) << ","
+		<< "from_unixtime(" << history_start_time << "),"
+		<< "from_unixtime(" << history_end_time << "),"
+		<< history_lock_time << ","
+		<< escape_and_quote(connection, mysql_binlog_position) << ","
+		<< incremental_lsn << ","
+		<< metadata_to_lsn << ","
+		<< ESCAPE_BOOL(is_partial) << ","
+		<< ESCAPE_BOOL(xtrabackup_incremental)<< ","
+		<< escape_and_quote(connection,xb_stream_name[xtrabackup_stream_fmt]) <<","
+		<< ESCAPE_BOOL(xtrabackup_compact) << ","
+		<< ESCAPE_BOOL(xtrabackup_compress) << ","
+		<< ESCAPE_BOOL(xtrabackup_encrypt) <<")";
 
-	/* uuid */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = uuid;
-	bind[idx].buffer_length = (unsigned long)strlen(uuid);
-	++idx;
-
-	/* name */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = (char*)(opt_history);
-	bind[idx].buffer_length = (unsigned long)strlen(opt_history);
-	if (!(opt_history && *opt_history)) {
-		bind[idx].is_null = &null;
-	}
-	++idx;
-
-	/* tool_name */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = tool_name;
-	bind[idx].buffer_length = (unsigned long)strlen(tool_name);
-	++idx;
-
-	/* tool_command */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = tool_args;
-	bind[idx].buffer_length = (unsigned long)strlen(tool_args);
-	++idx;
-
-	/* tool_version */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = (char*)MYSQL_SERVER_VERSION;
-	bind[idx].buffer_length = (unsigned long)strlen(MYSQL_SERVER_VERSION);
-	++idx;
-
-	/* ibbackup_version */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = (char*)MYSQL_SERVER_VERSION;
-	bind[idx].buffer_length = (unsigned long)strlen(MYSQL_SERVER_VERSION);
-	++idx;
-
-	/* server_version */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = server_version;
-	bind[idx].buffer_length = (unsigned long)strlen(server_version);
-	++idx;
-
-	/* start_time */
-	bind[idx].buffer_type = MYSQL_TYPE_LONG;
-	bind[idx].buffer = &history_start_time;
-	++idx;
-
-	/* end_time */
-	bind[idx].buffer_type = MYSQL_TYPE_LONG;
-	bind[idx].buffer = &history_end_time;
-	++idx;
-
-	/* lock_time */
-	bind[idx].buffer_type = MYSQL_TYPE_LONG;
-	bind[idx].buffer = &history_lock_time;
-	++idx;
-
-	/* binlog_pos */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = mysql_binlog_position;
-	if (mysql_binlog_position != NULL) {
-		bind[idx].buffer_length = (unsigned long)strlen(mysql_binlog_position);
-	} else {
-		bind[idx].is_null = &null;
-	}
-	++idx;
-
-	/* innodb_from_lsn */
-	bind[idx].buffer_type = MYSQL_TYPE_LONGLONG;
-	bind[idx].buffer = (char*)(&incremental_lsn);
-	++idx;
-
-	/* innodb_to_lsn */
-	bind[idx].buffer_type = MYSQL_TYPE_LONGLONG;
-	bind[idx].buffer = (char*)(&metadata_to_lsn);
-	++idx;
-
-	/* partial (Y | N) */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = (char*)((xtrabackup_tables
-				    || xtrabackup_tables_file
-				    || xtrabackup_databases
-				    || xtrabackup_databases_file) ? "Y" : "N");
-	bind[idx].buffer_length = 1;
-	++idx;
-
-	/* incremental (Y | N) */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = (char*)(
-		(xtrabackup_incremental
-		 || xtrabackup_incremental_basedir
-		 || opt_incremental_history_name
-		 || opt_incremental_history_uuid) ? "Y" : "N");
-	bind[idx].buffer_length = 1;
-	++idx;
-
-	/* format (file | tar | xbstream) */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = (char*)(xb_stream_name[xtrabackup_stream_fmt]);
-	bind[idx].buffer_length = (unsigned long)strlen(xb_stream_name[xtrabackup_stream_fmt]);
-	++idx;
-
-	/* compact (Y | N) */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = (char*)(xtrabackup_compact ? "Y" : "N");
-	bind[idx].buffer_length = 1;
-	++idx;
-
-	/* compressed (Y | N) */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = (char*)(xtrabackup_compress ? "Y" : "N");
-	bind[idx].buffer_length = 1;
-	++idx;
-
-	/* encrypted (Y | N) */
-	bind[idx].buffer_type = MYSQL_TYPE_STRING;
-	bind[idx].buffer = (char*)(xtrabackup_encrypt ? "Y" : "N");
-	bind[idx].buffer_length = 1;
-	++idx;
-
-	ut_ad(idx == 19);
-
-	mysql_stmt_bind_param(stmt, bind);
-
-	mysql_stmt_execute(stmt);
-	mysql_stmt_close(stmt);
+	xb_mysql_query(mysql_connection, oss.str().c_str(), false);
 
 cleanup:
 

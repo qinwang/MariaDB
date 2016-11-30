@@ -1,0 +1,8 @@
+--enable_quiet_exec
+let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf --history=foo --backup --target-dir=$targetdir;
+SELECT COUNT(*) FROM PERCONA_SCHEMA.xtrabackup_history;
+DROP TABLE PERCONA_SCHEMA.xtrabackup_history;
+DROP DATABASE PERCONA_SCHEMA;
+force-rmdir $targetdir;
+--disable_quiet_exec
