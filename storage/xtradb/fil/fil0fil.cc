@@ -3259,7 +3259,7 @@ skip_second_rename:
 	mutex_exit(&fil_system->mutex);
 
 #ifndef UNIV_HOTBACKUP
-	if (success && !recv_recovery_on && IS_XTRABACKUP()) {
+	if (success && !recv_recovery_on && !IS_XTRABACKUP()) {
 		mtr_t		mtr;
 
 		mtr_start(&mtr);
