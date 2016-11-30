@@ -24,32 +24,6 @@ PARTITION p1 VALUES LESS THAN (200),
 PARTITION p2 VALUES LESS THAN (300),
 PARTITION p3 VALUES LESS THAN (400));
 INSERT INTO isam_p VALUES (1), (101), (201), (301);
-isam_p#P#p0.MYD
-isam_p#P#p0.MYI
-isam_p#P#p1.MYD
-isam_p#P#p1.MYI
-isam_p#P#p2.MYD
-isam_p#P#p2.MYI
-isam_p#P#p3.MYD
-isam_p#P#p3.MYI
-isam_p.frm
-isam_p.par
-isam_t1.MYD
-isam_t1.MYI
-isam_t1.frm
-isam_t2.MYD
-isam_t2.MYI
-isam_t2.frm
-p#p#p0.ibd
-p#p#p1.ibd
-p#p#p2.ibd
-p#p#p3.ibd
-p.frm
-p.par
-t1.frm
-t1.ibd
-t2.frm
-t2.ibd
 DROP TABLE t1;
 DROP TABLE t2;
 CREATE TABLE t2(a INT) ENGINE=InnoDB;
@@ -68,100 +42,22 @@ ALTER TABLE isam_p DROP PARTITION p1;
 ALTER TABLE isam_p ADD PARTITION (PARTITION p4 VALUES LESS THAN (500));
 ALTER TABLE isam_p ADD PARTITION (PARTITION p5 VALUES LESS THAN (600));
 INSERT INTO isam_p VALUES (401), (501);
-isam_p#P#p0.MYD
-isam_p#P#p0.MYI
-isam_p#P#p1.MYD
-isam_p#P#p1.MYI
-isam_p#P#p2.MYD
-isam_p#P#p2.MYI
-isam_p#P#p3.MYD
-isam_p#P#p3.MYI
-isam_p.frm
-isam_p.par
-isam_t1.MYD
-isam_t1.MYI
-isam_t1.frm
-isam_t2.MYD
-isam_t2.MYI
-isam_t2.frm
-p#p#p0.ibd
-p#p#p1.ibd
-p#p#p2.ibd
-p#p#p3.ibd
-p.frm
-p.par
-t1.frm
-t1.ibd
-t2.frm
-t2.ibd
-isam_p#P#p0.MYD
-isam_p#P#p0.MYI
-isam_p#P#p1.MYD
-isam_p#P#p1.MYI
-isam_p#P#p2.MYD
-isam_p#P#p2.MYI
-isam_p#P#p3.MYD
-isam_p#P#p3.MYI
-isam_p.frm
-isam_p.par
-isam_t1.MYD
-isam_t1.MYI
-isam_t1.frm
-isam_t2.MYD
-isam_t2.MYI
-isam_t2.frm
-p#p#p0.ibd
-p#p#p1.ibd
-p#p#p2.ibd
-p#p#p3.ibd
-p.frm
-p.par
-t1.frm
-t1.ibd
-t2.frm
-t2.ibd
-isam_p#P#p2.MYD
-isam_p#P#p2.MYI
-isam_p#P#p3.MYD
-isam_p#P#p3.MYI
-isam_p#P#p4.MYD
-isam_p#P#p4.MYI
-isam_p#P#p5.MYD
-isam_p#P#p5.MYI
-isam_p.frm
-isam_p.par
-isam_t2.MYD
-isam_t2.MYI
-isam_t2.frm
-p#p#p2.ibd
-p#p#p3.ibd
-p#p#p4.ibd
-p#p#p5.ibd
-p.frm
-p.par
-t2.frm
-t2.ibd
-isam_p#P#p2.MYD
-isam_p#P#p2.MYI
-isam_p#P#p3.MYD
-isam_p#P#p3.MYI
-isam_p#P#p4.MYD
-isam_p#P#p4.MYI
-isam_p#P#p5.MYD
-isam_p#P#p5.MYI
-isam_p.frm
-isam_p.par
-isam_t2.MYD
-isam_t2.MYI
-isam_t2.frm
-p#p#p2.ibd
-p#p#p3.ibd
-p#p#p4.ibd
-p#p#p5.ibd
-p.frm
-p.par
-t2.frm
-t2.ibd
+# shutdown server
+# remove datadir
+# xtrabackup move back
+# restart server
+SELECT * from p;
+a
+201
+301
+401
+501
+SELECT * from isam_p;
+a
+201
+301
+401
+501
 DROP TABLE isam_p;
 DROP TABLE isam_t2;
 DROP TABLE p;

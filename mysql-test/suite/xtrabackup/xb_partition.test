@@ -38,8 +38,6 @@ let $targetdir=$MYSQLTEST_VARDIR/tmp;
 
 exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf --no-timestamp --backup --target-dir=$targetdir/full;
 
-list_files $targetdir/full/test;
-
 DROP TABLE t1;
 DROP TABLE t2;
 CREATE TABLE t2(a INT) ENGINE=InnoDB;
@@ -68,14 +66,16 @@ INSERT INTO isam_p VALUES (401), (501);
 
 
 exec $INNOBACKUPEX --defaults-file=$MYSQLTEST_VARDIR/my.cnf --incremental --no-timestamp --incremental-basedir=$targetdir/full $targetdir/inc;
-list_files $targetdir/full/test;
 exec $INNOBACKUPEX --defaults-file=$MYSQLTEST_VARDIR/my.cnf --apply-log --redo-only $targetdir/full;
-list_files $targetdir/full/test;
 exec $INNOBACKUPEX --defaults-file=$MYSQLTEST_VARDIR/my.cnf --apply-log --redo-only --incremental-dir=$targetdir/inc $targetdir/full;
-list_files $targetdir/full/test;
 exec $INNOBACKUPEX --defaults-file=$MYSQLTEST_VARDIR/my.cnf --apply-log $targetdir/full;
 
-list_files $targetdir/full/test;
+let $targetdir=$targetdir/full;
+-- source include/restart_and_restore.inc
+
+SELECT * from p;
+SELECT * from isam_p;
+
 DROP TABLE isam_p;
 DROP TABLE isam_t2;
 DROP TABLE p;
