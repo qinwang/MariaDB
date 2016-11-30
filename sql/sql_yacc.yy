@@ -10711,9 +10711,6 @@ glimit_clause_init:
 
 glimit_clause:
           glimit_clause_init glimit_options{}
-        | glimit_clause_init glimit_options
-          ROWS_SYM EXAMINED_SYM glimit_rows_option{}
-        | glimit_clause_init ROWS_SYM EXAMINED_SYM glimit_rows_option{}
         ;
 
 glimit_options:
@@ -10791,13 +10788,6 @@ glimit_option:
               MYSQL_YYABORT;
           }
         ;
-
-glimit_rows_option:
-          glimit_option
-          {
-            LEX *lex=Lex;
-            lex->limit_rows_examined= $1;
-          }
 
 in_sum_expr:
           opt_all
