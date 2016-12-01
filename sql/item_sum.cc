@@ -3127,20 +3127,23 @@ int dump_leaf_key(void* key_arg, element_count count __attribute__((unused)),
 
   tmp.length(0);
 
-  for (; arg < arg_end; arg++)
+  if(!item->limit_clause || !(*offset_limit))
   {
-    String *res;
-    /*
-      We have to use get_tmp_table_field() instead of
-      real_item()->get_tmp_table_field() because we want the field in
-      the temporary table, not the original field
-      We also can't use table->field array to access the fields
-      because it contains both order and arg list fields.
-     */
-    if ((*arg)->const_item())
-      res= (*arg)->val_str(&tmp);
-    else
+
+    for (; arg < arg_end; arg++)
     {
+      String *res;
+      /*
+        We have to use get_tmp_table_field() instead of
+        real_item()->get_tmp_table_field() because we want the field in
+        the temporary table, not the original field
+        We also can't use table->field array to access the fields
+        because it contains both order and arg list fields.
+      */
+      if ((*arg)->const_item())
+        res= (*arg)->val_str(&tmp);
+      else
+      {
       Field *field= (*arg)->get_tmp_table_field();
       if (field)
       {
@@ -3151,33 +3154,19 @@ int dump_leaf_key(void* key_arg, element_count count __attribute__((unused)),
       }
       else
         res= (*arg)->val_str(&tmp);
-    }
-    if (res)
-    {
-      // This can be further optimised if we calculate the values for the fields only when it is necessary that is afer #offset_limit
-      if(item->limit_clause)
-      {
-        if(*offset_limit)
-        {
-          (*offset_limit)--;
-          item->no_appended= TRUE;
-        }
-        else
-        {
-          if(*row_limit)
-          {
-            result->append(*res);
-            (*row_limit)--;
-            if(!(*row_limit))
-              item->no_appended= TRUE;
-          }
-          else
-            item->no_appended= TRUE;
-        }
       }
-      else
+      if (res)
+      {
         result->append(*res);
+      }
     }
+    if((*row_limit))
+       (*row_limit)--;
+  }
+  else
+  {
+    item->no_appended= TRUE;
+    (*offset_limit)--;
   }
 
   item->row_count++;
@@ -3238,9 +3227,9 @@ Item_func_group_concat(THD *thd, Name_resolution_context *context_arg,
    row_count(0),
    distinct(distinct_arg),
    warning_for_row(FALSE),
-   force_copy_fields(0), original(0),
-   row_limit(row_limit), offset_limit(offset_limit),limit_clause(limit_clause),
-   copy_offset_limit(offset_limit), copy_row_limit(row_limit)
+   force_copy_fields(0),row_limit(row_limit),
+   offset_limit(offset_limit),limit_clause(limit_clause),
+   copy_offset_limit(offset_limit), copy_row_limit(row_limit),original(0)
 {
   Item *item_select;
   Item **arg_ptr;
@@ -3301,9 +3290,9 @@ Item_func_group_concat::Item_func_group_concat(THD *thd,
   warning_for_row(item->warning_for_row),
   always_null(item->always_null),
   force_copy_fields(item->force_copy_fields),
-  original(item), row_limit(item->row_limit),
-  offset_limit(item->offset_limit),limit_clause(item->limit_clause),
-  copy_offset_limit(item->copy_offset_limit), copy_row_limit(item->row_limit)
+  row_limit(item->row_limit), offset_limit(item->offset_limit),
+  limit_clause(item->limit_clause),copy_offset_limit(item->copy_offset_limit),
+  copy_row_limit(item->row_limit), original(item->original)
 {
   quick_group= item->quick_group;
   result.set_charset(collation.collation);
