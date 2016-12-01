@@ -32,9 +32,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 #ifdef _MSC_VER
 #define stat _stati64
 #define PATH_MAX MAX_PATH
+#endif
+
+#ifndef HAVE_VASPRINTF
 static inline int vasprintf(char **strp, const char *fmt, va_list args)
 {
-  int len= _vscprintf(fmt, args);
+  int len;
+#ifdef _MSC_VER
+  len = _vscprintf(fmt, args);
+#else
+  len = vsnprintf(NULL, 0, fmt, args);
+#endif
   if (len < 0)
   {
     return -1;
@@ -56,7 +64,6 @@ static inline int asprintf(char **strp, const char *fmt,...)
   va_end(args);
   return len;
 }
-
 #endif
 
 #define xb_a(expr)							\
