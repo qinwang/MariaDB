@@ -27,12 +27,12 @@ INCLUDE(${MYSQL_CMAKE_SCRIPT_DIR}/cmake_parse_arguments.cmake)
 # [RECOMPILE_FOR_EMBEDDED]
 # [LINK_LIBRARIES lib1...libN]
 # [DEPENDENCIES target1...targetN]
-# [DELAYLOAD_MYSQLD]
+# [ENCRYPTION]
 
 MACRO(MYSQL_ADD_PLUGIN)
   MYSQL_PARSE_ARGUMENTS(ARG
     "LINK_LIBRARIES;DEPENDENCIES;MODULE_OUTPUT_NAME;STATIC_OUTPUT_NAME;COMPONENT;CONFIG"
-    "STORAGE_ENGINE;STATIC_ONLY;MODULE_ONLY;MANDATORY;DEFAULT;DISABLED;RECOMPILE_FOR_EMBEDDED;CLIENT;DELAYLOAD_MYSQLD"
+    "STORAGE_ENGINE;STATIC_ONLY;MODULE_ONLY;MANDATORY;DEFAULT;DISABLED;RECOMPILE_FOR_EMBEDDED;CLIENT;ENCRYPTION"
     ${ARGN}
   )
   IF(NOT WITHOUT_SERVER OR ARG_CLIENT)
@@ -123,7 +123,11 @@ MACRO(MYSQL_ADD_PLUGIN)
     ENDIF()
   ENDIF()
   IF(NOT MSVC)
-    SET(ARG_DELAYLOAD_MYSQLD OFF)
+    # We have special handling for encryption plugins,
+    # on windows (they need to be loaded into xtrabackup.exe
+    # and mysqld.exe, which requires subverting a loader somewhat
+    # On non-windows we don't do anything.
+    SET(ARG_ENCRYPTION OFF)
   ENDIF()
   # Build either static library or module
   IF (PLUGIN_${plugin} MATCHES "(STATIC|AUTO|YES)" AND NOT ARG_MODULE_ONLY
@@ -187,11 +191,8 @@ MACRO(MYSQL_ADD_PLUGIN)
 
     ADD_VERSION_INFO(${target} MODULE SOURCES)
 
-    IF(ARG_DELAYLOAD_MYSQLD)
-      # Windows specific option DELAYLOAD_MYSQLD
-      # This argument is used to allow plugins that depend on mysqld.exe
-      # to be loaded by another program (e.g xtrabackup.exe)
-      # The mysqld.exe exports resolved against current executable
+    IF(ARG_ENCRYPTION)
+      # Special delayloading for encryption plugins on Windows
       SET(SOURCES ${SOURCES} ${PROJECT_SOURCE_DIR}/sql/delayload.c)
     ENDIF()
 
@@ -212,7 +213,7 @@ MACRO(MYSQL_ADD_PLUGIN)
     # an additional dependency.
     IF(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ARG_CLIENT)
       TARGET_LINK_LIBRARIES (${target} mysqld)
-      IF(ARG_DELAYLOAD_MYSQLD)
+      IF(ARG_ENCRYPTION)
         SET_TARGET_PROPERTIES(${target} PROPERTIES LINK_FLAGS "/DELAYLOAD:mysqld.exe")
       ENDIF()
     ENDIF()
