@@ -1583,9 +1583,9 @@ class Item_func_group_concat : public Item_sum
   bool always_null;
   bool force_copy_fields;
   bool no_appended;
+  Item *row_limit;
+  Item *offset_limit;
   bool limit_clause;
-  ulonglong row_limit;
-  ulonglong offset_limit;
   ulonglong copy_offset_limit;
   ulonglong copy_row_limit;
 
@@ -1609,7 +1609,7 @@ public:
   Item_func_group_concat(THD *thd, Name_resolution_context *context_arg,
                          bool is_distinct, List<Item> *is_select,
                          const SQL_I_List<ORDER> &is_order, String *is_separator,
-                         bool limit_clause, ulonglong row_limit, ulonglong offset_limit);
+                         bool limit_clause, Item *row_limit, Item *offset_limit);
 
   Item_func_group_concat(THD *thd, Item_func_group_concat *item);
   ~Item_func_group_concat();

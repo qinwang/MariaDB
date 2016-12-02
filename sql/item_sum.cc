@@ -3114,10 +3114,10 @@ int dump_leaf_key(void* key_arg, element_count count __attribute__((unused)),
   String *result= &item->result;
   Item **arg= item->args, **arg_end= item->args + item->arg_count_field;
   uint old_length= result->length();
-  ulonglong *offset_limit= &item->offset_limit;
-  ulonglong *row_limit = &item->row_limit;
+  ulonglong *offset_limit= &item->copy_offset_limit;
+  ulonglong *row_limit = &item->copy_row_limit;
 
-  if(item->limit_clause && !(*row_limit))
+  if (item->limit_clause && !(*row_limit))
      return 1;
 
   if (item->no_appended)
@@ -3127,7 +3127,7 @@ int dump_leaf_key(void* key_arg, element_count count __attribute__((unused)),
 
   tmp.length(0);
 
-  if(!item->limit_clause || !(*offset_limit))
+  if (!item->limit_clause || !(*offset_limit))
   {
 
     for (; arg < arg_end; arg++)
@@ -3160,8 +3160,8 @@ int dump_leaf_key(void* key_arg, element_count count __attribute__((unused)),
         result->append(*res);
       }
     }
-    if((*row_limit))
-       (*row_limit)--;
+    if ((*row_limit))
+        (*row_limit)--;
   }
   else
   {
@@ -3218,7 +3218,7 @@ Item_func_group_concat(THD *thd, Name_resolution_context *context_arg,
                        bool distinct_arg, List<Item> *select_list,
                        const SQL_I_List<ORDER> &order_list,
                        String *separator_arg, bool limit_clause,
-                       ulonglong row_limit, ulonglong offset_limit)
+                       Item *rowLimit, Item *offsetLimit)
   :Item_sum(thd), tmp_table_param(0), separator(separator_arg), tree(0),
    unique_filter(NULL), table(0),
    order(0), context(context_arg),
@@ -3227,9 +3227,9 @@ Item_func_group_concat(THD *thd, Name_resolution_context *context_arg,
    row_count(0),
    distinct(distinct_arg),
    warning_for_row(FALSE),
-   force_copy_fields(0),row_limit(row_limit),
-   offset_limit(offset_limit),limit_clause(limit_clause),
-   copy_offset_limit(offset_limit), copy_row_limit(row_limit),original(0)
+   force_copy_fields(0),row_limit(0),
+   offset_limit(0),limit_clause(limit_clause),
+   copy_offset_limit(0), copy_row_limit(0),original(0)
 {
   Item *item_select;
   Item **arg_ptr;
@@ -3271,6 +3271,16 @@ Item_func_group_concat(THD *thd, Name_resolution_context *context_arg,
   /* orig_args is only used for print() */
   orig_args= (Item**) (order + arg_count_order);
   memcpy(orig_args, args, sizeof(Item*) * arg_count);
+
+  if (limit_clause)
+  {
+    if (!(row_limit=(Item*) thd->alloc(sizeof(Item))))
+      return;
+    row_limit= rowLimit;
+    if (!(offset_limit= (Item*)thd->alloc(sizeof(Item))))
+      return;
+    offset_limit= offsetLimit;
+  }
 }
 
 
@@ -3292,7 +3302,7 @@ Item_func_group_concat::Item_func_group_concat(THD *thd,
   force_copy_fields(item->force_copy_fields),
   row_limit(item->row_limit), offset_limit(item->offset_limit),
   limit_clause(item->limit_clause),copy_offset_limit(item->copy_offset_limit),
-  copy_row_limit(item->row_limit), original(item->original)
+  copy_row_limit(item->copy_row_limit), original(item->original)
 {
   quick_group= item->quick_group;
   result.set_charset(collation.collation);
@@ -3405,8 +3415,10 @@ void Item_func_group_concat::clear()
   null_value= TRUE;
   warning_for_row= FALSE;
   no_appended= TRUE;
-  offset_limit= copy_offset_limit;
-  row_limit= copy_row_limit;
+  if (offset_limit)
+     copy_offset_limit= offset_limit->val_int();
+  if (row_limit)
+     copy_row_limit= row_limit->val_int();
   if (tree)
     reset_tree(tree);
   if (unique_filter)

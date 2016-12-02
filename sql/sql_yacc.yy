@@ -10454,23 +10454,21 @@ sum_expr:
           {
             SELECT_LEX *sel= Select;
             sel->in_sum_expr--;
-            if(!$8)
+            if (!$8)
              $$= new (thd->mem_root)
                    Item_func_group_concat(thd, Lex->current_context(), $3, $5,
                                         sel->gorder_list, $7, FALSE, 0, 0);
             else
             {
-              if(sel->select_limit && sel->offset_limit)
+              if (sel->select_limit && sel->offset_limit)
                  $$= new (thd->mem_root)
                         Item_func_group_concat(thd, Lex->current_context(), $3, $5,
-                                         sel->gorder_list, $7, TRUE, sel->select_limit->val_int(),
-                                         sel->offset_limit->val_int());
-              else if(sel->select_limit)
+                                         sel->gorder_list, $7, TRUE, sel->select_limit,
+                                         sel->offset_limit);
+              else if (sel->select_limit)
                  $$= new (thd->mem_root)
                         Item_func_group_concat(thd, Lex->current_context(), $3, $5,
-                                         sel->gorder_list, $7, TRUE, sel->select_limit->val_int(),0);
-              else
-                 $$ = NULL; //need more thinking and maybe some error handling to inform the user the problem with the query
+                                         sel->gorder_list, $7, TRUE, sel->select_limit, 0);
             }
              if ($$ == NULL)
                MYSQL_YYABORT;
