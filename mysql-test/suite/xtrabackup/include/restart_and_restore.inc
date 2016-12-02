@@ -5,7 +5,7 @@ exec echo "wait" > $_expect_file_name;
 echo # shutdown server;
 shutdown_server;
 echo # remove datadir;
-force-rmdir $_datadir;
+rmdir $_datadir;
 echo # xtrabackup move back;
 exec $XTRABACKUP --copy-back --datadir=$_datadir --target-dir=$targetdir --parallel=2;
 echo # restart server;

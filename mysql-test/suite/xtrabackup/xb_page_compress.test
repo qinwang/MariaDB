@@ -1,4 +1,3 @@
---enable_quiet_exec
 CREATE TABLE t1(c1 INT, b CHAR(20)) ENGINE=INNODB PAGE_COMPRESSED=1;
 
 DELIMITER //;
@@ -24,10 +23,12 @@ SELECT (VARIABLE_VALUE >= 0) AS HAVE_COMPRESSED_PAGES
 
 echo # xtrabackup backup;
 let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
-exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf  --backup "--tables=test.*1" --target-dir=$targetdir;
 
+--disable_result_log
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf  --backup "--tables=test.*1" --target-dir=$targetdir;
 echo # xtrabackup prepare;
 exec $XTRABACKUP --prepare --export --target-dir=$targetdir;
+--enable_result_log
 
 ALTER TABLE t1 DISCARD TABLESPACE;
 let $MYSQLD_DATADIR= `select @@datadir`;
@@ -39,5 +40,5 @@ SELECT COUNT(*) FROM t1;
 
 DROP PROCEDURE innodb_insert_proc;
 DROP TABLE t1;
-force-rmdir $targetdir;
---disable_quiet_exec
+rmdir $targetdir;
+

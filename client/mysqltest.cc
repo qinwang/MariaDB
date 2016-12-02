@@ -131,7 +131,6 @@ static my_bool disable_connect_log= 1;
 static my_bool disable_warnings= 0, disable_column_names= 0;
 static my_bool prepare_warnings_enabled= 0;
 static my_bool disable_info= 1;
-static my_bool quiet_exec=0;
 static my_bool abort_on_error= 1, opt_continue_on_error= 0;
 static my_bool server_initialized= 0;
 static my_bool is_windows= 0;
@@ -158,8 +157,7 @@ static struct property prop_list[] = {
   { &ps_protocol_enabled, 0, 0, 0, "$ENABLED_PS_PROTOCOL" },
   { &disable_query_log, 0, 0, 1, "$ENABLED_QUERY_LOG" },
   { &disable_result_log, 0, 0, 1, "$ENABLED_RESULT_LOG" },
-  { &disable_warnings, 0, 0, 1, "$ENABLED_WARNINGS" },
-  { &quiet_exec, 0, 0, 0, "$ENABLED_QUIET_EXEC" }
+  { &disable_warnings, 0, 0, 1, "$ENABLED_WARNINGS" }
 };
 
 static my_bool once_property= FALSE;
@@ -173,7 +171,6 @@ enum enum_prop {
   P_QUERY,
   P_RESULT,
   P_WARN,
-  P_QUIET_EXEC,
   P_MAX
 };
 
@@ -374,13 +371,12 @@ enum enum_commands {
   Q_CHARACTER_SET, Q_DISABLE_PS_PROTOCOL, Q_ENABLE_PS_PROTOCOL,
   Q_ENABLE_NON_BLOCKING_API, Q_DISABLE_NON_BLOCKING_API,
   Q_DISABLE_RECONNECT, Q_ENABLE_RECONNECT,
-  Q_DISABLE_QUIET_EXEC, Q_ENABLE_QUIET_EXEC,
   Q_IF,
   Q_DISABLE_PARSING, Q_ENABLE_PARSING,
   Q_REPLACE_REGEX, Q_REMOVE_FILE, Q_FILE_EXIST,
   Q_WRITE_FILE, Q_COPY_FILE, Q_PERL, Q_DIE, Q_EXIT, Q_SKIP,
   Q_CHMOD_FILE, Q_APPEND_FILE, Q_CAT_FILE, Q_DIFF_FILES,
-  Q_SEND_QUIT, Q_CHANGE_USER, Q_MKDIR, Q_RMDIR, Q_FORCE_RMDIR,
+  Q_SEND_QUIT, Q_CHANGE_USER, Q_MKDIR, Q_RMDIR,
   Q_LIST_FILES, Q_LIST_FILES_WRITE_FILE, Q_LIST_FILES_APPEND_FILE,
   Q_SEND_SHUTDOWN, Q_SHUTDOWN_SERVER,
   Q_RESULT_FORMAT_VERSION,
@@ -460,8 +456,6 @@ const char *command_names[]=
   "disable_non_blocking_api",
   "disable_reconnect",
   "enable_reconnect",
-  "disable_quiet_exec",
-  "enable_quiet_exec",
   "if",
   "disable_parsing",
   "enable_parsing",
@@ -484,7 +478,6 @@ const char *command_names[]=
   "change_user",
   "mkdir",
   "rmdir",
-  "force-rmdir",
   "list_files",
   "list_files_write_file",
   "list_files_append_file",
@@ -3378,8 +3371,11 @@ void do_exec(struct st_command *command)
 #endif
 #endif
 
-  if (quiet_exec)
+  if (disable_result_log)
+  {
+    /* Collect stderr output as well, for the case app. crashes or returns error.*/
     dynstr_append(&ds_cmd, " 2>&1");
+  }
 
   DBUG_PRINT("info", ("Executing '%s' as '%s'",
                       command->first_argument, ds_cmd.str));
@@ -3416,16 +3412,7 @@ void do_exec(struct st_command *command)
       len--;
     }
 #endif
-    if (disable_result_log)
-    {
-      if (len)
-        buf[len-1] = 0;
-      DBUG_PRINT("exec_result",("%s", buf));
-    }
-    else
-    {
-      replace_dynstr_append_mem(ds_result, buf, len);
-    }
+    replace_dynstr_append_mem(ds_result, buf, len);
   }
   error= pclose(res_file);
 
@@ -3480,7 +3467,8 @@ void do_exec(struct st_command *command)
   }
 
   dynstr_free(&ds_cmd);
-  if (quiet_exec)
+
+  if (disable_result_log)
   {
     /* Disable output in case of successful exit.*/
     dynstr_set(&ds_res,"");
@@ -3954,7 +3942,7 @@ void do_mkdir(struct st_command *command)
 /*
    Remove directory recursively.
 */
-static int rmdir_force(const char *dir)
+static int rmtree(const char *dir)
 {
   char path[FN_REFLEN];
   char sep[]={ FN_LIBCHAR, 0 };
@@ -3976,12 +3964,17 @@ static int rmdir_force(const char *dir)
     if (!MY_S_ISDIR(file->mystat->st_mode))
       err= my_delete(path, 0);
     else
-      err= rmdir_force(path);
+      err= rmtree(path);
+
+    if(err)
+      break;
   }
 
   my_dirend(dir_info);
 
-  err= rmdir(dir);
+  if (!err)
+   err= rmdir(dir);
+
   return err;
 }
 
@@ -3993,10 +3986,10 @@ static int rmdir_force(const char *dir)
 
   DESCRIPTION
   rmdir <dir_name>
-  Remove the empty directory <dir_name>
+  Remove the directory tree
 */
 
-void do_rmdir(struct st_command *command, bool force)
+void do_rmdir(struct st_command *command)
 {
   static DYNAMIC_STRING ds_dirname;
   const struct command_arg rmdir_args[] = {
@@ -4008,11 +4001,25 @@ void do_rmdir(struct st_command *command, bool force)
                      rmdir_args, sizeof(rmdir_args)/sizeof(struct command_arg),
                      ' ');
 
-  DBUG_PRINT("info", ("removing directory: %s", ds_dirname.str));
-  int error=force ? rmdir_force(ds_dirname.str): rmdir(ds_dirname.str) ;
+  char *vardir= getenv("MYSQLTEST_VARDIR");
+  char *dir= ds_dirname.str;
+  size_t vardir_len= strlen(vardir);
+  size_t dir_len= strlen(dir);
 
-  if (error)
-    handle_command_error(command, 1, errno);
+  if (!vardir || !vardir_len || dir_len <= vardir_len
+    || memcmp(dir, vardir, vardir_len - 1)
+    || dir[vardir_len] != '/')
+  {
+    report_or_die("rmdir: directory '%s' is not a subdirectory "
+      " of MYSQLTEST_VARDIR '%s'", dir, vardir);
+  }
+  else
+  {
+    DBUG_PRINT("info", ("removing directory: %s", dir));
+    if (rmtree(dir))
+      handle_command_error(command, 1, errno);
+  }
+
   dynstr_free(&ds_dirname);
   DBUG_VOID_RETURN;
 }
@@ -9031,7 +9038,6 @@ int main(int argc, char **argv)
   var_set_int("$ENABLED_WARNINGS", 1);
   var_set_int("$ENABLED_INFO", 0);
   var_set_int("$ENABLED_METADATA", 0);
-  var_set_int("$ENABLED_QUIET_EXEC", 0);
 
   DBUG_PRINT("info",("result_file: '%s'",
                      result_file_name ? result_file_name : ""));
@@ -9254,8 +9260,7 @@ int main(int argc, char **argv)
       case Q_REMOVE_FILE: do_remove_file(command); break;
       case Q_REMOVE_FILES_WILDCARD: do_remove_files_wildcard(command); break;
       case Q_MKDIR: do_mkdir(command); break;
-      case Q_RMDIR: do_rmdir(command, 0); break;
-      case Q_FORCE_RMDIR: do_rmdir(command, 1); break;
+      case Q_RMDIR: do_rmdir(command); break;
       case Q_LIST_FILES: do_list_files(command); break;
       case Q_LIST_FILES_WRITE_FILE:
         do_list_files_write_file_command(command, FALSE);
@@ -9484,12 +9489,6 @@ int main(int argc, char **argv)
         set_reconnect(cur_con->mysql, 1);
         /* Close any open statements - no reconnect, need new prepare */
         close_statements();
-        break;
-      case Q_DISABLE_QUIET_EXEC:
-        set_property(command, P_QUIET_EXEC, 0);
-        break;
-      case Q_ENABLE_QUIET_EXEC:
-        set_property(command, P_QUIET_EXEC, 1);
         break;
       case Q_DISABLE_PARSING:
         if (parsing_disabled == 0)

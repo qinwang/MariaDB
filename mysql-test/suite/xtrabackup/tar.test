@@ -16,15 +16,15 @@ let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
 let $streamfile=$MYSQLTEST_VARDIR/tmp/backup.tar;
 mkdir $targetdir;
 
+
 exec $XTRABACKUP "--defaults-file=$MYSQLTEST_VARDIR/my.cnf" --backup --stream=tar > $streamfile 2>$targetdir/backup_stream.log;
---enable_quiet_exec
+--disable_result_log
 exec tar -C $targetdir -x < $streamfile;
 echo # xtrabackup prepare;
 exec $XTRABACKUP --prepare --target-dir=$targetdir;
 
 -- source include/restart_and_restore.inc
-
+--enable_result_log
 SELECT * FROM t;
 DROP TABLE t;
-force-rmdir $targetdir;
---disable_quiet_exec
+rmdir $targetdir;

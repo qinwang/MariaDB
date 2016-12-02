@@ -2,11 +2,8 @@ if (!$EXAMPLE_KEY_MANAGEMENT_SO)
 {
   --skip Needs example_key_management
 }
-
-
-
 call mtr.add_suppression("InnoDB: New log files created");
---enable_quiet_exec
+
 
 let $basedir=$MYSQLTEST_VARDIR/tmp/backup;
 let $incremental_dir=$MYSQLTEST_VARDIR/tmp/backup_inc1;
@@ -17,13 +14,15 @@ INSERT INTO t VALUES(1);
 
 
 echo # Create full backup , modify table, then create incremental/differential backup;
+--disable_result_log
 exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf  --backup --target-dir=$basedir;
+--enable_result_log
 
 INSERT INTO t VALUES(2);
 SELECT * FROM t;
+
+--disable_result_log
 exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf   --backup --target-dir=$incremental_dir --incremental-basedir=$basedir;
-
-
 echo # Prepare full backup, apply incremental one;
 exec $XTRABACKUP --prepare --apply-log-only --target-dir=$basedir;
 exec $XTRABACKUP --prepare --target-dir=$basedir --incremental-dir=$incremental_dir;
@@ -36,12 +35,11 @@ exec $XTRABACKUP --defaults-file=$basedir/backup-my.cnf --stats --datadir=$based
 echo # Restore and check results;
 let $targetdir=$basedir;
 -- source include/restart_and_restore.inc
+--enable_result_log
 
 SELECT * FROM t;
 DROP TABLE t;
 
 # Cleanup
-force-rmdir $basedir;
-force-rmdir $incremental_dir;
-
---disable_quiet_exec
+rmdir $basedir;
+rmdir $incremental_dir;
