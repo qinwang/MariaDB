@@ -2876,8 +2876,6 @@ list_files_append_file $MYSQLTEST_VARDIR/tmp/testdir/file2.txt $MYSQLTEST_VARDIR
 list_files_write_file $MYSQLTEST_VARDIR/tmp/testdir/file2.txt $MYSQLTEST_VARDIR/tmp/testdir file?.txt;
 list_files_append_file $MYSQLTEST_VARDIR/tmp/testdir/file3.txt $MYSQLTEST_VARDIR/tmp/testdir file*.txt;
 diff_files $MYSQLTEST_VARDIR/tmp/testdir/file2.txt $MYSQLTEST_VARDIR/tmp/testdir/file3.txt;
---error 1
-rmdir $MYSQLTEST_VARDIR/tmp/testdir;
 
 cat_file $MYSQLTEST_VARDIR/tmp/testdir/file3.txt;
 
