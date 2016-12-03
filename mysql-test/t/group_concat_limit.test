@@ -44,5 +44,7 @@ select group_concat(a,b limit 2) from t2;
 set @x=4;
 prepare STMT from 'select group_concat(b limit ?) from t2';
 execute STMT using @x;
+prepare STMT from 'select group_concat(a,b limit ?) from t2';
+execute STMT using @x;
 drop table t2;
 
