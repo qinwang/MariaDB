@@ -13,6 +13,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 
+
 OPTION(WITH_XTRABACKUP "Include xtrabackup" ON)
 IF(NOT WITH_XTRABACKUP)
   RETURN()
@@ -100,6 +101,7 @@ ENDIF()
 
 INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}/include
+  ${CMAKE_SOURCE_DIR}/pcre
   ${CMAKE_SOURCE_DIR}/storage/xtradb/include
   ${CMAKE_SOURCE_DIR}/sql
   ${CMAKE_CURRENT_SOURCE_DIR}/quicklz

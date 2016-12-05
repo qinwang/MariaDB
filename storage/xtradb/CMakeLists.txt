@@ -507,4 +507,4 @@ IF(TARGET xtradb AND NOT XTRADB_OK)
   MESSAGE(FATAL_ERROR "Percona XtraDB is not supported on this platform")
 ENDIF()
 
-ADD_SUBDIRECTORY(xtrabackup)
+ADD_SUBDIRECTORY(${CMAKE_SOURCE_DIR}/extra/xtrabackup ${CMAKE_BINARY_DIR}/extra/xtrabackup)

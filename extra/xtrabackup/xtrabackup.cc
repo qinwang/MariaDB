@@ -47,7 +47,6 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <mysql_com.h>
 #include <my_default.h>
 #include <mysqld.h>
-#include <pcre.h>
 
 #include <fcntl.h>
 #include <string.h>
