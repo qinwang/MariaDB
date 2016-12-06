@@ -7653,7 +7653,7 @@ fil_space_get_crypt_data(
 
 		crypt_data = space->crypt_data;
 
-		if (!space->page_0_crypt_read) {
+		if (!space->page_0_crypt_read && !IS_XTRABACKUP()) {
 			ib_logf(IB_LOG_LEVEL_WARN,
 				"Space %lu name %s contains encryption %d information for key_id %u but page0 is not read.",
 				space->id,
