@@ -1,6 +1,0 @@
---source include/have_innodb.inc
- 
-CREATE TABLE t1 (i INT) ENGINE=InnoDB;
-SELECT ( SELECT DISTINCT GROUP_CONCAT(SLEEP(0)) FROM t1 GROUP BY i );
-SELECT i FROM t1 order by i LIMIT 1;
-drop table t1;
