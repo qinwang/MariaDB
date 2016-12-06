@@ -5,6 +5,7 @@
 #include <backup_copy.h>
 #include <sql_plugin.h>
 #include <sstream>
+#include <vector>
 #include <common.h>
 
 
@@ -16,6 +17,7 @@ extern char *xb_plugin_load;
 extern char *xb_plugin_dir;
 
 const int PLUGIN_MAX_ARGS = 1024;
+vector<string> backup_plugins_args;
 
 const char *QUERY_PLUGIN =
 "SELECT plugin_name, plugin_library, @@plugin_dir"
@@ -85,7 +87,7 @@ void encryption_plugin_backup_init(MYSQL *mysql)
 
   char query[1024];
   snprintf(query, 1024, "SHOW variables like '%s_%%'", name);
-	mysql_free_result(result);
+  mysql_free_result(result);
 
   if (mysql_query(mysql, query))
   {
@@ -106,21 +108,24 @@ void encryption_plugin_backup_init(MYSQL *mysql)
   argv[argc++] =XTRABACKUP_EXE;
   while ((row = mysql_fetch_row(result)))
   {
-    asprintf(&argv[argc], "--%s=%s", row[0], row[1]);
+    string arg("--");
+    arg += row[0];
+    arg += "=";
+    arg += row[1];
+    backup_plugins_args.push_back(arg);
+    argv[argc]= (char *)backup_plugins_args[argc-1].c_str();
+
     oss << row[0] << "=" << row[1] << endl;
     argc++;
     if (argc == PLUGIN_MAX_ARGS - 1)
       break;
   }
-  argv[argc] = 0;
 
   mysql_free_result(result);
-
-  encryption_plugin_init(argc, argv);
-  for (int i = 1; i < argc; i++)
-    free(argv[i]);
-
   encryption_plugin_config = oss.str();
+
+  argv[argc] = 0;
+  encryption_plugin_init(argc, argv);
 }
 
 const char *encryption_plugin_get_config()
@@ -159,6 +164,9 @@ static void encryption_plugin_init(int argc, char **argv)
 {
   /* Patch optional and mandatory plugins, we only need to load the one in xb_plugin_load. */
   mysql_optional_plugins[0] = mysql_mandatory_plugins[0] = 0;
+  msg("Loading encryption plugin");
+  for (int i= 1; i < argc; i++)
+    msg("\t Encryption plugin parameter :  %s", argv[i]);
   plugin_init(&argc, argv, PLUGIN_INIT_SKIP_PLUGIN_TABLE);
 }
 
