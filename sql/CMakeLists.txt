@@ -222,12 +222,13 @@ IF(NOT WITHOUT_DYNAMIC_PLUGINS)
 
     ADD_CUSTOM_COMMAND(
       OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/mysqld.def
-      COMMAND cscript ARGS //nologo ${PROJECT_SOURCE_DIR}/win/create_def_file.js ${_PLATFORM}  ${LIB_LOCATIONS} > mysqld.def
+      COMMAND cscript ARGS //nologo ${PROJECT_SOURCE_DIR}/win/create_def_file.js ${_PLATFORM}  ${LIB_LOCATIONS} > mysqld.def.tmp
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different  mysqld.def.tmp  mysqld.def
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       DEPENDS ${MYSQLD_CORELIBS}
     )
 
-    ADD_CUSTOM_TARGET(GenMysqldDef DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/mysqld.def)
+    ADD_CUSTOM_TARGET(GenMysqldDef ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/mysqld.def)
     ADD_DEPENDENCIES(mysqld GenMysqldDef)
     ADD_DEPENDENCIES(sql GenError)
   ENDIF(MSVC)
