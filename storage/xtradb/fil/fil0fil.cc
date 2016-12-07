@@ -2089,6 +2089,19 @@ fil_read_first_page(
 	const char*	check_msg = NULL;
 	fil_space_crypt_t* cdata;
 
+	if (IS_XTRABACKUP() && srv_backup_mode) {
+		/* Files smaller than page size may occur
+		in xtrabackup, when server creates new file
+		but has not yet written into it, or wrote only
+		partially. Checks size here, to avoid exit in os_file_read.
+		This file will be skipped by xtrabackup if it is too small.
+		*/
+		os_offset_t	file_size;
+		file_size = os_file_get_size(data_file);
+		if (file_size < UNIV_PAGE_SIZE) {
+			return "File is smaller than UNIV_PAGE_SIZE";
+		}
+	}
 
 	buf = static_cast<byte*>(ut_malloc(2 * UNIV_PAGE_SIZE));
 
