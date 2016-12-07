@@ -166,7 +166,7 @@ static void encryption_plugin_init(int argc, char **argv)
   mysql_optional_plugins[0] = mysql_mandatory_plugins[0] = 0;
   msg("Loading encryption plugin");
   for (int i= 1; i < argc; i++)
-    msg("\t Encryption plugin parameter :  %s", argv[i]);
+    msg("\t Encryption plugin parameter :  '%s'\n", argv[i]);
   plugin_init(&argc, argv, PLUGIN_INIT_SKIP_PLUGIN_TABLE);
 }
 
