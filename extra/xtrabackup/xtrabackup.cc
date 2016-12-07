@@ -5313,11 +5313,11 @@ xtrabackup_apply_delta(
 
 	/* allocate buffer for incremental backup (4096 pages) */
 	incremental_buffer_base = static_cast<byte *>
-		(ut_malloc((UNIV_PAGE_SIZE_MAX / 4 + 1) *
-			   UNIV_PAGE_SIZE_MAX));
+		(ut_malloc((page_size / 4 + 1) *
+			   page_size));
 	incremental_buffer = static_cast<byte *>
 		(ut_align(incremental_buffer_base,
-			  UNIV_PAGE_SIZE_MAX));
+			  page_size));
 
 	msg("Applying %s to %s...\n", src_path, dst_path);
 
