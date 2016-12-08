@@ -346,13 +346,16 @@ read_retry:
 	for (page = cursor->buf, i = 0; i < npages;
 	     page += cursor->page_size, i++) {
 
-		if (buf_page_is_corrupted(TRUE, page, cursor->zip_size)) {
+		bool checksum_ok = fil_space_verify_crypt_checksum(page, cursor->zip_size);
+
+		if (!checksum_ok &&
+		    buf_page_is_corrupted(TRUE, page, cursor->zip_size)) {
 
 			ib_int64_t page_no = cursor->buf_page_no + i;
 
 			if (cursor->is_system &&
 			    page_no >= (ib_int64_t)FSP_EXTENT_SIZE &&
-          page_no < (ib_int64_t) FSP_EXTENT_SIZE * 3) {
+				page_no < (ib_int64_t) FSP_EXTENT_SIZE * 3) {
 				/* skip doublewrite buffer pages */
 				xb_a(cursor->page_size == UNIV_PAGE_SIZE);
 				msg("[%02u] xtrabackup: "
