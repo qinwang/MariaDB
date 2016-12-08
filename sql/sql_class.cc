@@ -7452,7 +7452,7 @@ bool THD::report_collected_insert_id()
                          mem_root);
 
     if (protocol_binary.send_result_set_metadata(&field_list,
-                                                  Protocol::SEND_NUM_ROWS))
+                                                  Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
       goto error;
 
     for (ulonglong i= 0; i < insert_ids->elements; i++)
