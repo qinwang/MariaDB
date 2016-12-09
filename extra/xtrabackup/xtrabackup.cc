@@ -6803,10 +6803,10 @@ void setup_error_messages()
   { ER_PLUGIN_IS_NOT_LOADED,"Plugin '%-.192s' is not loaded" }
   };
 
-  for (int i = 0; i < array_elements(all_msgs); i++)
+  for (int i = 0; i < (int)array_elements(all_msgs); i++)
     all_msgs[i] = "Unknown error";
 
-  for (int i = 0; i < array_elements(xb_msgs); i++)
+  for (int i = 0; i < (int)array_elements(xb_msgs); i++)
     all_msgs[xb_msgs[i].id - ER_ERROR_FIRST] = xb_msgs[i].fmt;
 }
 

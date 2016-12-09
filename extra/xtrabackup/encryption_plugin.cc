@@ -99,7 +99,7 @@ void encryption_plugin_backup_init(MYSQL *mysql)
   result = mysql_store_result(mysql);
   if (!result)
   {
-    msg("xtrabackup : mysql_store_result failed %s",
+    msg("xtrabackup : mysql_store_result failed for %s error %s",
       query, mysql_error(mysql));
     exit(EXIT_FAILURE);
   }
