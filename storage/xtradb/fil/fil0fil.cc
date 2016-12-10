@@ -6271,7 +6271,7 @@ _fil_io(
 
 	/* Check that at least the start offset is within the bounds of a
 	single-table tablespace, including rollback tablespaces. */
-	if (UNIV_UNLIKELY((IS_XTRABACKUP() && srv_backup_mode) || node->size <= block_offset)
+	if (!IS_XTRABACKUP() && UNIV_UNLIKELY(node->size <= block_offset)
 			&& space->id != 0 && space->purpose == FIL_TABLESPACE) {
 
 		fil_report_invalid_page_access(
