@@ -80,4 +80,8 @@ prepare STMT from 'select group_concat(b limit ?) from t2';
 execute STMT using @x;
 group_concat(b limit ?)
 a,b,c,x
+prepare STMT from 'select group_concat(a,b limit ?) from t2';
+execute STMT using @x;
+group_concat(a,b limit ?)
+1a,1b,2x,2y
 drop table t2;
