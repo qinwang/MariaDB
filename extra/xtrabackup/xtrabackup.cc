@@ -6847,7 +6847,6 @@ int main(int argc, char **argv)
 
   dict_check_if_skip_table = check_if_skip_table;
 
-  init_signals();
 	key_map_full.set_all();
 
   setup_error_messages();
@@ -6855,6 +6854,7 @@ int main(int argc, char **argv)
   plugin_mutex_init();
   mysql_rwlock_init(key_rwlock_LOCK_system_variables_hash, &LOCK_system_variables_hash);
   opt_stack_trace = 1;
+  init_signals();
   sf_leaking_memory = 0; /* don't report memory leaks on early exist */
 
 	/* scan options for group and config file to load defaults from */
