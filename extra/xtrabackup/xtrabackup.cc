@@ -209,6 +209,7 @@ ulint xtrabackup_rebuild_threads = 1;
 /* sleep interval beetween log copy iterations in log copying thread
 in milliseconds (default is 1 second) */
 ulint xtrabackup_log_copy_interval = 1000;
+static ulong max_buf_pool_modified_pct;
 
 /* Ignored option (--log) for MySQL option compatibility */
 char*	log_ignored_opt				= NULL;
@@ -866,7 +867,7 @@ Disable with --skip-innodb-doublewrite.", (G_PTR*) &innobase_use_doublewrite,
    "Path to InnoDB log files.", &srv_log_group_home_dir,
    &srv_log_group_home_dir, 0, GET_STR_ALLOC, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"innodb_max_dirty_pages_pct", OPT_INNODB_MAX_DIRTY_PAGES_PCT,
-   "Percentage of dirty pages allowed in bufferpool.", (G_PTR*) &srv_max_buf_pool_modified_pct,
+   "Percentage of dirty pages allowed in bufferpool.", (G_PTR*) &max_buf_pool_modified_pct,
    (G_PTR*) &srv_max_buf_pool_modified_pct, 0, GET_ULONG, REQUIRED_ARG, 90, 0, 100, 0, 0, 0},
   {"innodb_open_files", OPT_INNODB_OPEN_FILES,
    "How many files at the maximum InnoDB keeps open at the same time.",
@@ -6343,6 +6344,12 @@ skip_check:
 	msg("xtrabackup: Starting InnoDB instance for recovery.\n"
 	    "xtrabackup: Using %lld bytes for buffer pool "
 	    "(set by --use-memory parameter)\n", xtrabackup_use_memory);
+
+	srv_max_buf_pool_modified_pct = (double)max_buf_pool_modified_pct;
+
+	if (srv_max_dirty_pages_pct_lwm > srv_max_buf_pool_modified_pct) {
+		srv_max_dirty_pages_pct_lwm = srv_max_buf_pool_modified_pct;
+	}
 
 	if(innodb_init())
 		goto error_cleanup;
