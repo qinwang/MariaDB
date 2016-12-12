@@ -6290,9 +6290,9 @@ _fil_io(
 		offset = ((os_offset_t) block_offset << UNIV_PAGE_SIZE_SHIFT)
 			+ byte_offset;
 
-		ut_a(node->size - block_offset
+		ut_a(IS_XTRABACKUP() || (node->size - block_offset
 		     >= ((byte_offset + len + (UNIV_PAGE_SIZE - 1))
-			 / UNIV_PAGE_SIZE));
+			 / UNIV_PAGE_SIZE)));
 	} else {
 		ulint	zip_size_shift;
 		switch (zip_size) {
@@ -6307,8 +6307,8 @@ _fil_io(
 		}
 		offset = ((os_offset_t) block_offset << zip_size_shift)
 			+ byte_offset;
-		ut_a(node->size - block_offset
-		     >= (len + (zip_size - 1)) / zip_size);
+		ut_a(IS_XTRABACKUP() || (node->size - block_offset
+		     >= (len + (zip_size - 1)) / zip_size));
 	}
 
 	/* Do aio */
