@@ -7,6 +7,7 @@
 #include <sstream>
 #include <vector>
 #include <common.h>
+#include <backup_mysql.h>
 
 
 extern struct st_maria_plugin *mysql_optional_plugins[];
@@ -41,22 +42,7 @@ void encryption_plugin_backup_init(MYSQL *mysql)
   char *argv[PLUGIN_MAX_ARGS];
   int argc;
 
-
-  if (mysql_query(mysql, QUERY_PLUGIN))
-  {
-    msg("xtrabackup : Error query %s failed - could not read plugin data : %s", 
-      QUERY_PLUGIN,
-      mysql_error(mysql));
-    exit(EXIT_FAILURE);
-  }
-
-  result = mysql_store_result(mysql);
-  if (!result)
-  {
-    msg("xtrabackup : Error : mysql_store_result failed : %s", mysql_error(mysql));
-    exit(EXIT_FAILURE);
-  }
-
+  result = xb_mysql_query(mysql, QUERY_PLUGIN, true, true);
   row = mysql_fetch_row(result);
   if (!row)
   {
@@ -91,20 +77,7 @@ void encryption_plugin_backup_init(MYSQL *mysql)
   snprintf(query, 1024, "SHOW variables like '%s_%%'", name);
   mysql_free_result(result);
 
-  if (mysql_query(mysql, query))
-  {
-    msg("xtrabackup : Error query %s failed - could not read plugin vars : %s",
-      query,  mysql_error(mysql));
-    exit(EXIT_FAILURE);
-  }
-
-  result = mysql_store_result(mysql);
-  if (!result)
-  {
-    msg("xtrabackup : mysql_store_result failed for %s error %s",
-      query, mysql_error(mysql));
-    exit(EXIT_FAILURE);
-  }
+  result = xb_mysql_query(mysql, query, true, true);
 
   argc = 0;
   argv[argc++] =XTRABACKUP_EXE;
@@ -129,21 +102,10 @@ void encryption_plugin_backup_init(MYSQL *mysql)
   argv[argc] = 0;
   encryption_plugin_init(argc, argv);
 
-  /* Find out whether we need to encrypt the innodb log. */
-  if (mysql_query(mysql, "select @@innodb_encrypt_log"))
-  {
-    msg("xtrabackup : Error query 'select @@innodb_encrypt_log' failed : %s",
-      mysql_error(mysql));
-    exit(EXIT_FAILURE);
-  }
-  result = mysql_store_result(mysql);
-  if (!result)
-  {
-    msg("xtrabackup : mysql_store_result failed");
-    exit(EXIT_FAILURE);
-  }
+  /* Check whether to encrypt logs. */
+  result = xb_mysql_query(mysql, "select @@innodb_encrypt_log", true, true);
   row = mysql_fetch_row(result);
-  srv_encrypt_log = (row[0][0] == '1');
+  srv_encrypt_log = (row != 0 && row[0][0] == '1');
   mysql_free_result(result);
 
 }
@@ -184,7 +146,7 @@ static void encryption_plugin_init(int argc, char **argv)
 {
   /* Patch optional and mandatory plugins, we only need to load the one in xb_plugin_load. */
   mysql_optional_plugins[0] = mysql_mandatory_plugins[0] = 0;
-  msg("Loading encryption plugin");
+  msg("Loading encryption plugin\n");
   for (int i= 1; i < argc; i++)
     msg("\t Encryption plugin parameter :  '%s'\n", argv[i]);
   plugin_init(&argc, argv, PLUGIN_INIT_SKIP_PLUGIN_TABLE);
