@@ -85,6 +85,8 @@ void encryption_plugin_backup_init(MYSQL *mysql)
 
   oss << "plugin_dir=" << '"' << dir << '"' << endl;
 
+
+  /* Read plugin variables. */
   char query[1024];
   snprintf(query, 1024, "SHOW variables like '%s_%%'", name);
   mysql_free_result(result);
@@ -126,6 +128,24 @@ void encryption_plugin_backup_init(MYSQL *mysql)
 
   argv[argc] = 0;
   encryption_plugin_init(argc, argv);
+
+  /* Find out whether we need to encrypt the innodb log. */
+  if (mysql_query(mysql, "select @@innodb_encrypt_log"))
+  {
+    msg("xtrabackup : Error query 'select @@innodb_encrypt_log' failed : %s",
+      mysql_error(mysql));
+    exit(EXIT_FAILURE);
+  }
+  result = mysql_store_result(mysql);
+  if (!result)
+  {
+    msg("xtrabackup : mysql_store_result failed");
+    exit(EXIT_FAILURE);
+  }
+  row = mysql_fetch_row(result);
+  srv_encrypt_log = (row[0][0] == '1');
+  mysql_free_result(result);
+
 }
 
 const char *encryption_plugin_get_config()

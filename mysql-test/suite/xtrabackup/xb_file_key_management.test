@@ -4,15 +4,21 @@ if (`SELECT COUNT(*)=0 FROM INFORMATION_SCHEMA.PLUGINS WHERE PLUGIN_NAME = 'file
 }
 
 
-CREATE TABLE t(i INT) ENGINE INNODB encrypted=yes;
-INSERT INTO t VALUES(1);
+CREATE TABLE t(c VARCHAR(10)) ENGINE INNODB encrypted=yes;
+INSERT INTO t VALUES('foobar1');
 echo # xtrabackup backup;
 let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
 --disable_result_log
 exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf --backup --target-dir=$targetdir;
 --enable_result_log
 
-INSERT INTO t VALUES(2);
+--let SEARCH_RANGE = 10000000
+--let SEARCH_PATTERN=foobar1
+--let SEARCH_FILE=$targetdir/xtrabackup_logfile
+--source include/search_pattern_in_file.inc
+--echo # expect NOT FOUND
+
+INSERT INTO t VALUES('foobar2');
 echo # xtrabackup prepare;
 
 --disable_result_log

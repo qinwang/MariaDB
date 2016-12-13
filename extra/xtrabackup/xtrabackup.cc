@@ -2708,6 +2708,15 @@ xtrabackup_scan_log_recs(
 		}
 	}
 
+	if (write_size == 0) {
+		return(true);
+	}
+
+	if (srv_encrypt_log) {
+		log_encrypt_before_write(scanned_checkpoint_no,
+			log_sys->buf, write_size);
+	}
+
 	if (ds_write(dst_log_file, log_sys->buf, write_size)) {
 		msg("xtrabackup: Error: "
 		    "write to logfile failed\n");
