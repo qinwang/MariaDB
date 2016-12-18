@@ -97,16 +97,20 @@ void encryption_plugin_backup_init(MYSQL *mysql)
   }
 
   mysql_free_result(result);
-  encryption_plugin_config = oss.str();
-
-  argv[argc] = 0;
-  encryption_plugin_init(argc, argv);
 
   /* Check whether to encrypt logs. */
   result = xb_mysql_query(mysql, "select @@innodb_encrypt_log", true, true);
   row = mysql_fetch_row(result);
   srv_encrypt_log = (row != 0 && row[0][0] == '1');
+  oss << "innodb_encrypt_log=" << row[0] << endl;
+
   mysql_free_result(result);
+
+  encryption_plugin_config = oss.str();
+
+  argv[argc] = 0;
+  encryption_plugin_init(argc, argv);
+
 
 }
 

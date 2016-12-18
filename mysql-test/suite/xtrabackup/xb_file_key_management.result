@@ -9,6 +9,8 @@ INSERT INTO t VALUES('foobar2');
 # remove datadir
 # xtrabackup move back
 # restart server
+NOT FOUND /foobar1/ in xtrabackup_logfile
+# expect NOT FOUND
 SELECT * FROM t;
 c
 foobar1

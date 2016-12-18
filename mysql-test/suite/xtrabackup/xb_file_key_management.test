@@ -27,6 +27,17 @@ exec $XTRABACKUP  --defaults-file=$targetdir/backup-my.cnf --stats --datadir=$ta
 -- source include/restart_and_restore.inc
 --enable_result_log
 
+#
+# Recheck that plain text data (
+# in not in the log, after prepare
+# (MDEV-11538)
+
+--let SEARCH_RANGE = 10000000
+--let SEARCH_PATTERN=foobar1
+--let SEARCH_FILE=$targetdir/xtrabackup_logfile
+--source include/search_pattern_in_file.inc
+--echo # expect NOT FOUND
+
 SELECT * FROM t;
 DROP TABLE t;
 rmdir $targetdir;

@@ -567,6 +567,7 @@ enum options_xtrabackup
   OPT_OPEN_FILES_LIMIT,
   OPT_PLUGIN_DIR,
   OPT_PLUGIN_LOAD,
+  OPT_INNODB_ENCRYPT_LOG,
   OPT_CLOSE_FILES,
   OPT_CORE_FILE,
 
@@ -964,14 +965,17 @@ Disable with --skip-innodb-doublewrite.", (G_PTR*) &innobase_use_doublewrite,
    (G_PTR*) &xb_open_files_limit, (G_PTR*) &xb_open_files_limit, 0, GET_ULONG,
    REQUIRED_ARG, 0, 0, UINT_MAX, 0, 1, 0},
 
-
-   { "plugin-dir", OPT_PLUGIN_LOAD, "Server plugin directory",
+  {"plugin-dir", OPT_PLUGIN_DIR, "Server plugin directory",
       &xb_plugin_dir, &xb_plugin_dir,
        0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0 },
 
-   { "plugin-load", OPT_PLUGIN_LOAD, "encrypton plugin to load",
+  {"plugin-load", OPT_PLUGIN_LOAD, "encrypton plugin to load",
       &xb_plugin_load, &xb_plugin_load, 
       0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0 },
+
+  {"innodb-encrypt-log", OPT_INNODB_ENCRYPT_LOG, "encrypton plugin to load",
+      &srv_encrypt_log, &srv_encrypt_log,
+      0, GET_BOOL, REQUIRED_ARG, 0, 0, 0, 0, 0, 0 },
 
   {"close_files", OPT_CLOSE_FILES, "do not keep files opened. Use at your own "
    "risk.", (G_PTR*) &xb_close_files, (G_PTR*) &xb_close_files, 0, GET_BOOL,
