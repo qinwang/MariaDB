@@ -78,9 +78,6 @@ void encryption_plugin_backup_init(MYSQL *mysql)
   mysql_free_result(result);
 
   result = xb_mysql_query(mysql, query, true, true);
-
-  argc = 0;
-  argv[argc++] =XTRABACKUP_EXE;
   while ((row = mysql_fetch_row(result)))
   {
     string arg("--");
@@ -88,12 +85,7 @@ void encryption_plugin_backup_init(MYSQL *mysql)
     arg += "=";
     arg += row[1];
     backup_plugins_args.push_back(arg);
-    argv[argc]= (char *)backup_plugins_args[argc-1].c_str();
-
     oss << row[0] << "=" << row[1] << endl;
-    argc++;
-    if (argc == PLUGIN_MAX_ARGS - 1)
-      break;
   }
 
   mysql_free_result(result);
@@ -108,10 +100,17 @@ void encryption_plugin_backup_init(MYSQL *mysql)
 
   encryption_plugin_config = oss.str();
 
+  argc = 0;
+  argv[argc++] = XTRABACKUP_EXE;
+  for(size_t i = 0; i <  backup_plugins_args.size(); i++)
+  {
+    argv[argc++] = (char *)backup_plugins_args[i].c_str();
+    if (argc == PLUGIN_MAX_ARGS - 2)
+      break;
+  }
   argv[argc] = 0;
+
   encryption_plugin_init(argc, argv);
-
-
 }
 
 const char *encryption_plugin_get_config()
