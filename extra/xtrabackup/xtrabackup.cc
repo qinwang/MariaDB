@@ -6869,7 +6869,13 @@ int main(int argc, char **argv)
   plugin_mutex_init();
   mysql_rwlock_init(key_rwlock_LOCK_system_variables_hash, &LOCK_system_variables_hash);
   opt_stack_trace = 1;
+  test_flags |=  TEST_SIGINT;
   init_signals();
+#ifndef _WIN32
+  /* Exit process on SIGINT. */
+  my_sigset(SIGINT, SIG_DFL);
+#endif
+
   sf_leaking_memory = 0; /* don't report memory leaks on early exist */
 
 	/* scan options for group and config file to load defaults from */
