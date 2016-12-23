@@ -92,7 +92,7 @@ static struct thd_autoinc_service_st thd_autoinc_handler= {
   thd_get_autoinc
 };
 
-static struct thd_error_context_service_st thd_error_conext_handler= {
+static struct thd_error_context_service_st thd_error_context_handler= {
   thd_get_error_message,
   thd_get_error_number,
   thd_get_error_row,
@@ -155,6 +155,31 @@ static struct encryption_scheme_service_st encryption_scheme_handler=
  encryption_scheme_decrypt
 };
 
+static struct my_crypt_service_st crypt_handler=
+{
+  my_aes_crypt_init,
+  my_aes_crypt_update,
+  my_aes_crypt_finish,
+  my_aes_crypt,
+  my_aes_get_size,
+  my_aes_ctx_size,
+  my_random_bytes
+};
+
+static struct my_print_error_service_st my_print_error_handler=
+{
+  my_error,
+  my_printf_error,
+  my_printv_error
+};
+
+static struct error_log_service_st error_log_handler=
+{
+  sql_print_error,
+  sql_print_warning,
+  sql_print_information
+};
+
 static struct st_service_ref list_of_services[]=
 {
   { "my_snprintf_service",         VERSION_my_snprintf,         &my_snprintf_handler },
@@ -172,6 +197,9 @@ static struct st_service_ref list_of_services[]=
   { "encryption_service",          VERSION_encryption,          &encryption_handler },
   { "encryption_scheme_service",   VERSION_encryption_scheme,   &encryption_scheme_handler },
   { "thd_specifics_service",       VERSION_thd_specifics,       &thd_specifics_handler },
-  { "thd_error_context_service",   VERSION_thd_error_context,   &thd_error_conext_handler },
+  { "thd_error_context_service",   VERSION_thd_error_context,   &thd_error_context_handler },
+  { "my_crypt_service",            VERSION_my_crypt,            &crypt_handler},
+  { "my_print_error_service",      VERSION_my_print_error,      &my_print_error_handler},
+  { "error_log_service",           VERSION_error_log,           &error_log_handler}
 };
 

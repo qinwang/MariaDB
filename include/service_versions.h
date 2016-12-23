@@ -37,4 +37,7 @@
 #define VERSION_thd_specifics           0x0100
 #define VERSION_encryption              0x0300
 #define VERSION_encryption_scheme       0x0100
+#define VERSION_my_crypt                0x0100
+#define VERSION_my_print_error          0x0100
+#define VERSION_error_log               0x0100
 
