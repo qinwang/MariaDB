@@ -21,6 +21,13 @@ ENDIF()
 
 FIND_PACKAGE(libArchive QUIET)
 
+IF(NOT WIN32)
+  CHECK_SYMBOL_EXISTS(regcomp regex.h HAVE_SYSTEM_REGEX)
+  IF(HAVE_SYSTEM_REGEX)
+    ADD_DEFINITIONS(-DHAVE_SYSTEM_REGEX)
+  ENDIF()
+ENDIF()
+
 IF(NOT DEFINED WITH_LIBARCHIVE)  
   IF(LibArchive_FOUND)
     SET(WITH_LIBARCHIVE_DEFAULT ON)
@@ -36,7 +43,7 @@ IF(UNIX)
 ENDIF()
 
 IF(WITH_LIBARCHIVE AND NOT LibArchive_FOUND)
-  IF(CMAKE_VERSION VERSION_LESS "2.8.9")
+  IF(CMAKE_VERSION VERSION_LESS "2.8.12")
     MESSAGE("libarchive can't be built, old cmake")
   ELSE()
     # Build a local version
@@ -62,7 +69,7 @@ IF(WITH_LIBARCHIVE AND NOT LibArchive_FOUND)
     ExternalProject_Add(libarchive
       PREFIX ${libarchive_PREFIX}
       DOWNLOAD_DIR ${LIBARCHIVE_DIR}
-      URL http://www.libarchive.org/downloads/libarchive-3.1.2.tar.gz
+      URL http://www.libarchive.org/downloads/libarchive-3.2.2.tar.gz
       INSTALL_DIR ${LIBARCHIVE_DIR}
       CMAKE_ARGS ${libarchive_CMAKE_ARGS}
     )
@@ -101,12 +108,15 @@ ENDIF()
 
 INCLUDE_DIRECTORIES(
   ${CMAKE_SOURCE_DIR}/include
-  ${CMAKE_SOURCE_DIR}/pcre
   ${CMAKE_SOURCE_DIR}/storage/xtradb/include
   ${CMAKE_SOURCE_DIR}/sql
   ${CMAKE_CURRENT_SOURCE_DIR}/quicklz
   ${CMAKE_CURRENT_SOURCE_DIR}
   )
+
+IF(NOT HAVE_SYSTEM_REGEX)
+  INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/pcre)
+ENDIF()
 
 ADD_DEFINITIONS(-UMYSQL_SERVER)
 ########################################################################
@@ -158,10 +168,11 @@ IF(NOT WITHOUT_DYNAMIC_PLUGINS)
   ENDIF()
 ENDIF()
 
-TARGET_LINK_LIBRARIES(xtrabackup 
-  sql
-  pcreposix
-  )
+TARGET_LINK_LIBRARIES(xtrabackup sql)
+
+IF(NOT HAVE_SYSTEM_REGEX)
+  TARGET_LINK_LIBRARIES(xtrabackup pcreposix)
+ENDIF()
 
 IF(UNIX)
   # innobackupex symlink
