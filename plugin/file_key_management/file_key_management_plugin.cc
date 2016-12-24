@@ -13,7 +13,8 @@
  along with this program; if not, write to the Free Software
  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
-
+#include <my_global.h>
+#include <typelib.h>
 #include "parser.h"
 #include <mysql/plugin_encryption.h>
 #include <string.h>
@@ -65,22 +66,14 @@ static struct st_mysql_sys_var* settings[] = {
   NULL
 };
 
-Dynamic_array<keyentry> keys(static_cast<uint>(0));
+std::map<unsigned int,keyentry> keys;
 
 static keyentry *get_key(unsigned int key_id)
 {
-  keyentry *a= keys.front(), *b= keys.back() + 1, *c;
-  while (b - a > 1)
-  {
-    c= a + (b - a)/2;
-    if (c->id == key_id)
-      return c;
-    else if (c->id < key_id)
-      a= c;
-    else
-      b= c;
-  }
-  return a->id == key_id ? a : 0;
+  keyentry &key= keys[key_id];
+  if (key.id == 0)
+    return 0;
+  return &key;
 }
 
 /* the version is always the same, no automatic key rotation */

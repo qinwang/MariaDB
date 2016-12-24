@@ -16,8 +16,7 @@
 
 
 #include <my_global.h>
-#include <my_sys.h>
-#include <my_dir.h>
+#include <typelib.h>
 #include <mysql/plugin_encryption.h>
 #include <my_crypt.h>
 #include <string.h>
@@ -32,6 +31,10 @@
 #include <iterator>
 #include <sstream>
 #include <fstream>
+
+#ifndef _WIN32
+#include <dirent.h>
+#endif
 
 #include <aws/core/Aws.h>
 #include <aws/core/client/AWSError.h>
@@ -48,9 +51,6 @@ using namespace std;
 using namespace Aws::KMS;
 using namespace Aws::KMS::Model;
 using namespace Aws::Utils::Logging;
-extern void sql_print_error(const char *format, ...);
-extern void sql_print_warning(const char *format, ...);
-extern void sql_print_information(const char *format, ...);
 
 
 /* Plaintext key info struct */
@@ -134,6 +134,33 @@ protected:
   }
 };
 
+/*  Get list of files in current directory */
+static vector<string> traverse_current_directory()
+{
+  vector<string> v;
+#ifdef _WIN32
+  WIN32_FIND_DATA find_data;
+  HANDLE h= FindFirstFile("*.*", &find_data);
+  if (h == INVALID_HANDLE_VALUE)
+    return v;
+  do
+  {
+    v.push_back(find_data.cFileName);
+  }
+  while (FindNextFile(h, &find_data));
+  FindClose(h);
+#else
+  DIR *dir = opendir(".");
+  if (!dir)
+    return v;
+  struct dirent *e;
+  while ((e= readdir(dir))
+    v.push_back(e->d_name);
+  closedir(dir);
+#endif
+  return v;
+}
+
 Aws::SDKOptions sdkOptions;
 
 /* 
@@ -144,7 +171,6 @@ Aws::SDKOptions sdkOptions;
 */
 static int plugin_init(void *p)
 {
-  DBUG_ENTER("plugin_init");
 
 #ifdef HAVE_YASSL
   sdkOptions.cryptoOptions.initAndCleanupOpenSSL = true;
@@ -170,41 +196,33 @@ static int plugin_init(void *p)
   if (!client)
   {
     sql_print_error("Can not initialize KMS client");
-    DBUG_RETURN(-1);
+    return -1;
   }
   
-
-  MY_DIR *dirp = my_dir(".", MYF(0));
-  if (!dirp)
-  {
-    sql_print_error("Can't scan current directory");
-    DBUG_RETURN(-1);
-  }
-  for (unsigned int i=0; i < dirp->number_of_files; i++)
+  vector<string> files= traverse_current_directory();
+  for (size_t i=0; i < files.size(); i++)
   {
 
     KEY_INFO info;
-    if (extract_id_and_version(dirp->dir_entry[i].name, &info.key_id, &info.key_version) == 0)
+    if (extract_id_and_version(files[i].c_str(), &info.key_id, &info.key_version) == 0)
     {
       key_info_cache[KEY_ID_AND_VERSION(info.key_id, info.key_version)]= info;
       latest_version_cache[info.key_id]= max(info.key_version, latest_version_cache[info.key_id]);
     }
   }
-  my_dirend(dirp);
-  DBUG_RETURN(0);
+ return 0;
 }
 
 
 static int plugin_deinit(void *p)
 {
-  DBUG_ENTER("plugin_deinit");
   latest_version_cache.clear();
   key_info_cache.clear();
   delete client;
   ShutdownAWSLogging();
 
   Aws::ShutdownAPI(sdkOptions);
-  DBUG_RETURN(0);
+  return 0;
 }
 
 /*  Generate filename to store the ciphered key */
@@ -231,8 +249,7 @@ static int load_key(KEY_INFO *info)
 {
   int ret;
   char path[256];
-  DBUG_ENTER("load_key");
-  DBUG_PRINT("enter", ("id=%u,ver=%u", info->key_id, info->key_version));
+
   format_keyfile_name(path, sizeof(path), info->key_id, info->key_version);
   ret= aws_decrypt_key(path, info);
   if (ret)
@@ -251,7 +268,7 @@ static int load_key(KEY_INFO *info)
     sql_print_warning("AWS KMS plugin: key %u, version %u could not be decrypted",
       info->key_id, info->key_version);
   }
-  DBUG_RETURN(ret);
+  return ret;
 }
 
 
@@ -270,19 +287,17 @@ static int load_key(KEY_INFO *info)
 static unsigned int get_latest_key_version(unsigned int key_id)
 {
   unsigned int ret;
-  DBUG_ENTER("get_latest_key_version");
   mtx.lock();
   ret= get_latest_key_version_nolock(key_id);
   mtx.unlock();
-  DBUG_PRINT("info", ("key=%u,ret=%u", key_id, ret));
-  DBUG_RETURN(ret);
+  return ret;
 }
 
 static unsigned int get_latest_key_version_nolock(unsigned int key_id)
 {
   KEY_INFO info;
   uint ver;
-  DBUG_ENTER("get_latest_key_version_nolock");
+
   ver= latest_version_cache[key_id];
   if (ver > 0)
   {
@@ -291,13 +306,13 @@ static unsigned int get_latest_key_version_nolock(unsigned int key_id)
   if (info.load_failed)
   {
     /* Decryption failed previously, don't retry */
-    DBUG_RETURN(ENCRYPTION_KEY_VERSION_INVALID);
+    return(ENCRYPTION_KEY_VERSION_INVALID);
   }
   else if (ver > 0)
   {
     /* Key exists already, return it*/
     if (info.length > 0)
-      DBUG_RETURN(ver);
+      return(ver);
   }
   else // (ver == 0)
   {
@@ -307,18 +322,18 @@ static unsigned int get_latest_key_version_nolock(unsigned int key_id)
       my_printf_error(ER_UNKNOWN_ERROR,
         "Can't generate encryption key %u, because 'aws_key_management_master_key_id' parameter is not set",
         MYF(0), key_id);
-      DBUG_RETURN(ENCRYPTION_KEY_VERSION_INVALID);
+      return(ENCRYPTION_KEY_VERSION_INVALID);
     }
     if (aws_generate_datakey(key_id, 1) != 0)
-      DBUG_RETURN(ENCRYPTION_KEY_VERSION_INVALID);
+      return(ENCRYPTION_KEY_VERSION_INVALID);
     info.key_id= key_id;
     info.key_version= 1;
     info.length= 0;
   }
 
   if (load_key(&info))
-    DBUG_RETURN(ENCRYPTION_KEY_VERSION_INVALID);
-  DBUG_RETURN(info.key_version);
+    return(ENCRYPTION_KEY_VERSION_INVALID);
+  return(info.key_version);
 }
 
 
@@ -327,20 +342,19 @@ static unsigned int get_latest_key_version_nolock(unsigned int key_id)
 */
 static  int aws_decrypt_key(const char *path, KEY_INFO *info)
 {
-  DBUG_ENTER("aws_decrypt_key");
 
   /* Read file content into memory */
   ifstream ifs(path, ios::binary | ios::ate);
   if (!ifs.good())
   {
     sql_print_error("can't open file %s", path);
-    DBUG_RETURN(-1);
+    return(-1);
   }
   size_t pos = (size_t)ifs.tellg();
   if (!pos || pos == SIZE_T_MAX)
   {
     sql_print_error("invalid key file %s", path);
-    DBUG_RETURN(-1);
+    return(-1);
   }
   std::vector<char>  contents(pos);
   ifs.seekg(0, ios::beg);
@@ -355,7 +369,7 @@ static  int aws_decrypt_key(const char *path, KEY_INFO *info)
   {
     sql_print_error("AWS KMS plugin: Decrypt failed for %s : %s", path,
       outcome.GetError().GetMessage().c_str());
-    DBUG_RETURN(-1);
+    return(-1);
   }
   Aws::Utils::ByteBuffer plaintext = outcome.GetResult().GetPlaintext();
   size_t len = plaintext.GetLength();
@@ -363,19 +377,17 @@ static  int aws_decrypt_key(const char *path, KEY_INFO *info)
   if (len > (int)sizeof(info->data))
   {
     sql_print_error("AWS KMS plugin: encoding key too large for %s", path);
-    DBUG_RETURN(ENCRYPTION_KEY_BUFFER_TOO_SMALL);
+    return(ENCRYPTION_KEY_BUFFER_TOO_SMALL);
   }
   memcpy(info->data, plaintext.GetUnderlyingData(), len);
   info->length= len;
-  DBUG_RETURN(0);
+  return(0);
 }
 
 
 /* Generate a new datakey and store it a file */
 static int aws_generate_datakey(uint keyid, uint version)
 {
-
-  DBUG_ENTER("aws_generate_datakey");
   GenerateDataKeyWithoutPlaintextRequest request;
   request.SetKeyId(master_key_id);
   request.SetKeySpec(DataKeySpecMapper::GetDataKeySpecForName(key_spec_names[key_spec]));
@@ -387,7 +399,7 @@ static int aws_generate_datakey(uint keyid, uint version)
     sql_print_error("AWS KMS plugin : GenerateDataKeyWithoutPlaintext failed : %s - %s",
       outcome.GetError().GetExceptionName().c_str(),
       outcome.GetError().GetMessage().c_str());
-    DBUG_RETURN(-1);
+    return(-1);
   }
 
   string out;
@@ -395,24 +407,24 @@ static int aws_generate_datakey(uint keyid, uint version)
   Aws::Utils::ByteBuffer byteBuffer = outcome.GetResult().GetCiphertextBlob();
 
   format_keyfile_name(filename, sizeof(filename), keyid, version);
-  int fd= my_open(filename, O_RDWR | O_CREAT, 0);
+  int fd= open(filename, O_RDWR | O_CREAT|O_BINARY);
   if (fd < 0)
   {
     sql_print_error("AWS KMS plugin: Can't create file %s", filename);
-    DBUG_RETURN(-1);
+    return(-1);
   }
   size_t len= byteBuffer.GetLength();
-  if (my_write(fd, byteBuffer.GetUnderlyingData(), len, 0) != len)
+  if (write(fd, byteBuffer.GetUnderlyingData(), len) != len)
   {
     sql_print_error("AWS KMS plugin: can't write to %s", filename);
-    my_close(fd, 0);
-    my_delete(filename, 0);
-    DBUG_RETURN(-1);
+    close(fd);
+    unlink(filename);
+    return(-1);
   }
-  my_close(fd, 0);
+  close(fd);
   sql_print_information("AWS KMS plugin: generated encrypted datakey for key id=%u, version=%u",
     keyid, version);
-  DBUG_RETURN(0);
+  return(0);
 }
 
 /* Key rotation  for a single key */
@@ -493,7 +505,6 @@ static unsigned int get_key(
 {
   KEY_INFO info;
 
-  DBUG_ENTER("get_key");
   mtx.lock();
   info= key_info_cache[KEY_ID_AND_VERSION(key_id, version)];
   if (info.length == 0 && !info.load_failed)
@@ -504,15 +515,15 @@ static unsigned int get_key(
   }
   mtx.unlock();
   if (info.load_failed)
-    DBUG_RETURN(ENCRYPTION_KEY_VERSION_INVALID);
+    return(ENCRYPTION_KEY_VERSION_INVALID);
   if (*buflen < info.length)
   {
     *buflen= info.length;
-    DBUG_RETURN(ENCRYPTION_KEY_BUFFER_TOO_SMALL);
+    return(ENCRYPTION_KEY_BUFFER_TOO_SMALL);
   }
   *buflen= info.length;
   memcpy(dstbuf, info.data, info.length);
-  DBUG_RETURN(0);
+  return(0);
 }
 
 

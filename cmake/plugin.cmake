@@ -191,11 +191,6 @@ MACRO(MYSQL_ADD_PLUGIN)
 
     ADD_VERSION_INFO(${target} MODULE SOURCES)
 
-    IF(ARG_ENCRYPTION)
-      # Special delayloading for encryption plugins on Windows
-      SET(SOURCES ${SOURCES} ${PROJECT_SOURCE_DIR}/sql/delayload.c)
-    ENDIF()
-
     ADD_LIBRARY(${target} MODULE ${SOURCES}) 
     DTRACE_INSTRUMENT(${target})
 
@@ -211,11 +206,8 @@ MACRO(MYSQL_ADD_PLUGIN)
     # executable to the linker command line (it would result into link error). 
     # Thus we skip TARGET_LINK_LIBRARIES on Linux, as it would only generate
     # an additional dependency.
-    IF(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ARG_CLIENT)
+    IF(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ARG_CLIENT AND NOT ARG_ENCRYPTION)
       TARGET_LINK_LIBRARIES (${target} mysqld)
-      IF(ARG_ENCRYPTION)
-        SET_TARGET_PROPERTIES(${target} PROPERTIES LINK_FLAGS "/DELAYLOAD:mysqld.exe")
-      ENDIF()
     ENDIF()
     ADD_DEPENDENCIES(${target} GenError ${ARG_DEPENDENCIES})
 
