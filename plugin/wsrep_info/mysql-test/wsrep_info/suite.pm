@@ -39,7 +39,5 @@ push @::global_suppressions,
 $ENV{PATH}="$epath:$ENV{PATH}";
 $ENV{PATH}="$spath:$ENV{PATH}" unless $epath eq $spath;
 
-sub is_default { 1 }
-
 bless { };
 
