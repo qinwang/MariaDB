@@ -3218,7 +3218,7 @@ Item_func_group_concat(THD *thd, Name_resolution_context *context_arg,
                        bool distinct_arg, List<Item> *select_list,
                        const SQL_I_List<ORDER> &order_list,
                        String *separator_arg, bool limit_clause,
-                       Item *rowLimit, Item *offsetLimit)
+                       Item *row_limit_arg, Item *offset_limit_arg)
   :Item_sum(thd), tmp_table_param(0), separator(separator_arg), tree(0),
    unique_filter(NULL), table(0),
    order(0), context(context_arg),
@@ -3227,8 +3227,8 @@ Item_func_group_concat(THD *thd, Name_resolution_context *context_arg,
    row_count(0),
    distinct(distinct_arg),
    warning_for_row(FALSE),
-   force_copy_fields(0),row_limit(0),
-   offset_limit(0),limit_clause(limit_clause),
+   force_copy_fields(0),row_limit(NULL),
+   offset_limit(NULL),limit_clause(limit_clause),
    copy_offset_limit(0), copy_row_limit(0),original(0)
 {
   Item *item_select;
@@ -3274,12 +3274,8 @@ Item_func_group_concat(THD *thd, Name_resolution_context *context_arg,
 
   if (limit_clause)
   {
-    if (!(row_limit=(Item*) thd->alloc(sizeof(Item))))
-      return;
-    row_limit= rowLimit;
-    if (!(offset_limit= (Item*)thd->alloc(sizeof(Item))))
-      return;
-    offset_limit= offsetLimit;
+    row_limit= row_limit_arg;
+    offset_limit= offset_limit_arg;
   }
 }
 

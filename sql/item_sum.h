@@ -1583,10 +1583,14 @@ class Item_func_group_concat : public Item_sum
   bool always_null;
   bool force_copy_fields;
   bool no_appended;
+  /** Limits the rows in the result */
   Item *row_limit;
+  /** Skips a particular number of rows in from the result*/
   Item *offset_limit;
   bool limit_clause;
+  /* copy of the offset limit */
   ulonglong copy_offset_limit;
+  /*copy of the row limit */
   ulonglong copy_row_limit;
 
   /*

@@ -1844,7 +1844,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         opt_escape
         sp_opt_default
         simple_ident_nospvar simple_ident_q
-        field_or_var limit_option glimit_option
+        field_or_var limit_option
         part_func_expr
         window_func_expr
         window_func
@@ -10708,25 +10708,28 @@ glimit_clause_init:
         ;
 
 glimit_clause:
-          glimit_clause_init glimit_options{}
+          glimit_clause_init glimit_options
+          {
+            Lex->set_stmt_unsafe(LEX::BINLOG_STMT_UNSAFE_LIMIT);
+          }
         ;
 
 glimit_options:
-          glimit_option
+          limit_option
           {
             SELECT_LEX *sel= Select;
             sel->select_limit= $1;
             sel->offset_limit= 0;
             sel->explicit_limit= 1;
           }
-        | glimit_option ',' glimit_option
+        | limit_option ',' limit_option
           {
             SELECT_LEX *sel= Select;
             sel->select_limit= $3;
             sel->offset_limit= $1;
             sel->explicit_limit= 1;
           }
-        | glimit_option OFFSET_SYM glimit_option
+        | limit_option OFFSET_SYM limit_option
           {
             SELECT_LEX *sel= Select;
             sel->select_limit= $1;
@@ -10735,57 +10738,6 @@ glimit_options:
           }
         ;
 
-glimit_option:
-        ident
-        {
-          Item_splocal *splocal;
-          LEX *lex= thd->lex;
-          Lex_input_stream *lip= & thd->m_parser_state->m_lip;
-          sp_variable *spv;
-          sp_pcontext *spc = lex->spcont;
-          if (spc && (spv = spc->find_variable($1, false)))
-          {
-            splocal= new (thd->mem_root)
-              Item_splocal(thd, $1, spv->offset, spv->sql_type(),
-                  lip->get_tok_start() - lex->sphead->m_tmp_query,
-                  lip->get_ptr() - lip->get_tok_start());
-            if (splocal == NULL)
-              MYSQL_YYABORT;
-#ifndef DBUG_OFF
-            splocal->m_sp= lex->sphead;
-#endif
-            lex->safe_to_cache_query=0;
-          }
-          else
-            my_yyabort_error((ER_SP_UNDECLARED_VAR, MYF(0), $1.str));
-          if (splocal->type() != Item::INT_ITEM)
-            my_yyabort_error((ER_WRONG_SPVAR_TYPE_IN_LIMIT, MYF(0)));
-          splocal->limit_clause_param= TRUE;
-          $$= splocal;
-        }
-        | param_marker
-        {
-          $1->limit_clause_param= TRUE;
-        }
-        | ULONGLONG_NUM
-          {
-            $$= new (thd->mem_root) Item_uint(thd, $1.str, $1.length);
-            if ($$ == NULL)
-              MYSQL_YYABORT;
-          }
-        | LONG_NUM
-          {
-            $$= new (thd->mem_root) Item_uint(thd, $1.str, $1.length);
-            if ($$ == NULL)
-              MYSQL_YYABORT;
-          }
-        | NUM
-          {
-            $$= new (thd->mem_root) Item_uint(thd, $1.str, $1.length);
-            if ($$ == NULL)
-              MYSQL_YYABORT;
-          }
-        ;
 
 in_sum_expr:
           opt_all
