@@ -109,6 +109,7 @@ struct datadir_thread_ctxt_t {
 	bool			ret;
 };
 
+static bool backup_files_from_datadir(const char *dir_path);
 
 /************************************************************************
 Retirn true if character if file separator */
@@ -603,6 +604,11 @@ ends_with(const char *str, const char *suffix)
 	size_t str_len = strlen(str);
 	return(str_len >= suffix_len
 	       && strcmp(str + str_len - suffix_len, suffix) == 0);
+}
+
+static bool starts_with(const char *str, const char *prefix)
+{
+	return strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
 /************************************************************************
@@ -1313,6 +1319,10 @@ backup_start()
 		return(false);
 	}
 
+	if (!backup_files_from_datadir(fil_path_to_mysql_datadir)) {
+		return false;
+	}
+
 	// There is no need to stop slave thread before coping non-Innodb data when
 	// --no-lock option is used because --no-lock option requires that no DDL or
 	// DML to non-transaction tables can occur.
@@ -1964,4 +1974,38 @@ decrypt_decompress()
 	ut_free_all_mem();
 
 	return(ret);
+}
+
+/*
+  Copy some files from top level datadir.
+  Do not copy the Innodb files (ibdata1, redo log files),
+  as this is done in a separate step.
+*/
+static bool backup_files_from_datadir(const char *dir_path)
+{
+	os_file_dir_t dir = os_file_opendir(dir_path, TRUE);
+	os_file_stat_t info;
+	bool ret = true;
+	while (os_file_readdir_next_file(dir_path, dir, &info) == 0) {
+
+		if (info.type != OS_FILE_TYPE_FILE)
+			continue;
+
+		const char *pname = strrchr(info.name, IF_WIN('\\', '/'));
+		if (!pname)
+			pname = info.name;
+
+		/* Copy aria log files, and aws keys for encryption plugins.*/
+		const char *prefixes[] = { "aria_log", "aws-kms-key" };
+		for (size_t i = 0; i < array_elements(prefixes); i++) {
+			if (starts_with(pname, prefixes[i])) {
+				ret = copy_file(ds_data, info.name, info.name, 1);
+				if (!ret) {
+					break;
+				}
+			}
+		}
+	}
+	os_file_closedir(dir);
+	return ret;
 }
