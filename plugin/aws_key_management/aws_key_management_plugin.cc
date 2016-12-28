@@ -407,7 +407,7 @@ static int aws_generate_datakey(uint keyid, uint version)
   Aws::Utils::ByteBuffer byteBuffer = outcome.GetResult().GetCiphertextBlob();
 
   format_keyfile_name(filename, sizeof(filename), keyid, version);
-  int fd= open(filename, O_RDWR | O_CREAT|O_BINARY);
+  int fd= open(filename, O_WRONLY |O_CREAT|O_BINARY, IF_WIN(_S_IREAD, S_IRUSR| S_IRGRP| S_IROTH));
   if (fd < 0)
   {
     sql_print_error("AWS KMS plugin: Can't create file %s", filename);
