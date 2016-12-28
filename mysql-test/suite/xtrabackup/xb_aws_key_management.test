@@ -1,6 +1,6 @@
 if (`SELECT COUNT(*)=0 FROM INFORMATION_SCHEMA.PLUGINS WHERE PLUGIN_NAME = 'aws_key_management' AND PLUGIN_STATUS='ACTIVE'`)
 {
-  --skip Test requires file_key_management plugin
+  --skip Test requires aws_key_management plugin
 }
 
 if (`SELECT @@aws_key_management_master_key_id=''`)
@@ -18,4 +18,5 @@ exec $XTRABACKUP  --prepare --target-dir=$targetdir;
 -- source include/restart_and_restore.inc
 --enable_result_log
 SELECT * from t;
+DROP TABLE t;
 rmdir $targetdir;

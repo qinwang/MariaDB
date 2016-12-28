@@ -27,6 +27,23 @@ my $xtrabackup_help=`$xtrabackup_exe --help 2>&1`;
 $ENV{HAVE_XTRABACKUP_TAR_SUPPORT} =  (index($xtrabackup_help,"'tar'") == -1) ? 0 : 1;
 
 $ENV{INNOBACKUPEX}= "$xtrabackup_exe --innobackupex";
+
+sub skip_combinations {
+  my %skip;
+  
+  my $t;
+  foreach $t ('xb_file_key_management','xb_compressed_encrypted','xb_fulltext_encrypted') {
+    $skip{$t.'.test'} = 'Test needs file_key_management plugin'  unless $ENV{FILE_KEY_MANAGEMENT_SO};
+  }
+  foreach $t ('incremental_encrypted') {
+    $skip{$t.'.test'} = 'Test needs example_key_management plugin'  unless $ENV{EXAMPLE_KEY_MANAGEMENT_SO};
+  }
+  foreach $t ('xb_aws_key_management') {
+    $skip{$t.'.test'} = 'Test needs aws_key_management plugin'  unless $ENV{AWS_KEY_MANAGEMENT_SO};
+  }
+  %skip;
+}
+
 sub is_default { 1 }
 
 bless { };

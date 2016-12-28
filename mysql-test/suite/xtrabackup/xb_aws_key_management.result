@@ -8,3 +8,4 @@ INSERT INTO t VALUES('foobar1');
 SELECT * from t;
 c
 foobar1
+DROP TABLE t;

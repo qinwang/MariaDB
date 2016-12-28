@@ -6,7 +6,7 @@ PRIMARY KEY (film_id),
 FULLTEXT KEY idx_title_description (title,description),
 FULLTEXT KEY (description),
 FULLTEXT KEY (title)
-)ENGINE=InnoDB DEFAULT CHARSET=utf8;
+)ENGINE=InnoDB DEFAULT CHARSET=utf8 ENCRYPTED=YES;
 # shutdown server
 # remove datadir
 # xtrabackup move back
