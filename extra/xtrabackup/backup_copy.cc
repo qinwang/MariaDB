@@ -500,7 +500,7 @@ datafile_open(const char *file, datafile_cur_t *cursor, uint thread_n)
 	}
 
 
-	if (stat(cursor->abs_path, &cursor->statinfo)) {
+	if (!my_stat(cursor->abs_path, &cursor->statinfo, 0)) {
 		msg("[%02u] error: cannot stat %s\n",
 			thread_n, cursor->abs_path);
 
