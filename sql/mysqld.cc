@@ -7329,11 +7329,29 @@ static int show_slave_received_heartbeats(THD *thd, SHOW_VAR *var, char *buff)
   Master_info *mi= NULL;
   longlong tmp;
   LINT_INIT(tmp);
+  int count;
 
   var->type= SHOW_LONGLONG;
   var->value= buff;
-  mysql_mutex_lock(&LOCK_active_mi);
-  if (master_info_index) 
+
+  count= 0;
+  while (count < 10)
+  {
+    if (mysql_mutex_trylock(&LOCK_active_mi) == EBUSY)
+      /* If can't get LOCK_active_mi, sleep 0.1 second and try again. */
+      my_sleep(100000);
+    else
+      break;
+
+    count++;
+  }
+  /* It means we can't get the lock, then just show SHOW_UNDEF */
+  if (count >= 10)
+  {
+    var->type= SHOW_UNDEF;
+    return 0;
+  }
+  if (master_info_index)
   {
     mi= master_info_index->
       get_master_info(&thd->variables.default_master_connection,
@@ -7355,11 +7373,29 @@ static int show_heartbeat_period(THD *thd, SHOW_VAR *var, char *buff)
   Master_info *mi= NULL;
   float tmp;
   LINT_INIT(tmp);
+  int count;
 
   var->type= SHOW_CHAR;
   var->value= buff;
-  mysql_mutex_lock(&LOCK_active_mi);
-  if (master_info_index) 
+
+  count= 0;
+  while (count < 10)
+  {
+    if (mysql_mutex_trylock(&LOCK_active_mi) == EBUSY)
+      /* If can't get LOCK_active_mi, sleep 0.1 second and try again. */
+      my_sleep(100000);
+    else
+      break;
+
+    count++;
+  }
+  /* It means we can't get the lock, then just show SHOW_UNDEF */
+  if (count >= 10)
+  {
+    var->type= SHOW_UNDEF;
+    return 0;
+  }
+  if (master_info_index)
   {
     mi= master_info_index->
       get_master_info(&thd->variables.default_master_connection,
