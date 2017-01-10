@@ -1,0 +1,30 @@
+source include/have_log_bin.inc;
+select @@max_binlog_stmt_cache_size;
+
+--replace_result 18446744073709547520 max_binlog_stmt_cache_size 4294963200 max_binlog_stmt_cache_size
+--disable_warnings
+SET @cache_size= @@max_binlog_stmt_cache_size;
+SET @max_uint64= 18446744073709551615;
+SET @max_uint32= 4294967295;
+SET @max_absolute_value = if (@max_uint32 < @cache_size, @max_uint64, @max_uint32);
+
+set global max_binlog_stmt_cache_size= @cache_size+1;
+select @@max_binlog_stmt_cache_size;
+
+set global max_binlog_stmt_cache_size= @cache_size-1;
+select @@max_binlog_stmt_cache_size = @cache_size-4096;
+
+
+#this can be commented out if IF(cond, expr,expr) bug is solved
+#Select @max_absolute_value;
+#set global max_binlog_stmt_cache_size= @max_absolute_value-4096;
+#select @@max_binlog_stmt_cache_size;
+
+#set global max_binlog_stmt_cache_size= @max_absolute_value -1;
+#select @@max_binlog_stmt_cache_size;
+
+#--error ER_WRONG_TYPE_FOR_VAR
+#set global max_binlog_stmt_cache_size= @max_absolute_value +1;
+#select @@max_binlog_stmt_cache_size;
+
+set @@global.max_binlog_stmt_cache_size= @cache_size;

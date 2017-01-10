@@ -1,0 +1,16 @@
+select @@max_binlog_stmt_cache_size;
+@@max_binlog_stmt_cache_size
+18446744073709547520
+SET @cache_size= @@max_binlog_stmt_cache_size;
+SET @max_uint64= 18446744073709551615;
+SET @max_uint32= 4294967295;
+SET @max_absolute_value = if (@max_uint32 < @cache_size, @max_uint64, @max_uint32);
+set global max_binlog_stmt_cache_size= @cache_size+1;
+select @@max_binlog_stmt_cache_size;
+@@max_binlog_stmt_cache_size
+18446744073709547520
+set global max_binlog_stmt_cache_size= @cache_size-1;
+select @@max_binlog_stmt_cache_size = @cache_size-4096;
+@@max_binlog_stmt_cache_size = @cache_size-4096
+1
+set @@global.max_binlog_stmt_cache_size= @cache_size;
