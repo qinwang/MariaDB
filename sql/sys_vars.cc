@@ -3117,7 +3117,11 @@ static Sys_var_set Sys_sql_mode(
        "Sets the sql mode",
        SESSION_VAR(sql_mode), CMD_LINE(REQUIRED_ARG),
        sql_mode_names,
-       DEFAULT(MODE_NO_ENGINE_SUBSTITUTION |
+       DEFAULT(MODE_STRICT_TRANS_TABLES |
+               MODE_NO_ZERO_IN_DATE |
+               MODE_NO_ZERO_DATE |
+               MODE_ERROR_FOR_DIVISION_BY_ZERO |
+               MODE_NO_ENGINE_SUBSTITUTION |
                MODE_NO_AUTO_CREATE_USER),
        NO_MUTEX_GUARD, NOT_IN_BINLOG,
        ON_CHECK(check_sql_mode), ON_UPDATE(fix_sql_mode));
