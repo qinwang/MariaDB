@@ -34,11 +34,20 @@ force=0
 in_rpm=0
 ip_only=0
 cross_bootstrap=0
+install_params=""
 
 usage()
 {
   cat <<EOF
 Usage: $0 [OPTIONS]
+  --auth-root-nopasswd Install the root account with no password authentication
+                       (default, overridden by --auth-root-socket).
+  --auth-root-socket[=user]
+                       Install the root account with unix socket authentication.
+                       This allows only the system root user to login as
+                       MariaDB root. If "user" is specified, it is the name
+                       of the MariaDB root account as well as of the system
+                       account allowed to access it.
   --basedir=path       The path to the MariaDB installation directory.
   --builddir=path      If using --srcdir with out-of-directory builds, you
                        will need to set this to the location of the build
@@ -59,6 +68,7 @@ Usage: $0 [OPTIONS]
   --defaults-file=path Read only this configuration file.
   --rpm                For internal use.  This option is used by RPM files
                        during the MariaDB installation process.
+  --skip-auth-anon     Do not install an unprivileged anonymous user.
   --skip-name-resolve  Use IP addresses rather than hostnames when creating
                        grant table entries.  This option can be useful if
                        your DNS does not work.
@@ -141,6 +151,22 @@ parse_arguments()
         #
         # --windows is a deprecated alias
         cross_bootstrap=1 ;;
+      --skip-auth-anon)
+	install_params="$install_params
+SET @skip_auth_anonymous=1;" ;;
+      --auth-root-nopasswd)
+	install_params="$install_params
+SET @skip_auth_root_nopasswd=NULL;
+SET @auth_root_socket=NULL;" ;;
+      --auth-root-socket)
+	install_params="$install_params
+SET @skip_auth_root_nopasswd=1;
+SET @auth_root_socket='root';" ;;
+      --auth-root-socket=*)
+        root_name="$(parse_arg "$arg")"
+	install_params="$install_params
+SET @skip_auth_root_nopasswd=1;
+SET @auth_root_socket='$root_name';" ;;
 
       *)
         if test -n "$pick_args"
@@ -430,7 +456,7 @@ mysqld_install_cmd_line()
 
 # Create the system and help tables by passing them to "mysqld --bootstrap"
 s_echo "Installing MariaDB/MySQL system tables in '$ldata' ..."
-if { echo "use mysql;"; cat "$create_system_tables" "$create_system_tables2" "$fill_system_tables"; } | eval "$filter_cmd_line" | mysqld_install_cmd_line > /dev/null
+if { echo "use mysql;$install_params"; cat "$create_system_tables" "$create_system_tables2" "$fill_system_tables"; } | eval "$filter_cmd_line" | mysqld_install_cmd_line > /dev/null
 then
   s_echo "OK"
 else
