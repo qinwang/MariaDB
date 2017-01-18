@@ -13,6 +13,7 @@ let $MYSQLD_DATADIR=`select @@datadir`;
 copy_file $MTR_SUITE_DIR/std_data/leak172_t1.data $MYSQLD_DATADIR/test/leak172_t1.data;
 copy_file $MTR_SUITE_DIR/std_data/leak172_t2.data $MYSQLD_DATADIR/test/leak172_t2.data;
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE `t1` (
   `c4` int(11) DEFAULT NULL,
   `c5` int(11) DEFAULT NULL,
@@ -134,6 +135,7 @@ CREATE TABLE `t2` (
 LOAD DATA INFILE 'leak172_t1.data' INTO TABLE `t1` fields terminated by ',';
 
 connect(conn1,localhost,root,,);
+set sql_mode = '';
 set session debug_dbug="+d,tokudb_end_bulk_insert_sleep";
 send LOAD DATA INFILE 'leak172_t2.data' INTO TABLE `t2` fields terminated by ',';
 
@@ -150,3 +152,4 @@ connection default;
 disconnect conn1;
 
 drop table t1,t2;
+set sql_mode = default;

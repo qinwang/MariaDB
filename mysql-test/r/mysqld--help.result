@@ -1463,7 +1463,7 @@ slave-type-conversions
 slow-launch-time 2
 slow-query-log FALSE
 sort-buffer-size 2097152
-sql-mode NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
+sql-mode STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
 stack-trace TRUE
 standard-compliant-cte TRUE
 stored-program-cache 256

@@ -5,6 +5,7 @@ start datetime,
 end datetime,
 UNIQUE KEY range_key(start, end)
 );
+SET sql_mode = '';
 INSERT INTO ranges VALUES (1, "1990-00-00 00:00:00", "2012-10-05 23:59:59");
 Warnings:
 Warning	1265	Data truncated for column 'start' at row 1
@@ -18,4 +19,5 @@ Warning	1265	Data truncated for column 'start' at row 1
 SELECT * FROM ranges;
 id	start	end
 1	1990-01-01 00:00:00	2012-10-05 23:59:59
+SET sql_mode = DEFAULT;
 DROP TABLE ranges;

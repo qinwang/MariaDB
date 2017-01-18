@@ -10,12 +10,18 @@ timestamps	CREATE TABLE `timestamps` (
   `create_dt` date DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=Mroonga DEFAULT CHARSET=utf8
+SET sql_mode = '';
 INSERT INTO timestamps (create_dt) VALUES ("2012-00-01");
 Warnings:
 Warning	1265	Data truncated for column 'create_dt' at row 1
 INSERT INTO timestamps (create_dt) VALUES ("2012-01-00");
 Warnings:
 Warning	1265	Data truncated for column 'create_dt' at row 1
+SET sql_mode = DEFAULT;
+INSERT INTO timestamps (create_dt) VALUES ("2012-00-01");
+ERROR 22007: Incorrect date value: '2012-00-01' for column 'create_dt' at row 1
+INSERT INTO timestamps (create_dt) VALUES ("2012-01-00");
+ERROR 22007: Incorrect date value: '2012-01-00' for column 'create_dt' at row 1
 SELECT * FROM timestamps;
 id	create_dt
 1	2012-01-01

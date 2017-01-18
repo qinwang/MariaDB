@@ -32,8 +32,11 @@ CREATE TABLE diaries (
 ) DEFAULT CHARSET UTF8;
 SHOW CREATE TABLE diaries;
 
-INSERT INTO diaries (title, created_at)
-       VALUES ('2012', '2012');
+SET sql_mode = '';
+INSERT INTO diaries (title, created_at) VALUES ('2012', '2012');
+SET sql_mode = DEFAULT;
+--error ER_TRUNCATED_WRONG_VALUE
+INSERT INTO diaries (title, created_at) VALUES ('2012', '2012');
 
 SELECT * FROM diaries;
 

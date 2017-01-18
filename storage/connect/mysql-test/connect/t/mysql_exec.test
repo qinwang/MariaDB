@@ -15,7 +15,7 @@ eval CREATE TABLE t1 (
 
 SELECT * FROM t1 WHERE command IN ('Warning','Note',
   'drop table if exists t1',
-  'create table t1 (id int key auto_increment, msg varchar(32) not null)',
+  'create table t1 (id int key auto_increment, msg varchar(32))',
   "insert into t1(msg) values('One'),(NULL),('Three')",
   "insert into t1 values(2,'Deux') on duplicate key update msg = 'Two'",
   "insert into t1(message) values('Four'),('Five'),('Six')",

@@ -246,11 +246,13 @@ if ($verify_without_partitions)
 {
 ALTER TABLE t1 REMOVE PARTITIONING;
 }
-INSERT INTO t1 VALUES ('0000-00-00'), ('0000-01-02'), ('0001-01-01'),
+INSERT IGNORE INTO t1 VALUES ('0000-00-00'), ('0000-01-02'), ('0001-01-01'),
       ('1001-00-00'), ('1001-01-01'), ('1002-00-00'), ('2001-01-01');
 --source include/partition_date_range.inc
 --echo # test without index
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE t1 DROP KEY a;
+SET sql_mode = DEFAULT;
 --source include/partition_date_range.inc
 DROP TABLE t1;
 --echo # TO_SECONDS, test of LIST and index
@@ -265,11 +267,13 @@ if ($verify_without_partitions)
 {
 ALTER TABLE t1 REMOVE PARTITIONING;
 }
-INSERT INTO t1 VALUES ('0000-00-00'), ('0000-01-02'), ('0001-01-01'),
+INSERT IGNORE INTO t1 VALUES ('0000-00-00'), ('0000-01-02'), ('0001-01-01'),
       ('1001-00-00'), ('1001-01-01'), ('1002-00-00'), ('2001-01-01');
 --source include/partition_date_range.inc
 --echo # test without index
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE t1 DROP KEY a;
+SET sql_mode = DEFAULT;
 --source include/partition_date_range.inc
 DROP TABLE t1;
 

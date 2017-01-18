@@ -7,7 +7,7 @@ insert t1 values ('2010-12-11 00:20:03.1234');
 insert t1 values ('2010-12-11 15:47:11.1234');
 insert t1 values (20101211010203.45678);
 insert t1 values (20101211030405.789e0);
-insert t1 values (99991231235959e1);
+insert ignore t1 values (99991231235959e1);
 Warnings:
 Warning	1265	Data truncated for column 'a' at row 1
 select * from t1;
@@ -34,7 +34,9 @@ a DIV 1
 select group_concat(distinct a) from t1;
 group_concat(distinct a)
 0000-00-00 00:00:00.000,2010-12-11 00:20:03.123,2010-12-11 01:02:03.456,2010-12-11 03:04:05.789,2010-12-11 15:47:11.123
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 engine=innodb;
+set sql_mode = default;
 select * from t1 order by a;
 a
 0000-00-00 00:00:00.000
@@ -95,7 +97,7 @@ a
 select a, a + interval 2 year from t1;
 a	a + interval 2 year
 2010-12-11 01:02:13.3332	2012-12-11 01:02:13.3332
-insert t1 select a + interval 2 year from t1;
+insert ignore t1 select a + interval 2 year from t1;
 select * from t1;
 a
 2010-12-11 01:02:13.3332
@@ -145,7 +147,9 @@ t3	CREATE TABLE `t3` (
   `avg(a)` decimal(28,8) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 drop table t1, t2, t3;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (f0_datetime datetime(0), f1_datetime datetime(1), f2_datetime datetime(2), f3_datetime datetime(3), f4_datetime datetime(4), f5_datetime datetime(5), f6_datetime datetime(6));
+set sql_mode = default;
 insert t1 values ( '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432');
 select * from t1;
 f0_datetime	2010-11-12 11:14:17
@@ -196,7 +200,9 @@ double_f3_datetime	20101112111417.766
 decimal5_f4_datetime	20101112111417.76540
 bigint_f5_datetime	20101112111417
 varchar_f6_datetime	2010-11-12 11:14:17.765432
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 modify time4_f0_datetime datetime(0), modify datetime3_f1_datetime datetime(1), modify date_f2_datetime datetime(2), modify double_f3_datetime datetime(3), modify decimal5_f4_datetime datetime(4), modify bigint_f5_datetime datetime(5), modify varchar_f6_datetime datetime(6);
+set sql_mode = default;
 select * from t1;
 time4_f0_datetime	2001-02-03 11:14:17
 datetime3_f1_datetime	2010-11-12 11:14:17.7
@@ -216,7 +222,9 @@ decimal5_f4_datetime	2010-11-12 11:14:17.7654
 bigint_f5_datetime	2010-11-12 11:14:17.00000
 varchar_f6_datetime	2010-11-12 11:14:17.765432
 drop table t1, t2;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (a datetime(6), b datetime(6));
+set sql_mode = default;
 create procedure foo(x datetime, y datetime(4)) insert into t1 values (x, y);
 call foo('2010-02-03 4:5:6.789123', '2010-02-03 4:5:6.789123');
 select * from t1;
@@ -250,7 +258,9 @@ show columns from v1;
 Field	Type	Null	Key	Default	Extra
 a	datetime(6)	YES		NULL	
 b	datetime(6)	YES		NULL	
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t2 select * from v1;
+set sql_mode = default;
 show create table t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -264,6 +274,7 @@ a	b
 drop view v1;
 drop table t1, t2;
 SET timestamp=DEFAULT;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
 taken datetime(5) NOT NULL DEFAULT '0000-00-00 00:00:00',
 id int(11) NOT NULL DEFAULT '0',
@@ -275,6 +286,7 @@ PARTITION BY RANGE (to_days(taken))
 PARTITION p01 VALUES LESS THAN (732920),
 PARTITION p02 VALUES LESS THAN (732950),
 PARTITION p03 VALUES LESS THAN MAXVALUE);
+SET sql_mode = DEFAULT;
 INSERT INTO t1 VALUES
 ('2006-09-27 21:50:01.123456',0),
 ('2006-09-27 21:50:01.123456',1),
@@ -298,6 +310,7 @@ id	to_days(taken)
 7	732950
 8	732951
 9	732951
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 (
 taken datetime(5) NOT NULL DEFAULT '0000-00-00 00:00:00',
 id int(11) NOT NULL DEFAULT '0',
@@ -309,6 +322,7 @@ PARTITION BY RANGE (extract(microsecond from taken))
 PARTITION p01 VALUES LESS THAN (123000),
 PARTITION p02 VALUES LESS THAN (500000),
 PARTITION p03 VALUES LESS THAN MAXVALUE);
+SET sql_mode = DEFAULT;
 INSERT INTO t2 VALUES
 ('2006-09-27 21:50:01',0),
 ('2006-09-27 21:50:01.1',1),
@@ -346,6 +360,8 @@ drop table t1;
 SET @@time_zone='+00:00';
 CREATE TABLE t1 (a DATETIME(4) NOT NULL);
 INSERT INTO t1 VALUES ('2001-01-01 00:00:00'),('2000-00-00 00:00:00');
+Warnings:
+Warning	1265	Data truncated for column 'a' at row 2
 SELECT UNIX_TIMESTAMP(a) FROM t1 ORDER BY 1;
 UNIX_TIMESTAMP(a)
 NULL

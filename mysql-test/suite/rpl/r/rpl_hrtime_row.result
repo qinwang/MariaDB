@@ -7,8 +7,12 @@ insert t1 (b,c) values (now(6), now(6));
 insert t1 values ('2010-10-10 10:10:10.101010','2010-10-10 10:10:10.101010','2010-10-10 10:10:10.101010');
 set timestamp=unix_timestamp('2022-02-02 02:02:02') + 0.654321;
 insert t1 (b,c) values (now(), now());
-insert t1 (b,c) values (0,0);
-insert t1 (a,b,c) values (0,0,now(6));
+insert ignore t1 (b,c) values (0,0);
+Warnings:
+Warning	1264	Out of range value for column 'c' at row 1
+insert ignore t1 (a,b,c) values (0,0,now(6));
+Warnings:
+Warning	1265	Data truncated for column 'a' at row 1
 select * from t1;
 a	b	c
 2011-01-01 01:01:01.1234	2011-01-01 01:01:01.123456	2011-01-01 01:01:01.12

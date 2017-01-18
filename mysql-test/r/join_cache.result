@@ -5669,6 +5669,7 @@ INSERT INTO t1 VALUES
 (NULL,PointFromText('POINT(9 0)'),127,'00:00:00','0000-00-00','2012-04-04 21:26:12','2013-03-04',0.0,'12:54:30',NULL),
 (NULL,PointFromText('POINT(9 0)'),1,'00:00:00','2013-05-01 22:37:49','2013-06-26','2012-09-22 17:31:03',0.0,'08:09:57','11:15:36');
 Warnings:
+Warning	1264	Out of range value for column 'col284' at row 7
 Note	1265	Data truncated for column 'col286' at row 7
 CREATE TABLE t2 (b int) ENGINE=Aria;
 INSERT INTO t2 VALUES (NULL);

@@ -159,7 +159,9 @@ DROP TABLE t1;
 --disable_metadata
 --enable_ps_protocol
 CREATE TABLE t1 (a TIMESTAMP, b DATETIME);
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS SELECT LEAST(a,a),LEAST(b,b),LEAST(a,b) FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 DROP TABLE t2;
 DROP TABLE t1;

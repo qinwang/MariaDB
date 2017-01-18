@@ -15,13 +15,15 @@ insert t1 values ('2010-12-11 00:20:03.1234');
 insert t1 values ('2010-12-11 15:47:11.1234');
 insert t1 values (20101211010203.45678);
 insert t1 values (20101211030405.789e0);
-insert t1 values (99991231235959e1);
+insert ignore t1 values (99991231235959e1);
 select * from t1;
 --replace_regex /121000/121094/ /457000/457031/ /789000/789062/
 select truncate(a, 6) from t1; # Field::val_real()
 select a DIV 1 from t1; # Field::val_int()
 select group_concat(distinct a) from t1; # Field::cmp()
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 engine=innodb;
+set sql_mode = default;
 select * from t1 order by a;
 select * from t1 order by a+0;
 drop table t1;
@@ -50,7 +52,7 @@ select a, a+interval 9876543 microsecond from t1;
 update t1 set a=a+interval 9876543 microsecond;
 select * from t1;
 select a, a + interval 2 year from t1;
-insert t1 select a + interval 2 year from t1;
+insert ignore t1 select a + interval 2 year from t1;
 select * from t1;
 delete from t1 where a < 20110101;
 select * from t1;
@@ -77,8 +79,10 @@ show create table t3;
 drop table t1, t2, t3;
 
 # insert, alter with conversion
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 --vertical_results
 eval create table t1 (f0_$type $type(0), f1_$type $type(1), f2_$type $type(2), f3_$type $type(3), f4_$type $type(4), f5_$type $type(5), f6_$type $type(6));
+set sql_mode = default;
 insert t1 values ( '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432');
 select * from t1;
 eval select cast(f0_$type as time(4)) time4_f0_$type, cast(f1_$type as datetime(3)) datetime3_f1_$type, cast(f2_$type as date) date_f2_$type, cast(f4_$type as double) double_f3_$type, cast(f4_$type as decimal(40,5)) decimal5_f4_$type, cast(f5_$type as signed) bigint_f5_$type, cast(f6_$type as char(255)) varchar_f6_$type from t1;
@@ -87,7 +91,9 @@ insert t2 select * from t1;
 select * from t2;
 eval alter table t1 change f0_$type time4_f0_$type time(4), change f1_$type datetime3_f1_$type datetime(3), change f2_$type date_f2_$type date, change f3_$type double_f3_$type double, change f4_$type decimal5_f4_$type decimal(40,5), change f5_$type bigint_f5_$type bigint, change f6_$type varchar_f6_$type varchar(255);
 select * from t1;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 eval alter table t1 modify time4_f0_$type $type(0), modify datetime3_f1_$type $type(1), modify date_f2_$type $type(2), modify double_f3_$type $type(3), modify decimal5_f4_$type $type(4), modify bigint_f5_$type $type(5), modify varchar_f6_$type $type(6);
+set sql_mode = default;
 select * from t1;
 delete from t1;
 insert t1 select * from t2;
@@ -103,7 +109,9 @@ if ($type == timestamp)
 {
   let attr=NOT NULL DEFAULT '0000-00-00 00:00:00.000000';
 }
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 eval create table t1 (a $type(6)$attr, b $type(6)$attr);
+set sql_mode = default;
 eval create procedure foo(x $type, y $type(4)) insert into t1 values (x, y);
 call foo('2010-02-03 4:5:6.789123', '2010-02-03 4:5:6.789123');
 select * from t1;
@@ -131,7 +139,9 @@ drop function xyz;
 create view v1 as select * from t1 group by a,b;
 select * from v1;
 show columns from v1;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t2 select * from v1;
+set sql_mode = default;
 show create table t2;
 select * from t2;
 

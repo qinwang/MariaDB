@@ -19,6 +19,14 @@ INSERT INTO `CC` VALUES
 (24,0,'2009-04-27 00:00:00','w'),(25,4,'2006-10-20 14:52:15','x'),
 (26,0,'0000-00-00 00:00:00','e'),(27,0,'2002-03-22 11:48:37','e'),
 (28,2,'0000-00-00 00:00:00','p'),(29,0,'2001-01-04 03:55:07','x');
+Warnings:
+Warning	1264	Out of range value for column 'datetime_key' at row 3
+Warning	1264	Out of range value for column 'datetime_key' at row 7
+Warning	1264	Out of range value for column 'datetime_key' at row 9
+Warning	1264	Out of range value for column 'datetime_key' at row 10
+Warning	1264	Out of range value for column 'datetime_key' at row 13
+Warning	1264	Out of range value for column 'datetime_key' at row 17
+Warning	1264	Out of range value for column 'datetime_key' at row 19
 CREATE TABLE `C` (
 `pk` int(11) NOT NULL AUTO_INCREMENT,
 `int_nokey` int(11) NOT NULL,
@@ -28,7 +36,7 @@ PRIMARY KEY (`pk`),
 KEY `datetime_key` (`datetime_key`),
 KEY `varchar_key` (`varchar_key`)
 ) ENGINE=MyISAM AUTO_INCREMENT=21 DEFAULT CHARSET=latin1;
-INSERT INTO `C` VALUES
+INSERT IGNORE INTO `C` VALUES
 (1,9,'0000-00-00 00:00:00','p'),(2,0,'2002-02-09 07:38:13','v'),
 (3,8,'2001-05-03 12:08:14','t'),(4,3,'0000-00-00 00:00:00','u'),
 (5,7,'2009-07-28 03:43:30','n'),(6,0,'2009-08-04 00:00:00','l'),
@@ -39,6 +47,15 @@ INSERT INTO `C` VALUES
 (15,8,'2008-11-02 00:00:00','n'),(16,5,'2006-03-15 00:00:00','b'),
 (17,1,'0000-00-00 00:00:00','x'),(18,7,'0000-00-00 00:00:00',''),
 (19,0,'2008-12-17 20:15:40','q'),(20,9,'0000-00-00 00:00:00','u');
+Warnings:
+Warning	1264	Out of range value for column 'datetime_key' at row 1
+Warning	1264	Out of range value for column 'datetime_key' at row 4
+Warning	1264	Out of range value for column 'datetime_key' at row 7
+Warning	1264	Out of range value for column 'datetime_key' at row 8
+Warning	1264	Out of range value for column 'datetime_key' at row 12
+Warning	1264	Out of range value for column 'datetime_key' at row 17
+Warning	1264	Out of range value for column 'datetime_key' at row 18
+Warning	1264	Out of range value for column 'datetime_key' at row 20
 CREATE TABLE `BB` (
 `pk` int(11) NOT NULL AUTO_INCREMENT,
 `int_nokey` int(11) NOT NULL,
@@ -93,6 +110,19 @@ INSERT INTO `CC` VALUES
 (27,0,0,'2000-10-19','2002-03-22 11:48:37','e','e'),
 (28,2,8,'2005-07-07','0000-00-00 00:00:00','p','p'),
 (29,0,0,'2008-10-18','2001-01-04 03:55:07','x','x');
+Warnings:
+Warning	1264	Out of range value for column 'datetime_key' at row 3
+Warning	1264	Out of range value for column 'date_key' at row 7
+Warning	1264	Out of range value for column 'datetime_key' at row 7
+Warning	1264	Out of range value for column 'datetime_key' at row 9
+Warning	1264	Out of range value for column 'date_key' at row 10
+Warning	1264	Out of range value for column 'datetime_key' at row 10
+Warning	1264	Out of range value for column 'date_key' at row 12
+Warning	1264	Out of range value for column 'date_key' at row 13
+Warning	1264	Out of range value for column 'datetime_key' at row 13
+Warning	1264	Out of range value for column 'date_key' at row 15
+Warning	1264	Out of range value for column 'datetime_key' at row 17
+Warning	1264	Out of range value for column 'datetime_key' at row 19
 CREATE TABLE `C` (
 `pk` int(11) NOT NULL AUTO_INCREMENT,
 `int_nokey` int(11) NOT NULL,
@@ -107,7 +137,7 @@ KEY `date_key` (`date_key`),
 KEY `datetime_key` (`datetime_key`),
 KEY `varchar_key` (`varchar_key`)
 ) ENGINE=MyISAM AUTO_INCREMENT=21 DEFAULT CHARSET=latin1;
-INSERT INTO `C` VALUES
+INSERT IGNORE INTO `C` VALUES
 (1,9,9,'2007-12-01','0000-00-00 00:00:00','p','p'),
 (2,0,0,'0000-00-00','2002-02-09 07:38:13','v','v'),
 (3,8,6,'0000-00-00','2001-05-03 12:08:14','t','t'),
@@ -128,6 +158,26 @@ INSERT INTO `C` VALUES
 (18,7,0,'0000-00-00','0000-00-00 00:00:00','',''),
 (19,0,9,'0000-00-00','2008-12-17 20:15:40','q','q'),
 (20,9,5,'0000-00-00','0000-00-00 00:00:00','u','u');
+Warnings:
+Warning	1264	Out of range value for column 'datetime_key' at row 1
+Warning	1264	Out of range value for column 'date_key' at row 2
+Warning	1264	Out of range value for column 'date_key' at row 3
+Warning	1264	Out of range value for column 'datetime_key' at row 4
+Warning	1264	Out of range value for column 'date_key' at row 5
+Warning	1264	Out of range value for column 'date_key' at row 6
+Warning	1264	Out of range value for column 'date_key' at row 7
+Warning	1264	Out of range value for column 'datetime_key' at row 7
+Warning	1264	Out of range value for column 'date_key' at row 8
+Warning	1264	Out of range value for column 'datetime_key' at row 8
+Warning	1264	Out of range value for column 'date_key' at row 9
+Warning	1264	Out of range value for column 'date_key' at row 12
+Warning	1264	Out of range value for column 'datetime_key' at row 12
+Warning	1264	Out of range value for column 'datetime_key' at row 17
+Warning	1264	Out of range value for column 'date_key' at row 18
+Warning	1264	Out of range value for column 'datetime_key' at row 18
+Warning	1264	Out of range value for column 'date_key' at row 19
+Warning	1264	Out of range value for column 'date_key' at row 20
+Warning	1264	Out of range value for column 'datetime_key' at row 20
 CREATE TABLE `BB` (
 `pk` int(11) NOT NULL AUTO_INCREMENT,
 `int_nokey` int(11) NOT NULL,
@@ -142,8 +192,10 @@ KEY `date_key` (`date_key`),
 KEY `datetime_key` (`datetime_key`),
 KEY `varchar_key` (`varchar_key`)
 ) ENGINE=MyISAM AUTO_INCREMENT=12 DEFAULT CHARSET=latin1;
-INSERT INTO `BB` VALUES (10,8,5,'0000-00-00','2007-08-19
+INSERT IGNORE INTO `BB` VALUES (10,8,5,'0000-00-00','2007-08-19
 08:08:38','i','i'),(11,0,8,'2005-08-18','2000-05-21 03:51:51','','');
+Warnings:
+Warning	1264	Out of range value for column 'date_key' at row 1
 SELECT DISTINCT BIT_AND( OUTR . `datetime_key` ) AS X 
 FROM C AS OUTR 
 WHERE ( OUTR . `int_nokey` , OUTR . `pk` ) IN ( 

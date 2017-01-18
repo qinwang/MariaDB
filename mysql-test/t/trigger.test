@@ -1579,7 +1579,7 @@ drop table t1;
 # Bug#25398: crash when a trigger contains a SELECT with 
 #            trigger fields in the select list under DISTINCT
 #
-
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
   id int NOT NULL DEFAULT '0',
   a  varchar(10) NOT NULL,
@@ -1620,6 +1620,7 @@ UPDATE t1 SET c='Bang!' WHERE id=1;
 SELECT fubar_id FROM t2;
 
 DROP TABLE t1,t2;
+SET sql_mode = DEFAULT;
 
 #
 # Bug#21285 (Incorrect message error deleting records in a table with a
@@ -2367,7 +2368,7 @@ DROP TABLE t1, t2;
 CREATE TABLE t1 (id INT NOT NULL);
 CREATE TABLE t2 (id INT NOT NULL);
 INSERT t1 VALUES (1),(2),(3);
-UPDATE t1 SET id=NULL;
+UPDATE IGNORE t1 SET id=NULL;
 CREATE TRIGGER t1_bu BEFORE UPDATE ON t1 FOR EACH ROW
   INSERT INTO t2 VALUES (3);
 UPDATE t1 SET id=NULL;
@@ -2463,6 +2464,7 @@ DROP TEMPORARY TABLE t2;
 # Bug#36649: Condition area is not properly cleaned up after stored routine invocation
 #
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 --disable_warnings
 DROP TRIGGER IF EXISTS trg1;
 DROP TABLE IF EXISTS t1;
@@ -2512,6 +2514,7 @@ BEGIN
 END|
 
 delimiter ;|
+SET sql_mode = DEFAULT;
 
 INSERT INTO t1 VALUES (0);
 SELECT * FROM t1;

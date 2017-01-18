@@ -7,12 +7,14 @@
 drop table if exists t1, t2, t3, t10, t100;
 --enable_warnings
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
   event_date date DEFAULT '0000-00-00' NOT NULL,
   type int(11) DEFAULT '0' NOT NULL,
   event_id int(11) DEFAULT '0' NOT NULL,
   PRIMARY KEY (event_date,type,event_id)
 );
+SET sql_mode = DEFAULT;
 
 INSERT INTO t1 VALUES ('1999-07-10',100100,24), ('1999-07-11',100100,25),
 ('1999-07-13',100600,0), ('1999-07-13',100600,4), ('1999-07-13',100600,26),
@@ -38,6 +40,7 @@ explain select event_date,type,event_id from t1 WHERE type = 100601 and event_da
 select event_date,type,event_id from t1 WHERE event_date >= "1999-07-01" AND event_date <= "1999-07-15" AND (type=100600 OR type=100100) or event_date >= "1999-07-01" AND event_date <= "1999-07-15" AND type=100099;
 drop table t1;
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
   PAPER_ID smallint(6) DEFAULT '0' NOT NULL,
   YEAR smallint(6) DEFAULT '0' NOT NULL,
@@ -46,6 +49,7 @@ CREATE TABLE t1 (
   ISS_DATE date DEFAULT '0000-00-00' NOT NULL,
   PRIMARY KEY (PAPER_ID,YEAR,ISSUE)
 );
+SET sql_mode = DEFAULT;
 INSERT INTO t1 VALUES (3,1999,34,0,'1999-07-12'), (1,1999,111,0,'1999-03-23'),
                       (1,1999,222,0,'1999-03-23'), (3,1999,33,0,'1999-07-12'),
                       (3,1999,32,0,'1999-07-12'), (3,1999,31,0,'1999-07-12'),
@@ -923,6 +927,7 @@ DROP TABLE t1;
 #             when a range condition use an invalid datetime constant 
 #
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (                                      
   item char(20) NOT NULL default '',                          
   started datetime NOT NULL default '0000-00-00 00:00:00', 
@@ -947,6 +952,7 @@ SELECT * FROM t1 WHERE item='A1' AND started<='2005-12-01 24:00:00';
 SELECT * FROM t1 WHERE item='A1' AND started<='2005-12-02 00:00:00';
 
 DROP TABLE t1;
+SET sql_mode = DEFAULT;
 
 --echo
 --echo BUG#32198 "Comparison of DATE with DATETIME still not using indexes correctly"

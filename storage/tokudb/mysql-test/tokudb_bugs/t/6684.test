@@ -11,12 +11,14 @@ CREATE TABLE `site` (
   KEY `owner_title` (`title`)
 ) ENGINE=TokuDB AUTO_INCREMENT=575 DEFAULT CHARSET=utf8;
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE `screenshot` (
   `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
   `site` int(11) unsigned NOT NULL,
   `timestamp` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   PRIMARY KEY (`id`)
 ) ENGINE=TokuDB AUTO_INCREMENT=82720 DEFAULT CHARSET=utf8;
+SET sql_mode = DEFAULT;
 
 INSERT INTO `site` (`id`, `title`)
 VALUES
@@ -44,7 +46,9 @@ WHERE screenshot.id IS NULL;
 SELECT * FROM site where site.id not in (select screenshot.site from screenshot where timestamp > '2013-04-28 13:30:00');
 
 # adding either of these two indexes causes the SQL to return an incorrect rowset (1 rows instead of 0 rows)
- create index `site` on screenshot(`site`);
+set sql_mode = '';
+create index `site` on screenshot(`site`);
+set sql_mode = default;
 
 # this query is wrong when one or both of the above indexes is added
 SELECT * 

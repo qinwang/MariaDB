@@ -7,7 +7,7 @@ TIME'00:00:00'=''
 Warnings:
 Warning	1292	Truncated incorrect time value: ''
 CREATE TABLE t1 (a ENUM('a'), b TIME, c INT, KEY(b)) ENGINE=InnoDB;
-INSERT INTO t1 VALUES ('','00:00:00',0);
+INSERT IGNORE INTO t1 VALUES ('','00:00:00',0);
 Warnings:
 Warning	1265	Data truncated for column 'a' at row 1
 SELECT * FROM t1 WHERE b='';
@@ -52,15 +52,18 @@ SELECT 1 FROM t1 WHERE (SELECT a FROM t1 group by c) = b;
 Warnings:
 Warning	1292	Truncated incorrect time value: ''
 DROP TABLE t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 SELECT DATE'0000-00-00'='';
 DATE'0000-00-00'=''
 1
 Warnings:
 Warning	1292	Incorrect datetime value: ''
+SET sql_mode = DEFAULT;
 CREATE TABLE t1 (a ENUM('a'), b DATE, c INT, KEY(b)) ENGINE=InnoDB;
-INSERT INTO t1 VALUES ('','0000-00-00',0);
+INSERT IGNORE INTO t1 VALUES ('','0000-00-00',0);
 Warnings:
 Warning	1265	Data truncated for column 'a' at row 1
+Warning	1264	Out of range value for column 'b' at row 1
 SELECT * FROM t1 WHERE b='';
 a	b	c
 	0000-00-00	0
@@ -81,7 +84,9 @@ SELECT 1 FROM t1 WHERE (SELECT a FROM t1 group by c) = b;
 1
 Warnings:
 Warning	1292	Incorrect datetime value: ''
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE t1 ENGINE=MyISAM;
+SET sql_mode = DEFAULT;
 SELECT * FROM t1 WHERE b='';
 a	b	c
 	0000-00-00	0
@@ -103,15 +108,18 @@ SELECT 1 FROM t1 WHERE (SELECT a FROM t1 group by c) = b;
 Warnings:
 Warning	1292	Incorrect datetime value: ''
 DROP TABLE t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 SELECT TIMESTAMP'0000-00-00 00:00:00'='';
 TIMESTAMP'0000-00-00 00:00:00'=''
 1
 Warnings:
 Warning	1292	Incorrect datetime value: ''
+SET sql_mode = DEFAULT;
 CREATE TABLE t1 (a ENUM('a'), b DATETIME, c INT, KEY(b)) ENGINE=InnoDB;
-INSERT INTO t1 VALUES ('','0000-00-00 00:00:00',0);
+INSERT IGNORE INTO t1 VALUES ('','0000-00-00 00:00:00',0);
 Warnings:
 Warning	1265	Data truncated for column 'a' at row 1
+Warning	1264	Out of range value for column 'b' at row 1
 SELECT * FROM t1 WHERE b='';
 a	b	c
 	0000-00-00 00:00:00	0
@@ -132,7 +140,9 @@ SELECT 1 FROM t1 WHERE (SELECT a FROM t1 group by c) = b;
 1
 Warnings:
 Warning	1292	Incorrect datetime value: ''
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE t1 ENGINE=MyISAM;
+SET sql_mode = DEFAULT;
 SELECT * FROM t1 WHERE b='';
 a	b	c
 	0000-00-00 00:00:00	0

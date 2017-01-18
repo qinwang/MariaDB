@@ -39,6 +39,7 @@ FROM t1;
 --horizontal_results
 --disable_metadata
 --enable_ps_protocol
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
   a                                         AS ___________a,
@@ -60,8 +61,10 @@ SELECT
   LEAST(b, b)                               AS least____b_b,
   GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
   CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -77,5 +80,6 @@ SELECT
   GREATEST(a, b)                            AS greatest_a_b,
   GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 DROP TABLE t2;

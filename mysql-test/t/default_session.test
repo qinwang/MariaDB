@@ -74,7 +74,7 @@ select * from t1;
 drop table t1;
 
 create table t1 (a varchar(100) default @@sql_mode);
-insert t1 () values ();
+insert ignore t1 () values ();
 set sql_mode=ansi;
 insert t1 () values ();
 set sql_mode=default;

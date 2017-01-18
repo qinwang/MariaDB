@@ -199,10 +199,12 @@ connection slave;
 *** Create t7 on slave  ***
 STOP SLAVE;
 RESET SLAVE;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t7 (a INT KEY, b BLOB, c CHAR(5),
 d TIMESTAMP NULL DEFAULT '0000-00-00 00:00:00',
 e CHAR(20) DEFAULT 'Extra Column Testing')
 ENGINE='MyISAM';
+SET sql_mode = DEFAULT;
 *** Create t7 on Master ***
 connection master;
 CREATE TABLE t7 (a INT PRIMARY KEY, b BLOB, c CHAR(5)
@@ -235,9 +237,11 @@ connection slave;
 *** Create t8 on slave  ***
 STOP SLAVE;
 RESET SLAVE;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t8 (a INT KEY, b BLOB, c CHAR(5),
 d TIMESTAMP NULL DEFAULT '0000-00-00 00:00:00',
 e INT)ENGINE='MyISAM';
+SET sql_mode = DEFAULT;
 *** Create t8 on Master ***
 connection master;
 CREATE TABLE t8 (a INT PRIMARY KEY, b BLOB, c CHAR(5)

@@ -10,8 +10,12 @@ insert into t1 values(3,NULL);
 SET TIMESTAMP=1236;
 insert into t1 (a) values(4);
 insert into t2 values(5,"2002-03-04"),(6,NULL),(7,"2002-03-05"),(8,"00-00-00");
+Warnings:
+Warning	1264	Out of range value for column 't' at row 4
 SET TIMESTAMP=1237;
 insert into t1 select * from t2;
+Warnings:
+Warning	1265	Data truncated for column 't' at row 4
 SET TIMESTAMP=1238;
 insert into t1 (a) select a+1 from t2 where a=8;
 select * from t1;
@@ -98,8 +102,9 @@ date	date_time	time_stamp
 2030-01-01	2030-01-01 00:00:00	2030-01-01 00:00:00
 drop table t1;
 create table t1 (ix timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP);
-insert into t1 values (0),(20030101010160),(20030101016001),(20030101240101),(20030132010101),(20031301010101),(20031200000000),(20030000000000);
+insert ignore into t1 values (0),(20030101010160),(20030101016001),(20030101240101),(20030132010101),(20031301010101),(20031200000000),(20030000000000);
 Warnings:
+Warning	1265	Data truncated for column 'ix' at row 1
 Warning	1265	Data truncated for column 'ix' at row 2
 Warning	1265	Data truncated for column 'ix' at row 3
 Warning	1265	Data truncated for column 'ix' at row 4
@@ -118,8 +123,9 @@ ix+0
 0
 0
 truncate table t1;
-insert into t1 values ("00000000000000"),("20030101010160"),("20030101016001"),("20030101240101"),("20030132010101"),("20031301010101"),("20031200000000"),("20030000000000");
+insert ignore into t1 values ("00000000000000"),("20030101010160"),("20030101016001"),("20030101240101"),("20030132010101"),("20031301010101"),("20031200000000"),("20030000000000");
 Warnings:
+Warning	1265	Data truncated for column 'ix' at row 1
 Warning	1265	Data truncated for column 'ix' at row 2
 Warning	1265	Data truncated for column 'ix' at row 3
 Warning	1265	Data truncated for column 'ix' at row 4
@@ -138,7 +144,7 @@ ix+0
 0
 0
 truncate table t1;
-insert into t1 values ("0000-00-00 00:00:00 some trailer"),("2003-01-01 00:00:00 some trailer");
+insert ignore into t1 values ("0000-00-00 00:00:00 some trailer"),("2003-01-01 00:00:00 some trailer");
 Warnings:
 Warning	1265	Data truncated for column 'ix' at row 1
 Warning	1265	Data truncated for column 'ix' at row 2
@@ -149,21 +155,33 @@ ix+0
 drop table t1;
 create table t1 (t1 timestamp, t2 timestamp default now());
 drop table t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (t1 timestamp, t2 timestamp on update now());
+SET sql_mode = DEFAULT;
 drop table t1;
 create table t1 (t1 timestamp, t2 timestamp default now() on update now());
 drop table t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (t1 timestamp default now(), t2 timestamp on update now());
+SET sql_mode = DEFAULT;
 drop table t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (t1 timestamp on update now(), t2 timestamp default now() on update now());
+SET sql_mode = DEFAULT;
 drop table t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (t1 timestamp not null default '2003-01-01 00:00:00', t2 datetime, t3 timestamp NOT NULL DEFAULT '0000-00-00 00:00:00');
+SET sql_mode = DEFAULT;
 SET TIMESTAMP=1000000000;
-insert into t1 values ();
+insert ignore into t1 values ();
+Warnings:
+Warning	1978	Incorrect default value '0000-00-00 00:00:00' for column 't3'
 SET TIMESTAMP=1000000001;
 update t1 set t2=now();
 SET TIMESTAMP=1000000002;
-insert into t1 (t1,t3) values (default, default);
+insert ignore into t1 (t1,t3) values (default, default);
+Warnings:
+Warning	1978	Incorrect default value '0000-00-00 00:00:00' for column 't3'
 select * from t1;
 t1	t2	t3
 2003-01-01 00:00:00	2001-09-09 04:46:41	0000-00-00 00:00:00
@@ -181,13 +199,19 @@ t1	timestamp	NO		2003-01-01 00:00:00
 t2	datetime	YES		NULL	
 t3	timestamp	NO		0000-00-00 00:00:00	
 drop table t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (t1 timestamp not null default now(), t2 datetime, t3 timestamp NOT NULL DEFAULT '0000-00-00 00:00:00');
+SET sql_mode = DEFAULT;
 SET TIMESTAMP=1000000002;
-insert into t1 values ();
+insert ignore into t1 values ();
+Warnings:
+Warning	1978	Incorrect default value '0000-00-00 00:00:00' for column 't3'
 SET TIMESTAMP=1000000003;
 update t1 set t2=now();
 SET TIMESTAMP=1000000003;
-insert into t1 (t1,t3) values (default, default);
+insert ignore into t1 (t1,t3) values (default, default);
+Warnings:
+Warning	1978	Incorrect default value '0000-00-00 00:00:00' for column 't3'
 select * from t1;
 t1	t2	t3
 2001-09-09 04:46:42	2001-09-09 04:46:43	0000-00-00 00:00:00
@@ -255,16 +279,22 @@ Field	Type	Null	Key	Default	Extra
 t1	timestamp	NO		current_timestamp()	on update current_timestamp()
 t2	datetime	YES		NULL	
 drop table t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (t1 timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, t2 datetime, t3 timestamp NOT NULL DEFAULT '0000-00-00 00:00:00');
+SET sql_mode = DEFAULT;
 SET TIMESTAMP=1000000007;
-insert into t1 values ();
+insert ignore into t1 values ();
+Warnings:
+Warning	1978	Incorrect default value '0000-00-00 00:00:00' for column 't3'
 select * from t1;
 t1	t2	t3
 2001-09-09 04:46:47	NULL	0000-00-00 00:00:00
 SET TIMESTAMP=1000000008;
 update t1 set t2=now();
 SET TIMESTAMP=1000000008;
-insert into t1 (t1,t3) values (default, default);
+insert ignore into t1 (t1,t3) values (default, default);
+Warnings:
+Warning	1978	Incorrect default value '0000-00-00 00:00:00' for column 't3'
 select * from t1;
 t1	t2	t3
 2001-09-09 04:46:48	2001-09-09 04:46:48	0000-00-00 00:00:00
@@ -397,7 +427,9 @@ drop table t1;
 create table t1 (a bigint, b bigint);
 insert into t1 values (NULL, NULL), (20030101000000, 20030102000000);
 set timestamp=1000000019;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 modify a timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, modify b timestamp NOT NULL DEFAULT '0000-00-00 00:00:0';
+SET sql_mode = DEFAULT;
 select * from t1;
 a	b
 2001-09-09 04:46:59	2001-09-09 04:46:59
@@ -748,7 +780,9 @@ End of 10.0 tests
 # MDEV-7831 Bad warning for DATE_ADD(timestamp_column, INTERVAL 10 SECOND) 
 #
 CREATE TABLE t1 (a TIMESTAMP);
-INSERT INTO t1 VALUES ('0000-00-00 00:00:00');
+INSERT IGNORE INTO t1 VALUES ('0000-00-00 00:00:00');
+Warnings:
+Warning	1265	Data truncated for column 'a' at row 1
 SELECT DATE_ADD(a, INTERVAL 10 SECOND) FROM t1;
 DATE_ADD(a, INTERVAL 10 SECOND)
 NULL
@@ -759,7 +793,9 @@ DROP TABLE t1;
 # MDEV-7824 [Bug #68041] Zero date can be inserted in strict no-zero mode through a default value
 #
 SET sql_mode=DEFAULT;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (a TIMESTAMP DEFAULT '0000-00-00 00:00:00');
+SET sql_mode = DEFAULT;
 SET sql_mode=TRADITIONAL;
 INSERT INTO t1 VALUES ('0000-00-00 00:00:00');
 ERROR 22007: Incorrect datetime value: '0000-00-00 00:00:00' for column 'a' at row 1
@@ -769,16 +805,24 @@ INSERT INTO t1 VALUES (DEFAULT);
 ERROR 22007: Incorrect default value '0000-00-00 00:00:00' for column 'a'
 DROP TABLE t1;
 SET sql_mode=DEFAULT;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (a TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00', b TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00');
+SET sql_mode = DEFAULT;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 (a TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00');
-INSERT INTO t2 VALUES ('0000-00-00 00:00:00');
+SET sql_mode = DEFAULT;
+INSERT IGNORE INTO t2 VALUES ('0000-00-00 00:00:00');
+Warnings:
+Warning	1265	Data truncated for column 'a' at row 1
 SET sql_mode=TRADITIONAL;
 INSERT INTO t1 (a) SELECT a FROM t2;
 ERROR 22007: Incorrect default value '0000-00-00 00:00:00' for column 'b'
 DROP TABLE t1, t2;
 SET sql_mode=DEFAULT;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (a TIMESTAMP DEFAULT '0000-00-00 00:00:00', b TIMESTAMP DEFAULT '0000-00-00 00:00:00');
 INSERT INTO t1 VALUES (DEFAULT,DEFAULT);;
+SET sql_mode = DEFAULT;
 SELECT a INTO OUTFILE 'MYSQLTEST_VARDIR/tmp/mdev-7824.txt' FROM t1;
 DELETE FROM t1;
 SET sql_mode=TRADITIONAL;
@@ -786,7 +830,9 @@ LOAD DATA INFILE 'MYSQLTEST_VARDIR/tmp/mdev-7824.txt' INTO TABLE t1 (a);
 ERROR 22007: Incorrect default value '0000-00-00 00:00:00' for column 'b'
 DROP TABLE t1;
 SET sql_mode=DEFAULT;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (a TIMESTAMP DEFAULT '0000-00-00 00:00:00');;
+SET sql_mode = DEFAULT;
 SET sql_mode='NO_ZERO_DATE';
 ALTER TABLE t1 ADD b INT NOT NULL;
 ERROR 42000: Invalid default value for 'a'
@@ -800,7 +846,9 @@ SET sql_mode=DEFAULT;
 #
 SET sql_mode=DEFAULT;
 CREATE TABLE t1 (a TIMESTAMP);;
-INSERT INTO t1 VALUES (0);
+INSERT IGNORE INTO t1 VALUES (0);
+Warnings:
+Warning	1265	Data truncated for column 'a' at row 1
 SET sql_mode='TRADITIONAL';
 CREATE TABLE t2 AS SELECT * FROM t1;
 ERROR 22007: Incorrect datetime value: '0000-00-00 00:00:00' for column 'a' at row 1

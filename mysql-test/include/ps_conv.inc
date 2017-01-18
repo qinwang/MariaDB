@@ -576,8 +576,10 @@ prepare my_delete from "delete from t9 where c21 = 'O' ";
 #
 # Use the maximum BIGINT from the manual
 set @arg00= 9223372036854775807 ;
+set sql_mode = '';
 execute my_insert using @arg00, @arg00, @arg00, @arg00, @arg00, @arg00,
                         @arg00, @arg00, @arg00, @arg00, @arg00 ;
+set sql_mode = default;
 --vertical_results
 --replace_result e+0 e+
 execute my_select ;
@@ -585,8 +587,10 @@ execute my_select ;
 --replace_result e+0 e+
 execute my_delete ;
 set @arg00= '9223372036854775807' ;
+set sql_mode = '';
 execute my_insert using @arg00, @arg00, @arg00, @arg00, @arg00, @arg00,
                         @arg00, @arg00, @arg00, @arg00, @arg00 ;
+set sql_mode = default;
 --vertical_results
 --replace_result e+0 e+
 execute my_select ;
@@ -596,8 +600,10 @@ execute my_delete ;
 # Use the minimum BIGINT from the manual
 #
 set @arg00= -9223372036854775808 ;
+set sql_mode = '';
 execute my_insert using @arg00, @arg00, @arg00, @arg00, @arg00, @arg00,
                         @arg00, @arg00, @arg00, @arg00, @arg00 ;
+set sql_mode = default;
 --vertical_results
 --replace_result e+0 e+
 execute my_select ;
@@ -605,8 +611,10 @@ execute my_select ;
 --replace_result e+0 e+
 execute my_delete ;
 set @arg00= '-9223372036854775808' ;
+set sql_mode = '';
 execute my_insert using @arg00, @arg00, @arg00, @arg00, @arg00, @arg00,
                         @arg00, @arg00, @arg00, @arg00, @arg00 ;
+set sql_mode = default;
 --vertical_results
 --replace_result e+0 e+
 execute my_select ;
@@ -618,8 +626,10 @@ execute my_delete ;
 # (FLOAT,REAL,DOUBLE) during insert
 #
 set @arg00= 1.11111111111111111111e+50 ;
+set sql_mode = '';
 execute my_insert using @arg00, @arg00, @arg00, @arg00, @arg00, @arg00,
                         @arg00, @arg00, @arg00, @arg00, @arg00 ;
+set sql_mode = default;
 --vertical_results
 --replace_result e+0 e+
 execute my_select ;
@@ -630,8 +640,10 @@ execute my_delete ;
 #             because the string is treated as written integer and
 #             '.11111111111111111111e+50' is cut away.
 set @arg00= '1.11111111111111111111e+50' ;
+set sql_mode = '';
 execute my_insert using @arg00, @arg00, @arg00, @arg00, @arg00, @arg00,
                         @arg00, @arg00, @arg00, @arg00, @arg00 ;
+set sql_mode = default;
 --vertical_results
 --replace_result e+0 e+
 execute my_select ;
@@ -639,8 +651,10 @@ execute my_select ;
 --replace_result e+0 e+
 execute my_delete ;
 set @arg00= -1.11111111111111111111e+50 ;
+set sql_mode = '';
 execute my_insert using @arg00, @arg00, @arg00, @arg00, @arg00, @arg00,
                         @arg00, @arg00, @arg00, @arg00, @arg00 ;
+set sql_mode = default;
 --vertical_results
 --replace_result e+0 e+
 execute my_select ;
@@ -651,8 +665,10 @@ execute my_delete ;
 #             because the string is treated as written integer and
 #             '.11111111111111111111e+50' is cut away.
 set @arg00= '-1.11111111111111111111e+50' ;
+set sql_mode = '';
 execute my_insert using @arg00, @arg00, @arg00, @arg00, @arg00, @arg00,
                         @arg00, @arg00, @arg00, @arg00, @arg00 ;
+set sql_mode = default;
 --vertical_results
 --replace_result e+0 e+
 execute my_select ;
@@ -672,6 +688,7 @@ select '-- insert into string columns --' as test_sequence ;
 --enable_query_log
 
 ######## INSERT into .. string columns values(CHAR(n),LONGTEXT) ########
+set sql_mode = '';
 insert into t9 
   ( c1, c20, c21, c22, c23, c24, c25, c26, c27, c28, c29, c30 )
 values
@@ -725,7 +742,6 @@ values
   ( 33, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )" ;
 execute stmt2 using @arg00, @arg00, @arg00, @arg00, @arg00, @arg00, @arg00, 
                     @arg00, @arg00, @arg00, @arg00 ;
-
 
 ######## INSERT into .. string columns values(BIGINT(n),BIGINT) ########
 insert into t9 
@@ -803,6 +819,7 @@ values
   ( 57, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )" ;
 execute stmt2 using @arg00, @arg00, @arg00, @arg00, @arg00, @arg00, @arg00, 
                     @arg00, @arg00, @arg00, @arg00 ;
+set sql_mode = default;
 
 
 ######## INSERT into .. string columns values(LONGBLOB,NULL) ########
@@ -984,6 +1001,7 @@ delete from t9 ;
 select '-- insert into date/time columns --' as test_sequence ;
 --enable_query_log
 ######## INSERT into .. date/time columns values(VARCHAR(19),LONGTEXT) ########
+set sql_mode = '';
 set @arg00= '1991-01-01 01:01:01' ;
 insert into t9
   ( c1, c13, c14, c15, c16, c17 )
@@ -1079,6 +1097,7 @@ prepare stmt2 from "insert into t9
 values
   ( 53, ?, ?, ?, ?, ? )" ;
 execute stmt2 using @arg00, @arg00, @arg00, @arg00, @arg00 ;
+set sql_mode = default;
 
 
 ######## INSERT into .. date/time columns values(LONGBLOB,NULL) ########

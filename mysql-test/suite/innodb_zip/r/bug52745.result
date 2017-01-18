@@ -97,6 +97,8 @@ col88=16894,
 col89=6161,
 col90=repeat('gale',48);
 Warnings:
+Warning	1978	Incorrect default value '0000-00-00 00:00:00' for column 'col49'
+Warning	1265	Data truncated for column 'col40' at row 1
 Warning	1265	Data truncated for column 'col53' at row 1
 Warning	1264	Out of range value for column 'col54' at row 1
 Warning	1265	Data truncated for column 'col59' at row 1
@@ -112,6 +114,8 @@ Warning	1265	Data truncated for column 'col79' at row 1
 Warning	1264	Out of range value for column 'col84' at row 1
 SHOW WARNINGS;
 Level	Code	Message
+Warning	1978	Incorrect default value '0000-00-00 00:00:00' for column 'col49'
+Warning	1265	Data truncated for column 'col40' at row 1
 Warning	1265	Data truncated for column 'col53' at row 1
 Warning	1264	Out of range value for column 'col54' at row 1
 Warning	1265	Data truncated for column 'col59' at row 1

@@ -2,12 +2,16 @@ DROP TABLE IF EXISTS t1;
 #
 # Bug#51851: Server with SBR locks mutex twice on LOAD DATA into
 #            partitioned MyISAM table
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1
 (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 name TINYBLOB NOT NULL,
 modified TIMESTAMP DEFAULT '0000-00-00 00:00:00',
 INDEX namelocs (name(255))) ENGINE = MyISAM
 PARTITION BY HASH(id) PARTITIONS 2;
+SET sql_mode = DEFAULT;
 LOAD DATA LOCAL INFILE 'MYSQLTEST_VARDIR/tmp/init_file.txt'
 INTO TABLE t1 (name);
+Warnings:
+Warning	1978	Incorrect default value '0000-00-00 00:00:00' for column 'modified'
 DROP TABLE t1;

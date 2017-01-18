@@ -666,10 +666,14 @@ column_get(column_create(1, "2011-04-05 8:46:06.23434" AS datetime), 1 as dateti
 2011-04-05 08:46:06.234340
 select column_get(column_create(1, "2011-00-00 8:46:06.23434" AS CHAR), 1 as datetime);
 column_get(column_create(1, "2011-00-00 8:46:06.23434" AS CHAR), 1 as datetime)
-2011-00-00 08:46:06
+NULL
+Warnings:
+Warning	1292	Incorrect datetime value: '2011-00-00 8:46:06.23434'
 select column_get(column_create(1, "2011-00-01 8:46:06.23434" AS CHAR), 1 as datetime);
 column_get(column_create(1, "2011-00-01 8:46:06.23434" AS CHAR), 1 as datetime)
-2011-00-01 08:46:06
+NULL
+Warnings:
+Warning	1292	Incorrect datetime value: '2011-00-01 8:46:06.23434'
 select column_get(column_create(1, 20010203 as unsigned int), 1 as datetime);
 column_get(column_create(1, 20010203 as unsigned int), 1 as datetime)
 2001-02-03 00:00:00
@@ -693,7 +697,9 @@ column_get(column_create(1, "20010203"), 1 as datetime)
 2001-02-03 00:00:00
 select column_get(column_create(1, 0), 1 as datetime);
 column_get(column_create(1, 0), 1 as datetime)
-0000-00-00 00:00:00
+NULL
+Warnings:
+Warning	1292	Incorrect datetime value: '0'
 select column_get(column_create(1, "2001021"), 1 as datetime);
 column_get(column_create(1, "2001021"), 1 as datetime)
 2020-01-02 01:00:00

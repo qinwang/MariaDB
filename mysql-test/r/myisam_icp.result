@@ -63,7 +63,10 @@ PRIMARY KEY(c1),
 UNIQUE(c2)
 );
 
-INSERT INTO t1 VALUES('0000-00-00', '0000-00-00', '2008-01-04', '2008-01-05');
+INSERT IGNORE INTO t1 VALUES('0000-00-00', '0000-00-00', '2008-01-04', '2008-01-05');
+Warnings:
+Warning	1264	Out of range value for column 'c1' at row 1
+Warning	1264	Out of range value for column 'c2' at row 1
 INSERT INTO t1 VALUES('2007-05-25', '2007-05-25', '2007-05-26', '2007-05-26');
 INSERT INTO t1 VALUES('2008-01-01', NULL        , '2008-01-02', '2008-01-03');
 INSERT INTO t1 VALUES('2008-01-17', NULL        , NULL        , '2009-01-29');
@@ -93,7 +96,7 @@ c4 DATETIME,
 PRIMARY KEY(c1), 
 UNIQUE INDEX(c2)
 );
-INSERT INTO t1 VALUES
+INSERT IGNORE INTO t1 VALUES
 ('0000-00-00 00:00:00','0000-00-00 00:00:00','2008-01-04','2008-01-05 00:00:00'),
 ('1971-01-01 00:00:01','1980-01-01 00:00:01','2009-01-01','2009-01-02 00:00:00'),
 ('1999-01-01 00:00:00','1999-01-01 00:00:00', NULL,        NULL),
@@ -102,6 +105,9 @@ INSERT INTO t1 VALUES
 ('2008-01-01 00:00:00', NULL,                '2008-01-02','2008-01-03 00:00:00'),
 ('2009-01-29 11:11:27','2009-01-29 11:11:27','2009-01-29','2009-01-29 11:11:27'),
 ('2038-01-09 03:14:07','2038-01-09 03:14:07','2009-01-05','2009-01-06 00:00:00');
+Warnings:
+Warning	1265	Data truncated for column 'c1' at row 1
+Warning	1265	Data truncated for column 'c2' at row 1
 
 SELECT * 
 FROM t1 
@@ -472,7 +478,7 @@ CREATE TABLE t2 (
 t2_int int PRIMARY KEY,
 t2_int2 INT
 );
-INSERT INTO t2 VALUES ();
+INSERT IGNORE INTO t2 VALUES ();
 INSERT INTO t1 VALUES ();
 SELECT * FROM t1 AS t1a 
 WHERE NOT EXISTS (SELECT * FROM t1 AS t1b
@@ -566,7 +572,7 @@ COL1000 VARBINARY(179) NOT NULL,
 col1003 DATE DEFAULT NULL,
 KEY idx4267 (col1000, col1003)
 );
-INSERT INTO t1 VALUES (),();
+INSERT IGNORE INTO t1 VALUES (),();
 Warnings:
 Warning	1364	Field 'col999' doesn't have a default value
 Warning	1364	Field 'COL1000' doesn't have a default value
@@ -847,7 +853,7 @@ Handler_icp_attempts	2
 Handler_icp_match	1
 DROP TABLE t1;
 create table t1 (a int,b char(5),primary key (a), key (b(1)));
-insert into t1 values ('a','b');
+insert ignore into t1 values ('a','b');
 Warnings:
 Warning	1366	Incorrect integer value: 'a' for column 'a' at row 1
 select 1 from t1 where a and b >= 'aa';

@@ -7,8 +7,12 @@ insert t1 (b,c) values (now(6), now(6));
 insert t1 values ('2010-10-10 10:10:10.101010','2010-10-10 10:10:10.101010','2010-10-10 10:10:10.101010');
 set timestamp=unix_timestamp('2022-02-02 02:02:02') + 0.654321;
 insert t1 (b,c) values (now(), now());
-insert t1 (b,c) values (0,0);
-insert t1 (a,b,c) values (0,0,now(6));
+insert ignore t1 (b,c) values (0,0);
+Warnings:
+Warning	1264	Out of range value for column 'c' at row 1
+insert ignore t1 (a,b,c) values (0,0,now(6));
+Warnings:
+Warning	1265	Data truncated for column 'a' at row 1
 select * from t1;
 a	b	c
 2011-01-01 01:01:01.1234	2011-01-01 01:01:01.123456	2011-01-01 01:01:01.12
@@ -38,7 +42,7 @@ use `test`/*!*/;
 SET TIMESTAMP=1293832861/*!*/;
 SET @@session.pseudo_thread_id=999999999/*!*/;
 SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1, @@session.check_constraint_checks=1/*!*/;
-SET @@session.sql_mode=1342177280/*!*/;
+SET @@session.sql_mode=1436549120/*!*/;
 SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
 /*!\C latin1 *//*!*/;
 SET @@session.character_set_client=8,@@session.collation_connection=8,@@session.collation_server=8/*!*/;
@@ -74,7 +78,7 @@ COMMIT
 BEGIN
 /*!*/;
 SET TIMESTAMP=1643756522.654321/*!*/;
-insert t1 (b,c) values (0,0)
+insert ignore t1 (b,c) values (0,0)
 /*!*/;
 SET TIMESTAMP=1643756522.654321/*!*/;
 COMMIT
@@ -82,7 +86,7 @@ COMMIT
 BEGIN
 /*!*/;
 SET TIMESTAMP=1643756522.654321/*!*/;
-insert t1 (a,b,c) values (0,0,now(6))
+insert ignore t1 (a,b,c) values (0,0,now(6))
 /*!*/;
 SET TIMESTAMP=1643756522.654321/*!*/;
 COMMIT

@@ -12,7 +12,9 @@ create function bug14233_f() returns int
 return 42;
 create table t1 (id int);
 create trigger t1_ai after insert on t1 for each row call bug14233();
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table mysql.proc drop type;
+SET sql_mode = DEFAULT;
 call bug14233();
 ERROR HY000: Column count of mysql.proc is wrong. Expected 20, found 19. The table is probably corrupted
 create view v1 as select bug14233_f();
@@ -38,7 +40,7 @@ ERROR 42S02: Table 'mysql.proc' doesn't exist
 flush table mysql.proc;
 flush privileges;
 delete from mysql.proc where name like 'bug14233%';
-insert into mysql.proc
+insert ignore into mysql.proc
 (
 db, name, type, specific_name, language, sql_data_access, is_deterministic,
 security_type, param_list, returns, body, definer, created, modified,
@@ -70,6 +72,10 @@ values
 '', '', '',
 'alksj wpsj sa ^#!@ '
 );
+Warnings:
+Warning	1265	Data truncated for column 'modified' at row 1
+Warning	1265	Data truncated for column 'modified' at row 2
+Warning	1265	Data truncated for column 'modified' at row 3
 select bug14233_1();
 ERROR HY000: Failed to load routine test.bug14233_1. The table mysql.proc is missing, corrupt, or contains bad data (internal code -6)
 create view v1 as select bug14233_1();
@@ -97,7 +103,9 @@ DROP TABLE IF EXISTS proc_backup;
 DROP PROCEDURE IF EXISTS p1;
 # Backup the proc table
 RENAME TABLE mysql.proc TO proc_backup;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE mysql.proc LIKE proc_backup;
+SET sql_mode = DEFAULT;
 FLUSH TABLE mysql.proc;
 # Test with a valid table.
 CREATE PROCEDURE p1()
@@ -107,7 +115,9 @@ SHOW PROCEDURE STATUS;
 Db	Name	Type	Definer	Modified	Created	Security_type	Comment	character_set_client	collation_connection	Database Collation
 test	p1	PROCEDURE	root@localhost	0000-00-00 00:00:00	0000-00-00 00:00:00	DEFINER		latin1	latin1_swedish_ci	latin1_swedish_ci
 # Modify a field of the table.
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE mysql.proc MODIFY comment CHAR (32);
+SET sql_mode = DEFAULT;
 CREATE PROCEDURE p2()
 SET @foo = 10;
 ERROR HY000: Cannot load from mysql.proc. The table is probably corrupted
@@ -142,7 +152,9 @@ drop database if exists mysqltest;
 flush table mysql.proc;
 create database mysqltest;
 # Corrupt mysql.proc to make it unusable by current version of server.
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table mysql.proc drop column type;
+SET sql_mode = DEFAULT;
 # The below statement should not cause assertion failure.
 drop database mysqltest;
 Warnings:
@@ -156,11 +168,15 @@ DROP TABLE IF EXISTS proc_backup;
 DROP DATABASE IF EXISTS db1;
 # Backup the proc table
 RENAME TABLE mysql.proc TO proc_backup;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE mysql.proc LIKE proc_backup;
+SET sql_mode = DEFAULT;
 CREATE DATABASE db1;
 CREATE PROCEDURE db1.p1() SET @foo = 10;
 # Modify a field of the table.
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE mysql.proc MODIFY comment CHAR (32);
+SET sql_mode = DEFAULT;
 DROP DATABASE db1;
 Warnings:
 Error	1728	Cannot load from mysql.proc. The table is probably corrupted

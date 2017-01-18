@@ -165,9 +165,11 @@ DROP TABLE t1;
 # Bug#43827 Server closes connections and restarts
 #
 CREATE TABLE t1 (c1 VARCHAR(10) CHARACTER SET utf8 COLLATE utf8_test_ci);
+SET sql_mode='';
 INSERT INTO t1 SELECT REPEAT('a',11);
 Warnings:
 Warning	1265	Data truncated for column 'c1' at row 1
+SET sql_mode=default;
 DROP TABLE t1;
 Vietnamese experimental collation
 show collation like 'ucs2_vn_ci';

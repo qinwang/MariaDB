@@ -56,6 +56,7 @@ a	b	c
 drop table t, t2;
 create table t1 (a int, b int, c int, d int, e int);
 insert t1 values (1,2,3,4,5), (1,2,3,4,5);
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t (a int primary key,
 b int, c blob as (b), index (c(57)),
 d blob, e blob as (d), index (e(57)))
@@ -65,6 +66,7 @@ Warning	1906	The value specified for generated column 'c' in table 't' ignored
 Warning	1906	The value specified for generated column 'e' in table 't' ignored
 Warning	1906	The value specified for generated column 'c' in table 't' ignored
 Warning	1906	The value specified for generated column 'e' in table 't' ignored
+set sql_mode = DEFAULT;
 check table t;
 Table	Op	Msg_type	Msg_text
 test.t	check	status	OK

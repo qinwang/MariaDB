@@ -60,6 +60,7 @@ drop table t1;
 #
 # Test inserting and updating with NULL
 #
+set sql_mode='NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (a varchar(16) NOT NULL default '', b smallint(6) NOT NULL default 0, c datetime NOT NULL default '0000-00-00 00:00:00', d smallint(6) NOT NULL default 0);
 INSERT INTO t1 SET a = "", d= "2003-01-14 03:54:55";
 UPDATE t1 SET d=1/NULL;
@@ -86,6 +87,7 @@ INSERT INTO t1 (d) values (1/null);
 INSERT INTO t1 (d) values (null),(null);
 select * from t1;
 drop table t1;
+set sql_mode=default;
 
 #
 # Test to check elimination of IS NULL predicate for a non-nullable attribute
@@ -118,7 +120,9 @@ insert into t1 select i*2 from t1;
 insert into t1 values(null);
 explain select * from t1 where i=2 or i is null;
 select count(*) from t1 where i=2 or i is null;
+set sql_mode='NO_ENGINE_SUBSTITUTION';
 alter table t1 change i i int not null;
+set sql_mode=default;
 explain select * from t1 where i=2 or i is null;
 select count(*) from t1 where i=2 or i is null;
 drop table t1;
@@ -335,6 +339,7 @@ DROP TABLE t1,t2;
 --error ER_CANT_AGGREGATE_2COLLATIONS
 SELECT NULLIF(_latin1'a' COLLATE latin1_general_ci, _latin1'a' COLLATE latin1_bin);
 
+set sql_mode='NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 AS SELECT
   NULLIF(1,1),
   NULLIF(1,1.0),
@@ -397,6 +402,8 @@ CREATE TABLE t1 AS SELECT
   NULLIF(TIME'00:00:01',DATE'2001-01-01');
 SHOW CREATE TABLE t1;
 DROP TABLE t1;
+
+set sql_mode=default;
 
 CREATE TABLE t1
 (
@@ -862,12 +869,14 @@ EXPLAIN EXTENDED SELECT * FROM t1 WHERE a=2010 AND CASE WHEN 10.1=a THEN NULL EL
 DROP TABLE t1;
 
 --echo # Two warnings expected
+set sql_mode='NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 AS SELECT
   NULLIF(TIMESTAMP'2001-01-01 00:00:00',1) AS a,
   CASE WHEN TIMESTAMP'2001-01-01 00:00:00'=1 THEN NULL
        ELSE TIMESTAMP'2001-01-01 00:00:00'
   END AS b;
 DROP TABLE t1;
+set sql_mode=default;
 
 --echo #
 --echo # MDEV-8785 Wrong results for EXPLAIN EXTENDED...WHERE NULLIF(latin1_col, _utf8'a' COLLATE utf8_bin) IS NOT NULL

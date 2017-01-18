@@ -1064,7 +1064,7 @@ CREATE TABLE t5 (
   g date NOT NULL, h time NOT NULL, j time NOT NULL, k datetime NOT NULL
 );
 
-INSERT INTO t5 VALUES
+INSERT IGNORE INTO t5 VALUES
   (1,4,0,'0000-00-00','0000-00-00','21:22:34','21:22:34','2002-02-13 17:30'),
   (2,6,8,'2004-09-18','2004-09-18','10:50:38','10:50:38','2008-09-27 00:34');
 
@@ -1760,6 +1760,7 @@ CREATE TABLE t1 (
   KEY index_td_familyid_id (familyid,id)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 (
   id int(11) NOT NULL AUTO_INCREMENT,
   activefromts datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
@@ -1768,6 +1769,7 @@ CREATE TABLE t2 (
   serialized longtext,
   PRIMARY KEY (id)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8;
+SET sql_mode = DEFAULT;
 
 insert into t1 values ('picture/89/1369722032695.pmd',89,NULL);
 insert into t1 values ('picture/90/1369832057370.pmd',90,NULL);

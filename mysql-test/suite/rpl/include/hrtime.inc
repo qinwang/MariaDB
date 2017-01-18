@@ -11,8 +11,8 @@ insert t1 values ('2010-10-10 10:10:10.101010','2010-10-10 10:10:10.101010','201
 
 set timestamp=unix_timestamp('2022-02-02 02:02:02') + 0.654321;
 insert t1 (b,c) values (now(), now());
-insert t1 (b,c) values (0,0);
-insert t1 (a,b,c) values (0,0,now(6));
+insert ignore t1 (b,c) values (0,0);
+insert ignore t1 (a,b,c) values (0,0,now(6));
 
 select * from t1;
 

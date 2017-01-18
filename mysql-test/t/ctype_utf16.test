@@ -570,7 +570,9 @@ drop table t1;
 #
 create table t1 (s1 varchar(50) character set ucs2);
 insert into t1 values (0xdf84);
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 modify column s1 varchar(50) character set utf16;
+SET sql_mode = DEFAULT;
 select hex(s1) from t1;
 drop table t1;
 #
@@ -578,7 +580,7 @@ drop table t1;
 #
 create table t1 (s1 varchar(5) character set ucs2, s2 varchar(5) character set utf16);
 insert into t1 (s1) values (0xdf84);
-update t1 set s2 = s1;
+update ignore t1 set s2 = s1;
 select hex(s2) from t1;
 drop table t1;
 
@@ -660,7 +662,7 @@ select left('aaa','1');
 #
 create table t1 (a int);
 insert into t1 values ('-1234.1e2');
-insert into t1 values ('-1234.1e2xxxx');
+insert ignore into t1 values ('-1234.1e2xxxx');
 insert into t1 values ('-1234.1e2    ');
 select * from t1;
 drop table t1;
@@ -670,14 +672,16 @@ drop table t1;
 #
 create table t1 (a int);
 insert into t1 values ('1 ');
-insert into t1 values ('1 x');
+insert ignore into t1 values ('1 x');
 select * from t1;
 drop table t1;
 
 #
 # Testing auto-conversion to TEXT
 #
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (a varchar(17000) character set utf16);
+set sql_mode = default;
 show create table t1;
 drop table t1;
 

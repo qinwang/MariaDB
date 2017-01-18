@@ -1,6 +1,7 @@
 call mtr.add_suppression("Sort aborted.*");
 drop table if exists t1,t2,t3;
 call mtr.add_suppression("Out of sort memory; increase server sort buffer size");
+set sql_mode='NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
 id int(6) DEFAULT '0' NOT NULL,
 idservice int(5),

@@ -1637,13 +1637,13 @@ t1	CREATE TABLE `t1` (
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 drop table t1;
 create table t1 (a enum ('0','1'));
-insert into t1 set a='foobar';
+insert ignore into t1 set a='foobar';
 Warnings:
 Warning	1265	Data truncated for column 'a' at row 1
 select * from t1;
 a
 
-update t1 set a = replace(a,'x','y');
+update ignore t1 set a = replace(a,'x','y');
 Warnings:
 Warning	1265	Data truncated for column 'a' at row 1
 select * from t1;
@@ -1778,6 +1778,7 @@ drop table t1;
 create table t1(exhausting_charset enum('ABCDEFGHIJKLMNOPQRSTUVWXYZ','	
  !"','#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~','xx\','yy\€','zz‚ƒ„…†‡ˆ‰Š‹Œ‘’“”•–—˜™š›œŸ ¡¢£¤¥¦§¨©ª«¬­®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖ×ØÙÚÛÜİŞßàáâãäåæçèéêëìíîïğñòóôõö÷øùúûüışÿ'));
 ERROR 42000: Field separator argument is not what is expected; check the manual
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
 id INT AUTO_INCREMENT PRIMARY KEY,
 c1 ENUM('a', '', 'b')
@@ -1801,6 +1802,7 @@ id	c1 + 0	c1
 3	2	
 4	0	
 DROP TABLE t1;
+SET sql_mode = DEFAULT;
 End of 4.1 tests
 create table t1(f1 set('a','b'), index(f1));
 insert into t1 values(''),(''),('a'),('b');
@@ -1812,7 +1814,7 @@ drop table t1;
 CREATE TABLE t1 (c1 ENUM('a', '', 'b'));
 INSERT INTO t1 (c1) VALUES ('b');
 INSERT INTO t1 (c1) VALUES ('');
-INSERT INTO t1 (c1) VALUES (0);
+INSERT IGNORE INTO t1 (c1) VALUES (0);
 Warnings:
 Warning	1265	Data truncated for column 'c1' at row 1
 INSERT INTO t1 (c1) VALUES ('');
@@ -2137,6 +2139,7 @@ DROP TABLE t1;
 #
 # MDEV-9340 Copying from INT/DOUBLE to ENUM is inconsistent
 #
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (a ENUM('9e200','9e100'));
 CREATE TABLE t2 (a DOUBLE);
 INSERT INTO t2 VALUES ('9e100');
@@ -2215,3 +2218,4 @@ SELECT * FROM t1;
 a
 
 DROP TABLE t1;
+SET sql_mode = DEFAULT;

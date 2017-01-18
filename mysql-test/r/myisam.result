@@ -299,6 +299,7 @@ check table t1;
 Table	Op	Msg_type	Msg_text
 test.t1	check	status	OK
 drop table t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE `t1` (
 `post_id` mediumint(8) unsigned NOT NULL auto_increment,
 `topic_id` mediumint(8) unsigned NOT NULL default '0',
@@ -316,7 +317,10 @@ KEY `poster_login` (`poster_login`),
 KEY `topic_id` (`topic_id`),
 FULLTEXT KEY `post_text` (`post_text`)
 ) ENGINE=MyISAM;
-INSERT INTO t1 (post_text) VALUES ('ceci est un test'),('ceci est un test'),('ceci est un test'),('ceci est un test'),('ceci est un test');
+SET sql_mode = DEFAULT;
+INSERT IGNORE INTO t1 (post_text) VALUES ('ceci est un test'),('ceci est un test'),('ceci est un test'),('ceci est un test'),('ceci est un test');
+Warnings:
+Warning	1978	Incorrect default value '0000-00-00 00:00:00' for column 'post_time'
 REPAIR TABLE t1;
 Table	Op	Msg_type	Msg_text
 test.t1	repair	status	OK
@@ -1693,18 +1697,22 @@ create table t1 (v varchar(65530), key(v));
 Warnings:
 Warning	1071	Specified key was too long; max key length is 1000 bytes
 drop table if exists t1;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (v varchar(65536));
 Warnings:
 Note	1246	Converting column 'v' from VARCHAR to TEXT
+set sql_mode = DEFAULT;
 show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `v` mediumtext DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 drop table t1;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (v varchar(65530) character set utf8);
 Warnings:
 Note	1246	Converting column 'v' from VARCHAR to TEXT
+set sql_mode = DEFAULT;
 show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (

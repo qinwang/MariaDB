@@ -203,7 +203,7 @@ drop table t1;
 create table t1 (id int);
 create table t2 (id int, date date);
 insert into t1 values (1);
-insert into t2 values (1, "0000-00-00");
+insert ignore into t2 values (1, "0000-00-00");
 insert into t1 values (2);
 insert into t2 values (2, "2000-01-01");
 select monthname(date) from t1 inner join t2 on t1.id = t2.id;
@@ -225,7 +225,7 @@ drop table t1;
 #
 
 create table t1 (d date, dt datetime, t timestamp, c char(10));
-insert into t1 values ("0000-00-00", "0000-00-00", "0000-00-00", "0000-00-00");
+insert ignore into t1 values ("0000-00-00", "0000-00-00", "0000-00-00", "0000-00-00");
 select dayofyear("0000-00-00"),dayofyear(d),dayofyear(dt),dayofyear(t),dayofyear(c) from t1;
 select dayofmonth("0000-00-00"),dayofmonth(d),dayofmonth(dt),dayofmonth(t),dayofmonth(c) from t1;
 select month("0000-00-00"),month(d),month(dt),month(t),month(c) from t1;
@@ -244,7 +244,9 @@ drop table t1;
 
 CREATE TABLE t1 ( start datetime default NULL);
 INSERT INTO t1 VALUES ('2002-10-21 00:00:00'),('2002-10-28 00:00:00'),('2002-11-04 00:00:00');
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 ( ctime1 timestamp NOT NULL, ctime2 timestamp NOT NULL);
+SET sql_mode = DEFAULT;
 INSERT INTO t2 VALUES (20021029165106,20021105164731);
 CREATE TABLE t3 (ctime1 char(19) NOT NULL, ctime2 char(19) NOT NULL);
 INSERT INTO t3 VALUES ("2002-10-29 16:51:06","2002-11-05 16:47:31");
@@ -531,7 +533,7 @@ SELECT EXTRACT(HOUR FROM '10000:02:03');
 # check if we get proper warnings if both input string truncation
 # and out-of-range value occur
 CREATE TABLE t1(f1 TIME);
-INSERT INTO t1 VALUES('916:00:00 a');
+INSERT IGNORE INTO t1 VALUES('916:00:00 a');
 SELECT * FROM t1;
 DROP TABLE t1;
 
@@ -934,6 +936,7 @@ DO WEEK((DATE_ADD((CAST(0 AS DATE)), INTERVAL 1 YEAR_MONTH)), 5);
 --echo # SIMILAR TO '2009-10-00' 
 --echo #
 
+set sql_mode = '';
 query_vertical SELECT
   DATE('20091000'),
   STR_TO_DATE('200910','%Y%m'),
@@ -989,6 +992,7 @@ query_vertical SELECT
   TO_DAYs(DATE('0000-01-00')),
   TO_DAYs(DATE'0000-01-00'),
   TO_DAYs(STR_TO_DATE('000001','%Y%m'));
+set sql_mode = default;
 
 --echo End of 5.1 tests
 
@@ -1022,7 +1026,7 @@ SET storage_engine=NULL;
 SET time_zone='+03:00';
 CREATE TABLE t1 (a DATETIME NOT NULL);
 INSERT INTO t1 VALUES ('2009-09-20 07:32:39.06');
-INSERT INTO t1 VALUES ('0000-00-00 00:00:00.00');
+INSERT IGNORE INTO t1 VALUES ('0000-00-00 00:00:00.00');
 CREATE VIEW v1 AS SELECT * FROM t1;
 SELECT CAST(UNIX_TIMESTAMP(a) AS DECIMAL(25,3)) AS c1 FROM v1 ORDER BY 1; 
 DROP VIEW v1;
@@ -1139,7 +1143,7 @@ drop table t1;
 # lp:736791 Crash in make_truncated_value_warning with LEAST()/GREATEST/COALESCE
 #
 create table t1 (f1 timestamp);
-insert into t1 values ('0000-00-00 00:00:00');
+insert ignore into t1 values ('0000-00-00 00:00:00');
 select least(1, f1) from t1;
 drop table t1;
 
@@ -1163,7 +1167,7 @@ drop table t1;
 # lp:737111 Different behavior for TIMESTAMPADD with 0000-00-00 argument in 5.1-micro
 #
 create table t1 (f1 date);
-insert into t1 values ('0000-00-00');
+insert ignore into t1 values ('0000-00-00');
 select timestampadd(week, 1, f1) from t1;
 select timestampadd(week, 1, date("0000-00-00"));
 drop table t1;
@@ -1190,7 +1194,7 @@ select timestamp(greatest('2002-08-20', '0000-00-00 00:00:00'));
 # lp:738091  cast(timestamp() AS time returns NULL for 0000-00-00 00:00:00 in 5.1-micro
 #
 create table t1 (f1 datetime);
-insert into t1 values ('0000-00-00 00:00:00');
+insert ignore into t1 values ('0000-00-00 00:00:00');
 select cast(f1 AS time) from t1;
 drop table t1;
 
@@ -1294,7 +1298,9 @@ CREATE TABLE t1 (a DATE);
 INSERT INTO t1 VALUES ('2005-05-04');
 SELECT CONCAT(FROM_UNIXTIME(CONCAT(a,'10')) MOD FROM_UNIXTIME(CONCAT(a,'10'))) AS f2 FROM t1; 
 SELECT CHAR_LENGTH(CONCAT(FROM_UNIXTIME(CONCAT(a,'10')) MOD FROM_UNIXTIME(CONCAT(a,'10')))) AS f2 FROM t1; 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS SELECT CONCAT(FROM_UNIXTIME(CONCAT(a,'10')) MOD FROM_UNIXTIME(CONCAT(a,'10'))) AS f2 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 SELECT * FROM t2;
 DROP TABLE t1,t2;

@@ -1,3 +1,4 @@
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1
 (
 t1_BIGINT BIGINT,
@@ -79,6 +80,7 @@ t1_YEAR_4 YEAR(4)
 ) ENGINE=InnoDB;
 Warnings:
 Note	1287	'YEAR(2)' is deprecated and will be removed in a future release. Please use YEAR(4) instead
+SET sql_mode = DEFAULT;
 SELECT
 name,
 CASE mtype

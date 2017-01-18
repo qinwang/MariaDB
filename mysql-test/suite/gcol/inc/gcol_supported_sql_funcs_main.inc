@@ -937,7 +937,9 @@ let $cols = a datetime, b datetime generated always as (last_day(a)) virtual;
 let $values1 = '2003-02-05',default;
 let $values2 = '2003-02-32',default;
 let $rows = 2;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 --source suite/gcol/inc/gcol_supported_sql_funcs.inc
+set sql_mode = DEFAULT;
 
 --echo # MAKEDATE()
 let $cols = a int, b datetime generated always as (makedate(a,1)) virtual;
@@ -1046,7 +1048,9 @@ let $rows = 1;
 let $cols = a datetime, b datetime, c time generated always as (timediff(a,b)) virtual;
 let $values1 = '2008-12-31 23:59:59.000001','2008-12-30 01:01:01.000002',default;
 let $rows = 1;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 --source suite/gcol/inc/gcol_supported_sql_funcs.inc
+set sql_mode = DEFAULT;
 
 --echo # TIMESTAMP()
 let $cols = a datetime, b timestamp generated always as (timestamp(a)) virtual;

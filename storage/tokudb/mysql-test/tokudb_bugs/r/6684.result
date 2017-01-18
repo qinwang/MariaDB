@@ -11,12 +11,14 @@ CREATE TABLE `site` (
 PRIMARY KEY (`id`),
 KEY `owner_title` (`title`)
 ) ENGINE=TokuDB AUTO_INCREMENT=575 DEFAULT CHARSET=utf8;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE `screenshot` (
 `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
 `site` int(11) unsigned NOT NULL,
 `timestamp` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
 PRIMARY KEY (`id`)
 ) ENGINE=TokuDB AUTO_INCREMENT=82720 DEFAULT CHARSET=utf8;
+SET sql_mode = DEFAULT;
 INSERT INTO `site` (`id`, `title`)
 VALUES
 (9, 'Facebook'),
@@ -38,7 +40,9 @@ WHERE screenshot.id IS NULL;
 id	title	id	site	timestamp
 SELECT * FROM site where site.id not in (select screenshot.site from screenshot where timestamp > '2013-04-28 13:30:00');
 id	title
+set sql_mode = '';
 create index `site` on screenshot(`site`);
+set sql_mode = default;
 SELECT * 
 FROM site 
 LEFT JOIN screenshot

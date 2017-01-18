@@ -22,6 +22,7 @@
 DROP TABLE IF EXISTS diaries;
 --enable_warnings
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE diaries (
   id INT PRIMARY KEY AUTO_INCREMENT,
   title TEXT,
@@ -29,6 +30,7 @@ CREATE TABLE diaries (
   updated_at TIMESTAMP(6),
   KEY (updated_at)
 ) DEFAULT CHARSET UTF8;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE diaries;
 
 INSERT INTO diaries (title, created_at, updated_at)

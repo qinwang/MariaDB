@@ -8989,9 +8989,11 @@ INSERT INTO supplier VALUES
 (8,'Supplier#000000008','9Sq4bBH2FQEmaFOocY45sRTxo6yuoG',17,'27-498-742-3860',7627.85,'carefully express escapades are slyly '),
 (9,'Supplier#000000009','1KhUgZegwM3ua7dsYmekYBsK',10,'20-403-398-8662',5302.37,'slyly regular decoys mold slyly ironic dugouts. requests are carefully-- carefully'),(10,'Supplier#000000010','Saygah3gYWMp72i PY',24,'34-852-489-8585',3891.91,'ironic deposits poach quickly furiously final accounts. carefull');
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE time_statistics (
   task_name varchar(40) DEFAULT NULL,
   s_time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   e_time timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
   int_time int(11) DEFAULT NULL
 );
+SET sql_mode = DEFAULT;

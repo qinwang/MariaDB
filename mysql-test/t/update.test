@@ -322,6 +322,7 @@ drop table t1;
 # Bug #24035: performance degradation with condition int_field=big_decimal
 #
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
   request_id int unsigned NOT NULL auto_increment,
   user_id varchar(12) default NULL,
@@ -340,6 +341,7 @@ INSERT INTO t1(user_id) SELECT user_id FROM t1;
 INSERT INTO t1(user_id) SELECT user_id FROM t1;
 INSERT INTO t1(user_id) SELECT user_id FROM t1;
 INSERT INTO t1(user_id) SELECT user_id FROM t1;
+SET sql_mode = DEFAULT;
 
 flush status;
 SELECT user_id FROM t1 WHERE request_id=9999999999999; 

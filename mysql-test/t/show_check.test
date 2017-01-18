@@ -159,6 +159,7 @@ drop table t1;
 #
 # Do a create table that tries to cover all types and options
 #
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (
 type_bool bool not null default 0,
 type_tiny tinyint not null auto_increment primary key,
@@ -189,6 +190,7 @@ show create table t1;
 insert into t1 (type_timestamp) values ("2003-02-07 10:00:01");
 select * from t1;
 drop table t1;
+set sql_mode = default;
 
 #
 # Check metadata

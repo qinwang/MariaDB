@@ -616,9 +616,9 @@ SET SESSION sql_safe_updates = DEFAULT;
 CREATE FUNCTION f1 () RETURNS BLOB RETURN 1;
 CREATE TABLE t1 (f1 DATE);
 INSERT INTO t1 VALUES('2001-01-01');
-UPDATE (SELECT 1 FROM t1 WHERE f1 = (SELECT f1() FROM t1)) x, t1 SET f1 = 1;
+UPDATE IGNORE (SELECT 1 FROM t1 WHERE f1 = (SELECT f1() FROM t1)) x, t1 SET f1 = 1;
 CREATE view v1 as SELECT f1() FROM t1;
-UPDATE (SELECT 1 FROM t1 WHERE f1 = (select * from v1)) x, t1 SET f1 = 1;
+UPDATE IGNORE (SELECT 1 FROM t1 WHERE f1 = (select * from v1)) x, t1 SET f1 = 1;
 DROP VIEW v1;
 DROP FUNCTION f1;
 DROP TABLE t1;
@@ -892,6 +892,7 @@ Annftt','49','ggobilcogg','grfurt','Intfrn','ggggil',NULL),('2008/4','200812','2
 bzw. DigiCggg
 Funktion','91.40.98.242','10002160','fg-gtgggggdgtfn','fg-gtgggggdgtfn','olgf.lifb@gggx.nft','18:18:25',NULL,1,1,0,1,1,1,1,0,0,0,0,0,0,0,NULL,NULL,0,0,'ffrtrgg',1,6,11,1.81111111111111,0,NULL,6,11,1.81111111111111,0,NULL,NULL,'out',NULL,NULL,'49','ggobilcogg','k.A.','gxtfrn','ggggil',NULL);
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE `t2` (
   `ft1` datetime DEFAULT NULL,
   `ft2` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
@@ -939,6 +940,7 @@ CREATE TABLE `t3` (
   KEY `f33` (`f33`),
   KEY `fe8` (`fe8`)
 ) DEFAULT CHARSET=latin1 COLLATE=latin1_general_ci ROW_FORMAT=COMPACT COMMENT='CustomerService und Outsourcer Userinformationen';
+SET sql_mode = DEFAULT;
 
 INSERT INTO `t3` VALUES (1,'aabggn','gab, glgna',0,NULL,NULL,'gxtgrn D gnd g
 gggsbgrg',0,NULL,'gxtgrn','dsa','dsa','gggsbgrg','0',91611,0,'0',0,'agsggschigdgn','2014-08-11','2014-09-05',0,'2011-01-01','2014-08-11'),(4,'aabigr','gab,

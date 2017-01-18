@@ -273,10 +273,14 @@ t1	CREATE TABLE `t1` (
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 insert into t1 values (2,default);
 insert into t1 values (-2,default);
+Warnings:
+Warning	1365	Division by 0
 select * from t1;
 a	b
 -2	NULL
 2	0.693147
+Warning	1365	Division by 0
+Warnings:
 drop table t1;
 set sql_warnings = 0;
 # LOG()
@@ -292,11 +296,15 @@ t1	CREATE TABLE `t1` (
 insert into t1 values (2,65536,default);
 insert into t1 values (10,100,default);
 insert into t1 values (1,100,default);
+Warnings:
+Warning	1365	Division by 0
 select * from t1;
 a	b	c
 1	100	NULL
 10	100	2
 2	65536	16
+Warning	1365	Division by 0
+Warnings:
 drop table t1;
 set sql_warnings = 0;
 set sql_warnings = 1;
@@ -309,10 +317,14 @@ t1	CREATE TABLE `t1` (
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 insert into t1 values (2,default);
 insert into t1 values (-2,default);
+Warnings:
+Warning	1365	Division by 0
 select * from t1;
 a	b
 -2	NULL
 2	0.693147
+Warning	1365	Division by 0
+Warnings:
 drop table t1;
 set sql_warnings = 0;
 # LOG2()
@@ -326,10 +338,14 @@ t1	CREATE TABLE `t1` (
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 insert into t1 values (65536,default);
 insert into t1 values (-100,default);
+Warnings:
+Warning	1365	Division by 0
 select * from t1;
 a	b
 -100	NULL
 65536	16
+Warning	1365	Division by 0
+Warnings:
 drop table t1;
 set sql_warnings = 0;
 # LOG10()
@@ -344,11 +360,15 @@ t1	CREATE TABLE `t1` (
 insert into t1 values (2,default);
 insert into t1 values (100,default);
 insert into t1 values (-100,default);
+Warnings:
+Warning	1365	Division by 0
 select * from t1;
 a	b
 -100	NULL
 100	2
 2	0.30103
+Warning	1365	Division by 0
+Warnings:
 drop table t1;
 set sql_warnings = 0;
 # -
@@ -2254,6 +2274,7 @@ a	b
 drop table t1;
 set sql_warnings = 0;
 # LAST_DAY()
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 set sql_warnings = 1;
 create table t1 (a datetime, b datetime generated always as (last_day(a)) virtual);
 show create table t1;
@@ -2272,6 +2293,7 @@ a	b
 2003-02-05 00:00:00	2003-02-28 00:00:00
 drop table t1;
 set sql_warnings = 0;
+set sql_mode = DEFAULT;
 # MAKEDATE()
 set sql_warnings = 1;
 create table t1 (a int, b datetime generated always as (makedate(a,1)) virtual);
@@ -2531,6 +2553,7 @@ a	b
 drop table t1;
 set sql_warnings = 0;
 # TIMEDIFF()
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 set sql_warnings = 1;
 create table t1 (a datetime, b datetime, c time generated always as (timediff(a,b)) virtual);
 show create table t1;
@@ -2546,6 +2569,7 @@ a	b	c
 2008-12-31 23:59:59	2008-12-30 01:01:01	46:58:58
 drop table t1;
 set sql_warnings = 0;
+set sql_mode = DEFAULT;
 # TIMESTAMP()
 set sql_warnings = 1;
 create table t1 (a datetime, b timestamp generated always as (timestamp(a)) virtual);

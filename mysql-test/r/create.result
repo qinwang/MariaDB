@@ -71,7 +71,7 @@ select * from t1;
 a
 abcde
 alter table t1 alter column a set default 'abcdef';
-ERROR 42000: Invalid default value for 'a'
+ERROR 22001: Data too long for column 'a' at row 1
 drop table t1;
 create table 1ea10 (1a20 int,1e int);
 insert into 1ea10 values(1,1);
@@ -484,10 +484,10 @@ a	int(11)	YES		NULL
 b	bigint(11)	NO		NULL	
 c	bigint(10) unsigned	NO		NULL	
 d	date	YES		NULL	
-e	varchar(1)	NO		NULL	
+e	varchar(1)	YES		NULL	
 f	datetime	YES		NULL	
 g	time	YES		NULL	
-h	longblob	NO		NULL	
+h	longblob	YES		NULL	
 dd	time	YES		NULL	
 select * from t2;
 a	b	c	d	e	f	g	h	dd
@@ -495,7 +495,9 @@ a	b	c	d	e	f	g	h	dd
 2	-2	2	1825-12-14	a	2003-01-01 03:02:01	04:03:02	binary data	02:00:00
 drop table t1, t2;
 create table t1 (a tinyint, b smallint, c mediumint, d int, e bigint, f float(3,2), g double(4,3), h decimal(5,4), i year, j date, k timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, l datetime, m enum('a','b'), n set('a','b'), o char(10));
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t2 select ifnull(a,a), ifnull(b,b), ifnull(c,c), ifnull(d,d), ifnull(e,e), ifnull(f,f), ifnull(g,g), ifnull(h,h), ifnull(i,i), ifnull(j,j), ifnull(k,k), ifnull(l,l), ifnull(m,m), ifnull(n,n), ifnull(o,o) from t1;
+set sql_mode = DEFAULT;
 show create table t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -544,6 +546,7 @@ name	varchar(10)	YES		NULL
 age	smallint(6)	YES		-1	
 drop table t1, t2;
 create table t1(cenum enum('a'), cset set('b'));
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t2(cenum enum('a','a'), cset set('b','b'));
 Warnings:
 Note	1291	Column 'cenum' has duplicated value 'a' in ENUM
@@ -556,6 +559,9 @@ Note	1291	Column 'cenum' has duplicated value 'c' in ENUM
 Note	1291	Column 'cset' has duplicated value 'b' in SET
 Note	1291	Column 'cset' has duplicated value 'B' in SET
 Note	1291	Column 'cset' has duplicated value 'd' in SET
+set sql_mode = DEFAULT;
+create table t4(cenum enum('a','a'), cset set('b','b'));
+ERROR HY000: Column 'cenum' has duplicated value 'a' in ENUM
 drop table t1, t2, t3;
 create database mysqltest;
 use mysqltest;
@@ -720,12 +726,14 @@ t1	CREATE TABLE `t1` (
   PRIMARY KEY (`a`)
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 drop table t1;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 ( 
 a varchar(12) charset utf8 collate utf8_bin not null, 
 b int not null, primary key (a)
 ) select a, 1 as c from t2 ;
 Warnings:
 Warning	1364	Field 'b' doesn't have a default value
+set sql_mode = DEFAULT;
 show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
@@ -1195,7 +1203,9 @@ DROP TABLE IF EXISTS t1;
 DROP TABLE IF EXISTS t2;
 DROP TABLE IF EXISTS t3;
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1(c1 TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, c2 TIMESTAMP NOT NULL DEFAULT '0000-00-00 00:00:00');
+SET sql_mode = DEFAULT;
 
 SET sql_mode = NO_ZERO_DATE;
 
@@ -1892,9 +1902,11 @@ t1	CREATE TABLE `t1` (
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 drop table t1;
 set @@session.collation_server=filename;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1(a enum('',''));
 Warnings:
 Note	1291	Column 'a' has duplicated value '' in ENUM
+set sql_mode = DEFAULT;
 drop table t1;
 set @@session.collation_server=default;
 #

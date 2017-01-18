@@ -30,9 +30,9 @@ drop table t1;
 #
 
 create table t1 (a enum ('0','1'));
-insert into t1 set a='foobar';
+insert ignore into t1 set a='foobar';
 select * from t1;
-update t1 set a = replace(a,'x','y');
+update ignore t1 set a = replace(a,'x','y');
 select * from t1;
 drop table t1;
 
@@ -160,7 +160,7 @@ create table t1(exhausting_charset enum('ABCDEFGHIJKLMNOPQRSTUVWXYZ','
 # Bug #29251: MySQL coerces special 0 enum values to normal '' value
 # when ALTERing the column
 #
-
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
   id INT AUTO_INCREMENT PRIMARY KEY,
   c1 ENUM('a', '', 'b')
@@ -172,6 +172,7 @@ ALTER TABLE t1 CHANGE c1 c1 ENUM('a', '') NOT NULL;
 SELECT id, c1 + 0, c1 FROM t1;
 
 DROP TABLE t1;
+SET sql_mode = DEFAULT;
 
 --echo End of 4.1 tests
 
@@ -191,7 +192,7 @@ drop table t1;
 CREATE TABLE t1 (c1 ENUM('a', '', 'b'));
 INSERT INTO t1 (c1) VALUES ('b');
 INSERT INTO t1 (c1) VALUES ('');
-INSERT INTO t1 (c1) VALUES (0);
+INSERT IGNORE INTO t1 (c1) VALUES (0);
 INSERT INTO t1 (c1) VALUES ('');
 
 SELECT c1 + 0, COUNT(c1) FROM t1 GROUP BY c1;
@@ -394,6 +395,7 @@ DROP TABLE t1;
 --echo # MDEV-9340 Copying from INT/DOUBLE to ENUM is inconsistent
 --echo #
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 # DOUBLE -> ENUM
 CREATE TABLE t1 (a ENUM('9e200','9e100'));
 CREATE TABLE t2 (a DOUBLE);
@@ -450,3 +452,5 @@ INSERT INTO t1 VALUES ('2001');
 ALTER TABLE t1 MODIFY a ENUM('2001','2002');
 SELECT * FROM t1;
 DROP TABLE t1;
+SET sql_mode = DEFAULT;
+

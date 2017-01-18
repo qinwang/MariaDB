@@ -39,7 +39,9 @@ create table t1 (id int);
 create trigger t1_ai after insert on t1 for each row call bug14233();
 
 # Unsupported tampering with the mysql.proc definition
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table mysql.proc drop type;
+SET sql_mode = DEFAULT;
 --error ER_COL_COUNT_DOESNT_MATCH_CORRUPTED_V2
 call bug14233();
 --error ER_COL_COUNT_DOESNT_MATCH_CORRUPTED_V2
@@ -93,7 +95,7 @@ flush privileges;
 delete from mysql.proc where name like 'bug14233%';
 
 # Unsupported editing of mysql.proc, circumventing checks in "create ..."
-insert into mysql.proc
+insert ignore into mysql.proc
 (
   db, name, type, specific_name, language, sql_data_access, is_deterministic,
   security_type, param_list, returns, body, definer, created, modified,
@@ -170,7 +172,9 @@ DROP PROCEDURE IF EXISTS p1;
 --echo # Backup the proc table
 
 RENAME TABLE mysql.proc TO proc_backup;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE mysql.proc LIKE proc_backup;
+SET sql_mode = DEFAULT;
 FLUSH TABLE mysql.proc;
 
 --echo # Test with a valid table.
@@ -183,7 +187,9 @@ SHOW PROCEDURE STATUS;
 
 --echo # Modify a field of the table.
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE mysql.proc MODIFY comment CHAR (32);
+SET sql_mode = DEFAULT;
 
 --error ER_CANNOT_LOAD_FROM_TABLE_V2
 CREATE PROCEDURE p2()
@@ -238,7 +244,9 @@ let $MYSQLD_DATADIR= `select @@datadir`;
 
 create database mysqltest;
 --echo # Corrupt mysql.proc to make it unusable by current version of server.
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table mysql.proc drop column type;
+SET sql_mode = DEFAULT;
 --echo # The below statement should not cause assertion failure.
 drop database mysqltest;
 
@@ -263,13 +271,17 @@ DROP DATABASE IF EXISTS db1;
 
 --echo # Backup the proc table
 RENAME TABLE mysql.proc TO proc_backup;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE mysql.proc LIKE proc_backup;
+SET sql_mode = DEFAULT;
 
 CREATE DATABASE db1;
 CREATE PROCEDURE db1.p1() SET @foo = 10;
 
 --echo # Modify a field of the table.
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE mysql.proc MODIFY comment CHAR (32);
+SET sql_mode = DEFAULT;
 
 # This should not fail even if mysql.proc is invalid.
 DROP DATABASE db1;

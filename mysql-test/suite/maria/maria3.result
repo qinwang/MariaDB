@@ -278,7 +278,7 @@ KEY (ulong),
 KEY (ulonglong,ulong),
 KEY (options,flags)
 ) engine=aria;
-insert into t1 values (10,1,1,1,1,1,1,1,1,1,1,1,1,1,NULL,0,0,0,1,1,1,1,'one','one');
+insert ignore into t1 values (10,1,1,1,1,1,1,1,1,1,1,1,1,1,NULL,0,0,0,1,1,1,1,'one','one');
 create table t2 (primary key (auto)) engine=aria row_format=page select auto+1 as auto,1 as t1, 'a' as t2, repeat('a',256) as t3, binary repeat('b',256) as t4, repeat('a',4096) as t5, binary repeat('b',4096) as t6, '' as t7, binary '' as t8 from t1;
 check table t1,t2;
 Table	Op	Msg_type	Msg_text
@@ -420,6 +420,9 @@ create table t3 select t1.c AS c1, t2.c AS c2,1 as "const" from t1, t2;
 drop table t1, t2, t3;
 create table t1 (t datetime) engine=aria;
 insert into t1 values (101),(691231),(700101),(991231),(10000101),(99991231),(101000000),(691231000000),(700101000000),(991231235959),(10000101000000),(99991231235959),(20030100000000),(20030000000000);
+Warnings:
+Warning	1265	Data truncated for column 't' at row 13
+Warning	1265	Data truncated for column 't' at row 14
 select * from t1;
 t
 2000-01-01 00:00:00
@@ -434,8 +437,8 @@ t
 1999-12-31 23:59:59
 1000-01-01 00:00:00
 9999-12-31 23:59:59
-2003-01-00 00:00:00
-2003-00-00 00:00:00
+0000-00-00 00:00:00
+0000-00-00 00:00:00
 optimize table t1;
 Table	Op	Msg_type	Msg_text
 test.t1	optimize	status	OK

@@ -361,18 +361,20 @@ PARTITION `pEnd` VALUES LESS THAN (UNIX_TIMESTAMP(20380119031407)),
 PARTITION `pMax` VALUES LESS THAN MAXVALUE);
 # Test 'odd' values
 INSERT INTO t1 VALUES (NULL, 'UTC');
-INSERT INTO t1 VALUES ('0000-00-00 00:00:00', 'UTC');
+INSERT IGNORE INTO t1 VALUES ('0000-00-00 00:00:00', 'UTC');
+Warnings:
+Warning	1265	Data truncated for column 'a' at row 1
 # Test invalid values
-INSERT INTO t1 VALUES ('1901-01-01 00:00:00', 'UTCI');
+INSERT IGNORE INTO t1 VALUES ('1901-01-01 00:00:00', 'UTCI');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
-INSERT INTO t1 VALUES ('1969-12-31 23:59:59', 'UTCI');
+INSERT IGNORE INTO t1 VALUES ('1969-12-31 23:59:59', 'UTCI');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
-INSERT INTO t1 VALUES ('2038-01-19 03:14:08', 'UTCI');
+INSERT IGNORE INTO t1 VALUES ('2038-01-19 03:14:08', 'UTCI');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
-INSERT INTO t1 VALUES ('1970-01-01 00:00:00', 'UTCI');
+INSERT IGNORE INTO t1 VALUES ('1970-01-01 00:00:00', 'UTCI');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
 # Test start range
@@ -397,34 +399,36 @@ INSERT INTO t1 VALUES ('2011-10-30 00:00:01', 'UTC');
 SET @@session.time_zone = 'Europe/Moscow';
 # Test 'odd' values
 INSERT INTO t1 VALUES (NULL, 'Moscow');
-INSERT INTO t1 VALUES ('0000-00-00 00:00:00', 'Moscow');
-# Test invalid values
-INSERT INTO t1 VALUES ('0000-00-00 03:00:00', 'MoscowI');
+INSERT IGNORE INTO t1 VALUES ('0000-00-00 00:00:00', 'Moscow');
 Warnings:
 Warning	1265	Data truncated for column 'a' at row 1
-INSERT INTO t1 VALUES ('1901-01-01 00:00:00', 'MoscowI');
+# Test invalid values
+INSERT IGNORE INTO t1 VALUES ('0000-00-00 03:00:00', 'MoscowI');
+Warnings:
+Warning	1265	Data truncated for column 'a' at row 1
+INSERT IGNORE INTO t1 VALUES ('1901-01-01 00:00:00', 'MoscowI');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
-INSERT INTO t1 VALUES ('1969-12-31 23:59:59', 'MoscowI');
+INSERT IGNORE INTO t1 VALUES ('1969-12-31 23:59:59', 'MoscowI');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
-INSERT INTO t1 VALUES ('1970-01-01 02:29:29', 'MoscowI');
+INSERT IGNORE INTO t1 VALUES ('1970-01-01 02:29:29', 'MoscowI');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
-INSERT INTO t1 VALUES ('2038-01-19 06:14:08', 'MoscowI');
+INSERT IGNORE INTO t1 VALUES ('2038-01-19 06:14:08', 'MoscowI');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
-INSERT INTO t1 VALUES ('1970-01-01 03:00:00', 'MoscowI');
+INSERT IGNORE INTO t1 VALUES ('1970-01-01 03:00:00', 'MoscowI');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
 # values truncated to 03:00:00 due to daylight saving shift
-INSERT INTO t1 VALUES ('2011-03-27 02:00:00', 'MoscowI');
+INSERT IGNORE INTO t1 VALUES ('2011-03-27 02:00:00', 'MoscowI');
 Warnings:
 Warning	1299	Invalid TIMESTAMP value in column 'a' at row 1
-INSERT INTO t1 VALUES ('2011-03-27 02:00:01', 'MoscowI');
+INSERT IGNORE INTO t1 VALUES ('2011-03-27 02:00:01', 'MoscowI');
 Warnings:
 Warning	1299	Invalid TIMESTAMP value in column 'a' at row 1
-INSERT INTO t1 VALUES ('2011-03-27 02:59:59', 'MoscowI');
+INSERT IGNORE INTO t1 VALUES ('2011-03-27 02:59:59', 'MoscowI');
 Warnings:
 Warning	1299	Invalid TIMESTAMP value in column 'a' at row 1
 # Test start range
@@ -446,6 +450,19 @@ INSERT INTO t1 VALUES ('2011-10-30 03:00:00', 'Moscow');
 INSERT INTO t1 VALUES ('2011-10-30 03:00:01', 'Moscow');
 SET @@session.time_zone = 'UTC';
 INSERT INTO t2 SELECT * FROM t1;
+Warnings:
+Warning	1265	Data truncated for column 'a' at row 2
+Warning	1265	Data truncated for column 'a' at row 3
+Warning	1265	Data truncated for column 'a' at row 4
+Warning	1265	Data truncated for column 'a' at row 5
+Warning	1265	Data truncated for column 'a' at row 6
+Warning	1265	Data truncated for column 'a' at row 24
+Warning	1265	Data truncated for column 'a' at row 25
+Warning	1265	Data truncated for column 'a' at row 26
+Warning	1265	Data truncated for column 'a' at row 27
+Warning	1265	Data truncated for column 'a' at row 28
+Warning	1265	Data truncated for column 'a' at row 29
+Warning	1265	Data truncated for column 'a' at row 30
 SELECT PARTITION_NAME, TABLE_ROWS FROM INFORMATION_SCHEMA.PARTITIONS
 WHERE TABLE_NAME = 't2';
 PARTITION_NAME	TABLE_ROWS
@@ -678,7 +695,7 @@ id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t2	p-2012-MSK-1,p-2012-MSK-2	ALL	NULL	NULL	NULL	NULL	7	Using where; Using filesort
 # Test end range changes
 DELETE FROM t2 WHERE a = 0;
-INSERT INTO t2 VALUES ('1970-01-01 00:00:00', 'UTC');
+INSERT IGNORE INTO t2 VALUES ('1970-01-01 00:00:00', 'UTC');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
 SELECT COUNT(*) FROM t2;
@@ -697,14 +714,16 @@ a	tz
 2038-01-19 03:14:07	Moscow
 2038-01-19 03:14:07	UTC
 2038-01-19 03:14:06	Moscow
-UPDATE t2 SET a = TIMESTAMPADD(SECOND, 1, a);
+UPDATE IGNORE t2 SET a = TIMESTAMPADD(SECOND, 1, a);
 Warnings:
 Warning	1292	Incorrect datetime value: '0000-00-00 00:00:00'
 Warning	1264	Out of range value for column 'a' at row 34
 Warning	1264	Out of range value for column 'a' at row 35
 SELECT MIN(a), MAX(a) FROM t2;
 MIN(a)	MAX(a)
-0000-00-00 00:00:00	2038-01-19 03:14:07
+NULL	2038-01-19 03:14:07
+Warnings:
+Warning	1292	Incorrect datetime value: '0000-00-00 00:00:00'
 SELECT COUNT(*) FROM t2;
 COUNT(*)
 35
@@ -761,7 +780,7 @@ NULL	UTC
 2038-01-19 03:14:07	Moscow
 2038-01-19 03:14:07	UTC
 # Test start range changes
-INSERT INTO t2 VALUES ('1970-01-01 00:00:00', 'UTC');
+INSERT IGNORE INTO t2 VALUES ('1970-01-01 00:00:00', 'UTC');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
 SELECT COUNT(*) FROM t2;
@@ -780,7 +799,7 @@ a	tz
 2038-01-19 03:14:07	Moscow
 2038-01-19 03:14:07	UTC
 2011-10-30 00:00:02	Moscow
-UPDATE t2 SET a = TIMESTAMPADD(SECOND, -1, a);
+UPDATE IGNORE t2 SET a = TIMESTAMPADD(SECOND, -1, a);
 Warnings:
 Warning	1292	Incorrect datetime value: '0000-00-00 00:00:00'
 Warning	1292	Incorrect datetime value: '0000-00-00 00:00:00'
@@ -863,6 +882,19 @@ t2	CREATE TABLE `t2` (
 TRUNCATE TABLE t2;
 SET @@session.time_zone = 'Europe/Moscow';
 INSERT INTO t2 SELECT * FROM t1;
+Warnings:
+Warning	1265	Data truncated for column 'a' at row 2
+Warning	1265	Data truncated for column 'a' at row 3
+Warning	1265	Data truncated for column 'a' at row 4
+Warning	1265	Data truncated for column 'a' at row 5
+Warning	1265	Data truncated for column 'a' at row 6
+Warning	1265	Data truncated for column 'a' at row 24
+Warning	1265	Data truncated for column 'a' at row 25
+Warning	1265	Data truncated for column 'a' at row 26
+Warning	1265	Data truncated for column 'a' at row 27
+Warning	1265	Data truncated for column 'a' at row 28
+Warning	1265	Data truncated for column 'a' at row 29
+Warning	1265	Data truncated for column 'a' at row 30
 SELECT PARTITION_NAME, TABLE_ROWS FROM INFORMATION_SCHEMA.PARTITIONS
 WHERE TABLE_NAME = 't2';
 PARTITION_NAME	TABLE_ROWS
@@ -870,8 +902,8 @@ p0	2
 p-2000	16
 p-2011-MSK	2
 p-2011-MSD-1	9
-p-2011-MSD-2	6
-p-2012-MSK-1	3
+p-2011-MSD-2	9
+p-2012-MSK-1	0
 p-2012-MSK-2	4
 pEnd	2
 pMax	2
@@ -956,12 +988,12 @@ NULL	UTC
 2011-10-30 01:59:59	UTC
 2011-10-30 02:00:00	MoscowD
 2011-10-30 02:00:00	UTC
+2011-10-30 02:00:00	UTC
 2011-10-30 02:00:01	MoscowD
+2011-10-30 02:00:01	UTC
 2011-10-30 02:00:01	UTC
 2011-10-30 02:59:59	MoscowD
 2011-10-30 02:59:59	UTC
-2011-10-30 02:00:00	UTC
-2011-10-30 02:00:01	UTC
 2011-10-30 02:59:59	UTC
 2011-10-30 03:00:00	Moscow
 2011-10-30 03:00:00	UTC
@@ -1071,12 +1103,12 @@ a	tz
 2011-10-30 01:59:59	UTC
 2011-10-30 02:00:00	MoscowD
 2011-10-30 02:00:00	UTC
+2011-10-30 02:00:00	UTC
 2011-10-30 02:00:01	MoscowD
+2011-10-30 02:00:01	UTC
 2011-10-30 02:00:01	UTC
 2011-10-30 02:59:59	MoscowD
 2011-10-30 02:59:59	UTC
-2011-10-30 02:00:00	UTC
-2011-10-30 02:00:01	UTC
 2011-10-30 02:59:59	UTC
 2011-10-30 03:00:00	Moscow
 2011-10-30 03:00:00	UTC
@@ -1094,12 +1126,12 @@ a	tz
 2011-10-30 01:59:59	UTC
 2011-10-30 02:00:00	MoscowD
 2011-10-30 02:00:00	UTC
+2011-10-30 02:00:00	UTC
 2011-10-30 02:00:01	MoscowD
+2011-10-30 02:00:01	UTC
 2011-10-30 02:00:01	UTC
 2011-10-30 02:59:59	MoscowD
 2011-10-30 02:59:59	UTC
-2011-10-30 02:00:00	UTC
-2011-10-30 02:00:01	UTC
 2011-10-30 02:59:59	UTC
 2011-10-30 03:00:00	Moscow
 2011-10-30 03:00:00	UTC
@@ -1117,12 +1149,12 @@ a	tz
 2011-10-30 01:59:59	UTC
 2011-10-30 02:00:00	MoscowD
 2011-10-30 02:00:00	UTC
+2011-10-30 02:00:00	UTC
 2011-10-30 02:00:01	MoscowD
+2011-10-30 02:00:01	UTC
 2011-10-30 02:00:01	UTC
 2011-10-30 02:59:59	MoscowD
 2011-10-30 02:59:59	UTC
-2011-10-30 02:00:00	UTC
-2011-10-30 02:00:01	UTC
 2011-10-30 02:59:59	UTC
 2011-10-30 03:00:00	Moscow
 2011-10-30 03:00:00	UTC
@@ -1140,12 +1172,12 @@ a	tz
 2011-10-30 01:59:59	UTC
 2011-10-30 02:00:00	MoscowD
 2011-10-30 02:00:00	UTC
+2011-10-30 02:00:00	UTC
 2011-10-30 02:00:01	MoscowD
+2011-10-30 02:00:01	UTC
 2011-10-30 02:00:01	UTC
 2011-10-30 02:59:59	MoscowD
 2011-10-30 02:59:59	UTC
-2011-10-30 02:00:00	UTC
-2011-10-30 02:00:01	UTC
 2011-10-30 02:59:59	UTC
 2011-10-30 03:00:00	Moscow
 2011-10-30 03:00:00	UTC
@@ -1158,7 +1190,7 @@ id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t2	p-2011-MSD-1,p-2011-MSD-2,p-2012-MSK-1,p-2012-MSK-2	ALL	NULL	NULL	NULL	NULL	22	Using where; Using filesort
 # Test end range changes
 DELETE FROM t2 WHERE a = 0;
-INSERT INTO t2 VALUES ('1970-01-01 00:00:00', 'Moscow');
+INSERT IGNORE INTO t2 VALUES ('1970-01-01 00:00:00', 'Moscow');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
 SELECT COUNT(*) FROM t2;
@@ -1177,7 +1209,7 @@ a	tz
 2038-01-19 06:14:07	Moscow
 2038-01-19 06:14:07	UTC
 2038-01-19 06:14:06	Moscow
-UPDATE t2 SET a = TIMESTAMPADD(SECOND, 1, a);
+UPDATE IGNORE t2 SET a = TIMESTAMPADD(SECOND, 1, a);
 Warnings:
 Warning	1292	Incorrect datetime value: '0000-00-00 00:00:00'
 Warning	1299	Invalid TIMESTAMP value in column 'a' at row 8
@@ -1186,7 +1218,9 @@ Warning	1264	Out of range value for column 'a' at row 34
 Warning	1264	Out of range value for column 'a' at row 35
 SELECT MIN(a), MAX(a) FROM t2;
 MIN(a)	MAX(a)
-0000-00-00 00:00:00	2038-01-19 06:14:07
+NULL	2038-01-19 06:14:07
+Warnings:
+Warning	1292	Incorrect datetime value: '0000-00-00 00:00:00'
 SELECT COUNT(*) FROM t2;
 COUNT(*)
 35
@@ -1243,7 +1277,7 @@ NULL	UTC
 2038-01-19 06:14:07	Moscow
 2038-01-19 06:14:07	UTC
 # Test start range changes
-INSERT INTO t2 VALUES ('1970-01-01 00:00:00', 'Moscow');
+INSERT IGNORE INTO t2 VALUES ('1970-01-01 00:00:00', 'Moscow');
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
 SELECT COUNT(*) FROM t2;
@@ -1262,7 +1296,7 @@ a	tz
 2038-01-19 06:14:07	Moscow
 2038-01-19 06:14:07	UTC
 2011-10-30 03:00:02	Moscow
-UPDATE t2 SET a = TIMESTAMPADD(SECOND, -1, a);
+UPDATE IGNORE t2 SET a = TIMESTAMPADD(SECOND, -1, a);
 Warnings:
 Warning	1292	Incorrect datetime value: '0000-00-00 00:00:00'
 Warning	1292	Incorrect datetime value: '0000-00-00 00:00:00'

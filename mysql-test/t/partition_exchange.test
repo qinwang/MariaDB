@@ -11,6 +11,7 @@ DROP TABLE IF EXISTS t1, t2, t3, t, tp, tsp, tmp;
 --echo #
 
 --echo # Same definition (both have ROW_FORMAT set)
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
  id int(11) NOT NULL AUTO_INCREMENT,
  year year(2) DEFAULT NULL,
@@ -22,6 +23,7 @@ PARTITIONS 2;
 
 CREATE TABLE t2 LIKE t1;
 ALTER TABLE t2 REMOVE PARTITIONING;
+SET sql_mode = DEFAULT;
 
 --vertical_results
 SHOW CREATE TABLE t1;
@@ -41,6 +43,7 @@ WHERE TABLE_SCHEMA = 'test' AND TABLE_NAME IN ('t1', 't2');
 DROP TABLE t2;
 
 --echo # Only the partitioned table have ROW_FORMAT set.
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 (
  id int(11) NOT NULL AUTO_INCREMENT,
  year year(2) DEFAULT NULL,
@@ -49,6 +52,7 @@ CREATE TABLE t2 (
 ) ENGINE=InnoDB;
 
 ALTER TABLE t1 EXCHANGE PARTITION p1 WITH TABLE t2;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t1;
 SHOW CREATE TABLE t2;
 SELECT TABLE_NAME, TABLE_TYPE, ENGINE, ROW_FORMAT, CREATE_OPTIONS
@@ -57,6 +61,7 @@ WHERE TABLE_SCHEMA = 'test' AND TABLE_NAME IN ('t1', 't2');
 
 --echo # Only the non partitioned table have ROW_FORMAT set.
 DROP TABLE t1, t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
  id int(11) NOT NULL AUTO_INCREMENT,
  year year(2) DEFAULT NULL,
@@ -73,6 +78,7 @@ CREATE TABLE t2 (
 ) ENGINE=InnoDB ROW_FORMAT = COMPACT;
 
 ALTER TABLE t1 EXCHANGE PARTITION p1 WITH TABLE t2;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t1;
 SHOW CREATE TABLE t2;
 SELECT TABLE_NAME, TABLE_TYPE, ENGINE, ROW_FORMAT, CREATE_OPTIONS
@@ -81,6 +87,7 @@ WHERE TABLE_SCHEMA = 'test' AND TABLE_NAME IN ('t1', 't2');
 
 --echo # No table have ROW_FORMAT set.
 DROP TABLE t1, t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
  id int(11) NOT NULL AUTO_INCREMENT,
  year year(2) DEFAULT NULL,
@@ -178,11 +185,13 @@ FROM INFORMATION_SCHEMA.TABLES
 WHERE TABLE_SCHEMA = 'test' AND TABLE_NAME IN ('t1', 't2');
 --horizontal_results
 DROP TABLE t1, t2;
+SET sql_mode = DEFAULT;
 
 --echo #
 --echo # Bug#56484: !table || (!table->read_set ||
 --echo #                       bitmap_is_set(table->read_set, field_index))
 --echo #
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (a INT NOT NULL,b TIME NOT NULL DEFAULT '00:00:00')
 ENGINE=MyISAM
 PARTITION BY HASH (a) PARTITIONS 2;
@@ -191,6 +200,7 @@ CREATE TABLE t2 (a INT) ENGINE=MYISAM;
 --error ER_TABLES_DIFFERENT_METADATA
 ALTER TABLE t1 EXCHANGE PARTITION p1 WITH TABLE t2;
 DROP TABLE t1, t2;
+SET sql_mode = DEFAULT;
 
 --echo #
 --echo # Bug#55784: Foreign key integrity broken by alter table

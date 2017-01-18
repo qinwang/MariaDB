@@ -65,7 +65,7 @@ disable_query_log;
 SET SQL_WARNINGS=0;
 while ($1)
 {
-  eval insert into t1 (b) values(repeat(char(65+$1),65550-$1));
+  eval insert ignore into t1 (b) values(repeat(char(65+$1),65550-$1));
   dec $1;
 }
 SET SQL_WARNINGS=1;
@@ -344,6 +344,7 @@ drop table t1;
 #
 # Test of REPAIR that once failed
 #
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE `t1` (
   `post_id` mediumint(8) unsigned NOT NULL auto_increment,
   `topic_id` mediumint(8) unsigned NOT NULL default '0',
@@ -363,6 +364,7 @@ CREATE TABLE `t1` (
 ) TRANSACTIONAL=0;
 
 INSERT INTO t1 (post_text) VALUES ('ceci est un test'),('ceci est un test'),('ceci est un test'),('ceci est un test'),('ceci est un test');
+SET sql_mode = DEFAULT;
 
 REPAIR TABLE t1;
 CHECK TABLE t1;
@@ -921,10 +923,14 @@ source include/varchar.inc;
 
 create table t1 (v varchar(65530), key(v));
 drop table if exists t1;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (v varchar(65536));
+set sql_mode = DEFAULT;
 show create table t1;
 drop table t1;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (v varchar(65530) character set utf8);
+set sql_mode = DEFAULT;
 show create table t1;
 drop table t1;
 
@@ -1490,6 +1496,7 @@ insert into t2 values (repeat('x',28)), (repeat('p',21)), (repeat('k',241)),
 check table t2 extended;
 drop table t2;
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
 col0 float DEFAULT NULL,
 col1 date DEFAULT NULL,   
@@ -1668,6 +1675,7 @@ col173 tinytext,
 col174 decimal(10,0) DEFAULT NULL,
 col175 double DEFAULT NULL
 ) engine=aria;
+SET sql_mode = DEFAULT;
 
 insert ignore into t1 set 
 col10=abs(28449) % 2,
@@ -1880,9 +1888,11 @@ drop table t1;
 #
 
 create table t1(a int primary key, b blob, c blob) engine=aria;
+set sql_mode='';
 insert into t1 values(1,repeat('a',100), repeat('b',657860));
 --error ER_DUP_ENTRY
 insert into t1 values(1,repeat('a',100), repeat('b',657860));
+set sql_mode=default;
 check table t1;
 drop table t1;
 

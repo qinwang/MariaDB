@@ -25,6 +25,7 @@ t
 12:30:00
 12:30:35
 36:30:31
+set sql_mode = '';
 insert into t1 values("10.22.22"),(1234567),(123456789),(123456789.10),("10 22:22"),("12.45a");
 Warnings:
 Warning	1265	Data truncated for column 't' at row 1
@@ -32,6 +33,7 @@ Warning	1265	Data truncated for column 't' at row 2
 Warning	1265	Data truncated for column 't' at row 3
 Warning	1265	Data truncated for column 't' at row 4
 Warning	1265	Data truncated for column 't' at row 6
+set sql_mode = default;
 select * from t1;
 t
 10:22:33
@@ -322,9 +324,11 @@ CREATE TABLE t1 (a TIME(6));
 INSERT INTO t1 VALUES (CAST(0xFFFFFFFF00000000 AS UNSIGNED));
 ERROR 22007: Incorrect time value: '18446744069414584320' for column 'a' at row 1
 SET sql_mode=DEFAULT;
+SET sql_mode='';
 INSERT INTO t1 VALUES (CAST(0xFFFFFFFF00000000 AS UNSIGNED));
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
+SET sql_mode= DEFAULT;
 SELECT * FROM t1;
 a
 838:59:59.999999
@@ -787,6 +791,7 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where `test`.`t1`.`a` = TIME'10:20:31.123000' and <cache>(length(TIME'10:20:31.123000')) = 30 + rand()
 DROP TABLE t1;
 SET timestamp=DEFAULT;
+SET @@sql_mode='';
 SET @@old_mode=zero_date_time_cast;
 # TIMESTAMP literal, old mode
 CREATE TABLE t1 (a TIME);
@@ -881,6 +886,7 @@ Warnings:
 Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` where `test`.`t1`.`a` = '0000-00-01 10:20:30' and length(`test`.`t1`.`a`) = 30 + rand()
 DROP TABLE t1;
 SET @@old_mode=DEFAULT;
+SET @@sql_mode=DEFAULT;
 #
 # MDEV-8706 Wrong result for SELECT..WHERE time_column=TIMESTAMP'2015-08-30 00:00:00' AND time_column='00:00:00'
 #
@@ -1230,10 +1236,12 @@ INSERT INTO t1 (a,b,c) SELECT a,a,a FROM t2;
 Warnings:
 Warning	1265	Data truncated for column 'b' at row 2
 Warning	1265	Data truncated for column 'b' at row 6
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE t1 MODIFY c TIME;
 Warnings:
 Warning	1265	Data truncated for column 'c' at row 2
 Warning	1265	Data truncated for column 'c' at row 6
+SET sql_mode = DEFAULT;
 SELECT * FROM t1;
 a	b	c
 0000	00:00:00	00:00:00

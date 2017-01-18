@@ -72,7 +72,7 @@ CREATE TABLE t1(
 );
 
 --echo
-INSERT INTO t1 VALUES('0000-00-00', '0000-00-00', '2008-01-04', '2008-01-05');
+INSERT IGNORE INTO t1 VALUES('0000-00-00', '0000-00-00', '2008-01-04', '2008-01-05');
 INSERT INTO t1 VALUES('2007-05-25', '2007-05-25', '2007-05-26', '2007-05-26');
 INSERT INTO t1 VALUES('2008-01-01', NULL        , '2008-01-02', '2008-01-03');
 INSERT INTO t1 VALUES('2008-01-17', NULL        , NULL        , '2009-01-29');
@@ -101,7 +101,7 @@ CREATE TABLE t1(
   UNIQUE INDEX(c2)
 );
 
-INSERT INTO t1 VALUES
+INSERT IGNORE INTO t1 VALUES
   ('0000-00-00 00:00:00','0000-00-00 00:00:00','2008-01-04','2008-01-05 00:00:00'),
   ('1971-01-01 00:00:01','1980-01-01 00:00:01','2009-01-01','2009-01-02 00:00:00'),
   ('1999-01-01 00:00:00','1999-01-01 00:00:00', NULL,        NULL),
@@ -509,7 +509,7 @@ CREATE TABLE t2 (
 );
 
 --disable_warnings
-INSERT INTO t2 VALUES ();
+INSERT IGNORE INTO t2 VALUES ();
 INSERT INTO t1 VALUES ();
 --enable_warnings
 
@@ -610,7 +610,7 @@ CREATE TABLE t1 (
   KEY idx4267 (col1000, col1003)
 );
 
-INSERT INTO t1 VALUES (),();
+INSERT IGNORE INTO t1 VALUES (),();
 SELECT col999 FROM t1 WHERE col1000 = "3" AND col1003 <=> sysdate();
 
 DROP TABLE t1;
@@ -888,7 +888,7 @@ DROP TABLE t1;
 # MDEV-308 lp:1008516 - Failing assertion: templ->mysql_col_len == len
 #
 create table t1 (a int,b char(5),primary key (a), key (b(1)));
-insert into t1 values ('a','b');
+insert ignore into t1 values ('a','b');
 select 1 from t1 where a and b >= 'aa';
 drop table t1;
 

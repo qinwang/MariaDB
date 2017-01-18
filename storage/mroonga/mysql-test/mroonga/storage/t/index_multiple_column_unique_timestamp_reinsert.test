@@ -21,12 +21,14 @@
 DROP TABLE IF EXISTS ranges;
 --enable_warnings
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE ranges (
   id int PRIMARY KEY,
   start timestamp,
   end timestamp,
   UNIQUE KEY range_key(start, end)
 );
+SET sql_mode = DEFAULT;
 
 INSERT INTO ranges VALUES (1, "2010-01-01 00:00:00", "2012-10-05 23:59:59");
 SELECT * FROM ranges;

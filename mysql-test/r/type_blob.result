@@ -7,13 +7,17 @@ b	text	YES		NULL
 c	tinyblob	YES		NULL	
 d	mediumtext	YES		NULL	
 e	longtext	YES		NULL	
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 (a char(255), b varbinary(70000), c varchar(70000000));
 Warnings:
 Note	1246	Converting column 'b' from VARBINARY to BLOB
 Note	1246	Converting column 'c' from VARCHAR to TEXT
+SET sql_mode = DEFAULT;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t4 (c varchar(65530) character set utf8 not null);
 Warnings:
 Note	1246	Converting column 'c' from VARCHAR to TEXT
+SET sql_mode = DEFAULT;
 show columns from t2;
 Field	Type	Null	Key	Default	Extra
 a	char(255)	YES		NULL	
@@ -36,9 +40,11 @@ CREATE TABLE t1 (a char(257) default "hello");
 ERROR 42000: Column length too big for column 'a' (max = 255); use BLOB or TEXT instead
 CREATE TABLE t2 (a char(256));
 ERROR 42000: Column length too big for column 'a' (max = 255); use BLOB or TEXT instead
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (a varchar(70000) default "hello");
 Warnings:
 Note	1246	Converting column 'a' from VARCHAR to TEXT
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
@@ -402,6 +408,7 @@ PRIMARY KEY (seq_0_id,seq_1_id)
 INSERT INTO t2 VALUES (1,1);
 INSERT INTO t2 VALUES (2,1);
 INSERT INTO t2 VALUES (2,2);
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t3 (
 t3_id bigint(21) NOT NULL auto_increment,
 _field_131 varchar(128),
@@ -421,8 +428,13 @@ KEY _field_142 (_field_142),
 KEY _field_145 (_field_145),
 KEY _field_148 (_field_148)
 );
-INSERT INTO t3 VALUES (1,'test job 1',0,'0000-00-00 00:00:00',0,'1999-02-25 22:43:32','test\r\njob\r\n1',0,0,0);
-INSERT INTO t3 VALUES (2,'test job 2',0,'0000-00-00 00:00:00',0,'1999-02-26 21:08:04','',0,0,0);
+SET sql_mode = DEFAULT;
+INSERT IGNORE INTO t3 VALUES (1,'test job 1',0,'0000-00-00 00:00:00',0,'1999-02-25 22:43:32','test\r\njob\r\n1',0,0,0);
+Warnings:
+Warning	1264	Out of range value for column '_field_135' at row 1
+INSERT IGNORE INTO t3 VALUES (2,'test job 2',0,'0000-00-00 00:00:00',0,'1999-02-26 21:08:04','',0,0,0);
+Warnings:
+Warning	1264	Out of range value for column '_field_135' at row 1
 CREATE TABLE t4 (
 seq_0_id bigint(21) DEFAULT '0' NOT NULL,
 seq_1_id bigint(21) DEFAULT '0' NOT NULL,
@@ -472,9 +484,11 @@ select replace(t3._field_140, "\r","^M"),t3_id,min(t3._field_131), min(t3._field
 replace(t3._field_140, "\r","^M")	t3_id	min(t3._field_131)	min(t3._field_135)	min(t3._field_139)	min(t3._field_137)	min(link_alias_142._field_165)	min(link_alias_133._field_72)	min(t3._field_145)	min(link_alias_148._field_156)	replace(min(t3._field_140), "\r","^M")	t3_id
 test^M
 job^M
-1	1	test job 1	0000-00-00 00:00:00	1999-02-25 22:43:32	0	High	admin	0	tomato	test^M
+1	1	test job 1	NULL	1999-02-25 22:43:32	0	High	admin	0	tomato	test^M
 job^M
 1	1
+Warnings:
+Warning	1292	Incorrect datetime value: '0000-00-00 00:00:00'
 drop table t1,t2,t3,t4,t5,t6,t7;
 create table t1 (a blob);
 insert into t1 values ("empty"),("");

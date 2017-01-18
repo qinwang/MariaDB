@@ -40,7 +40,6 @@
 select '------ delete tests ------' as test_sequence ;
 --enable_query_log
 --source include/ps_renew.inc
-
 ## delete without parameter
 prepare stmt1 from 'delete from t1 where a=2' ;
 execute stmt1;
@@ -108,7 +107,9 @@ execute stmt1 using @arg00, @arg01;
 select a,b from t1 where a=@arg00;
 set @arg00=NULL;
 set @arg01=2;
+set sql_mode = '';
 execute stmt1 using @arg00, @arg01;
+set sql_mode = default;
 select a,b from t1 order by a;
 set @arg00=0;
 execute stmt1 using @arg01, @arg00;

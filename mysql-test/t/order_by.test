@@ -10,6 +10,8 @@ drop table if exists t1,t2,t3;
 
 call mtr.add_suppression("Out of sort memory; increase server sort buffer size");
 
+set sql_mode='NO_ENGINE_SUBSTITUTION';
+
 #
 # Test old ORDER BY bug
 #
@@ -203,7 +205,6 @@ select t3.DateOfAction, t1.TransactionID from t1 join t2 join t3 where t2.ID = t
 drop table t1,t2,t3;
 
 #bug reported by Wouter de Jong
-
 CREATE TABLE t1 (
   member_id int(11) NOT NULL auto_increment,
   inschrijf_datum varchar(20) NOT NULL default '',

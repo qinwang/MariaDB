@@ -615,6 +615,7 @@ DROP PROCEDURE p1;
 
 # Message is truncated to fit into target. No truncation warning.
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE PROCEDURE p1()
 BEGIN
 DECLARE v CHAR(1);
@@ -630,6 +631,7 @@ Warnings:
 Note	1050	Table 't1' already exists
 DROP TABLE t1;
 DROP PROCEDURE p1;
+SET sql_mode = DEFAULT;
 
 # Returns number of rows updated by the UPDATE statements.
 

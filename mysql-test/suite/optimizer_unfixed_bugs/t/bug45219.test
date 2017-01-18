@@ -42,7 +42,7 @@ CREATE TABLE `C` (
   KEY `datetime_key` (`datetime_key`),
   KEY `varchar_key` (`varchar_key`)
 ) ENGINE=MyISAM AUTO_INCREMENT=21 DEFAULT CHARSET=latin1;
-INSERT INTO `C` VALUES
+INSERT IGNORE INTO `C` VALUES
 (1,9,'0000-00-00 00:00:00','p'),(2,0,'2002-02-09 07:38:13','v'),
 (3,8,'2001-05-03 12:08:14','t'),(4,3,'0000-00-00 00:00:00','u'),
 (5,7,'2009-07-28 03:43:30','n'),(6,0,'2009-08-04 00:00:00','l'),
@@ -130,7 +130,7 @@ CREATE TABLE `C` (
   KEY `datetime_key` (`datetime_key`),
   KEY `varchar_key` (`varchar_key`)
 ) ENGINE=MyISAM AUTO_INCREMENT=21 DEFAULT CHARSET=latin1;
-INSERT INTO `C` VALUES
+INSERT IGNORE INTO `C` VALUES
 (1,9,9,'2007-12-01','0000-00-00 00:00:00','p','p'),
 (2,0,0,'0000-00-00','2002-02-09 07:38:13','v','v'),
 (3,8,6,'0000-00-00','2001-05-03 12:08:14','t','t'),
@@ -165,7 +165,7 @@ CREATE TABLE `BB` (
   KEY `datetime_key` (`datetime_key`),
   KEY `varchar_key` (`varchar_key`)
 ) ENGINE=MyISAM AUTO_INCREMENT=12 DEFAULT CHARSET=latin1;
-INSERT INTO `BB` VALUES (10,8,5,'0000-00-00','2007-08-19
+INSERT IGNORE INTO `BB` VALUES (10,8,5,'0000-00-00','2007-08-19
 08:08:38','i','i'),(11,0,8,'2005-08-18','2000-05-21 03:51:51','','');
 
 SELECT DISTINCT BIT_AND( OUTR . `datetime_key` ) AS X 

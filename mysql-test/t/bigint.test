@@ -38,7 +38,9 @@ insert into t1 (big) values (-1),(12345678901234567),(9223372036854775807),(1844
 select * from t1;
 select min(big),max(big),max(big)-1 from t1;
 select min(big),max(big),max(big)-1 from t1 group by a;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 modify big bigint unsigned not null;
+set sql_mode = DEFAULT;
 select min(big),max(big),max(big)-1 from t1;
 select min(big),max(big),max(big)-1 from t1 group by a;
 insert into t1 (big) values (18446744073709551615);
@@ -48,7 +50,9 @@ select min(big),max(big),max(big)-1 from t1 group by a;
 alter table t1 add key (big);
 select min(big),max(big),max(big)-1 from t1;
 select min(big),max(big),max(big)-1 from t1 group by a;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 modify big bigint not null;
+set sql_mode = DEFAULT;
 select * from t1;
 select min(big),max(big),max(big)-1 from t1;
 select min(big),max(big),max(big)-1 from t1 group by a;
@@ -153,7 +157,7 @@ select * from t1;
 drop table t1;
 
 create table t1 ( quantity decimal(2) unsigned);
-insert into t1 values (500), (-500), (~0), (-1);
+insert ignore into t1 values (500), (-500), (~0), (-1);
 select * from t1;
 drop table t1;
 

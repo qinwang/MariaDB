@@ -21,11 +21,11 @@ create table t (i);
 show count(*) errors;
 show errors;
 insert into t1 values (1);
-insert into t1 values ("hej");
-insert into t1 values ("hej"),("då");
+insert ignore into t1 values ("hej");
+insert ignore into t1 values ("hej"),("då");
 set SQL_WARNINGS=1;
-insert into t1 values ("hej");
-insert into t1 values ("hej"),("då");
+insert ignore into t1 values ("hej");
+insert ignore into t1 values ("hej"),("då");
 drop table t1;
 set SQL_WARNINGS=0;
 
@@ -61,6 +61,7 @@ drop table t1;
 # Warnings from basic INSERT, UPDATE and ALTER commands
 #
 
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1(a tinyint NOT NULL, b tinyint unsigned, c char(5));
 insert into t1 values(NULL,100,'mysql'),(10,-1,'mysql ab'),(500,256,'open source'),(20,NULL,'test');
 alter table t1 modify c char(4);
@@ -75,6 +76,7 @@ set sql_warnings=1;
 insert into t2(b) values('mysqlab');
 set sql_warnings=0;
 drop table t1, t2;
+set sql_mode = default;
 
 #
 # Test for max_error_count
@@ -93,7 +95,7 @@ commit;
 --enable_query_log
 alter table t1 add b char;
 set max_error_count=10;
-update t1 set b=a;
+update ignore t1 set b=a;
 --disable_ps_protocol
 select @@warning_count;
 --enable_ps_protocol
@@ -101,7 +103,7 @@ select @@warning_count;
 # Bug#9072
 set max_error_count=0;
 show variables like 'max_error_count';
-update t1 set b='hi';
+update ignore t1 set b='hi';
 --disable_ps_protocol
 select @@warning_count;
 --enable_ps_protocol
@@ -119,7 +121,7 @@ drop table t1;
 create table t1 (a int);
 insert into t1 (a) values (1), (2), (3), (4), (5), (6), (7), (8), (9), (10);
 # should generate 10 warnings
-update t1 set a='abc';
+update ignore t1 set a='abc';
 show warnings limit 2, 1;
 show warnings limit 0, 10;
 show warnings limit 9, 1;
@@ -152,6 +154,7 @@ INSERT INTO t3 VALUES ( 'a`', 'a`', '1000-01-1' );
 DROP PROCEDURE IF EXISTS sp1;
 DROP PROCEDURE IF EXISTS sp2;
 DROP PROCEDURE IF EXISTS sp3;
+SET sql_mode = '';
 delimiter //;
 CREATE PROCEDURE sp1()
 BEGIN
@@ -172,8 +175,10 @@ delimiter ;//
 CALL sp1();
 CALL sp2();
 CALL sp3();
+SET sql_mode = DEFAULT;
 
 DROP PROCEDURE IF EXISTS sp1;
+SET sql_mode = '';
 delimiter //;
 CREATE PROCEDURE sp1()
 BEGIN
@@ -182,6 +187,7 @@ SELECT f1 into x from t2 limit 1;
 END//
 delimiter ;//
 CALL sp1();
+SET sql_mode = DEFAULT;
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;

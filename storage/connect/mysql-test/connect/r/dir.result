@@ -25,8 +25,10 @@ SELECT fname, ftype, size FROM t1 ORDER BY fname, ftype, size;
 fname	ftype	size
 boys	.txt	282
 boyswin	.txt	288
+SET sql_mode = '';
 INSERT INTO t1 VALUES ('','','','');
 ERROR HY000: Got error 174 'COLBLK SetBuffer: undefined Access Method' from CONNECT
+SET sql_mode = DEFAULT;
 DROP TABLE t1;
 CREATE TABLE t1 ENGINE=CONNECT TABLE_TYPE=DIR FILE_NAME='*.txt';
 ERROR HY000: Cannot get column info for table type DIR

@@ -50,7 +50,9 @@ ALTER TABLE test_enum MODIFY COLUMN col2 ENUM('value1','value2','value4');
 
 set tokudb_disable_hot_alter=1;
 set tokudb_disable_slow_alter=0;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE test_enum MODIFY COLUMN col2 ENUM('value1','value2','value4');
+set sql_mode = DEFAULT;
 SELECT * FROM test_enum;
 
 drop table test_enum;

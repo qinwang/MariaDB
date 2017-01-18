@@ -667,6 +667,7 @@ DROP PROCEDURE p1;
 --echo # Message is truncated to fit into target. No truncation warning.
 --echo
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 DELIMITER |;
 CREATE PROCEDURE p1()
 BEGIN
@@ -682,6 +683,7 @@ CALL p1();
 DROP TABLE t1;
 
 DROP PROCEDURE p1;
+SET sql_mode = DEFAULT;
 
 --echo
 --echo # Returns number of rows updated by the UPDATE statements.

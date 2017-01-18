@@ -71,7 +71,7 @@ ERROR HY000: Constant, random or timezone-dependent expressions in (sub)partitio
 CREATE TABLE t1 (a DATE)
 PARTITION BY RANGE (DAYOFWEEK(a))
 (PARTITION a1 VALUES LESS THAN (60));
-INSERT INTO t1 VALUES ('test'),('a'),('5');
+INSERT IGNORE INTO t1 VALUES ('test'),('a'),('5');
 Warnings:
 Warning	1265	Data truncated for column 'a' at row 1
 Warning	1265	Data truncated for column 'a' at row 2
@@ -85,7 +85,7 @@ DROP TABLE t1;
 CREATE TABLE t1 (a DATETIME)
 PARTITION BY RANGE (DAYOFWEEK(a))
 (PARTITION a1 VALUES LESS THAN (60));
-INSERT INTO t1 VALUES ('test'),('a'),('5');
+INSERT IGNORE INTO t1 VALUES ('test'),('a'),('5');
 Warnings:
 Warning	1265	Data truncated for column 'a' at row 1
 Warning	1265	Data truncated for column 'a' at row 2
@@ -1670,11 +1670,13 @@ PARTITION BY RANGE (EXTRACT(DAY FROM a)) (
 PARTITION p VALUES LESS THAN (18),
 PARTITION pmax VALUES LESS THAN MAXVALUE);
 ERROR HY000: Constant, random or timezone-dependent expressions in (sub)partitioning function are not allowed
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE new (a TIMESTAMP NOT NULL, b TIMESTAMP NOT NULL, PRIMARY KEY(a,b))
 PARTITION BY RANGE (DATEDIFF(a, a)) (
 PARTITION p VALUES LESS THAN (18),
 PARTITION pmax VALUES LESS THAN MAXVALUE);
 ERROR HY000: Constant, random or timezone-dependent expressions in (sub)partitioning function are not allowed
+SET sql_mode = DEFAULT;
 ALTER TABLE old
 PARTITION BY RANGE (DATEDIFF(a, a)) (
 PARTITION p VALUES LESS THAN (18),
@@ -1741,6 +1743,7 @@ PARTITION BY RANGE (UNIX_TIMESTAMP(a + b)) (
 PARTITION p VALUES LESS THAN (1219089600),
 PARTITION pmax VALUES LESS THAN MAXVALUE);
 ERROR HY000: Constant, random or timezone-dependent expressions in (sub)partitioning function are not allowed
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE new (a TIMESTAMP, b TIMESTAMP)
 PARTITION BY RANGE (UNIX_TIMESTAMP(a + b)) (
 PARTITION p VALUES LESS THAN (1219089600),
@@ -1753,6 +1756,7 @@ PARTITION p VALUES LESS THAN (1219089600),
 PARTITION pmax VALUES LESS THAN MAXVALUE);
 ERROR HY000: Constant, random or timezone-dependent expressions in (sub)partitioning function are not allowed
 DROP TABLE old;
+SET sql_mode = DEFAULT;
 #
 # Bug #56709: Memory leaks at running the 5.1 test suite
 # 
@@ -1829,6 +1833,7 @@ p1	p1spSecond
 p2	p2spFirst	Comment in p2
 p2	p2spSecond	SubPartition comment in p2spSecond
 DROP TABLE t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1
 (a INT ,
 KEY inx_a (a) )
@@ -1843,6 +1848,7 @@ PARTITION pMax VALUES LESS THAN MAXVALUE COMMENT
 Warnings:
 Warning	1793	Comment for table partition 'pUpTo10' is too long (max = 1024)
 Warning	1793	Comment for table partition 'pMax' is too long (max = 1024)
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (

@@ -114,10 +114,11 @@ from_unixtime(362793609)
 drop table t1;
 create table t1 (ts timestamp);
 set time_zone='UTC';
-insert into t1 values ('0000-00-00 00:00:00'),('1969-12-31 23:59:59'),
+insert ignore into t1 values ('0000-00-00 00:00:00'),('1969-12-31 23:59:59'),
 ('1970-01-01 00:00:00'),('1970-01-01 00:00:01'),
 ('2038-01-19 03:14:07'),('2038-01-19 03:14:08');
 Warnings:
+Warning	1265	Data truncated for column 'ts' at row 1
 Warning	1264	Out of range value for column 'ts' at row 2
 Warning	1264	Out of range value for column 'ts' at row 3
 Warning	1264	Out of range value for column 'ts' at row 6
@@ -131,10 +132,11 @@ ts
 0000-00-00 00:00:00
 truncate table t1;
 set time_zone='MET';
-insert into t1 values ('0000-00-00 00:00:00'),('1970-01-01 00:30:00'),
+insert ignore into t1 values ('0000-00-00 00:00:00'),('1970-01-01 00:30:00'),
 ('1970-01-01 01:00:00'),('1970-01-01 01:00:01'),
 ('2038-01-19 04:14:07'),('2038-01-19 04:14:08');
 Warnings:
+Warning	1265	Data truncated for column 'ts' at row 1
 Warning	1264	Out of range value for column 'ts' at row 2
 Warning	1264	Out of range value for column 'ts' at row 3
 Warning	1264	Out of range value for column 'ts' at row 6
@@ -148,10 +150,11 @@ ts
 0000-00-00 00:00:00
 truncate table t1;
 set time_zone='+01:30';
-insert into t1 values ('0000-00-00 00:00:00'),('1970-01-01 01:00:00'),
+insert ignore into t1 values ('0000-00-00 00:00:00'),('1970-01-01 01:00:00'),
 ('1970-01-01 01:30:00'),('1970-01-01 01:30:01'),
 ('2038-01-19 04:44:07'),('2038-01-19 04:44:08');
 Warnings:
+Warning	1265	Data truncated for column 'ts' at row 1
 Warning	1264	Out of range value for column 'ts' at row 2
 Warning	1264	Out of range value for column 'ts' at row 3
 Warning	1264	Out of range value for column 'ts' at row 6

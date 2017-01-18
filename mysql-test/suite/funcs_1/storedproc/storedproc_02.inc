@@ -209,7 +209,7 @@ procedure definition is properly applied;
 --disable_warnings
 DROP PROCEDURE IF EXISTS sp1;
 --enable_warnings
-
+SET sql_mode = '';
 delimiter //;
 CREATE PROCEDURE sp1( )
 begin_label: BEGIN
@@ -248,6 +248,7 @@ begin_label: BEGIN
    SELECT '1.2', @v1, @v2;
 END begin_label//
 delimiter ;//
+SET sql_mode = DEFAULT;
 
 CALL sp1();
 
@@ -993,6 +994,7 @@ DROP TABLE IF EXISTS temp;
 CREATE TABLE temp( f1 CHAR, f2 CHAR);
 
 delimiter //;
+SET sql_mode = '' //
 # 0 - without handler
 CREATE PROCEDURE sp0()
 BEGIN
@@ -1041,6 +1043,7 @@ BEGIN
    insert into temp values('xxx', 'yy');
    set @x=1;
 END//
+SET sql_mode = DEFAULT //
 delimiter ;//
 
 INSERT INTO temp VALUES('0', NULL);

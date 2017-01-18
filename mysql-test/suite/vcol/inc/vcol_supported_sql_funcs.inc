@@ -15,7 +15,9 @@
 
 --enable_warnings
 set sql_warnings = 1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 eval create table t1 ($cols);
+SET sql_mode = DEFAULT;
 show create table t1;
 if ($rows)
 {
@@ -24,7 +26,7 @@ if ($rows)
 }
 if ($rows)
 {
-  eval insert into t1 values ($values2);
+  eval insert ignore into t1 values ($values2);
   dec $rows;
 }
 if ($rows)

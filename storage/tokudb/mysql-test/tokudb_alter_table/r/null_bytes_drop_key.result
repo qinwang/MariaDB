@@ -38,9 +38,11 @@ c31 date,
 key(c31)) ENGINE=tokudb;
 INSERT INTO t (c25) VALUES (NULL);
 UPDATE t SET c27=0;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE t ADD PRIMARY KEY(c19,c27)USING HASH;
 Warnings:
 Warning	1265	Data truncated for column 'c19' at row 1
+SET sql_mode = DEFAULT;
 UPDATE t SET c27=0;
 ALTER TABLE t ADD KEY (c25);
 UPDATE t SET c27=0;

@@ -308,10 +308,12 @@ DROP TABLE t6;
 --echo *** Create t7 on slave  ***
 STOP SLAVE;
 RESET SLAVE;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 eval CREATE TABLE t7 (a INT KEY, b BLOB, c CHAR(5),
                       d TIMESTAMP NULL DEFAULT '0000-00-00 00:00:00',
                       e CHAR(20) DEFAULT 'Extra Column Testing')
                       ENGINE=$engine_type;
+SET sql_mode = DEFAULT;
 
 --echo *** Create t7 on Master ***
 connection master;
@@ -350,9 +352,11 @@ sync_slave_with_master;
 --echo *** Create t8 on slave  ***
 STOP SLAVE;
 RESET SLAVE;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 eval CREATE TABLE t8 (a INT KEY, b BLOB, c CHAR(5),
                       d TIMESTAMP NULL DEFAULT '0000-00-00 00:00:00',
                       e INT)ENGINE=$engine_type;
+SET sql_mode = DEFAULT;
 
 --echo *** Create t8 on Master ***
 connection master;

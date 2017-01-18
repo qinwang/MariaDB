@@ -201,7 +201,7 @@ DROP TABLE t1;
 #
 # Bug #28272: EXPLAIN for SELECT from an empty InnoDB table
 #
-
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
   a1 decimal(10,0) DEFAULT NULL,
   a2 blob,
@@ -212,7 +212,7 @@ CREATE TABLE t1 (
   a7 tinyblob,
   INDEX idx (a6,a7(239),a5)
 ) ENGINE=InnoDB;
-
+SET sql_mode = DEFAULT;
 EXPLAIN SELECT a4 FROM t1 WHERE
 a6=NULL AND
 a4='UNcT5pIde4I6c2SheTo4gt92OV1jgJCVkXmzyf325R1DwLURkbYHwhydANIZMbKTgdcR5xS';
@@ -573,14 +573,14 @@ INSERT INTO t1(stat_id,acct_id) VALUES
 INSERT INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
 INSERT INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
 INSERT INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
-INSERT INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
-INSERT INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
-INSERT INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
-INSERT INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
-INSERT INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
-INSERT INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
-INSERT INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
-INSERT INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
+INSERT IGNORE INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
+INSERT IGNORE INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
+INSERT IGNORE INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
+INSERT IGNORE INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
+INSERT IGNORE INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
+INSERT IGNORE INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
+INSERT IGNORE INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
+INSERT IGNORE INTO t1(stat_id,acct_id) SELECT stat_id, mod(id+100000, acct_id) FROM t1;
 UPDATE t1 SET acct_id=785 
   WHERE MOD(stat_id,2)=0 AND MOD(id,stat_id)=MOD(acct_id,stat_id);
 OPTIMIZE TABLE t1;
@@ -987,7 +987,9 @@ DROP TABLE t1;
 #
 create table t1(a text) engine=innodb default charset=utf8; 
 insert into t1 values('aaa');
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 add index(a(1024));
+SET sql_mode = DEFAULT;
 show create table t1;
 drop table t1;
 
@@ -1558,7 +1560,9 @@ if ($test_foreign_keys)
 #             auto_increment keys
 #
 create table t1 (a int auto_increment primary key) engine=innodb;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 order by a;
+SET sql_mode = DEFAULT;
 drop table t1;
 
 #

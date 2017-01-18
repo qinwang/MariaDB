@@ -16,6 +16,7 @@ CREATE TABLE t1 (
   `col441` double unsigned DEFAULT NULL
 );
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 (
   `a` geometry DEFAULT NULL,
   `col460` date DEFAULT NULL,
@@ -27,6 +28,7 @@ CREATE TABLE t2 (
   `col466` varchar(236) CHARACTER SET utf8 NOT NULL,
   `col467` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00'
 );
+SET sql_mode = DEFAULT;
 
 CREATE TABLE t3 (
   `FTS_DOC_ID` bigint(20) unsigned NOT NULL,
@@ -51,7 +53,7 @@ INSERT INTO t2 VALUES ('\0\0\0\0\0\0\0\0\0\0\0\0k¿À\0\0\0\0\0jø@','2011-02-19'
 INSERT INTO t2 VALUES (NULL,'2011-05-14','2012-10-17 04:33:30','2012-01-20','',0000,'2012-05-08 11:06:53','otbywkbfwwtgpfgurtqwgfcwmmntsdxkounuzueoclrpnadghfzmbrh','2012-03-24 21:01:09');
 INSERT INTO t2 VALUES ('\0\0\0\0\0\0\06ý¹PVh,;bÂºö$î°','2012-07-21','2011-11-21 04:23:27','2011-06-18',0x21,0000,'2011-09-10 14:01:05','goybgohrexhfqwerpknkbyiqowvcdpyxvbklkbeeuvfbjtkmontmkmgcjutkjphewnvvobzilamtjqjbtvqgczozqcmvbbzvoxkycsvplfykmzpwljdcromsilspjuoyhxwduymxkymvmijehtutftqmpfpbesonppacogyogjqhyonizbsgzwubzgeoehryqswzkftgzhzssnlstuszpwauxmdhgjcawabnjcynzrrh','2012-11-19 18:30:51');
 INSERT INTO t2 VALUES ('\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0À®ÛÀ','2012-09-01','2012-01-20 09:01:34','2011-02-12',0x1FDF59DC65,0000,'2011-07-07 19:48:34','xohwzrslzxbpxdvqfsumavjwwmsdcgczlmxrtxavsqtnpggxesvekbcelnnrxkvvlwqwbydlhwzltwaurkfltafeijstmzueiqddjdxzddymhsungndmojndbspkezvdfhqxijxxrwiolqgnsedenszkiljgropmcbxsjntjmnonnltyiysuejsznuurmonebslawybppziavystrylwunselezpbslmkzggpziffrud','2012-01-19 22:00:00');
-INSERT INTO t2 VALUES ('\0\0\0\0\0\0\0\0\0\0\0\0jø@\0\0\0\0\0\0\0\0','0000-00-00','2012-05-21 09:59:10','2011-04-17',0x02307EDF,0000,'2012-01-20 09:01:34','vjcwlxxeydntegsdqhxgriarmbvzwzwdexcalvacxhilaejpmxdpkuvblukchagzoellbdndelfednqktzobyhjqweqaugqnfikdalmaytyunjqvxcsirhaqnvqsstgrgfscnsemseebdemfditoswccsxthnddzslgjkyujxoqsvzrssymoovqmibcmbboruyxlvopengdqqgqwekrflhvjcpondxivnshvhrnqvfls','2012-09-23 23:54:02');
+INSERT IGNORE INTO t2 VALUES ('\0\0\0\0\0\0\0\0\0\0\0\0jø@\0\0\0\0\0\0\0\0','0000-00-00','2012-05-21 09:59:10','2011-04-17',0x02307EDF,0000,'2012-01-20 09:01:34','vjcwlxxeydntegsdqhxgriarmbvzwzwdexcalvacxhilaejpmxdpkuvblukchagzoellbdndelfednqktzobyhjqweqaugqnfikdalmaytyunjqvxcsirhaqnvqsstgrgfscnsemseebdemfditoswccsxthnddzslgjkyujxoqsvzrssymoovqmibcmbboruyxlvopengdqqgqwekrflhvjcpondxivnshvhrnqvfls','2012-09-23 23:54:02');
 
 
 INSERT INTO t3 VALUES (11787,'2012-07-24 15:22:50',0x00000000FF,'qbdydwxepydtonqnghurnuntughjwfygzttqwtmfzfbtifjcearpatksofbrfgnaccvapahywhsstdplphrxbcubhktov','2011-08-27 19:28:03',NULL,0x00000000001C);

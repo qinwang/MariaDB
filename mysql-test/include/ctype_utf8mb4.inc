@@ -123,6 +123,7 @@ set LC_TIME_NAMES='en_US';
 # Bug #2366  	Wrong utf8mb4 behaviour when data is truncated
 #
 set names koi8r;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 eval create table t1 (s1 char(1) character set utf8mb4) engine $engine;
 insert into t1 values (_koi8r'ÁÂ');
 select s1,hex(s1),char_length(s1),octet_length(s1) from t1;
@@ -163,10 +164,12 @@ insert into t1 select repeat('ÑÑ',66000);
 --sorted_result
 select length(s1),char_length(s1) from t1;
 drop table t1;
+set sql_mode = default;
 
 #
 # Bug #2368 Multibyte charsets do not check that incoming data is well-formed
 #
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 eval create table t1 (s1 char(10) character set utf8mb4) engine $engine;
 insert into t1 values (0x41FF);
 select hex(s1) from t1;
@@ -184,6 +187,7 @@ insert into t1 values (0x41FF);
 select hex(s1) from t1;
 drop table t1;
 }
+set sql_mode = default;
 
 #
 # Bug 2699
@@ -850,6 +854,7 @@ eval create table t1 (x enum('A', 'B') default 0) character set utf8mb4 engine $
 #
 
 SET NAMES UTF8;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 
 eval CREATE TABLE t1 (
   `id` int(20) NOT NULL auto_increment,
@@ -888,6 +893,7 @@ INSERT INTO t2 VALUES ('1234567890',2,'2005-05-24 13:53:25');
 SELECT content, t2.msisdn FROM t1, t2 WHERE t1.msisdn = '1234567890';
 
 DROP TABLE t1,t2;
+SET sql_mode = DEFAULT;
 
 #
 # Bug#11591: CHAR column with utf8mb4 does not work properly
@@ -895,7 +901,9 @@ DROP TABLE t1,t2;
 #
 eval create table t1 (a char(20) character set utf8mb4) engine $engine;
 insert into t1 values ('123456'),('Ð°Ð½Ð´Ñ€ÐµÐ¹');
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 modify a char(2) character set utf8mb4;
+SET sql_mode = DEFAULT;
 select char_length(a), length(a), a from t1 order by a;
 drop table t1;
 
@@ -1276,6 +1284,7 @@ DROP TABLE t1;
 # Bug#20095 Changing length of VARCHAR field with UTF8
 # collation does not truncate values
 #
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 eval create table t1 (
   a varchar(26) not null
 ) default character set utf8mb4 ENGINE $engine;
@@ -1305,6 +1314,7 @@ insert into t1 values (repeat('a',4000));
 alter table t1 change a a varchar(3000) character set utf8mb4 not null;
 select length(a) from t1;
 drop table t1;
+SET sql_mode = DEFAULT;
 
 #
 #  Bug#10504: Character set does not support traditional mode
@@ -1552,7 +1562,9 @@ eval create table t1 (utf8mb4 char(1) character set utf8mb4) engine $engine;
 --echo Testing [F0][90..BF][80..BF][80..BF]
 insert into t1 values (0xF0908080);
 insert into t1 values (0xF0BFBFBF);
+--error ER_TRUNCATED_WRONG_VALUE_FOR_FIELD
 insert into t1 values (0xF08F8080);
+insert ignore into t1 values (0xF08F8080);
 --sorted_result
 select hex(utf8mb4) from t1;
 delete from t1;
@@ -1567,7 +1579,9 @@ delete from t1;
 --echo Testing [F4][80..8F][80..BF][80..BF]
 insert into t1 values (0xF4808080);
 insert into t1 values (0xF48F8080);
+--error ER_TRUNCATED_WRONG_VALUE_FOR_FIELD
 insert into t1 values (0xF4908080);
+insert ignore into t1 values (0xF4908080);
 --sorted_result
 select hex(utf8mb4) from t1;
 drop table t1;
@@ -1648,13 +1662,15 @@ INSERT INTO t1 VALUES (119070, x'f09d849ef09d859ef09d859ef09d8480f09d859ff09d859
 #  Mix of 3-byte and 4-byte chars 
 INSERT INTO t1 VALUES (65131, x'efb9abf09d849ef09d859ef09d859ef09d8480f09d859fefb9abefb9abf09d85a0efb9ab');
 # All from musical chars, but 11 instead of 10 chars. truncated
-INSERT INTO t1 VALUES (119070, x'f09d849ef09d859ef09d859ef09d8480f09d859ff09d859ff09d859ff09d85a0f09d85a0f09d8480f09d85a0');
+INSERT IGNORE INTO t1 VALUES (119070, x'f09d849ef09d859ef09d859ef09d8480f09d859ff09d859ff09d859ff09d85a0f09d85a0f09d8480f09d85a0');
 
 --sorted_result
 SELECT u_decimal, hex(utf8mb4_encoding) FROM t1 ORDER BY utf8mb4_encoding COLLATE utf8mb4_general_ci, BINARY utf8mb4_encoding;
 
 # First invalid 4 byte value
+--error ER_TRUNCATED_WRONG_VALUE_FOR_FIELD
 INSERT INTO t1 VALUES (1114111, x'f5808080');
+INSERT IGNORE INTO t1 VALUES (1114111, x'f5808080');
 
 --sorted_result
 SELECT character_maximum_length, character_octet_length FROM information_schema.columns WHERE
@@ -1672,14 +1688,18 @@ INSERT INTO t2 VALUES (42856, x'ea9da8');
 # SMALL COMMERCIAL AT
 INSERT INTO t2 VALUES (65131, x'efb9ab');
 # <Plane 16 Private Use, Last> (last 4 byte character)
+--error ER_TRUNCATED_WRONG_VALUE_FOR_FIELD
 INSERT INTO t2 VALUES (1114111, x'f48fbfbf');
+INSERT IGNORE INTO t2 VALUES (1114111, x'f48fbfbf');
 
 --sorted_result
 SELECT character_maximum_length, character_octet_length FROM information_schema.columns WHERE
        table_name= 't2' AND column_name= 'utf8mb3_encoding';
 
 #  Update a 3-byte char col with a 4-byte char, error
+--error ER_TRUNCATED_WRONG_VALUE_FOR_FIELD
 UPDATE t2 SET utf8mb3_encoding= x'f48fbfbd' where u_decimal= 42856;
+UPDATE IGNORE t2 SET utf8mb3_encoding= x'f48fbfbd' where u_decimal= 42856;
 
 #  Update to a 3-byte char casted to 4-byte, error?
 UPDATE t2 SET utf8mb3_encoding= _utf8mb4 x'ea9da8' where u_decimal= 42856;
@@ -1700,7 +1720,9 @@ SELECT count(*) FROM t1, t2
 
 # Alter from 4-byte charset to 3-byte charset, error
 --disable_warnings
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE t1 CONVERT TO CHARACTER SET utf8;
+set sql_mode = default;
 --enable_warnings
 SHOW CREATE TABLE t1;
 --sorted_result

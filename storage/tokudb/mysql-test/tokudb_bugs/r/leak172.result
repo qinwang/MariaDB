@@ -1,5 +1,6 @@
 set default_storage_engine=tokudb;
 drop table if exists t1,t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE `t1` (
 `c4` int(11) DEFAULT NULL,
 `c5` int(11) DEFAULT NULL,
@@ -118,6 +119,7 @@ KEY `c31` (`c31`)
 );
 LOAD DATA INFILE 'leak172_t1.data' INTO TABLE `t1` fields terminated by ',';
 connect conn1,localhost,root,,;
+set sql_mode = '';
 set session debug_dbug="+d,tokudb_end_bulk_insert_sleep";
 LOAD DATA INFILE 'leak172_t2.data' INTO TABLE `t2` fields terminated by ',';
 connection default;
@@ -127,3 +129,4 @@ connection conn1;
 connection default;
 disconnect conn1;
 drop table t1,t2;
+set sql_mode = default;

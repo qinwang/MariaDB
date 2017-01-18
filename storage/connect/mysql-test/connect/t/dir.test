@@ -24,9 +24,11 @@ SHOW CREATE TABLE t1;
 --replace_result $MYSQLD_DATADIR DATADIR/
 SELECT fname, ftype, size FROM t1 ORDER BY fname, ftype, size;
 
+SET sql_mode = '';
 # TODO: add a better error message
 --error ER_GET_ERRMSG
 INSERT INTO t1 VALUES ('','','','');
+SET sql_mode = DEFAULT;
 
 DROP TABLE t1;
 

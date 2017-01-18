@@ -194,7 +194,6 @@ my @DEFAULT_SUITES= qw(
     sys_vars-
     unit-
     vcol-
-    wsrep-
   );
 my $opt_suites;
 

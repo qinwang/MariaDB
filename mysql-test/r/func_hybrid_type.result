@@ -165,6 +165,7 @@ least____a_b	-2147483648
 least____b_a	-2147483648
 greatest_a_b	4294967295
 greatest_b_a	4294967295
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -186,6 +187,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -209,6 +211,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` int(10) unsigned DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -224,6 +227,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -372,6 +376,7 @@ least____a_b	-2147483648
 least____b_a	-2147483648
 greatest_a_b	2147483647
 greatest_b_a	2147483647
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -393,6 +398,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -416,6 +422,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` int(11) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -431,6 +438,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -579,6 +587,7 @@ least____a_b	-9223372036854775808
 least____b_a	-9223372036854775808
 greatest_a_b	18446744073709551615
 greatest_b_a	18446744073709551615
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -600,6 +609,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -623,6 +633,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` bigint(20) unsigned DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -638,6 +649,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -786,6 +798,7 @@ least____a_b	-9223372036854775808
 least____b_a	-9223372036854775808
 greatest_a_b	9223372036854775807
 greatest_b_a	9223372036854775807
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -807,6 +820,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -830,6 +844,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` bigint(20) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -845,6 +860,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -962,6 +978,7 @@ least____a_b	-2147483648
 least____b_a	-2147483648
 greatest_a_b	50
 greatest_b_a	50
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -983,6 +1000,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -1006,6 +1024,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` int(8) unsigned DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -1021,6 +1040,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -1138,6 +1158,7 @@ least____a_b	50
 least____b_a	50
 greatest_a_b	4294967295
 greatest_b_a	4294967295
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -1159,6 +1180,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -1182,6 +1204,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` int(8) unsigned DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -1197,6 +1220,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -1314,6 +1338,7 @@ least____a_b	50
 least____b_a	50
 greatest_a_b	50
 greatest_b_a	50
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -1335,6 +1360,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -1358,6 +1384,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` int(8) unsigned DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -1373,6 +1400,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -1490,6 +1518,7 @@ least____a_b	-32678
 least____b_a	-32678
 greatest_a_b	1
 greatest_b_a	1
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -1511,6 +1540,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -1534,6 +1564,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` int(6) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -1549,6 +1580,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -1666,6 +1698,7 @@ least____a_b	a
 least____b_a	a
 greatest_a_b	b
 greatest_b_a	b
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -1687,6 +1720,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -1710,6 +1744,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` varchar(1) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -1725,6 +1760,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -1842,6 +1878,7 @@ least____a_b	-2147483648
 least____b_a	-2147483648
 greatest_a_b	2015
 greatest_b_a	2015
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -1863,6 +1900,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -1886,6 +1924,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` int(4) unsigned DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -1901,6 +1940,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2018,6 +2058,7 @@ least____a_b	2015
 least____b_a	2015
 greatest_a_b	4294967295
 greatest_b_a	4294967295
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -2039,6 +2080,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2062,6 +2104,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` int(4) unsigned DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -2077,6 +2120,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2195,6 +2239,7 @@ least____a_b	2001-01-01 10:20:30
 least____b_a	2001-01-01 10:20:30
 greatest_a_b	2010-01-01 00:00:00
 greatest_b_a	2010-01-01 00:00:00
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -2216,6 +2261,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2239,6 +2285,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` time DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -2254,6 +2301,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2373,6 +2421,7 @@ least____a_b	2001-01-01 10:20:30
 least____b_a	2001-01-01 10:20:30
 greatest_a_b	2010-01-01 00:00:00
 greatest_b_a	2010-01-01 00:00:00
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -2394,6 +2443,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2417,6 +2467,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` time DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -2432,6 +2483,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2551,6 +2603,7 @@ least____a_b	2001-01-01 10:20:30
 least____b_a	2001-01-01 10:20:30
 greatest_a_b	2010-01-01 00:00:00
 greatest_b_a	2010-01-01 00:00:00
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -2572,6 +2625,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2595,6 +2649,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` time DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -2610,6 +2665,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2729,6 +2785,7 @@ least____a_b	2001-01-02 00:00:00
 least____b_a	2001-01-02 00:00:00
 greatest_a_b	2010-01-01 10:20:30
 greatest_b_a	2010-01-01 10:20:30
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -2750,6 +2807,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2773,6 +2831,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` date DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -2788,6 +2847,7 @@ LEAST(b, a)                               AS least____b_a,
 GREATEST(a, b)                            AS greatest_a_b,
 GREATEST(b, a)                            AS greatest_b_a
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2921,6 +2981,7 @@ Message	Truncated incorrect DOUBLE value: '100x'
 Level	Warning
 Code	1292
 Message	Truncated incorrect DOUBLE value: '100x'
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 a                                         AS ___________a,
@@ -2942,6 +3003,7 @@ IFNULL(b, b)                              AS ifnull___b_b,
 LEAST(b, b)                               AS least____b_b,
 GREATEST(b, b)                            AS greatest_b_b
 FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -2965,6 +3027,7 @@ t2	CREATE TABLE `t2` (
   `greatest_b_b` varchar(10) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS
 SELECT
 CASE WHEN a IS NOT NULL THEN a ELSE b END AS case_____a_b,
@@ -2985,6 +3048,7 @@ Warning	1292	Truncated incorrect DOUBLE value: '100x'
 Warning	1292	Truncated incorrect DOUBLE value: '100x'
 Warning	1292	Truncated incorrect DOUBLE value: '100x'
 Warning	1292	Truncated incorrect DOUBLE value: '100x'
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
@@ -3047,7 +3111,9 @@ GREATEST(a,a)
 2010-01-01 10:20:30
 DROP TABLE t1;
 CREATE TABLE t1 (a TIMESTAMP, b DATETIME);
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 AS SELECT LEAST(a,a),LEAST(b,b),LEAST(a,b) FROM t1;
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (

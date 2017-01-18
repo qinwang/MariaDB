@@ -11,7 +11,9 @@ insert into t1 values("10:22:33"),("12:34:56.78"),(10),(1234),(123456.78),(12345
 insert t1 values (30),(1230),("1230"),("12:30"),("12:30:35"),("1 12:30:31.32");
 select * from t1;
 # Test wrong values
+set sql_mode = '';
 insert into t1 values("10.22.22"),(1234567),(123456789),(123456789.10),("10 22:22"),("12.45a");
+set sql_mode = default;
 select * from t1;
 drop table t1;
 
@@ -219,7 +221,9 @@ CREATE TABLE t1 (a TIME(6));
 --error ER_TRUNCATED_WRONG_VALUE
 INSERT INTO t1 VALUES (CAST(0xFFFFFFFF00000000 AS UNSIGNED)); 
 SET sql_mode=DEFAULT;
+SET sql_mode='';
 INSERT INTO t1 VALUES (CAST(0xFFFFFFFF00000000 AS UNSIGNED)); 
+SET sql_mode= DEFAULT;
 SELECT * FROM t1;
 DROP TABLE t1;
 SELECT TIME'00:00:00'> CAST(0xFFFFFFFF00000000 AS UNSIGNED);
@@ -490,6 +494,7 @@ DROP TABLE t1;
 SET timestamp=DEFAULT;
 
 
+SET @@sql_mode='';
 SET @@old_mode=zero_date_time_cast;
 --echo # TIMESTAMP literal, old mode
 CREATE TABLE t1 (a TIME);
@@ -533,6 +538,7 @@ SELECT * FROM t1 WHERE a='0000-00-01 10:20:30' AND LENGTH(a)=30+RAND();
 DROP TABLE t1;
 
 SET @@old_mode=DEFAULT;
+SET @@sql_mode=DEFAULT;
 
 --echo #
 --echo # MDEV-8706 Wrong result for SELECT..WHERE time_column=TIMESTAMP'2015-08-30 00:00:00' AND time_column='00:00:00'
@@ -740,7 +746,9 @@ CREATE TABLE t1 (a YEAR, b TIME, c YEAR);
 CREATE TABLE t2 (a YEAR);
 INSERT INTO t2 VALUES (0),(1999),(2000),(2030),(2050),(2070);
 INSERT INTO t1 (a,b,c) SELECT a,a,a FROM t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 ALTER TABLE t1 MODIFY c TIME;
+SET sql_mode = DEFAULT;
 SELECT * FROM t1;
 DROP TABLE t1,t2;
 

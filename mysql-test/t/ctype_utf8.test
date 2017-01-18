@@ -128,6 +128,7 @@ set LC_TIME_NAMES='en_US';
 # Bug #2366  	Wrong utf8 behaviour when data is truncated
 #
 set names koi8r;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (s1 char(1) character set utf8);
 insert into t1 values (_koi8r'��');
 select s1,hex(s1),char_length(s1),octet_length(s1) from t1;
@@ -151,10 +152,12 @@ insert into t1 select repeat('�a',66000);
 insert into t1 select repeat('��',66000);
 select length(s1),char_length(s1) from t1;
 drop table t1;
+set sql_mode=default;
 
 #
 # Bug #2368 Multibyte charsets do not check that incoming data is well-formed
 #
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (s1 char(10) character set utf8);
 insert into t1 values (0x41FF);
 select hex(s1) from t1;
@@ -169,6 +172,7 @@ create table t1 (s1 text character set utf8);
 insert into t1 values (0x41FF);
 select hex(s1) from t1;
 drop table t1;
+set sql_mode=default;
 
 #
 # Bug 2699
@@ -794,6 +798,7 @@ create table t1 (x enum('A', 'B') default 0) character set utf8;
 #
 
 SET NAMES UTF8;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 
 CREATE TABLE t1 (
   `id` int(20) NOT NULL auto_increment,
@@ -831,13 +836,17 @@ SELECT content, t2.msisdn FROM t1, t2 WHERE t1.msisdn = '1234567890';
 
 DROP TABLE t1,t2;
 
+SET sql_mode = DEFAULT;
+
 #
 # Bug#11591: CHAR column with utf8 does not work properly
 # (more chars than expected)
 #
 create table t1 (a char(20) character set utf8);
 insert into t1 values ('123456'),('андрей');
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 modify a char(2) character set utf8;
+set sql_mode = default;
 select char_length(a), length(a), a from t1 order by a;
 drop table t1;
 
@@ -1209,6 +1218,7 @@ DROP TABLE t1;
 # Bug#20095 Changing length of VARCHAR field with UTF8
 # collation does not truncate values
 #
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (
   a varchar(26) not null
 ) default character set utf8;
@@ -1238,6 +1248,7 @@ insert into t1 values (repeat('a',4000));
 alter table t1 change a a varchar(3000) character set utf8 not null;
 select length(a) from t1;
 drop table t1;
+set sql_mode = default;
 
 
 #
@@ -1245,6 +1256,7 @@ drop table t1;
 #  Bug#14146: CHAR(...USING ...) and CONVERT(CHAR(...) USING...)
 #             produce different results
 #
+set sql_mode = '';
 set names utf8;
 # correct value
 select hex(char(1 using utf8));
@@ -1261,6 +1273,7 @@ select char(195 using utf8);
 select char(196 using utf8);
 select char(2557 using utf8);
 select convert(char(0xff,0x8f) using utf8);
+set sql_mode = default;
 
 #
 # Check convert + char + using
@@ -1428,7 +1441,7 @@ select hex(_utf8 X'616263FF');
 select hex(_utf8 B'001111111111');
 --error ER_INVALID_CHARACTER_STRING
 select (_utf8 X'616263FF');
-set sql_mode=default;
+set sql_mode='';
 select hex(char(0xFF using utf8));
 select hex(convert(0xFF using utf8));
 --error ER_INVALID_CHARACTER_STRING
@@ -1439,6 +1452,7 @@ select hex(_utf8 X'616263FF');
 select hex(_utf8 B'001111111111');
 --error ER_INVALID_CHARACTER_STRING
 select (_utf8 X'616263FF');
+set sql_mode=default;
 
 --echo #
 --echo # Bug#44131 Binary-mode "order by" returns records in incorrect order for UTF-8 strings
@@ -1601,8 +1615,9 @@ EXPLAIN EXTENDED SELECT 'abcdÁÂÃÄÅ', _latin1'abcdÁÂÃÄÅ', _utf8'abcdÁ�
 --echo #
 --echo # Bug#11750518 41090: ORDER BY TRUNCATES GROUP_CONCAT RESULT
 --echo #
-
 SET NAMES utf8;
+SET group_concat_max_len = 1024;
+
 SELECT id, CHAR_LENGTH(GROUP_CONCAT(body)) AS l
 FROM (SELECT 'a' AS id, REPEAT('foo bar', 100) AS body
 UNION ALL
@@ -1614,6 +1629,8 @@ SELECT id, CHAR_LENGTH(GROUP_CONCAT(body)) AS l
 FROM (SELECT 'a' AS id, REPEAT('foo bar', 100) AS body
 UNION ALL
 SELECT 'a' AS id, REPEAT('bla bla', 100) AS body) t1;
+
+SET group_concat_max_len = DEFAULT;
 
 --echo #
 --echo # MDEV-7814 Assertion `args[0]->fixed' fails in Item_func_conv_charset::Item_func_conv_charset
@@ -1674,7 +1691,9 @@ SET NAMES utf8;
 CREATE TABLE t1 (a TEXT CHARACTER SET utf8);
 INSERT INTO t1 VALUES (REPEAT('Ａ',100));
 SELECT OCTET_LENGTH(a) FROM t1;
+set sql_mode='NO_ENGINE_SUBSTITUTION';
 ALTER TABLE t1 MODIFY a TINYTEXT CHARACTER SET utf8;
+set sql_mode=default;
 SELECT OCTET_LENGTH(a),a FROM t1;
 DROP TABLE t1;
 
@@ -1706,6 +1725,7 @@ SELECT length(data) AS len FROM (SELECT REPEAT('ä', 65537) AS data) AS sub;
 --echo #
 CREATE TABLE t1 (i INT, KEY(i));
 INSERT INTO t1 VALUES (20081205),(20050327);
+SET sql_mode='';
 SELECT HEX(i), HEX(CHAR(i USING utf8)) FROM t1;
 SET sql_mode='STRICT_ALL_TABLES';
 SELECT HEX(i), HEX(CHAR(i USING utf8)) FROM t1;
@@ -2008,7 +2028,7 @@ DROP TABLE t1;
 --echo # MDEV-9842 LOAD DATA INFILE does not work well with a TEXT column when using sjis
 --echo #
 CREATE TABLE t1 (a TEXT CHARACTER SET utf8);
-LOAD DATA INFILE '../../std_data/loaddata/mdev9823.utf8mb4.txt' INTO TABLE t1 CHARACTER SET utf8 IGNORE 4 LINES;
+LOAD DATA INFILE '../../std_data/loaddata/mdev9823.utf8mb4.txt' IGNORE INTO TABLE t1 CHARACTER SET utf8 IGNORE 4 LINES;
 SELECT HEX(a) FROM t1;
 DROP TABLE t1;
 
@@ -2016,7 +2036,7 @@ DROP TABLE t1;
 --echo # MDEV-9874 LOAD XML INFILE does not handle well broken multi-byte characters
 --echo #
 CREATE TABLE t1 (a TEXT CHARACTER SET utf8);
-LOAD XML INFILE '../../std_data/loaddata/mdev9874.xml' INTO TABLE t1 CHARACTER SET utf8 ROWS IDENTIFIED BY '<row>';
+LOAD XML INFILE '../../std_data/loaddata/mdev9874.xml' IGNORE INTO TABLE t1 CHARACTER SET utf8 ROWS IDENTIFIED BY '<row>';
 SELECT HEX(a) FROM t1;
 DROP TABLE t1;
 

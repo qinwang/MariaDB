@@ -15,7 +15,7 @@ Note	1265	Data truncated for column 'a' at row 1
 insert t1 values (20101211030405.789e0);
 Warnings:
 Note	1265	Data truncated for column 'a' at row 1
-insert t1 values (99991231235959e1);
+insert ignore t1 values (99991231235959e1);
 Warnings:
 Warning	1264	Out of range value for column 'a' at row 1
 select * from t1;
@@ -42,7 +42,9 @@ a DIV 1
 select group_concat(distinct a) from t1;
 group_concat(distinct a)
 00:20:03.123,01:02:03.456,03:04:05.789,15:47:11.123,838:59:59.999
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 engine=innodb;
+set sql_mode = default;
 select * from t1 order by a;
 a
 00:20:03.123
@@ -105,7 +107,7 @@ a	a + interval 2 year
 01:02:13.3332	NULL
 Warnings:
 Warning	1441	Datetime function: time field overflow
-insert t1 select a + interval 2 year from t1;
+insert ignore t1 select a + interval 2 year from t1;
 Warnings:
 Warning	1441	Datetime function: time field overflow
 select * from t1;
@@ -159,7 +161,9 @@ t3	CREATE TABLE `t3` (
   `avg(a)` decimal(19,8) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 drop table t1, t2, t3;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (f0_time time(0), f1_time time(1), f2_time time(2), f3_time time(3), f4_time time(4), f5_time time(5), f6_time time(6));
+set sql_mode = default;
 insert t1 values ( '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432', '2010-11-12 11:14:17.765432');
 Warnings:
 Level	Note
@@ -226,6 +230,7 @@ double_f3_time	111417.765
 decimal5_f4_time	111417.76540
 bigint_f5_time	111417
 varchar_f6_time	11:14:17.765432
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1 modify time4_f0_time time(0), modify datetime3_f1_time time(1), modify date_f2_time time(2), modify double_f3_time time(3), modify decimal5_f4_time time(4), modify bigint_f5_time time(5), modify varchar_f6_time time(6);
 Warnings:
 Level	Note
@@ -234,6 +239,7 @@ Message	Data truncated for column 'datetime3_f1_time' at row 1
 Level	Note
 Code	1265
 Message	Data truncated for column 'date_f2_time' at row 1
+set sql_mode = default;
 select * from t1;
 time4_f0_time	11:14:17
 datetime3_f1_time	11:14:17.7
@@ -260,7 +266,9 @@ decimal5_f4_time	11:14:17.7654
 bigint_f5_time	11:14:17.00000
 varchar_f6_time	11:14:17.765432
 drop table t1, t2;
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (a time(6), b time(6));
+set sql_mode = default;
 create procedure foo(x time, y time(4)) insert into t1 values (x, y);
 call foo('2010-02-03 4:5:6.789123', '2010-02-03 4:5:6.789123');
 Warnings:
@@ -301,7 +309,9 @@ show columns from v1;
 Field	Type	Null	Key	Default	Extra
 a	time(6)	YES		NULL	
 b	time(6)	YES		NULL	
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t2 select * from v1;
+set sql_mode = default;
 show create table t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (

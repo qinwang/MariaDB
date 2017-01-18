@@ -19,12 +19,14 @@ col4 varchar(4) not null,
 col5 enum('PENDING', 'ACTIVE', 'DISABLED') not null,
 col6 int not null, to_be_deleted int);
 insert into t1 values (2,4,3,5,"PENDING",1,7);
+set sql_mode = 'NO_ENGINE_SUBSTITUTION';
 alter table t1
 add column col4_5 varchar(20) not null after col4,
 add column col7 varchar(30) not null after col5,
 add column col8 datetime not null, drop column to_be_deleted,
 change column col2 fourth varchar(30) not null after col3,
 modify column col6 int not null first;
+set sql_mode = DEFAULT;
 select * from t1;
 drop table t1;
 
@@ -268,7 +270,7 @@ drop table if exists t1, t2;
 # not null columns for primary keys)
 
 create table t1 (a int, b int, c int, d int, e int, f int, g int, h int,i int, primary key (a,b,c,d,e,f,g,i,h)) engine=MyISAM;
-insert into t1 (a) values(1);
+insert ignore into t1 (a) values(1);
 --replace_column 7 X 8 X 9 X 10 X 11 X 12 X 13 X 14 X
 show table status like 't1';
 alter table t1 modify a int;
@@ -276,7 +278,7 @@ alter table t1 modify a int;
 show table status like 't1';
 drop table t1;
 create table t1 (a int not null, b int not null, c int not null, d int not null, e int not null, f int not null, g int not null, h int not null,i int not null, primary key (a,b,c,d,e,f,g,i,h)) engine=MyISAM;
-insert into t1 (a) values(1);
+insert ignore into t1 (a) values(1);
 --replace_column 7 X 8 X 9 X 10 X 11 X 12 X 13 X 14 X
 show table status like 't1';
 drop table t1;

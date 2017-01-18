@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS t1, t2, t3, t, tp, tsp, tmp;
 #               ROW_FORMAT WAS SET EXPLICITLY
 #
 # Same definition (both have ROW_FORMAT set)
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
 id int(11) NOT NULL AUTO_INCREMENT,
 year year(2) DEFAULT NULL,
@@ -20,6 +21,7 @@ Note	1287	'YEAR(2)' is deprecated and will be removed in a future release. Pleas
 ALTER TABLE t2 REMOVE PARTITIONING;
 Warnings:
 Note	1287	'YEAR(2)' is deprecated and will be removed in a future release. Please use YEAR(4) instead
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t1;
 Table	t1
 Create Table	CREATE TABLE `t1` (
@@ -89,6 +91,7 @@ ROW_FORMAT	Compact
 CREATE_OPTIONS	row_format=COMPACT
 DROP TABLE t2;
 # Only the partitioned table have ROW_FORMAT set.
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 (
 id int(11) NOT NULL AUTO_INCREMENT,
 year year(2) DEFAULT NULL,
@@ -104,6 +107,7 @@ Warnings:
 Level	Note
 Code	1287
 Message	'YEAR(2)' is deprecated and will be removed in a future release. Please use YEAR(4) instead
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t1;
 Table	t1
 Create Table	CREATE TABLE `t1` (
@@ -137,6 +141,7 @@ ROW_FORMAT	Compact
 CREATE_OPTIONS	
 # Only the non partitioned table have ROW_FORMAT set.
 DROP TABLE t1, t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
 id int(11) NOT NULL AUTO_INCREMENT,
 year year(2) DEFAULT NULL,
@@ -164,6 +169,7 @@ Warnings:
 Level	Note
 Code	1287
 Message	'YEAR(2)' is deprecated and will be removed in a future release. Please use YEAR(4) instead
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t1;
 Table	t1
 Create Table	CREATE TABLE `t1` (
@@ -197,6 +203,7 @@ ROW_FORMAT	Compact
 CREATE_OPTIONS	row_format=COMPACT
 # No table have ROW_FORMAT set.
 DROP TABLE t1, t2;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (
 id int(11) NOT NULL AUTO_INCREMENT,
 year year(2) DEFAULT NULL,
@@ -430,10 +437,12 @@ ENGINE	InnoDB
 ROW_FORMAT	Redundant
 CREATE_OPTIONS	row_format=REDUNDANT
 DROP TABLE t1, t2;
+SET sql_mode = DEFAULT;
 #
 # Bug#56484: !table || (!table->read_set ||
 #                       bitmap_is_set(table->read_set, field_index))
 #
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (a INT NOT NULL,b TIME NOT NULL DEFAULT '00:00:00')
 ENGINE=MyISAM
 PARTITION BY HASH (a) PARTITIONS 2;
@@ -441,6 +450,7 @@ CREATE TABLE t2 (a INT) ENGINE=MYISAM;
 ALTER TABLE t1 EXCHANGE PARTITION p1 WITH TABLE t2;
 ERROR HY000: Tables have different definitions
 DROP TABLE t1, t2;
+SET sql_mode = DEFAULT;
 #
 # Bug#55784: Foreign key integrity broken by alter table
 #
@@ -1105,7 +1115,11 @@ CREATE TABLE t LIKE tp;
 ALTER TABLE t REMOVE PARTITIONING;
 CREATE TABLE t2 LIKE t;
 INSERT INTO tp VALUES ("First in tp", '2000-01-02 03:04:25'), ("Zebra in tp", '0000-00-00 00:00:00'), ("Second in tp", '2010-01-01 05:12:24');
+Warnings:
+Warning	1264	Out of range value for column 'b' at row 2
 INSERT INTO t VALUES ("First in t", '2000-01-02 03:04:25'), ("a test in t", '0000-00-00 00:00:00'), ("Echo in t", '2010-01-01 05:12:24');
+Warnings:
+Warning	1264	Out of range value for column 'b' at row 2
 # tp_lock '0' t_lock 'READ' t2_lock 'READ' count '17'
 LOCK TABLE t READ, t2 READ;
 ALTER TABLE tp EXCHANGE PARTITION p0 WITH TABLE t;

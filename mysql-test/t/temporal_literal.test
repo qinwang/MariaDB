@@ -18,9 +18,11 @@ SELECT DATE'01-01';
 SELECT DATE'2001';
 --error ER_WRONG_VALUE
 SELECT DATE'2001-01';
+SET sql_mode = '';
 SELECT DATE'2001-00-00';
 SELECT DATE'2001-01-00';
 SELECT DATE'0000-00-00';
+SET sql_mode = DEFAULT;
 --error ER_WRONG_VALUE
 SELECT DATE'2001-01-01 00:00:00';
 SELECT DATE'01:01:01';
@@ -149,6 +151,7 @@ DROP TABLE t1;
 EXPLAIN EXTENDED SELECT {ts'2010-01-01 10:10:10'};
 EXPLAIN EXTENDED SELECT TIMESTAMP'2010-01-01 10:10:10';
 
+SET sql_mode = '';
 --echo #
 --echo # Testing nanosecond rounding for TIMESTAMP literals with bad dates
 --echo #
@@ -182,6 +185,7 @@ INSERT INTO t1 VALUES ('2001-00-01 00:00:00.9999999');
 INSERT INTO t1 VALUES ('2001-01-00 00:00:00.9999999');
 SELECT * FROM t1;
 DROP TABLE t1;
+SET sql_mode = DEFAULT;
 
 --echo #
 --echo # Testing Item_date_literal::eq
@@ -263,7 +267,7 @@ INSERT INTO t1 VALUES ('2001','toy',103);
 INSERT INTO t1 VALUES ('2002','car',201);
 INSERT INTO t1 VALUES ('2002','gas',202);
 INSERT INTO t1 VALUES ('2002','toy',203);
-SET sql_mode=DEFAULT;
+SET sql_mode= '';
 PREPARE stmt FROM "SELECT DATE'2001-00-00' AS c,year, SUM(profit) FROM t1 GROUP BY c,year WITH ROLLUP";
 EXECUTE stmt;
 SET sql_mode='no_zero_in_date';
@@ -274,29 +278,30 @@ DROP TABLE t1;
 --echo #
 --echo # MDEV-5971 Asymmetry between CAST(DATE'2001-00-00') to INT and TO CHAR in prepared statements
 --echo #
-SET sql_mode=DEFAULT;
+SET sql_mode='';
 PREPARE stmt FROM "SELECT CAST(DATE'2001-00-00' AS SIGNED) AS c";
 SET sql_mode='no_zero_in_date';
 EXECUTE stmt;
-SET sql_mode=DEFAULT;
+SET sql_mode='';
 PREPARE stmt FROM "SELECT CAST(DATE'2001-00-00' AS CHAR) AS c";
 SET sql_mode='no_zero_in_date';
 EXECUTE stmt;
-SET sql_mode=DEFAULT;
+SET sql_mode='';
 PREPARE stmt FROM "SELECT CAST(DATE'2001-00-00' AS DECIMAL(30,0)) AS c";
 SET sql_mode='no_zero_in_date';
 EXECUTE stmt;
-SET sql_mode=DEFAULT;
+SET sql_mode='';
 PREPARE stmt FROM "SELECT CAST(DATE'2001-00-00' AS DOUBLE) AS c";
 SET sql_mode='no_zero_in_date';
 EXECUTE stmt;
+SET sql_mode=DEFAULT;
 
 --echo #
 --echo # Zero month or zero day automatically mean NULL flag, no matter SQL_MODE is.
 --echo # Only zero year is OK for NOT NULL.
 --echo #
 
-SET sql_mode=DEFAULT;
+SET sql_mode='';
 PREPARE stmt FROM "CREATE TABLE t1 AS SELECT CAST(DATE'2001-00-00' AS CHAR) AS c";
 EXECUTE stmt;
 SHOW COLUMNS FROM t1;
@@ -307,8 +312,8 @@ EXECUTE stmt;
 SHOW COLUMNS FROM t1;
 SELECT * FROM t1;
 DROP TABLE t1;
-SET sql_mode=DEFAULT;
 
+SET sql_mode='';
 CREATE TABLE t1 AS SELECT
   DATE'2001-01-01',
   DATE'0000-01-01',
@@ -326,18 +331,19 @@ CREATE TABLE t1 AS SELECT
   TIMESTAMP'2001-01-00 00:00:00';
 SHOW CREATE TABLE t1;
 DROP TABLE t1;
+SET sql_mode = DEFAULT;
 
 --echo #
 --echo # MDEV-5975 Prepared statements with DATE literals do not honor NO_ZERO_IN_DATE
 --echo #
-SET sql_mode=DEFAULT;
+SET sql_mode='';
 PREPARE stmt FROM "SELECT (SELECT DATE'2001-00-00') AS c";
 EXECUTE stmt;
 SET sql_mode='no_zero_in_date';
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
-SET sql_mode=DEFAULT;
+SET sql_mode='';
 PREPARE stmt FROM "SELECT (SELECT TIMESTAMP'2001-00-00 10:20:30') AS c";
 EXECUTE stmt;
 SET sql_mode='no_zero_in_date';

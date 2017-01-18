@@ -722,6 +722,7 @@ drop table t1;
 # Test of multi-table-delete
 #
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 eval CREATE TABLE t1 (
   number bigint(20) NOT NULL default '0',
   cname char(15) NOT NULL default '',
@@ -735,12 +736,14 @@ eval CREATE TABLE t1 (
   assigned_scps int(11) default '0',
   status tinyint(4) default '0'
 ) ENGINE=$engine_type;
-INSERT INTO t1 VALUES (4077711111,'SeanWheeler',90,2,20020111112846,500,00000000000000,-1,2,3,1);
+SET sql_mode = DEFAULT;
+INSERT IGNORE INTO t1 VALUES (4077711111,'SeanWheeler',90,2,20020111112846,500,00000000000000,-1,2,3,1);
 INSERT INTO t1 VALUES (9197722223,'berry',90,3,20020111112809,500,20020102114532,501,4,10,0);
-INSERT INTO t1 VALUES (650,'San Francisco',0,0,20011227111336,342,00000000000000,-1,1,24,1);
+INSERT IGNORE INTO t1 VALUES (650,'San Francisco',0,0,20011227111336,342,00000000000000,-1,1,24,1);
 INSERT INTO t1 VALUES (302467,'Sue\'s Subshop',90,3,20020109113241,500,20020102115111,501,7,24,0);
 INSERT INTO t1 VALUES (6014911113,'SudzCarwash',520,1,20020102115234,500,20020102115259,501,33,32768,0);
 INSERT INTO t1 VALUES (333,'tubs',99,2,20020109113440,501,20020109113440,500,3,10,0);
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 eval CREATE TABLE t2 (
   number bigint(20) NOT NULL default '0',
   cname char(15) NOT NULL default '',
@@ -754,9 +757,10 @@ eval CREATE TABLE t2 (
   assigned_scps int(11) default '0',
   status tinyint(4) default '0'
 ) ENGINE=$engine_type;
-INSERT INTO t2 VALUES (4077711111,'SeanWheeler',0,2,20020111112853,500,00000000000000,-1,2,3,1);
+SET sql_mode = DEFAULT;
+INSERT IGNORE INTO t2 VALUES (4077711111,'SeanWheeler',0,2,20020111112853,500,00000000000000,-1,2,3,1);
 INSERT INTO t2 VALUES (9197722223,'berry',90,3,20020111112818,500,20020102114532,501,4,10,0);
-INSERT INTO t2 VALUES (650,'San Francisco',90,0,20020109113158,342,00000000000000,-1,1,24,1);
+INSERT IGNORE INTO t2 VALUES (650,'San Francisco',90,0,20020109113158,342,00000000000000,-1,1,24,1);
 INSERT INTO t2 VALUES (333,'tubs',99,2,20020109113453,501,20020109113453,500,3,10,0);
 select * from t1;
 select * from t2;
@@ -1470,10 +1474,14 @@ source include/varchar.inc;
 --replace_result \\ / $MYSQL_TEST_DIR . /var/mysqld.1/data/ / t1.frm t1
 create table t1 (v varchar(65530), key(v));
 drop table t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (v varchar(65536));
+SET sql_mode = DEFAULT;
 show create table t1;
 drop table t1;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 create table t1 (v varchar(65530) character set utf8);
+SET sql_mode = DEFAULT;
 show create table t1;
 drop table t1;
 

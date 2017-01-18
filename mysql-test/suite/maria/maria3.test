@@ -241,7 +241,7 @@ CREATE TABLE t1 (
   KEY (ulonglong,ulong),
   KEY (options,flags)
 ) engine=aria;
-insert into t1 values (10,1,1,1,1,1,1,1,1,1,1,1,1,1,NULL,0,0,0,1,1,1,1,'one','one');
+insert ignore into t1 values (10,1,1,1,1,1,1,1,1,1,1,1,1,1,NULL,0,0,0,1,1,1,1,'one','one');
 create table t2 (primary key (auto)) engine=aria row_format=page select auto+1 as auto,1 as t1, 'a' as t2, repeat('a',256) as t3, binary repeat('b',256) as t4, repeat('a',4096) as t5, binary repeat('b',4096) as t6, '' as t7, binary '' as t8 from t1;
 check table t1,t2;
 select t1,t2,length(t3),length(t4),length(t5),length(t6),t7,t8 from t2;

@@ -2372,7 +2372,7 @@ DROP TABLE t1;
 #
 
 create table t1(a bigint unsigned, b bigint);
-insert into t1 values (0xfffffffffffffffff, 0xfffffffffffffffff), 
+insert ignore into t1 values (0xfffffffffffffffff, 0xfffffffffffffffff), 
   (0x10000000000000000, 0x10000000000000000), 
   (0x8fffffffffffffff, 0x8fffffffffffffff);
 select hex(a), hex(b) from t1;
@@ -3808,7 +3808,7 @@ DROP TABLE t1;
 --echo #
 
 CREATE TABLE t1(a INT NOT NULL, b YEAR);
-INSERT INTO t1 VALUES ();
+INSERT IGNORE INTO t1 VALUES ();
 CREATE TABLE t2(c INT);
 --echo # Should not err out because of out-of-memory
 SELECT 1 FROM t2 JOIN t1 ON 1=1
@@ -3875,7 +3875,7 @@ SET @@sort_buffer_size= 40000;
 
 CREATE TABLE t1(a CHAR(0) NOT NULL);
 --disable_warnings
-INSERT INTO t1 VALUES (0), (0), (0);
+INSERT IGNORE INTO t1 VALUES (0), (0), (0);
 --enable_warnings
 INSERT INTO t1 SELECT t11.a FROM t1 t11, t1 t12;
 INSERT INTO t1 SELECT t11.a FROM t1 t11, t1 t12;
@@ -3888,7 +3888,7 @@ DROP TABLE t1;
 
 CREATE TABLE t1(a CHAR(0) NOT NULL, b CHAR(0) NOT NULL, c int);
 --disable_warnings
-INSERT INTO t1 VALUES (0, 0, 0), (0, 0, 2), (0, 0, 1);
+INSERT IGNORE INTO t1 VALUES (0, 0, 0), (0, 0, 2), (0, 0, 1);
 --enable_warnings
 INSERT INTO t1 SELECT t11.a, t11.b, t11.c FROM t1 t11, t1 t12;
 INSERT INTO t1 SELECT t11.a, t11.b, t11.c FROM t1 t11, t1 t12;
@@ -3934,7 +3934,7 @@ CREATE TABLE t2 (
   varchar_key varchar(1)
 );
 
-INSERT INTO t2 VALUES 
+INSERT IGNORE INTO t2 VALUES 
 (1,1,1,'0000-00-00',NULL,NULL),
 (1,1,1,'0000-00-00',NULL,NULL);
 
@@ -4004,7 +4004,7 @@ CREATE TABLE `B` (
   KEY `varchar_key` (`varchar_key`)
 );
 
-INSERT INTO `B` VALUES ('2003-07-28','2003-07-28','15:13:38','0000-00-00 00:00:00','f'),('0000-00-00','0000-00-00','00:05:48','2004-07-02 14:34:13','x');
+INSERT IGNORE INTO `B` VALUES ('2003-07-28','2003-07-28','15:13:38','0000-00-00 00:00:00','f'),('0000-00-00','0000-00-00','00:05:48','2004-07-02 14:34:13','x');
 
 CREATE TABLE `BB` (
   `pk` int(11) NOT NULL AUTO_INCREMENT,
@@ -4016,7 +4016,7 @@ CREATE TABLE `BB` (
   KEY `date_key` (`date_key`)
 );
 
-INSERT INTO `BB` VALUES (10,8,'0000-00-00','i','0000-00-00'),(11,0,'2005-08-18','','2005-08-18');
+INSERT IGNORE INTO `BB` VALUES (10,8,'0000-00-00','i','0000-00-00'),(11,0,'2005-08-18','','2005-08-18');
 # Test #1
 SELECT table1 . `pk` AS field1 
   FROM 

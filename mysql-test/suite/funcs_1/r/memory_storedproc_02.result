@@ -28,7 +28,7 @@ load data infile '<MYSQLTEST_VARDIR>/std_data/funcs_1/t4.txt' into table t6;
 USE db_storedproc;
 create table t7 (f1 char(20), f2 char(25), f3 date, f4 int)
 engine = <engine_to_be_tested>;
-load data infile '<MYSQLTEST_VARDIR>/std_data/funcs_1/t7.txt' into table t7;
+load data infile '<MYSQLTEST_VARDIR>/std_data/funcs_1/t7.txt' ignore into table t7;
 Warnings:
 Warning	1265	Data truncated for column 'f3' at row 1
 Warning	1265	Data truncated for column 'f3' at row 2
@@ -42,7 +42,7 @@ Warning	1265	Data truncated for column 'f3' at row 9
 Warning	1265	Data truncated for column 'f3' at row 10
 create table t8 (f1 char(20), f2 char(25), f3 date, f4 int)
 engine = <engine_to_be_tested>;
-load data infile '<MYSQLTEST_VARDIR>/std_data/funcs_1/t7.txt' into table t8;
+load data infile '<MYSQLTEST_VARDIR>/std_data/funcs_1/t7.txt' ignore into table t8;
 Warnings:
 Warning	1265	Data truncated for column 'f3' at row 1
 Warning	1265	Data truncated for column 'f3' at row 2
@@ -74,6 +74,7 @@ Ensure that the scope of each BEGIN/END compound statement within a stored
 procedure definition is properly applied
 --------------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS sp1;
+SET sql_mode = '';
 CREATE PROCEDURE sp1( )
 begin_label: BEGIN
 declare x char DEFAULT 'x';
@@ -110,6 +111,7 @@ set @v1 = x;
 set @v2 = y;
 SELECT '1.2', @v1, @v2;
 END begin_label//
+SET sql_mode = DEFAULT;
 CALL sp1();
 1.1	x	y
 1.1	a	a
@@ -714,6 +716,7 @@ DROP PROCEDURE IF EXISTS sp3;
 DROP PROCEDURE IF EXISTS sp4;
 DROP TABLE IF EXISTS temp;
 CREATE TABLE temp( f1 CHAR, f2 CHAR);
+SET sql_mode = '' //
 CREATE PROCEDURE sp0()
 BEGIN
 set @done=0;
@@ -753,6 +756,7 @@ set @x=0;
 insert into temp values('xxx', 'yy');
 set @x=1;
 END//
+SET sql_mode = DEFAULT //
 INSERT INTO temp VALUES('0', NULL);
 CALL sp0();
 Warnings:

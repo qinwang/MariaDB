@@ -14,6 +14,7 @@ CREATE TABLE t1 (
 `col440` tinyblob NOT NULL,
 `col441` double unsigned DEFAULT NULL
 );
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 (
 `a` geometry DEFAULT NULL,
 `col460` date DEFAULT NULL,
@@ -25,6 +26,7 @@ CREATE TABLE t2 (
 `col466` varchar(236) CHARACTER SET utf8 NOT NULL,
 `col467` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00'
 );
+SET sql_mode = DEFAULT;
 CREATE TABLE t3 (
 `FTS_DOC_ID` bigint(20) unsigned NOT NULL,
 `col577` datetime DEFAULT NULL,
@@ -34,6 +36,8 @@ CREATE TABLE t3 (
 `col583` geometry DEFAULT NULL,
 `col584` bit(47) NOT NULL
 );
+Warnings:
+Warning	1264	Out of range value for column 'col460' at row 1
 set session sort_buffer_size= 32768;
 select  col435
 from t3

@@ -17,8 +17,12 @@ drop table if exists t1,t2,t3,t4,t5,t6,t7;
 CREATE TABLE t1 (a blob, b text, c blob(250), d text(70000), e text(70000000));
 show columns from t1;
 # PS doesn't give errors on prepare yet
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t2 (a char(255), b varbinary(70000), c varchar(70000000));
+SET sql_mode = DEFAULT;
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t4 (c varchar(65530) character set utf8 not null);
+SET sql_mode = DEFAULT;
 show columns from t2;
 create table t3 (a long, b long byte);
 show create TABLE t3;
@@ -33,7 +37,9 @@ drop table t1,t2,t3,t4;
 CREATE TABLE t1 (a char(257) default "hello");
 --error 1074
 CREATE TABLE t2 (a char(256));
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t1 (a varchar(70000) default "hello");
+SET sql_mode = DEFAULT;
 SHOW CREATE TABLE t1;
 CREATE TABLE t2 (a blob default "hello");
 SHOW CREATE TABLE t2;
@@ -169,6 +175,7 @@ INSERT INTO t2 VALUES (1,1);
 INSERT INTO t2 VALUES (2,1);
 INSERT INTO t2 VALUES (2,2);
 
+SET sql_mode = 'NO_ENGINE_SUBSTITUTION';
 CREATE TABLE t3 (
   t3_id bigint(21) NOT NULL auto_increment,
   _field_131 varchar(128),
@@ -188,10 +195,11 @@ CREATE TABLE t3 (
   KEY _field_145 (_field_145),
   KEY _field_148 (_field_148)
 );
+SET sql_mode = DEFAULT;
 
 
-INSERT INTO t3 VALUES (1,'test job 1',0,'0000-00-00 00:00:00',0,'1999-02-25 22:43:32','test\r\njob\r\n1',0,0,0);
-INSERT INTO t3 VALUES (2,'test job 2',0,'0000-00-00 00:00:00',0,'1999-02-26 21:08:04','',0,0,0);
+INSERT IGNORE INTO t3 VALUES (1,'test job 1',0,'0000-00-00 00:00:00',0,'1999-02-25 22:43:32','test\r\njob\r\n1',0,0,0);
+INSERT IGNORE INTO t3 VALUES (2,'test job 2',0,'0000-00-00 00:00:00',0,'1999-02-26 21:08:04','',0,0,0);
 
 
 CREATE TABLE t4 (
