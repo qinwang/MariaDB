@@ -1,22 +1,18 @@
 source include/have_log_bin.inc;
+#in case of 32 bit
+call mtr.add_suppression("unsigned value 18446744073709547520 adjusted to 4294963200");
+--replace_result 18446744073709547520 max_binlog_stmt_cache_size 4294963200 max_binlog_stmt_cache_size
 select @@max_binlog_stmt_cache_size;
 
---let $cache_size=`select @@max_binlog_stmt_cache_size;`
+--replace_result 18446744073709547520 max_binlog_stmt_cache_size 4294963200 max_binlog_stmt_cache_size
+--disable_warnings
+SET @cache_size= @@max_binlog_stmt_cache_size;
 
-set global max_binlog_stmt_cache_size= 18446744073709547520;
+set global max_binlog_stmt_cache_size= @cache_size+1;
+--replace_result 18446744073709547520 max_binlog_stmt_cache_size 4294963200 max_binlog_stmt_cache_size
 select @@max_binlog_stmt_cache_size;
 
-set global max_binlog_stmt_cache_size= 18446744073709547519;
-select @@max_binlog_stmt_cache_size;
+set global max_binlog_stmt_cache_size= @cache_size-1;
+select @@max_binlog_stmt_cache_size = @cache_size-4096;
 
-set global max_binlog_stmt_cache_size= 18446744073709551615;
-select @@max_binlog_stmt_cache_size;
-
-set global max_binlog_stmt_cache_size= 18446744073709551614;
-select @@max_binlog_stmt_cache_size;
-
---error ER_WRONG_TYPE_FOR_VAR
-set global max_binlog_stmt_cache_size= 18446744073709551616;
-select @@max_binlog_stmt_cache_size;
-
---eval set global max_binlog_stmt_cache_size= $cache_size
+set @@global.max_binlog_stmt_cache_size= @cache_size;
