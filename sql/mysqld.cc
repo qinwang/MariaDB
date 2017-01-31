@@ -1988,7 +1988,7 @@ static void __cdecl kill_server(int sig_ptr)
   /* Stop wsrep threads in case they are running. */
   if (wsrep_running_threads > 0)
   {
-    wsrep_stop_replication(NULL);
+    wsrep_shutdown_replication();
   }
 
   close_connections();
@@ -2099,6 +2099,10 @@ extern "C" void unireg_abort(int exit_code)
   /* Check if wsrep class is used. If yes, then cleanup wsrep */
   if (wsrep)
   {
+    /*
+      Signal SE init waiters to exit with error status
+     */
+    wsrep_SE_init_failed();
     /*
       This is an abort situation, we cannot expect to gracefully close all
       wsrep threads here, we can only diconnect from service

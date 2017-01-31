@@ -142,10 +142,19 @@ class Trans_delegate
   :public Delegate {
 public:
   typedef Trans_observer Observer;
+#ifdef WITH_WSREP
+  int before_prepare(THD *thd, bool all);
   int before_commit(THD *thd, bool all);
   int before_rollback(THD *thd, bool all);
+  int after_row(THD *thd, bool all);
+  int after_prepare(THD *thd, bool all);
+#endif /* WITH_WSREP */
   int after_commit(THD *thd, bool all);
   int after_rollback(THD *thd, bool all);
+#ifdef WITH_WSREP
+  int after_command(THD *thd, bool all);
+  int before_GTID_binlog(THD *thd, bool all);
+#endif /* WITH_WSREP */
 };
 
 class Binlog_storage_delegate

@@ -1138,8 +1138,7 @@ void end_connection(THD *thd)
                  (longlong) thd->thread_id, rcode);
     }
   }
-  thd->wsrep_client_thread= 0;
-#endif
+#endif /* WITH_WSREP */
   plugin_thdvar_cleanup(thd);
 
   if (thd->user_connect)
@@ -1360,7 +1359,7 @@ void do_handle_one_connection(CONNECT *connect)
   if (WSREP(thd))
   {
     mysql_mutex_lock(&thd->LOCK_wsrep_thd);
-    thd->wsrep_query_state= QUERY_EXITING;
+    thd->set_wsrep_query_state(QUERY_EXITING);
     mysql_mutex_unlock(&thd->LOCK_wsrep_thd);
   }
 #endif
