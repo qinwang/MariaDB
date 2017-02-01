@@ -2560,6 +2560,14 @@ err:
     query_cache_invalidate3(thd, tables, 0);
     if (!dont_log_query && mysql_bin_log.is_open())
     {
+#ifdef WITH_WSREP
+      /*
+        With wsrep on we operate with ROW based replication so
+        there is no point of binlogging DROP for temp tables.
+      */
+      if (!WSREP(thd))
+      {
+#endif /* WITH_WSREP */
       if (non_trans_tmp_table_deleted)
       {
           /* Chop of the last comma */
@@ -2597,6 +2605,9 @@ err:
                                      TRUE, FALSE, FALSE,
                                      error_code);
       }
+#ifdef WITH_WSREP
+      }
+#endif /* WITH_WSREP */
     }
   }
 
@@ -7293,6 +7304,19 @@ static bool mysql_inplace_alter_table(THD *thd,
     }
   }
 
+#ifdef WITH_WSREP
+  if (thd->wsrep_nbo_ctx) {
+    wsrep_begin_nbo_unlock(thd);
+  }
+  DBUG_EXECUTE_IF("sync.alter_locked_tables_inplace",
+                  {
+                      const char act[]=
+                          "now "
+                          "wait_for signal.alter_locked_tables_inplace";
+                      DBUG_ASSERT(!debug_sync_set_action(thd,
+                                                         STRING_WITH_LEN(act)));
+                  };);
+#endif /* WITH_WSREP */
   DEBUG_SYNC(thd, "alter_table_inplace_after_lock_downgrade");
   THD_STAGE_INFO(thd, stage_alter_inplace);
 
@@ -9301,6 +9325,21 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
     SESSION_TRACKER_CHANGED(thd, SESSION_STATE_CHANGE_TRACKER, NULL);
   }
 
+#ifdef WITH_WSREP
+  if (thd->wsrep_nbo_ctx) {
+    wsrep_begin_nbo_unlock(thd);
+  }
+
+  DBUG_EXECUTE_IF("sync.alter_locked_tables",
+                  {
+                      const char act[]=
+                          "now "
+                          "wait_for signal.alter_locked_tables";
+                      DBUG_ASSERT(!debug_sync_set_action(thd,
+                                                         STRING_WITH_LEN(act)));
+                  };);
+
+#endif /* WITH_WSREP */
 
   /* Open the table since we need to copy the data. */
   if (table->s->tmp_table != NO_TMP_TABLE)

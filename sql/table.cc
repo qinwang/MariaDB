@@ -246,6 +246,13 @@ TABLE_CATEGORY get_table_category(const LEX_STRING *db, const LEX_STRING *name)
   DBUG_ASSERT(db != NULL);
   DBUG_ASSERT(name != NULL);
 
+#ifdef WITH_WSREP
+  if (!strcmp(db->str, "wsrep_schema"))
+  {
+    return TABLE_CATEGORY_RPL_INFO;
+  }
+#endif /* WITH_WSREP */
+
   if (is_infoschema_db(db->str, db->length))
     return TABLE_CATEGORY_INFORMATION;
 
