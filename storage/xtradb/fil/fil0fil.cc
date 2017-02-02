@@ -3943,6 +3943,15 @@ fil_create_new_single_table_tablespace(
 		goto error_exit_1;
 	}
 
+	if (success) {
+		/* Inform key rotation that there could be something
+		to do */
+		if (mode == FIL_SPACE_ENCRYPTION_ON || mode == FIL_SPACE_ENCRYPTION_OFF ||
+			srv_encrypt_tables) {
+			fil_crypt_add_space_to_keyrotation(space_id);
+		}
+	}
+
 #ifndef UNIV_HOTBACKUP
 	{
 		mtr_t		mtr;

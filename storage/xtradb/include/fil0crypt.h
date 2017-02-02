@@ -530,6 +530,21 @@ fil_crypt_calculate_checksum(
 /*=========================*/
 	ulint	zip_size,	/*!< in: zip_size or 0 */
 	byte*	dst_frame);	/*!< in: page where to calculate */
+/**
+Add space to key rotation list for encryption.
+@param[in]	space_id	space to add to rotation */
+UNIV_INTERN
+void
+fil_crypt_add_space_to_keyrotation(
+	ulint	space_id);
+
+/**
+Adjust keyrotation
+@param	val		value to be set */
+UNIV_INTERN
+void
+fil_crypt_set_keyrotation(
+	my_bool	val);
 
 #ifndef UNIV_NONINL
 #include "fil0crypt.ic"

@@ -1290,6 +1290,9 @@ static SHOW_VAR innodb_status_variables[]= {
   {"encryption_rotation_estimated_iops",
   (char*) &export_vars.innodb_encryption_rotation_estimated_iops,
    SHOW_LONG},
+  {"encryption_key_rotation_list_length",
+  (char*)&export_vars.innodb_key_rotation_list_length,
+   SHOW_LONGLONG},
 
   /* Scrubing feature */
   {"scrub_background_page_reorganizations",
@@ -19603,6 +19606,22 @@ innodb_encrypt_tables_update(
 	fil_crypt_set_encrypt_tables(*static_cast<const ulong*>(save));
 }
 
+/******************************************************************
+Update the system variable innodb_encryption_keyrotation */
+static
+void
+innodb_encryption_keyrotation_update(
+	THD*                            thd,    /*!< in: thread handle */
+	struct st_mysql_sys_var*        var,    /*!< in: pointer to
+						system variable */
+	void*                           var_ptr,/*!< out: where the
+						formal string goes */
+	const void*                     save)   /*!< in: immediate result
+						from check function */
+{
+	fil_crypt_set_keyrotation(*static_cast<const my_bool*>(save));
+}
+
 static SHOW_VAR innodb_status_variables_export[]= {
 	{"Innodb", (char*) &show_innodb_vars, SHOW_FUNC},
 	{NullS, NullS, SHOW_LONG}
@@ -21315,6 +21334,13 @@ static MYSQL_SYSVAR_UINT(encryption_rotation_iops, srv_n_fil_crypt_iops,
 			 innodb_encryption_rotation_iops_update,
 			 srv_n_fil_crypt_iops, 0, UINT_MAX32, 0);
 
+static MYSQL_SYSVAR_BOOL(encryption_keyrotation, innodb_encryption_keyrotation,
+  PLUGIN_VAR_RQCMDARG,
+  "Enable encryption key rotation (default ON)",
+  0,
+  innodb_encryption_keyrotation_update,
+  TRUE);
+
 static MYSQL_SYSVAR_BOOL(scrub_log, srv_scrub_log,
   PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
   "Enable background redo log (ib_logfile0, ib_logfile1...) scrubbing",
@@ -21620,6 +21646,7 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(scrub_log_speed),
   MYSQL_SYSVAR(encrypt_log),
   MYSQL_SYSVAR(default_encryption_key_id),
+  MYSQL_SYSVAR(encryption_keyrotation),
   /* Scrubing feature */
   MYSQL_SYSVAR(immediate_scrub_data_uncompressed),
   MYSQL_SYSVAR(background_scrub_data_uncompressed),
@@ -22269,8 +22296,9 @@ innodb_encrypt_tables_validate(
 						for update function */
 	struct st_mysql_value*		value)	/*!< in: incoming string */
 {
-	if (check_sysvar_enum(thd, var, save, value))
+	if (check_sysvar_enum(thd, var, save, value)) {
 		return 1;
+	}
 
 	ulong encrypt_tables = *(ulong*)save;
 
@@ -22282,6 +22310,16 @@ innodb_encrypt_tables_validate(
 		                    "encryption plugin is not available");
 		return 1;
 	}
+
+	if (!innodb_encryption_keyrotation) {
+		const char *msg = (encrypt_tables ? "enable" : "disable");
+		push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
+				    HA_ERR_UNSUPPORTED,
+				    "InnoDB: cannot %s encryption, "
+				    "innodb-encryption-keyrotation disabled", msg);
+		return 1;
+	}
+
 	return 0;
 }
 

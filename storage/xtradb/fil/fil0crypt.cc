@@ -37,7 +37,7 @@ Modified           Jan Lindström jan.lindstrom@mariadb.com
 #include "fsp0fsp.h"
 #include "fil0pagecompress.h"
 #include "ha_prototypes.h" // IB_LOG_
-
+#include <vector>
 #include <my_crypt.h>
 
 /** Mutex for keys */
@@ -104,6 +104,28 @@ static mysql_pfs_key_t fil_crypt_stat_mutex_key;
 UNIV_INTERN mysql_pfs_key_t fil_crypt_data_mutex_key;
 #endif
 
+/** Mutex protecting vector of space_id's that require
+key rotation. */
+UNIV_INTERN ib_mutex_t fil_crypt_rotate_list_mutex;
+
+/** Key for rotate list mutex */
+#ifdef UNIV_PFS_MUTEX
+static mysql_pfs_key_t fil_crypt_rotate_list_mutex_key;
+#endif
+
+/** Vector type holding space_id's that require key rotation */
+typedef std::vector<ulint> fil_crypt_rotate_spaces_t;
+
+/** Vector holding space_id's that require key rotation */
+UNIV_INTERN fil_crypt_rotate_spaces_t fil_crypt_rotate_list;
+
+/** is keyrotation enabled */
+UNIV_INTERN my_bool	innodb_encryption_keyrotation;
+
+/** Is background scrubbing enabled, defined on btr0scrub.cc */
+extern my_bool srv_background_scrub_data_uncompressed;
+extern my_bool srv_background_scrub_data_compressed;
+
 static bool
 fil_crypt_needs_rotation(
 /*=====================*/
@@ -127,6 +149,10 @@ fil_space_crypt_init()
 
 	mutex_create(fil_crypt_stat_mutex_key,
 		     &crypt_stat_mutex, SYNC_NO_ORDER_CHECK);
+
+	mutex_create(fil_crypt_rotate_list_mutex_key,
+		     &fil_crypt_rotate_list_mutex, SYNC_NO_ORDER_CHECK);
+
 	memset(&crypt_stat, 0, sizeof(crypt_stat));
 }
 
@@ -140,8 +166,52 @@ fil_space_crypt_cleanup()
 	os_event_free(fil_crypt_throttle_sleep_event);
 	mutex_free(&fil_crypt_key_mutex);
 	mutex_free(&crypt_stat_mutex);
+	fil_crypt_rotate_list.clear();
+	mutex_free(&fil_crypt_rotate_list_mutex);
 }
 
+/**
+Add space to key rotation list for encryption.
+@param[in]	space_id	space to add to rotation */
+UNIV_INTERN
+void
+fil_crypt_add_space_to_keyrotation(
+	ulint	space_id)
+{
+	mutex_enter(&fil_crypt_rotate_list_mutex);
+	fil_crypt_rotate_list.push_back(space_id);
+	srv_stats.key_rotation_list_length.inc();
+	mutex_exit(&fil_crypt_rotate_list_mutex);
+	os_event_set(fil_crypt_threads_event);
+
+}
+
+/**
+Get space from key rotation list
+@return space_id or ULINT_UNDEFINED if list is empty */
+static
+ulint
+fil_crypt_get_space_from_keyrotation(void)
+{
+	ulint space_id = ULINT_UNDEFINED;
+
+	mutex_enter(&fil_crypt_rotate_list_mutex);
+
+	/* If key rotation list is empty, there is nothing
+	to do. */
+	if (fil_crypt_rotate_list.empty()) {
+		goto exit;
+	}
+
+	space_id = fil_crypt_rotate_list.back();
+	fil_crypt_rotate_list.pop_back();
+	srv_stats.key_rotation_list_length.dec();
+
+exit:
+	mutex_exit(&fil_crypt_rotate_list_mutex);
+
+	return (space_id);
+}
 /**
 Get latest key version from encryption plugin.
 @return key version or ENCRYPTION_KEY_VERSION_INVALID */
@@ -1644,11 +1714,18 @@ fil_crypt_find_space_to_rotate(
 		return false;
 	}
 
-	if (state->first) {
-		state->first = false;
-		state->space = fil_get_first_space_safe();
+	/* If key rotation is enabled (default) we iterate all tablespaces.
+	If key rotation is not enabled we iterate only the tablespaces
+	added to keyrotation list. */
+	if (innodb_encryption_keyrotation) {
+		if (state->first) {
+			state->first = false;
+			state->space = fil_get_first_space_safe();
+		} else {
+			state->space = fil_get_next_space_safe(state->space);
+		}
 	} else {
-		state->space = fil_get_next_space_safe(state->space);
+		state->space = fil_crypt_get_space_from_keyrotation();
 	}
 
 	while (!state->should_shutdown() && state->space != ULINT_UNDEFINED) {
@@ -1664,7 +1741,11 @@ fil_crypt_find_space_to_rotate(
 			}
 		}
 
-		state->space = fil_get_next_space_safe(state->space);
+		if (innodb_encryption_keyrotation) {
+			state->space = fil_get_next_space_safe(state->space);
+		} else {
+			state->space = fil_crypt_get_space_from_keyrotation();
+		}
 	}
 
 	/* if we didn't find any space return iops */
@@ -2305,7 +2386,13 @@ DECLARE_THREAD(fil_crypt_thread)(
 			* i.e either new key version of change or
 			* new rotate_key_age */
 			os_event_reset(fil_crypt_threads_event);
-			if (os_event_wait_time(fil_crypt_threads_event, 1000000) == 0) {
+
+			if(innodb_encryption_keyrotation) {
+				if (os_event_wait_time(fil_crypt_threads_event, 1000000) == 0) {
+					break;
+				}
+			} else {
+				os_event_wait(fil_crypt_threads_event);
 				break;
 			}
 
@@ -2318,7 +2405,11 @@ DECLARE_THREAD(fil_crypt_thread)(
 
 			time_t waited = time(0) - wait_start;
 
-			if (waited >= srv_background_scrub_data_check_interval) {
+			/* Break if we have waited the background scrub
+			internal and background scrubbing is enabled */
+			if (waited >= srv_background_scrub_data_check_interval
+			    && (srv_background_scrub_data_uncompressed
+			        || srv_background_scrub_data_compressed)) {
 				break;
 			}
 		}
@@ -2445,6 +2536,23 @@ fil_crypt_set_encrypt_tables(
 {
        srv_encrypt_tables = val;
        os_event_set(fil_crypt_threads_event);
+}
+
+/**
+Adjust keyrotation
+@param	val		value to be set */
+UNIV_INTERN
+void
+fil_crypt_set_keyrotation(
+	my_bool	val)
+{
+	innodb_encryption_keyrotation = val;
+
+	/* If key rotation is enabled inform encryption threads
+	if they exists. */
+	if (innodb_encryption_keyrotation && srv_n_fil_crypt_threads) {
+		os_event_set(fil_crypt_threads_event);
+	}
 }
 
 /*********************************************************************
