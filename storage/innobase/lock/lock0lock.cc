@@ -1371,24 +1371,20 @@ wsrep_kill_victim(
 			is in the queue*/
 		} else if (lock->trx != trx) {
 			if (wsrep_log_conflicts) {
-				mutex_enter(&trx_sys->mutex);
 				if (bf_this) {
 					ib::info() << "*** Priority TRANSACTION:";
 				} else {
 					ib::info() << "*** Victim TRANSACTION:";
 				}
 
-				trx_print_latched(stderr, trx, 3000);
+				wsrep_trx_print_locking(stderr, trx, 3000);
 
 				if (bf_other) {
 					ib::info() << "*** Priority TRANSACTION:";
 				} else {
 					ib::info() << "*** Victim TRANSACTION:";
 				}
-
-				trx_print_latched(stderr, lock->trx, 3000);
-
-				mutex_exit(&trx_sys->mutex);
+				wsrep_trx_print_locking(stderr, lock->trx, 3000
 
 				ib::info() << "*** WAITING FOR THIS LOCK TO BE GRANTED:";
 
@@ -8405,6 +8401,9 @@ DeadlockChecker::trx_rollback()
 	trx_t*	trx = m_wait_lock->trx;
 
 	print("*** WE ROLL BACK TRANSACTION (1)\n");
+#ifdef WITH_WSREP
+        wsrep_handle_SR_rollback(ctx->start->mysql_thd, trx->mysql_thd);
+#endif
 
 	trx_mutex_enter(trx);
 
