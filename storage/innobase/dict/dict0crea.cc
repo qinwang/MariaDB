@@ -1679,6 +1679,11 @@ dict_create_or_check_foreign_constraint_tables(void)
 		return(DB_SUCCESS);
 	}
 
+	if (srv_read_only_mode
+	    || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO) {
+		return(DB_READ_ONLY);
+	}
+
 	trx = trx_allocate_for_mysql();
 
 	trx_set_dict_operation(trx, TRX_DICT_OP_TABLE);
@@ -1808,11 +1813,9 @@ dict_create_or_check_sys_virtual()
 		return(DB_SUCCESS);
 	}
 
-	if (srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO
-	    || srv_read_only_mode) {
-		ib::error() << "Cannot create sys_virtual system tables;"
-			" running in read-only mode.";
-		return(DB_ERROR);
+	if (srv_read_only_mode
+	    || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO) {
+		return(DB_READ_ONLY);
 	}
 
 	trx = trx_allocate_for_mysql();
@@ -2007,7 +2010,7 @@ dict_foreign_def_get(
 	char* fk_def = (char *)mem_heap_alloc(foreign->heap, 4*1024);
 	const char* tbname;
 	char tablebuf[MAX_TABLE_NAME_LEN + 1] = "";
-	int i;
+	unsigned i;
 	char* bufend;
 
 	tbname = dict_remove_db_name(foreign->id);
@@ -2025,7 +2028,7 @@ dict_foreign_def_get(
 				strlen(foreign->foreign_col_names[i]),
 				trx->mysql_thd);
 		strcat(fk_def, buf);
-		if (i < foreign->n_fields-1) {
+		if (i < static_cast<unsigned>(foreign->n_fields-1)) {
 			strcat(fk_def, (char *)",");
 		}
 	}
@@ -2049,7 +2052,7 @@ dict_foreign_def_get(
 				trx->mysql_thd);
 		buf[bufend - buf] = '\0';
 		strcat(fk_def, buf);
-		if (i < foreign->n_fields-1) {
+		if (i < (uint)foreign->n_fields-1) {
 			strcat(fk_def, (char *)",");
 		}
 	}
@@ -2465,7 +2468,13 @@ dict_create_or_check_sys_tablespace(void)
 
 	if (sys_tablespaces_err == DB_SUCCESS
 	    && sys_datafiles_err == DB_SUCCESS) {
+		srv_sys_tablespaces_open = true;
 		return(DB_SUCCESS);
+	}
+
+	if (srv_read_only_mode
+	    || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO) {
+		return(DB_READ_ONLY);
 	}
 
 	trx = trx_allocate_for_mysql();
@@ -2540,6 +2549,7 @@ dict_create_or_check_sys_tablespace(void)
 
 	if (err == DB_SUCCESS) {
 		ib::info() << "Tablespace and datafile system tables created.";
+		srv_sys_tablespaces_open = true;
 	}
 
 	/* Note: The master thread has not been started at this point. */

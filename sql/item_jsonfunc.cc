@@ -113,6 +113,100 @@ static int st_append_escaped(String *s, const String *a)
 }
 
 
+static int json_nice(json_engine_t *je, String *nice_js,
+                     Item_func_json_format::formats mode)
+{
+  int depth= 0;
+  const char *comma, *colon;
+  uint comma_len, colon_len;
+  int first_value= 1;
+
+  DBUG_ASSERT(je->s.cs == nice_js->charset());
+
+  if (mode == Item_func_json_format::LOOSE)
+  {
+    comma= ", ";
+    comma_len= 2;
+    colon= "\": ";
+    colon_len= 3;
+  }
+  else
+  {
+    comma= ",";
+    comma_len= 1;
+    colon= "\":";
+    colon_len= 2;
+  }
+
+  do
+  {
+    switch (je->state)
+    {
+    case JST_KEY:
+      {
+        const uchar *key_start= je->s.c_str;
+        const uchar *key_end;
+
+        while (json_read_keyname_chr(je) == 0)
+          key_end= je->s.c_str;
+        
+        if (je->s.error)
+          goto error;
+
+        if (!first_value)
+          nice_js->append(comma, comma_len);
+
+        nice_js->append("\"", 1);
+        append_simple(nice_js, key_start, key_end - key_start);
+        nice_js->append(colon, colon_len);
+      }
+      /* now we have key value to handle, so no 'break'. */
+      DBUG_ASSERT(je->state == JST_VALUE);
+      goto handle_value;
+
+    case JST_VALUE:
+      if (!first_value)
+        nice_js->append(comma, comma_len);
+
+handle_value:
+      if (json_read_value(je))
+        goto error;
+      if (json_value_scalar(je))
+      {
+        if (append_simple(nice_js, je->value_begin,
+                          je->value_end - je->value_begin))
+          goto error;
+
+        first_value= 0;
+      }
+      else
+      {
+        nice_js->append((je->value_type == JSON_VALUE_OBJECT) ? "{" : "[", 1);
+        first_value= 1;
+        depth++;
+      }
+
+      break;
+
+    case JST_OBJ_END:
+    case JST_ARRAY_END:
+      depth--;
+      nice_js->append((je->state == JST_OBJ_END) ? "}": "]", 1);
+      first_value= 0;
+      break;
+
+    default:
+      break;
+    };
+  } while (json_scan_next(je) == 0);
+
+  return je->s.error;
+
+error:
+  return 1;
+}
+
+
 #define report_json_error(js, je, n_param) \
   report_json_error_ex(js, je, func_name(), n_param, \
       Sql_condition::WARN_LEVEL_WARN)
@@ -554,11 +648,11 @@ void Item_func_json_extract::fix_length_and_dec()
 
 
 static bool path_exact(const json_path_with_flags *paths_list, int n_paths,
-                       const json_path_t *p)
+                       const json_path_t *p, enum json_value_types vt)
 {
   for (; n_paths > 0; n_paths--, paths_list++)
   {
-    if (json_path_compare(&paths_list->p, p) == 0)
+    if (json_path_compare(&paths_list->p, p, vt) == 0)
       return TRUE;
   }
   return FALSE;
@@ -566,11 +660,11 @@ static bool path_exact(const json_path_with_flags *paths_list, int n_paths,
 
 
 static bool path_ok(const json_path_with_flags *paths_list, int n_paths,
-                    const json_path_t *p)
+                    const json_path_t *p, enum json_value_types vt)
 {
   for (; n_paths > 0; n_paths--, paths_list++)
   {
-    if (json_path_compare(&paths_list->p, p) >= 0)
+    if (json_path_compare(&paths_list->p, p, vt) >= 0)
       return TRUE;
   }
   return FALSE;
@@ -605,6 +699,9 @@ String *Item_func_json_extract::val_str(String *str)
       }
       c_path->parsed= c_path->constant;
     }
+
+    if (args[n_arg]->null_value)
+      goto return_null;
   }
 
   possible_multiple_values= arg_count > 2 ||
@@ -621,7 +718,7 @@ String *Item_func_json_extract::val_str(String *str)
 
   while (json_get_path_next(&je, &p) == 0)
   {
-    if (!path_exact(paths, arg_count-1, &p))
+    if (!path_exact(paths, arg_count-1, &p, je.value_type))
       continue;
 
     value= je.value_begin;
@@ -658,15 +755,22 @@ String *Item_func_json_extract::val_str(String *str)
     goto return_null;
   }
 
-  if (possible_multiple_values && str->append("]"))
+  if (possible_multiple_values && str->append("]", 1))
     goto error; /* Out of memory. */
 
-  return str;
+  js= str;
+  json_scan_start(&je, js->charset(),(const uchar *) js->ptr(),
+                  (const uchar *) js->ptr() + js->length());
+  tmp_js.length(0);
+  tmp_js.set_charset(js->charset());
+  if (json_nice(&je, &tmp_js, Item_func_json_format::LOOSE))
+    goto error;
+
+  return &tmp_js;
 
 error:
   report_json_error(js, &je, 0);
 return_null:
-  /* TODO: launch error messages. */
   null_value= 1;
   return 0;
 }
@@ -1151,7 +1255,7 @@ longlong Item_func_json_contains_path::val_int()
     json_path_with_flags *c_path= paths;
     for (; n_path > 0; n_path--, c_path++)
     {
-      if (json_path_compare(&c_path->p, &p) >= 0)
+      if (json_path_compare(&c_path->p, &p, je.value_type) >= 0)
       {
         if (mode_one)
         {
@@ -1422,7 +1526,14 @@ String *Item_func_json_array_append::val_str(String *str)
     }
   }
 
-  return js;
+  json_scan_start(&je, js->charset(),(const uchar *) js->ptr(),
+                  (const uchar *) js->ptr() + js->length());
+  str->length(0);
+  str->set_charset(js->charset());
+  if (json_nice(&je, str, Item_func_json_format::LOOSE))
+    goto js_error;
+
+  return str;
 
 js_error:
   report_json_error(js, &je, 0);
@@ -1556,7 +1667,14 @@ String *Item_func_json_array_insert::val_str(String *str)
     }
   }
 
-  return js;
+  json_scan_start(&je, js->charset(),(const uchar *) js->ptr(),
+                  (const uchar *) js->ptr() + js->length());
+  str->length(0);
+  str->set_charset(js->charset());
+  if (json_nice(&je, str, Item_func_json_format::LOOSE))
+    goto js_error;
+
+  return str;
 
 js_error:
   report_json_error(js, &je, 0);
@@ -1688,8 +1806,15 @@ String *Item_func_json_merge::val_str(String *str)
     }
   }
 
+  json_scan_start(&je1, js1->charset(),(const uchar *) js1->ptr(),
+                  (const uchar *) js1->ptr() + js1->length());
+  str->length(0);
+  str->set_charset(js1->charset());
+  if (json_nice(&je1, str, Item_func_json_format::LOOSE))
+    goto error_return;
+
   null_value= 0;
-  return js1;
+  return str;
 
 error_return:
   if (je1.s.error)
@@ -1958,6 +2083,9 @@ String *Item_func_json_insert::val_str(String *str)
     json_scan_start(&je, js->charset(),(const uchar *) js->ptr(),
                     (const uchar *) js->ptr() + js->length());
 
+    if (c_path->p.last_step < c_path->p.steps)
+      goto v_found;
+
     c_path->cur_step= c_path->p.steps;
 
     if (c_path->p.last_step >= c_path->p.steps &&
@@ -1965,6 +2093,7 @@ String *Item_func_json_insert::val_str(String *str)
     {
       if (je.s.error)
         goto js_error;
+      continue;
     }
 
     if (json_read_value(&je))
@@ -1978,13 +2107,31 @@ String *Item_func_json_insert::val_str(String *str)
       if (je.value_type != JSON_VALUE_ARRAY)
       {
         const uchar *v_from= je.value_begin;
-        if (!mode_insert)
-          continue;
+        int do_array_autowrap;
+
+        if (mode_insert)
+        {
+          if (mode_replace)
+            do_array_autowrap= lp->n_item > 0;
+          else
+          {
+            if (lp->n_item == 0)
+              continue;
+            do_array_autowrap= 1;
+          }
+        }
+        else
+        {
+          if (lp->n_item)
+            continue;
+          do_array_autowrap= 0;
+        }
+
 
         str->length(0);
         /* Wrap the value as an array. */
         if (append_simple(str, js->ptr(), (const char *) v_from - js->ptr()) ||
-            str->append("[", 1))
+            (do_array_autowrap && str->append("[", 1)))
           goto js_error; /* Out of memory. */
 
         if (je.value_type == JSON_VALUE_OBJECT)
@@ -1993,10 +2140,11 @@ String *Item_func_json_insert::val_str(String *str)
             goto js_error;
         }
 
-        if (append_simple(str, v_from, je.s.c_str - v_from) ||
-            str->append(", ", 2) ||
+        if ((do_array_autowrap &&
+             (append_simple(str, v_from, je.s.c_str - v_from) ||
+              str->append(", ", 2))) ||
             append_json_value(str, args[n_arg+1], &tmp_val) ||
-            str->append("]", 1) ||
+            (do_array_autowrap && str->append("]", 1)) ||
             append_simple(str, je.s.c_str, js->end()-(const char *) je.s.c_str))
           goto js_error; /* Out of memory. */
 
@@ -2028,7 +2176,7 @@ String *Item_func_json_insert::val_str(String *str)
       v_to= (const char *) (je.s.c_str - je.sav_c_len);
       str->length(0);
       if (append_simple(str, js->ptr(), v_to - js->ptr()) ||
-          str->append(", ", 2) ||
+          (n_item > 0 && str->append(", ", 2)) ||
           append_json_value(str, args[n_arg+1], &tmp_val) ||
           append_simple(str, v_to, js->end() - v_to))
         goto js_error; /* Out of memory. */
@@ -2109,7 +2257,14 @@ continue_point:
     }
   }
 
-  return js;
+  json_scan_start(&je, js->charset(),(const uchar *) js->ptr(),
+                  (const uchar *) js->ptr() + js->length());
+  str->length(0);
+  str->set_charset(js->charset());
+  if (json_nice(&je, str, Item_func_json_format::LOOSE))
+    goto js_error;
+
+  return str;
 
 js_error:
   report_json_error(js, &je, 0);
@@ -2285,7 +2440,14 @@ v_found:
     }
   }
 
-  return js;
+  json_scan_start(&je, js->charset(),(const uchar *) js->ptr(),
+                  (const uchar *) js->ptr() + js->length());
+  str->length(0);
+  str->set_charset(js->charset());
+  if (json_nice(&je, str, Item_func_json_format::LOOSE))
+    goto js_error;
+
+  return str;
 
 js_error:
   report_json_error(js, &je, 0);
@@ -2407,7 +2569,10 @@ bool Item_func_json_search::fix_fields(THD *thd, Item **ref)
     return TRUE;
 
   if (arg_count < 4)
+  {
+    escape= '\\';
     return FALSE;
+  }
 
   return fix_escape_item(thd, args[3], &tmp_js, true,
                          args[0]->collation.collation, &escape);
@@ -2522,7 +2687,7 @@ String *Item_func_json_search::val_str(String *str)
   {
     if (json_value_scalar(&je))
     {
-      if ((arg_count < 5 || path_ok(paths, arg_count - 4, &p)) &&
+      if ((arg_count < 5 || path_ok(paths, arg_count - 4, &p, je.value_type)) &&
           compare_json_value_wild(&je, s_str) != 0)
       {
         ++n_path_found;
@@ -2572,7 +2737,6 @@ end:
 js_error:
   report_json_error(js, &je, 0);
 null_return:
-  /* TODO: launch error messages. */
   null_value= 1;
   return 0;
 }
@@ -2591,4 +2755,53 @@ String *Item_json_typecast::val_str(String *str)
   null_value= args[0]->null_value;
   return vs;
 }
+
+
+const char *Item_func_json_format::func_name() const
+{
+  switch (fmt)
+  {
+  case COMPACT:
+    return "json_compact";
+  case LOOSE:
+    return "json_loose";
+  case DETAILED:
+    return "json_detailed";
+  default:
+    DBUG_ASSERT(0);
+  };
+
+  return "";
+}
+
+
+void Item_func_json_format::fix_length_and_dec()
+{
+  decimals= 0;
+  max_length= args[0]->max_length;
+}
+
+
+String *Item_func_json_format::val_str(String *str)
+{
+  String *js= args[0]->val_str(&tmp_js);
+  json_engine_t je;
+  if ((null_value= args[0]->null_value))
+    return 0;
+
+  json_scan_start(&je, js->charset(), (const uchar *) js->ptr(),
+                  (const uchar *) js->ptr()+js->length());
+
+  str->length(0);
+  str->set_charset(js->charset());
+  if (json_nice(&je, str, fmt))
+  {
+    null_value= 1;
+    report_json_error(js, &je, 0);
+    return 0;
+  }
+
+  return str;
+}
+
 

@@ -80,7 +80,7 @@ the OS actually supports it: Win 95 does not, NT does. */
 # define UNIV_NON_BUFFERED_IO
 
 /** File handle */
-# define os_file_t	HANDLE
+typedef HANDLE os_file_t;
 
 /** Convert a C file descriptor to a native file handle
 @param fd file descriptor
@@ -433,8 +433,8 @@ public:
 
 	dberr_t punch_hole(
 		os_file_t	fh,
-		ulint		offset,
-		ulint		len);
+		os_offset_t	offset,
+		os_offset_t	len);
 
 private:
 	/** Page to be written on write operation. */

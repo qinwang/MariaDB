@@ -828,27 +828,62 @@ os_file_get_block_size(
 	}
 #endif /* UNIV_LINUX */
 #ifdef _WIN32
-	DWORD outsize;
-	STORAGE_PROPERTY_QUERY storageQuery;
-	memset(&storageQuery, 0, sizeof(storageQuery));
-	storageQuery.PropertyId = StorageAccessAlignmentProperty;
-	storageQuery.QueryType  = PropertyStandardQuery;
-	STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR diskAlignment;
 
-	BOOL result = os_win32_device_io_control(file,
-		IOCTL_STORAGE_QUERY_PROPERTY,
-		&storageQuery,
-		sizeof(STORAGE_PROPERTY_QUERY),
-		&diskAlignment,
-		sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR),
-		&outsize);
+	fblock_size = 0;
 
-	if (!result) {
-		os_file_handle_error_no_exit(name, "DeviceIoControl()", FALSE);
-		fblock_size = 0;
+	// Open volume for this file, find out it "physical bytes per sector"
+
+	HANDLE volume_handle = INVALID_HANDLE_VALUE;
+	char volume[MAX_PATH + 4]="\\\\.\\"; // Special prefix required for volume names.
+	if (!GetVolumePathName(name , volume + 4, MAX_PATH)) {
+		os_file_handle_error_no_exit(name,
+			"GetVolumePathName()", FALSE);
+		goto end;
 	}
 
-	fblock_size = diskAlignment.BytesPerPhysicalSector;
+	size_t len = strlen(volume);
+	if (volume[len - 1] == '\\') {
+		// Trim trailing backslash from volume name.
+		volume[len - 1] = 0;
+	}
+
+	volume_handle = CreateFile(volume, FILE_READ_ATTRIBUTES,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		0, OPEN_EXISTING, 0, 0);
+
+	if (volume_handle == INVALID_HANDLE_VALUE) {
+		os_file_handle_error_no_exit(volume,
+			"CreateFile()", FALSE);
+		goto end;
+	}
+
+	DWORD tmp;
+	STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR disk_alignment;
+
+	STORAGE_PROPERTY_QUERY storage_query;
+	memset(&storage_query, 0, sizeof(storage_query));
+	storage_query.PropertyId = StorageAccessAlignmentProperty;
+	storage_query.QueryType  = PropertyStandardQuery;
+
+	BOOL result = os_win32_device_io_control(volume_handle,
+		IOCTL_STORAGE_QUERY_PROPERTY,
+		&storage_query,
+		sizeof(storage_query),
+		&disk_alignment,
+		sizeof(disk_alignment),
+		&tmp);
+
+	CloseHandle(volume_handle);
+
+	if (!result) {
+		os_file_handle_error_no_exit(volume,
+			"DeviceIoControl(IOCTL_STORAGE_QUERY_PROPERTY)", FALSE);
+		goto end;
+	}
+
+	fblock_size = disk_alignment.BytesPerPhysicalSector;
+
+end:
 #endif /* _WIN32 */
 
 	/* Currently we support file block size up to 4Kb */
@@ -1887,7 +1922,10 @@ LinuxAIOHandler::collect()
 			    && slot->type.is_write()
 			    && slot->type.punch_hole()) {
 
-				slot->err = slot->type.punch_hole(slot->file, slot->offset, slot->len);
+				slot->err = slot->type.punch_hole(
+					slot->file,
+					slot->offset,
+					static_cast<os_offset_t>(slot->len));
 			} else {
 				slot->err = DB_SUCCESS;
 			}
@@ -2752,43 +2790,15 @@ os_file_readdir_next_file(
 	int		ret;
 	struct stat	statinfo;
 
-#ifdef HAVE_READDIR_R
-	char		dirent_buf[sizeof(struct dirent)
-				   + _POSIX_PATH_MAX + 100];
-	/* In /mysys/my_lib.c, _POSIX_PATH_MAX + 1 is used as
-	the max file name len; but in most standards, the
-	length is NAME_MAX; we add 100 to be even safer */
-#endif /* HAVE_READDIR_R */
-
 next_file:
 
-#ifdef HAVE_READDIR_R
-	ret = readdir_r(dir, (struct dirent*) dirent_buf, &ent);
-
-	if (ret != 0) {
-
-		ib::error()
-			<< "Cannot read directory " << dirname
-			<< " error: " << ret;
-
-		return(-1);
-	}
-
-	if (ent == NULL) {
-		/* End of directory */
-
-		return(1);
-	}
-
-	ut_a(strlen(ent->d_name) < _POSIX_PATH_MAX + 100 - 1);
-#else
 	ent = readdir(dir);
 
 	if (ent == NULL) {
 
 		return(1);
 	}
-#endif /* HAVE_READDIR_R */
+
 	ut_a(strlen(ent->d_name) < OS_FILE_MAX_PATH);
 
 	if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
@@ -4825,8 +4835,8 @@ os_file_io(
 			    && type.is_write()
 			    && type.punch_hole()) {
 				*err = type.punch_hole(file,
-					static_cast<ulint>(offset),
-					n);
+					offset,
+					static_cast<os_offset_t>(n));
 
 			} else {
 				*err = DB_SUCCESS;
@@ -5494,7 +5504,7 @@ IORequest::punch_hole(
 		return(DB_SUCCESS);
 	);
 
-	ulint trim_len = get_trim_length(len);
+	os_offset_t trim_len = static_cast<os_offset_t>(get_trim_length(len));
 
 	if (trim_len == 0) {
 		return(DB_SUCCESS);
@@ -5508,7 +5518,7 @@ IORequest::punch_hole(
 		return DB_IO_NO_PUNCH_HOLE;
 	}
 
-	dberr_t err = os_file_punch_hole(fh, off, len);
+	dberr_t err = os_file_punch_hole(fh, off, trim_len);
 
 	if (err == DB_SUCCESS) {
 		srv_stats.page_compressed_trim_op.inc();

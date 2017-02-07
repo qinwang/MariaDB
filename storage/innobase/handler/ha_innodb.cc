@@ -313,26 +313,28 @@ This THDs must be destroyed rather early in the server shutdown sequence.
 This service thread creates a THD and idly waits for it to get a signal to
 die. Then it notifies all purge workers to shutdown.
 */
-st_my_thread_var *thd_destructor_myvar= NULL;
-mysql_cond_t thd_destructor_cond;
-pthread_t thd_destructor_thread;
+static volatile st_my_thread_var *thd_destructor_myvar= NULL;
+static pthread_t thd_destructor_thread;
 
 pthread_handler_t
 thd_destructor_proxy(void *)
 {
 	mysql_mutex_t thd_destructor_mutex;
+	mysql_cond_t thd_destructor_cond;
 
 	my_thread_init();
 	mysql_mutex_init(PSI_NOT_INSTRUMENTED, &thd_destructor_mutex, 0);
 	mysql_cond_init(PSI_NOT_INSTRUMENTED, &thd_destructor_cond, 0);
 
-	thd_destructor_myvar = _my_thread_var();
+	st_my_thread_var *myvar= _my_thread_var();
 	THD *thd= create_thd();
 	thd_proc_info(thd, "InnoDB background thread");
 
+	myvar->current_mutex = &thd_destructor_mutex;
+	myvar->current_cond = &thd_destructor_cond;
+
 	mysql_mutex_lock(&thd_destructor_mutex);
-	thd_destructor_myvar->current_mutex = &thd_destructor_mutex;
-	thd_destructor_myvar->current_cond = &thd_destructor_cond;
+	thd_destructor_myvar = myvar;
 	/* wait until the server wakes the THD to abort and die */
 	while (!thd_destructor_myvar->abort)
 		mysql_cond_wait(&thd_destructor_cond, &thd_destructor_mutex);
@@ -3963,21 +3965,15 @@ innobase_init(
 	any functions that could possibly allocate memory. */
 	ut_new_boot();
 
-	if (UNIV_PAGE_SIZE != UNIV_PAGE_SIZE_DEF) {
-		ib::info() << "innodb_page_size has been "
-			<< "changed from default value "
-			<< UNIV_PAGE_SIZE_DEF << " to " << UNIV_PAGE_SIZE;
-
-		/* There is hang on buffer pool when trying to get a new
-		page if buffer pool size is too small for large page sizes */
-		if (UNIV_PAGE_SIZE > UNIV_PAGE_SIZE_DEF
-		    && innobase_buffer_pool_size < (24 * 1024 * 1024)) {
-			ib::info() << "innodb_page_size="
-				<< UNIV_PAGE_SIZE << " requires "
-				<< "innodb_buffer_pool_size > 24M current "
-				<< innobase_buffer_pool_size;
-			goto error;
-		}
+	/* The buffer pool needs to be able to accommodate enough many
+	pages, even for larger pages */
+	if (UNIV_PAGE_SIZE > UNIV_PAGE_SIZE_DEF
+	    && innobase_buffer_pool_size < (24 * 1024 * 1024)) {
+		ib::info() << "innodb_page_size="
+			<< UNIV_PAGE_SIZE << " requires "
+			<< "innodb_buffer_pool_size > 24M current "
+			<< innobase_buffer_pool_size;
+		goto error;
 	}
 
 #ifndef HAVE_LZ4
@@ -4294,9 +4290,7 @@ innobase_change_buffering_inited_ok:
 	srv_log_file_size = (ib_uint64_t) innobase_log_file_size;
 
 	if (UNIV_PAGE_SIZE_DEF != srv_page_size) {
-		ib::warn() << "innodb-page-size has been changed from the"
-			" default value " << UNIV_PAGE_SIZE_DEF << " to "
-			<< srv_page_size << ".";
+		ib::info() << "innodb_page_size=" << srv_page_size;
 	}
 
 	if (srv_log_write_ahead_size > srv_page_size) {
@@ -4462,12 +4456,6 @@ innobase_change_buffering_inited_ok:
 	}
 	*/
 
-	if (!srv_read_only_mode) {
-		mysql_thread_create(thd_destructor_thread_key,
-				    &thd_destructor_thread,
-				    NULL, thd_destructor_proxy, NULL);
-	}
-
 	/* Since we in this module access directly the fields of a trx
 	struct, and due to different headers and flags it might happen that
 	ib_mutex_t has a different size in this module and in InnoDB
@@ -4488,7 +4476,14 @@ innobase_change_buffering_inited_ok:
 	}
 
 	if (err != DB_SUCCESS) {
+		innodb_shutdown();
 		DBUG_RETURN(innobase_init_abort());
+	} else if (!srv_read_only_mode) {
+		mysql_thread_create(thd_destructor_thread_key,
+				    &thd_destructor_thread,
+				    NULL, thd_destructor_proxy, NULL);
+		while (!thd_destructor_myvar)
+			os_thread_sleep(20);
 	}
 
 	/* Adjust the innodb_undo_logs config object */
@@ -4600,11 +4595,11 @@ innobase_end(
 			mysql_cond_broadcast(thd_destructor_myvar->current_cond);
 		}
 
-		if (innobase_shutdown_for_mysql() != DB_SUCCESS) {
-			err = 1;
-		}
-
+		innodb_shutdown();
 		innobase_space_shutdown();
+		if (!srv_read_only_mode) {
+			pthread_join(thd_destructor_thread, NULL);
+		}
 
 		mysql_mutex_destroy(&innobase_share_mutex);
 		mysql_mutex_destroy(&commit_cond_m);
@@ -5499,13 +5494,7 @@ innobase_kill_query(
 			trx_mutex_taken = true;
 		}
 
-#ifdef UNIV_DEBUG
-		dberr_t err =
-#endif
 		lock_trx_handle_wait(trx, true, true);
-
-		ut_ad(err == DB_SUCCESS || err == DB_LOCK_WAIT
-		      || err == DB_DEADLOCK);
 
 		if (lock_mutex_taken) {
 			lock_mutex_exit();
@@ -11897,7 +11886,7 @@ err_col:
 			err = row_create_table_for_mysql(
 				table, m_trx, false,
 				(fil_encryption_t)options->encryption,
-				options->encryption_key_id);
+				(ulint)options->encryption_key_id);
 
 		}
 
@@ -12851,7 +12840,7 @@ index_bad:
 			m_use_data_dir,
 			options->page_compressed,
 		    	options->page_compression_level == 0 ?
-		        	default_compression_level : options->page_compression_level,
+		        default_compression_level : static_cast<ulint>(options->page_compression_level),
 		    	0);
 
 	/* Set the flags2 when create table or alter tables */
@@ -21253,13 +21242,6 @@ static MYSQL_SYSVAR_ULONG(force_recovery, srv_force_recovery,
   "Helps to save your data in case the disk image of the database becomes corrupt.",
   NULL, NULL, 0, 0, 6, 0);
 
-#ifndef DBUG_OFF
-static MYSQL_SYSVAR_ULONG(force_recovery_crash, srv_force_recovery_crash,
-  PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-  "Kills the server during crash recovery.",
-  NULL, NULL, 0, 0, 100, 0);
-#endif /* !DBUG_OFF */
-
 static MYSQL_SYSVAR_ULONG(page_size, srv_page_size,
   PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
   "Page size to use for all InnoDB tablespaces.",
@@ -21902,9 +21884,6 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(flush_log_at_trx_commit),
   MYSQL_SYSVAR(flush_method),
   MYSQL_SYSVAR(force_recovery),
-#ifndef DBUG_OFF
-  MYSQL_SYSVAR(force_recovery_crash),
-#endif /* !DBUG_OFF */
   MYSQL_SYSVAR(fill_factor),
   MYSQL_SYSVAR(ft_cache_size),
   MYSQL_SYSVAR(ft_total_cache_size),

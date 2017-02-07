@@ -1388,6 +1388,11 @@ public:
   */
   TABLE *derived_tables;
 
+  /* 
+    Temporary tables created for recursive table references.
+  */
+  TABLE *rec_tables;
+
   /*
     During a MySQL session, one can lock tables in two modes: automatic
     or manual. In automatic mode all necessary tables are locked just before
@@ -1468,6 +1473,7 @@ public:
     open_tables= 0;
     temporary_tables= 0;
     derived_tables= 0;
+    rec_tables= 0;
     extra_lock= 0;
     lock= 0;
     locked_tables_mode= LTM_NONE;

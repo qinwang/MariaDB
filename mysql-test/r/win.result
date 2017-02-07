@@ -456,7 +456,7 @@ pk, c,
 row_number() over (partition by c order by pk
 range between unbounded preceding and current row) as r
 from t1;
-ERROR HY000: Window frame is not allowed with 'row_number('
+ERROR HY000: Window frame is not allowed with 'row_number'
 select
 pk, c,
 rank() over w1 as r
@@ -2382,3 +2382,179 @@ pk	c	CNT
 10	2	0.5000
 drop view v1,v2,v3,v4;
 drop table t0,t1;
+#
+# MDEV-10875: window function in subquery
+#
+CREATE TABLE t1 (i INT);
+INSERT INTO t1 VALUES (3),(1);
+CREATE TABLE t2 (c VARCHAR(8));
+INSERT INTO t2 VALUES ('foo'),('bar'),('foo');
+SELECT COUNT(*) OVER (PARTITION BY c) FROM t2;
+COUNT(*) OVER (PARTITION BY c)
+2
+1
+2
+SELECT * FROM t1 WHERE i IN ( SELECT COUNT(*) OVER (PARTITION BY c) FROM t2 );
+i
+1
+DROP TABLE t1, t2;
+#
+# MDEV-9976: window function without PARTITION BY and ORDER BY
+#
+CREATE TABLE t1  (id int, a int);
+INSERT INTO t1 VALUES
+(1,1000), (2,1100), (3,1800), (4,1500), (5,1700), (6,1200),
+(7,2000), (8,2100), (9,1600);
+SELECT id, sum(a) OVER (PARTITION BY id 
+ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
+FROM t1;
+id	sum(a) OVER (PARTITION BY id 
+1	1000
+2	1100
+3	1800
+4	1500
+5	1700
+6	1200
+7	2000
+8	2100
+9	1600
+ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
+SELECT id, sum(a) OVER (ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
+FROM t1;
+id	sum(a) OVER (ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
+1	14000
+2	13000
+3	5900
+4	10700
+5	7600
+6	11900
+7	4100
+8	2100
+9	9200
+DROP TABLE t1;
+#
+# MDEV-11867: window function with aggregation
+#             over the result of grouping
+#
+create table t1 (
+username  varchar(32),
+amount int
+);
+insert into t1 values
+('user1',1),
+('user1',5),
+('user1',3),
+('user2',10),
+('user2',20),
+('user2',30);
+select username, sum(amount) as s, avg(sum(amount)) over (order by s desc)
+from t1
+group by username;
+username	s	avg(sum(amount)) over (order by s desc)
+user1	9	34.5000
+user2	60	60.0000
+select username, sum(amount), avg(sum(amount)) over (order by sum(amount) desc)
+from t1
+group by username;
+username	sum(amount)	avg(sum(amount)) over (order by sum(amount) desc)
+user1	9	34.5000
+user2	60	60.0000
+drop table t1;
+#
+# MDEV-11594: window function over implicit grouping
+#
+create table t1 (id int);
+insert into t1 values (1), (2), (3), (2);
+select sum(id) over (order by sum(id)) from t1;
+sum(id) over (order by sum(id))
+1
+select sum(sum(id)) over (order by sum(id)) from t1;
+sum(sum(id)) over (order by sum(id))
+8
+drop table t1;
+#
+# MDEV-9923: integer constant in order by list 
+#            of window specification
+#
+create table t1 (id int);
+insert into t1 values (1), (2), (3), (2);
+select rank() over (order by 1) from t1;
+rank() over (order by 1)
+1
+1
+1
+1
+select rank() over (order by 2) from t1;
+rank() over (order by 2)
+1
+1
+1
+1
+select rank() over (partition by id order by 2) from t1;
+rank() over (partition by id order by 2)
+1
+1
+1
+1
+drop table t1;
+#
+# MDEV-10660: view using a simple window function 
+#
+create table t1 (id int);
+insert into t1 values (1), (2), (3), (2);
+create view v1(id,rnk) as
+select id, rank() over (order by id) from t1;
+show create view v1;
+View	Create View	character_set_client	collation_connection
+v1	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v1` AS select `t1`.`id` AS `id`,rank() over ( order by `t1`.`id`) AS `rnk` from `t1`	latin1	latin1_swedish_ci
+select id, rank() over (order by id) from t1;
+id	rank() over (order by id)
+1	1
+2	2
+3	4
+2	2
+select * from v1;
+id	rnk
+1	1
+2	2
+3	4
+2	2
+drop view v1;
+drop table t1;
+#
+# MDEV-11138: window function in the query without tables 
+#
+select row_number() over ();
+row_number() over ()
+1
+select count(*) over ();
+count(*) over ()
+1
+select sum(5) over ();
+sum(5) over ()
+5
+select row_number() over (), sum(5) over ();
+row_number() over ()	sum(5) over ()
+1	5
+select row_number() over (order by 2);
+row_number() over (order by 2)
+1
+select row_number() over (partition by 2);
+row_number() over (partition by 2)
+1
+select row_number() over (partition by 4 order by 1+2);
+row_number() over (partition by 4 order by 1+2)
+1
+#
+# MDEV-11999: execution of prepared statement for  
+#             tableless query with window functions
+#
+prepare stmt from
+"select row_number() over (partition by 4 order by 1+2)";
+execute stmt;
+row_number() over (partition by 4 order by 1+2)
+1
+execute stmt;
+row_number() over (partition by 4 order by 1+2)
+1
+deallocate prepare stmt;

@@ -504,6 +504,8 @@ fil_node_create_low(
 
 	node = reinterpret_cast<fil_node_t*>(ut_zalloc_nokey(sizeof(*node)));
 
+	node->handle = OS_FILE_CLOSED;
+
 	node->name = mem_strdup(name);
 
 	ut_a(!is_raw || srv_start_raw_disk_in_use);
@@ -577,7 +579,7 @@ fil_node_open_file(
 
 	ut_ad(mutex_own(&fil_system->mutex));
 	ut_a(node->n_pending == 0);
-	ut_a(!node->is_open);
+	ut_a(!node->is_open());
 
 	read_only_mode = !fsp_is_system_temporary(space->id)
 		&& srv_read_only_mode;
@@ -701,7 +703,7 @@ retry:
 							   extent_size);
 			}
 
-			node->size = size_bytes / psize;
+			node->size = static_cast<ulint>(size_bytes / psize);
 			space->size += node->size;
 		}
 	}
@@ -747,8 +749,7 @@ retry:
         }
 
 	ut_a(success);
-
-	node->is_open = true;
+	ut_a(node->is_open());
 
 	fil_system->n_open++;
 	fil_n_file_opened++;
@@ -772,20 +773,22 @@ fil_node_close_file(
 	bool	ret;
 
 	ut_ad(mutex_own(&(fil_system->mutex)));
-	ut_a(node->is_open);
+	ut_a(node->is_open());
 	ut_a(node->n_pending == 0);
 	ut_a(node->n_pending_flushes == 0);
 	ut_a(!node->being_extended);
 	ut_a(node->modification_counter == node->flush_counter
 	     || node->space->purpose == FIL_TYPE_TEMPORARY
-	     || srv_fast_shutdown == 2);
+	     || srv_fast_shutdown == 2
+	     || !srv_was_started);
 
 	ret = os_file_close(node->handle);
 	ut_a(ret);
 
 	/* printf("Closing file %s\n", node->name); */
 
-	node->is_open = false;
+	node->handle = OS_FILE_CLOSED;
+	ut_ad(!node->is_open());
 	ut_a(fil_system->n_open > 0);
 	fil_system->n_open--;
 	fil_n_file_opened--;
@@ -907,7 +910,7 @@ fil_flush_low(fil_space_t* space)
 			continue;
 		}
 
-		ut_a(node->is_open);
+		ut_a(node->is_open());
 
 		switch (space->purpose) {
 		case FIL_TYPE_TEMPORARY:
@@ -950,7 +953,7 @@ retry:
 			goto retry;
 		}
 
-		ut_a(node->is_open);
+		ut_a(node->is_open());
 		node->n_pending_flushes++;
 
 		mutex_exit(&fil_system->mutex);
@@ -1269,7 +1272,7 @@ fil_mutex_enter_and_prepare_for_io(
 			the insert buffer. The insert buffer is in
 			tablespace 0, and we cannot end up waiting in
 			this function. */
-		} else if (!node || node->is_open) {
+		} else if (!node || node->is_open()) {
 			/* If the file is already open, no need to do
 			anything; if the space does not exist, we handle the
 			situation in the function which called this
@@ -1374,7 +1377,7 @@ fil_node_close_to_free(
 	ut_a(node->n_pending == 0);
 	ut_a(!node->being_extended);
 
-	if (node->is_open) {
+	if (node->is_open()) {
 		/* We fool the assertion in fil_node_close_file() to think
 		there are no unflushed modifications in the file */
 
@@ -1448,7 +1451,8 @@ fil_space_free_low(
 	fil_space_t*	space)
 {
 	/* The tablespace must not be in fil_system->named_spaces. */
-	ut_ad(srv_fast_shutdown == 2 || space->max_lsn == 0);
+	ut_ad(srv_fast_shutdown == 2 || !srv_was_started
+	      || space->max_lsn == 0);
 
 	for (fil_node_t* node = UT_LIST_GET_FIRST(space->chain);
 	     node != NULL; ) {
@@ -1887,7 +1891,7 @@ fil_space_open(
 	     node != NULL;
 	     node = UT_LIST_GET_NEXT(chain, node)) {
 
-		if (!node->is_open
+		if (!node->is_open()
 		    && !fil_node_open_file(node)) {
 			mutex_exit(&fil_system->mutex);
 			return(false);
@@ -1921,7 +1925,7 @@ fil_space_close(
 	     node != NULL;
 	     node = UT_LIST_GET_NEXT(chain, node)) {
 
-		if (node->is_open) {
+		if (node->is_open()) {
 			fil_node_close_file(node);
 		}
 	}
@@ -2012,7 +2016,7 @@ fil_open_log_and_system_tablespace_files(void)
 		     node != NULL;
 		     node = UT_LIST_GET_NEXT(chain, node)) {
 
-			if (!node->is_open) {
+			if (!node->is_open()) {
 				if (!fil_node_open_file(node)) {
 					/* This func is called during server's
 					startup. If some file of log or system
@@ -2057,6 +2061,7 @@ fil_close_all_files(void)
 
 	/* At shutdown, we should not have any files in this list. */
 	ut_ad(srv_fast_shutdown == 2
+	      || !srv_was_started
 	      || UT_LIST_GET_LEN(fil_system->named_spaces) == 0);
 
 	mutex_enter(&fil_system->mutex);
@@ -2070,7 +2075,7 @@ fil_close_all_files(void)
 		     node != NULL;
 		     node = UT_LIST_GET_NEXT(chain, node)) {
 
-			if (node->is_open) {
+			if (node->is_open()) {
 				fil_node_close_file(node);
 			}
 		}
@@ -2083,6 +2088,7 @@ fil_close_all_files(void)
 	mutex_exit(&fil_system->mutex);
 
 	ut_ad(srv_fast_shutdown == 2
+	      || !srv_was_started
 	      || UT_LIST_GET_LEN(fil_system->named_spaces) == 0);
 }
 
@@ -2116,7 +2122,7 @@ fil_close_log_files(
 		     node != NULL;
 		     node = UT_LIST_GET_NEXT(chain, node)) {
 
-			if (node->is_open) {
+			if (node->is_open()) {
 				fil_node_close_file(node);
 			}
 		}
@@ -3130,7 +3136,7 @@ fil_truncate_tablespace(
 
 	fil_node_t*	node = UT_LIST_GET_FIRST(space->chain);
 
-	ut_ad(node->is_open);
+	ut_ad(node->is_open());
 
 	space->size = node->size = size_in_pages;
 
@@ -3544,7 +3550,7 @@ func_exit:
 	} else if (node->modification_counter > node->flush_counter) {
 		/* Flush the space */
 		sleep = flush = true;
-	} else if (node->is_open) {
+	} else if (node->is_open()) {
 		/* Close the file */
 
 		fil_node_close_file(node);
@@ -4250,6 +4256,9 @@ skip_validate:
 		}
 
 		if (purpose != FIL_TYPE_IMPORT && !srv_read_only_mode) {
+			df_remote.close();
+			df_dict.close();
+			df_default.close();
 			fsp_flags_try_adjust(id, flags & ~FSP_FLAGS_MEM_MASK);
 		}
 	}
@@ -4933,7 +4942,7 @@ fil_node_prepare_for_io(
 			<< " exceeds the limit " << system->max_n_open;
 	}
 
-	if (!node->is_open) {
+	if (!node->is_open()) {
 		/* File is closed: open it */
 		ut_a(node->n_pending == 0);
 
@@ -5482,8 +5491,8 @@ struct	Check {
 	@param[in]	elem	file node to visit */
 	void	operator()(const fil_node_t* elem)
 	{
-		ut_a(elem->is_open || !elem->n_pending);
-		n_open += elem->is_open;
+		ut_a(elem->is_open() || !elem->n_pending);
+		n_open += elem->is_open();
 		size += elem->size;
 	}
 
@@ -5537,7 +5546,7 @@ fil_validate(void)
 
 		ut_a(fil_node->n_pending == 0);
 		ut_a(!fil_node->being_extended);
-		ut_a(fil_node->is_open);
+		ut_a(fil_node->is_open());
 		ut_a(fil_space_belongs_in_lru(fil_node->space));
 	}
 
@@ -5669,7 +5678,9 @@ struct fil_iterator_t {
 						for IO */
 	byte*		io_buffer;		/*!< Buffer to use for IO */
 	fil_space_crypt_t *crypt_data;		/*!< MariaDB Crypt data (if encrypted) */
-	byte*           crypt_io_buffer;        /*!< MariaDB IO buffer when encrypted */
+	byte*           crypt_io_buffer;        /*!< MariaDB IO buffer when
+						encrypted */
+	dict_table_t*	table;			/*!< Imported table */
 };
 
 /********************************************************************//**
@@ -5877,15 +5888,20 @@ fil_iterate(
 
 			if (page_compressed) {
 				ulint len = 0;
-				fil_compress_page(space_id,
+
+				byte * res = fil_compress_page(space_id,
 					src,
 					NULL,
 					size,
-					fil_space_get_page_compression_level(space_id),
+					dict_table_page_compression_level(iter.table),
 					fil_space_get_block_size(space_id, offset, size),
 					encrypted,
 					&len,
 					NULL);
+
+				if (len != size) {
+					memset(res+len, 0, size-len);
+				}
 
 				updated = true;
 			}
@@ -5936,6 +5952,9 @@ fil_iterate(
 			ib::error() << "os_file_write() failed";
 			return(err);
 		}
+
+		/* Clean up the temporal buffer. */
+		memset(writeptr, 0, n_bytes);
 	}
 
 	return(DB_SUCCESS);
@@ -6054,6 +6073,7 @@ fil_tablespace_iterate(
 		iter.file_size = file_size;
 		iter.n_io_buffers = n_io_buffers;
 		iter.page_size = callback.get_page_size().physical();
+		iter.table = table;
 
 		/* read (optional) crypt data */
 		iter.crypt_data = fil_space_read_crypt_data(
@@ -6485,7 +6505,7 @@ truncate_t::truncate(
 		space->size = node->size = FIL_IBD_FILE_INITIAL_SIZE;
 	}
 
-	const bool already_open = node->is_open;
+	const bool already_open = node->is_open();
 
 	if (!already_open) {
 
@@ -6506,7 +6526,7 @@ truncate_t::truncate(
 			return(DB_ERROR);
 		}
 
-		node->is_open = true;
+		ut_a(node->is_open());
 	}
 
 	os_offset_t	trunc_size = trunc_to_default
@@ -6536,7 +6556,7 @@ truncate_t::truncate(
 
 			err = DB_ERROR;
 		} else {
-			node->is_open = false;
+			node->handle = OS_FILE_CLOSED;
 		}
 	}
 
@@ -6876,7 +6896,7 @@ fil_node_t*
 fil_space_get_node(
 	fil_space_t*	space,		/*!< in: file spage */
 	ulint 		space_id,	/*!< in: space id   */
-	ulint* 		block_offset,	/*!< in/out: offset in number of blocks */
+	os_offset_t* 	block_offset,	/*!< in/out: offset in number of blocks */
 	ulint 		byte_offset,	/*!< in: remainder of offset in bytes; in
 					aio this must be divisible by the OS block
 					size */
@@ -6912,14 +6932,16 @@ fil_space_get_node(
 
 /********************************************************************//**
 Return block size of node in file space
+@param[in]	space_id		space id
+@param[in]	block_offset		page offset
+@param[in]	len			page len
 @return file block size */
 UNIV_INTERN
 ulint
 fil_space_get_block_size(
-/*=====================*/
-	ulint	space_id,
-	ulint	block_offset,
-	ulint	len)
+	ulint		space_id,
+	os_offset_t	block_offset,
+	ulint		len)
 {
 	ulint block_size = 512;
 	ut_ad(!mutex_own(&fil_system->mutex));

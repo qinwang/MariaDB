@@ -201,8 +201,6 @@ struct fil_node_t {
 	fil_space_t*	space;
 	/** file name; protected by fil_system->mutex and log_sys->mutex. */
 	char*		name;
-	/** whether this file is open */
-	bool		is_open;
 	/** file handle (valid if is_open) */
 	os_file_t	handle;
 	/** event that groups and serializes calls to fsync */
@@ -241,6 +239,12 @@ struct fil_node_t {
 
 	/** FIL_NODE_MAGIC_N */
 	ulint		magic_n;
+
+	/** @return whether this file is open */
+	bool is_open() const
+	{
+		return(handle != OS_FILE_CLOSED);
+	}
 };
 
 /** Value of fil_node_t::magic_n */
@@ -1568,15 +1572,16 @@ void test_make_filepath();
 
 /*******************************************************************//**
 Returns the block size of the file space
+@param[in]	space_id		space id
+@param[in]	offset			page offset
+@param[in]	len			page len
 @return	block size */
 UNIV_INTERN
 ulint
 fil_space_get_block_size(
-/*=====================*/
-	ulint	id,	/*!< in: space id */
-	ulint   offset, /*!< in: page offset */
-	ulint   len);	/*!< in: page len */
-
+	ulint		id,
+	os_offset_t	offset,
+	ulint		len);
 /*******************************************************************//**
 Increments the count of pending operation, if space is not being deleted.
 @return	TRUE if being deleted, and operation should be skipped */

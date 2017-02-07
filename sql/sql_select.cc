@@ -1439,8 +1439,6 @@ JOIN::optimize_inner()
   {
     DBUG_PRINT("info",("No tables"));
     error= 0;
-    if (make_aggr_tables_info())
-      DBUG_RETURN(1);
     goto setup_subq_exit;
   }
   error= -1;					// Error is sent to client
@@ -2128,7 +2126,17 @@ JOIN::optimize_inner()
 setup_subq_exit:
   /* Choose an execution strategy for this JOIN. */
   if (!tables_list || !table_count)
+  {
     choose_tableless_subquery_plan();
+    if (select_lex->have_window_funcs())
+    {
+      if (!(join_tab= (JOIN_TAB*) thd->alloc(sizeof(JOIN_TAB))))
+        DBUG_RETURN(1);
+      need_tmp= 1;
+    }
+    if (make_aggr_tables_info())
+      DBUG_RETURN(1);
+  }
   /*
     Even with zero matching rows, subqueries in the HAVING clause may
     need to be evaluated if there are aggregate functions in the query.
@@ -2177,13 +2185,16 @@ bool JOIN::make_aggr_tables_info()
   const bool has_group_by= this->group;
   
   sort_and_group_aggr_tab= NULL;
+
+  bool implicit_grouping_with_window_funcs= implicit_grouping &&
+                                            select_lex->have_window_funcs();
   
 
   /*
     Setup last table to provide fields and all_fields lists to the next
     node in the plan.
   */
-  if (join_tab)
+  if (join_tab && top_join_tab_count)
   {
     join_tab[top_join_tab_count - 1].fields= &fields_list;
     join_tab[top_join_tab_count - 1].all_fields= &all_fields;
@@ -2307,7 +2318,8 @@ bool JOIN::make_aggr_tables_info()
     single table queries, thus it is sufficient to test only the first
     join_tab element of the plan for its access method.
   */
-  if (join_tab && join_tab->is_using_loose_index_scan())
+  if (join_tab && top_join_tab_count &&
+      join_tab->is_using_loose_index_scan())
     tmp_table_param.precomputed_group_by=
       !join_tab->is_using_agg_loose_index_scan();
 
@@ -2338,9 +2350,11 @@ bool JOIN::make_aggr_tables_info()
     distinct= select_distinct && !group_list && 
               !select_lex->have_window_funcs();
     keep_row_order= false;
+    bool save_sum_fields= (group_list && simple_group) ||
+                           implicit_grouping_with_window_funcs;
     if (create_postjoin_aggr_table(curr_tab,
-                                   &all_fields, tmp_group, 
-                                   group_list && simple_group,
+                                   &all_fields, tmp_group,
+                                   save_sum_fields,
                                    distinct, keep_row_order))
       DBUG_RETURN(true);
     exec_tmp_table= curr_tab->table;
@@ -2540,7 +2554,9 @@ bool JOIN::make_aggr_tables_info()
     count_field_types(select_lex, &tmp_table_param, *curr_all_fields, false);
   }
 
-  if (group || implicit_grouping || tmp_table_param.sum_func_count)
+  if (group ||
+      (implicit_grouping  && !implicit_grouping_with_window_funcs) ||
+      tmp_table_param.sum_func_count)
   {
     if (make_group_fields(this, this))
       DBUG_RETURN(true);
@@ -2763,8 +2779,9 @@ JOIN::create_postjoin_aggr_table(JOIN_TAB *tab, List<Item> *table_fields,
   tmp_table_param.using_outer_summary_function=
     tab->tmp_table_param->using_outer_summary_function;
   tab->join= this;
-  DBUG_ASSERT(tab > tab->join->join_tab);
-  (tab - 1)->next_select= sub_select_postjoin_aggr;
+  DBUG_ASSERT(tab > tab->join->join_tab || !tables_list);
+  if (tables_list)
+    (tab - 1)->next_select= sub_select_postjoin_aggr;
   tab->aggr= new (thd->mem_root) AGGR_OP(tab);
   if (!tab->aggr)
     goto err;
@@ -2772,13 +2789,15 @@ JOIN::create_postjoin_aggr_table(JOIN_TAB *tab, List<Item> *table_fields,
   table->reginfo.join_tab= tab;
 
   /* if group or order on first table, sort first */
-  if (group_list && simple_group)
+  if ((group_list && simple_group) ||
+      (implicit_grouping && select_lex->have_window_funcs()))
   {
     DBUG_PRINT("info",("Sorting for group"));
     THD_STAGE_INFO(thd, stage_sorting_for_group);
 
     if (ordered_index_usage != ordered_index_group_by &&
         (join_tab + const_tables)->type != JT_CONST && // Don't sort 1 row
+        !implicit_grouping &&
         add_sorting_to_table(join_tab + const_tables, group_list))
       goto err;
 
@@ -3415,7 +3434,6 @@ JOIN::destroy()
 
   if (join_tab)
   {
-    DBUG_ASSERT(table_count+aggr_tables > 0);
     for (JOIN_TAB *tab= first_linear_tab(this, WITH_BUSH_ROOTS,
                                          WITH_CONST_TABLES);
          tab; tab= next_linear_tab(this, tab, WITH_BUSH_ROOTS))
@@ -21403,9 +21421,6 @@ create_sort_index(THD *thd, JOIN *join, JOIN_TAB *tab, Filesort *fsort)
   table=  tab->table;
   select= fsort->select;
  
-  /* Currently ORDER BY ... LIMIT is not supported in subqueries. */
-  DBUG_ASSERT(join->group_list || !join->is_in_subquery());
-
   table->status=0;				// May be wrong if quick_select
 
   if (!tab->preread_init_done && tab->preread_init())
@@ -21911,7 +21926,7 @@ cp_buffer_from_ref(THD *thd, TABLE *table, TABLE_REF *ref)
   @param[in,out] all_fields         All select, group and order by fields
   @param[in] is_group_field         True if order is a GROUP field, false if
     ORDER by field
-  @param[in] search_in_all_fields   If true then search in all_fields
+  @param[in] from_window_spec       If true then order is from a window spec
 
   @retval
     FALSE if OK
@@ -21922,7 +21937,7 @@ cp_buffer_from_ref(THD *thd, TABLE *table, TABLE_REF *ref)
 static bool
 find_order_in_list(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables,
                    ORDER *order, List<Item> &fields, List<Item> &all_fields,
-                   bool is_group_field, bool search_in_all_fields)
+                   bool is_group_field, bool from_window_spec)
 {
   Item *order_item= *order->item; /* The item from the GROUP/ORDER caluse. */
   Item::Type order_item_type;
@@ -21935,7 +21950,8 @@ find_order_in_list(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables
     Local SP variables may be int but are expressions, not positions.
     (And they can't be used before fix_fields is called for them).
   */
-  if (order_item->type() == Item::INT_ITEM && order_item->basic_const_item())
+  if (order_item->type() == Item::INT_ITEM && order_item->basic_const_item() &&
+      !from_window_spec)
   {						/* Order by position */
     uint count;
     if (order->counter_used)
@@ -22027,7 +22043,7 @@ find_order_in_list(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables
                           thd->where);
     }
   }
-  else if (search_in_all_fields)
+  else if (from_window_spec)
   {
     Item **found_item= find_item_in_list(order_item, all_fields, &counter,
                                          REPORT_EXCEPT_NOT_FOUND, &resolution,
@@ -22087,14 +22103,14 @@ find_order_in_list(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables
 
 int setup_order(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables,
 		List<Item> &fields, List<Item> &all_fields, ORDER *order,
-                bool search_in_all_fields)
+                bool from_window_spec)
 { 
   enum_parsing_place parsing_place= thd->lex->current_select->parsing_place;
   thd->where="order clause";
   for (; order; order=order->next)
   {
     if (find_order_in_list(thd, ref_pointer_array, tables, order, fields,
-			   all_fields, FALSE, search_in_all_fields))
+			   all_fields, FALSE, from_window_spec))
       return 1;
     if ((*order->item)->with_window_func && parsing_place != IN_ORDER_BY)
     {
@@ -22121,7 +22137,7 @@ int setup_order(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables,
   @param order		       The fields we should do GROUP/PARTITION BY on 
   @param hidden_group_fields   Pointer to flag that is set to 1 if we added
                                any fields to all_fields.
-  @param search_in_all_fields  If true then search in all_fields
+  @param from_window_spec      If true then list is from a window spec
 
   @todo
     change ER_WRONG_FIELD_WITH_GROUP to more detailed
@@ -22136,7 +22152,7 @@ int setup_order(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables,
 int
 setup_group(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables,
 	    List<Item> &fields, List<Item> &all_fields, ORDER *order,
-	    bool *hidden_group_fields, bool search_in_all_fields)
+	    bool *hidden_group_fields, bool from_window_spec)
 {
   enum_parsing_place parsing_place= thd->lex->current_select->parsing_place;
   *hidden_group_fields=0;
@@ -22151,7 +22167,7 @@ setup_group(THD *thd, Ref_ptr_array ref_pointer_array, TABLE_LIST *tables,
   for (ord= order; ord; ord= ord->next)
   {
     if (find_order_in_list(thd, ref_pointer_array, tables, ord, fields,
-			   all_fields, TRUE, search_in_all_fields))
+			   all_fields, TRUE, from_window_spec))
       return 1;
     (*ord->item)->marker= UNDEF_POS;		/* Mark found */
     if ((*ord->item)->with_sum_func && parsing_place == IN_GROUP_BY)

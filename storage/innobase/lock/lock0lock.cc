@@ -7766,6 +7766,9 @@ lock_trx_handle_wait(
 		trx_mutex_exit(trx);
 	}
 
+	ut_ad(err == DB_SUCCESS || err == DB_LOCK_WAIT
+	      || err == DB_DEADLOCK);
+
 	return(err);
 }
 
