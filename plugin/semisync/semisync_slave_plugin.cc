@@ -28,7 +28,7 @@ static ReplSemiSyncSlave repl_semisync;
   event read is the last event of a transaction. And the value is
   checked in repl_semi_slave_queue_event.
 */
-bool semi_sync_need_reply= false;
+unsigned char semi_sync_need_reply= 0;
 
 C_MODE_START
 
@@ -81,6 +81,23 @@ int repl_semi_slave_request_dump(Binlog_relay_IO_param *param,
     return 1;
   }
   mysql_free_result(mysql_store_result(mysql));
+
+  if (rpl_semi_sync_slave_lag_enabled)
+  {
+    char buf[100];
+    /*
+      Tell master that we can do exec-position reporting
+    */
+    snprintf(buf, sizeof(buf), "SET @%s= 1",
+             ReplSemiSyncBase::kRplSemiSyncSlaveReportExec);
+    if (mysql_real_query(mysql, buf, strlen(buf)))
+    {
+      sql_print_error("query: %s on master failed", buf);
+      return 1;
+    }
+    mysql_free_result(mysql_store_result(mysql));
+  }
+
   rpl_semi_sync_slave_status= 1;
   return 0;
 }
@@ -110,9 +127,11 @@ int repl_semi_slave_queue_event(Binlog_relay_IO_param *param,
       should not cause the slave IO thread to stop, and the error
       messages are already reported.
     */
-    (void) repl_semisync.slaveReply(param->mysql,
+    (void) repl_semisync.slaveReply(semi_sync_need_reply,
+                                    param->mysql,
                                     param->master_log_name,
-                                    param->master_log_pos);
+                                    param->master_log_pos,
+                                    param->mi);
   }
   return 0;
 }
@@ -164,9 +183,17 @@ static MYSQL_SYSVAR_ULONG(trace_level, rpl_semi_sync_slave_trace_level,
   &fix_rpl_semi_sync_trace_level, // update
   32, 0, ~0UL, 1);
 
+static MYSQL_SYSVAR_BOOL(lag_enabled, rpl_semi_sync_slave_lag_enabled,
+  PLUGIN_VAR_OPCMDARG,
+  "Enable semi-synchronous replication slave lag reporting. ",
+  NULL, // check
+  NULL, // update
+  0);
+
 static SYS_VAR* semi_sync_slave_system_vars[]= {
   MYSQL_SYSVAR(enabled),
   MYSQL_SYSVAR(trace_level),
+  MYSQL_SYSVAR(lag_enabled),
   NULL,
 };
 
@@ -230,4 +257,3 @@ maria_declare_plugin(semisync_slave)
   MariaDB_PLUGIN_MATURITY_STABLE
 }
 maria_declare_plugin_end;
-

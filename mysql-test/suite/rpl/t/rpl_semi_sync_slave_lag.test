@@ -1,0 +1,253 @@
+source include/have_semisync.inc;
+source include/not_embedded.inc;
+source include/have_innodb.inc;
+source include/master-slave.inc;
+
+connection master;
+set global rpl_semi_sync_master_enabled = 1;
+set global rpl_semi_sync_master_max_slave_lag = 10;
+
+show variables like 'rpl_semi_sync_master_%slave_lag%';
+
+connection slave;
+source include/stop_slave.inc;
+set global rpl_semi_sync_slave_enabled = 1;
+set global rpl_semi_sync_slave_lag_enabled = 1;
+
+source include/start_slave.inc;
+
+connection master;
+
+--echo # create non-root user for testing READ_ONLY
+create user test@localhost;
+grant SELECT, INSERT on *.* to test@localhost;
+connect (con1,localhost,test,,test);
+
+CREATE TABLE t1 (i INT NOT NULL AUTO_INCREMENT PRIMARY KEY, f varchar(8))
+ENGINE=innodb;
+
+--echo #
+--echo # Check basic behaviour
+--echo #
+INSERT INTO t1 (f) VALUES ('1'),('2'),('3');
+
+--echo # Now wait for slave lag to decrease to 0
+let $wait_condition= SELECT VARIABLE_VALUE = 0
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_estimated_slave_lag';
+--source include/wait_condition.inc
+
+--echo # [ on slave ]
+connection slave;
+STOP SLAVE SQL_THREAD;
+
+--echo # [ on master ]
+connection master;
+INSERT INTO t1 (f) VALUES ('4'),('5'),('6');
+
+--echo # Now wait for slave lag to increase to > 0
+let $wait_condition= SELECT VARIABLE_VALUE > 0
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_estimated_slave_lag';
+--source include/wait_condition.inc
+
+--echo # [ on slave ]
+connection slave;
+START SLAVE SQL_THREAD;
+
+--echo # [ on master ]
+connection master;
+
+--echo # Now wait for slave lag to decrease to 0
+let $wait_condition= SELECT VARIABLE_VALUE = 0
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_estimated_slave_lag';
+--source include/wait_condition.inc
+
+--echo # [ on slave ]
+connection slave;
+STOP SLAVE SQL_THREAD;
+
+--echo # [ on master ]
+connection master;
+
+set session rpl_semi_sync_master_slave_lag_wait_timeout = 5;
+
+--echo # First transaction should succeed. slave_lag is zero when it commits
+INSERT INTO t1 (f) VALUES ('7'),('8'),('9');
+
+--echo # Now wait for slave lag to increase to > 10s
+let $wait_condition= SELECT VARIABLE_VALUE > 10000000
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_estimated_slave_lag';
+--source include/wait_condition.inc
+
+--echo # Check that estimated_slave_lag is > 10s
+SELECT VARIABLE_VALUE > 10000000 as should_be_1
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_estimated_slave_lag';
+
+--echo # Second transaction should now fail. slave_lag is >10s when it commits
+--error ER_ERROR_DURING_COMMIT
+INSERT INTO t1 (f) VALUES ('a'),('b'),('c');
+
+--echo # [ on slave ]
+connection slave;
+START SLAVE SQL_THREAD;
+
+--echo # [ on master ]
+connection master;
+
+--echo # Now wait for slave lag to decrease to < 10s
+let $wait_condition= SELECT VARIABLE_VALUE < 10000000
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_estimated_slave_lag';
+--source include/wait_condition.inc
+
+--echo # And now it should succeed again
+INSERT INTO t1 (f) VALUES ('d'),('e'),('f');
+
+SELECT *
+FROM t1
+ORDER BY 1;
+
+sync_slave_with_master;
+
+--echo # [ on slave ]
+connection slave;
+
+SELECT *
+FROM t1
+ORDER BY 1;
+
+--echo #
+--echo # Test interaction with READ_ONLY
+--echo #
+
+--echo # [ on slave ]
+connection slave;
+STOP SLAVE SQL_THREAD;
+
+--echo # [ on master ]
+connection master;
+
+INSERT INTO t1 (f) VALUES ('g'),('h'),('i');
+
+--echo # Now wait for slave lag to increase to > 10s
+let $wait_condition= SELECT VARIABLE_VALUE > 10000000
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_estimated_slave_lag';
+--source include/wait_condition.inc
+
+connection con1;
+--echo # [ on con1 ]
+BEGIN;
+INSERT INTO t1 (f) VALUES ('g'),('h'),('i');
+
+connection master;
+--echo # [ on master ]
+set global read_only = 1;
+
+connection con1;
+--echo # [ on con1 ]
+set session rpl_semi_sync_master_slave_lag_wait_timeout = 5;
+
+--echo # read-only is check *before* slave lag
+--error ER_OPTION_PREVENTS_STATEMENT
+COMMIT;
+
+disconnect con1;
+
+--echo # [ on slave ]
+connection slave;
+START SLAVE SQL_THREAD;
+
+connection master;
+--echo # [ on master ]
+
+--echo # Now wait for slave lag to decrease to 0
+let $wait_condition= SELECT VARIABLE_VALUE = 0
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_estimated_slave_lag';
+--source include/wait_condition.inc
+
+set global read_only = 0;
+
+--echo #
+--echo # check slave_lag > 0 but less than rpl_semi_sync_master_max_slave_lag
+--echo #
+
+--echo # [ on slave ]
+connection slave;
+STOP SLAVE SQL_THREAD;
+
+connection master;
+--echo # [ on master ]
+INSERT INTO t1 (f) VALUES ('j'),('k'),('l');
+
+--echo # Now wait for slave lag to increase to > 0
+let $wait_condition= SELECT VARIABLE_VALUE > 0
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_estimated_slave_lag';
+--source include/wait_condition.inc
+
+--echo # Capture rpl_semi_sync_master_tx_slave_lag_waits before transaction
+--disable_result_log
+select @count_before := VARIABLE_VALUE
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_tx_slave_lag_waits';
+--enable_result_log
+
+--echo # Set maximum allowed slave lag to 24h
+set global rpl_semi_sync_master_max_slave_lag = 86400; # 24h
+
+INSERT INTO t1 (f) VALUES ('m'),('n'),('o');
+
+--echo # Capture rpl_semi_sync_master_tx_slave_lag_waits after transaction
+--disable_result_log
+select @count_after := VARIABLE_VALUE
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_tx_slave_lag_waits';
+--enable_result_log
+
+--echo # There should have been no wait, since maximum allowed is very high
+select @count_before = @count_after as should_be_1;
+
+--echo # [ on slave ]
+connection slave;
+START SLAVE SQL_THREAD;
+
+connection master;
+--echo # [ on master ]
+
+--echo # Now wait for slave lag to decrease to 0
+let $wait_condition= SELECT VARIABLE_VALUE = 0
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_estimated_slave_lag';
+--source include/wait_condition.inc
+
+--echo #
+--echo # Clean up
+--echo #
+connection master;
+--echo # [ on master ]
+set global rpl_semi_sync_master_max_slave_lag = default;
+set session rpl_semi_sync_master_slave_lag_wait_timeout = default;
+DROP USER test@localhost;
+
+connection slave;
+source include/stop_slave.inc;
+set global rpl_semi_sync_slave_enabled = 0;
+set global rpl_semi_sync_slave_lag_enabled = default;
+
+connection master;
+set global rpl_semi_sync_master_enabled = 0;
+
+connection slave;
+source include/start_slave.inc;
+
+connection master;
+
+DROP TABLE t1;
+sync_slave_with_master;
+--source include/rpl_end.inc

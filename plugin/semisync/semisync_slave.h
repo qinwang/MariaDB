@@ -60,23 +60,30 @@ public:
    * Return:
    *  0: success;  non-zero: error
    */
-  int slaveReadSyncHeader(const char *header, unsigned long total_len, bool *need_reply,
+  int slaveReadSyncHeader(const char *header, unsigned long total_len,
+                          unsigned char *need_reply_byte,
                           const char **payload, unsigned long *payload_len);
 
   /* A slave replies to the master indicating its replication process.  It
    * indicates that the slave has received all events before the specified
    * binlog position.
-   * 
+   *
    * Input:
+   *  need_reply_byte  - (IN)  the header byte
    *  mysql            - (IN)  the mysql network connection
    *  binlog_filename  - (IN)  the reply point's binlog file name
    *  binlog_filepos   - (IN)  the reply point's binlog file offset
+   *  master_info      - (IN)  the master info struct so that we can get more
+   *                           info if needed
    *
    * Return:
    *  0: success;  non-zero: error
    */
-  int slaveReply(MYSQL *mysql, const char *binlog_filename,
-                 my_off_t binlog_filepos);
+  int slaveReply(unsigned char need_reply_byte,
+                 MYSQL *mysql,
+                 const char *binlog_filename,
+                 my_off_t binlog_filepos,
+                 Master_info* master_info);
 
   int slaveStart(Binlog_relay_IO_param *param);
   int slaveStop(Binlog_relay_IO_param *param);
@@ -93,5 +100,6 @@ private:
 extern char rpl_semi_sync_slave_enabled;
 extern unsigned long rpl_semi_sync_slave_trace_level;
 extern char rpl_semi_sync_slave_status;
+extern char rpl_semi_sync_slave_lag_enabled;
 
 #endif /* SEMISYNC_SLAVE_H */

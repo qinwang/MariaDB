@@ -20,6 +20,7 @@
 char rpl_semi_sync_slave_enabled;
 char rpl_semi_sync_slave_status= 0;
 unsigned long rpl_semi_sync_slave_trace_level;
+char rpl_semi_sync_slave_lag_enabled= 0;
 
 int ReplSemiSyncSlave::initObject()
 {
@@ -42,7 +43,7 @@ int ReplSemiSyncSlave::initObject()
 
 int ReplSemiSyncSlave::slaveReadSyncHeader(const char *header,
                                       unsigned long total_len,
-                                      bool  *need_reply,
+                                      unsigned char *need_reply,
                                       const char **payload,
                                       unsigned long *payload_len)
 {
@@ -52,7 +53,7 @@ int ReplSemiSyncSlave::slaveReadSyncHeader(const char *header,
 
   if ((unsigned char)(header[0]) == kPacketMagicNum)
   {
-    *need_reply  = (header[1] & kPacketFlagSync);
+    *need_reply  = (header[1] & (kPacketFlagSync | kPacketFlagSyncAndReport));
     *payload_len = total_len - 2;
     *payload     = header + 2;
 
@@ -95,16 +96,20 @@ int ReplSemiSyncSlave::slaveStop(Binlog_relay_IO_param *param)
   return 0;
 }
 
-int ReplSemiSyncSlave::slaveReply(MYSQL *mysql,
-                                 const char *binlog_filename,
-                                 my_off_t binlog_filepos)
+int ReplSemiSyncSlave::slaveReply(unsigned char header_byte,
+                                  MYSQL *mysql,
+                                  const char *binlog_filename,
+                                  my_off_t binlog_filepos,
+                                  Master_info * mi)
 {
   const char *kWho = "ReplSemiSyncSlave::slaveReply";
   NET *net= &mysql->net;
-  uchar reply_buffer[REPLY_MAGIC_NUM_LEN
-                     + REPLY_BINLOG_POS_LEN
-                     + REPLY_BINLOG_NAME_LEN];
+  uchar reply_buffer[REPLY_MAGIC_NUM_LEN +
+                     2 * ( REPLY_BINLOG_POS_LEN +
+                           REPLY_BINLOG_NAME_LEN +
+                           /* '\0' */ 1) ];
   int  reply_res, name_len = strlen(binlog_filename);
+  int  msg_len = name_len + REPLY_BINLOG_NAME_OFFSET;
 
   function_enter(kWho);
 
@@ -119,10 +124,29 @@ int ReplSemiSyncSlave::slaveReply(MYSQL *mysql,
     sql_print_information("%s: reply (%s, %lu)", kWho,
                           binlog_filename, (ulong)binlog_filepos);
 
+  if (header_byte & kPacketFlagSyncAndReport)
+  {
+    /**
+     * master requests that we also report back SQL-thread position
+     */
+
+    // where to store sql filename/position
+    char *bufptr = (char*)reply_buffer + msg_len;
+    bufptr[0] = 0; // '\0' terminate previous filename
+    bufptr++;
+
+    my_off_t sql_file_pos;
+    // get file/position and store the filename directly info bufptr+8
+    size_t name_len2 = get_master_log_pos(mi, bufptr + 8, &sql_file_pos);
+    int8store(bufptr, sql_file_pos); // store position
+
+    msg_len += /* '\0' */ 1 + /* position */ 8 + name_len2 + /* '\0' */ 1;
+  }
+
   net_clear(net, 0);
   /* Send the reply. */
-  reply_res = my_net_write(net, reply_buffer,
-                           name_len + REPLY_BINLOG_NAME_OFFSET);
+  reply_res = my_net_write(net, reply_buffer, msg_len);
+
   if (!reply_res)
   {
     reply_res = net_flush(net);

@@ -20,6 +20,7 @@
 
 const unsigned char ReplSemiSyncBase::kPacketMagicNum = 0xef;
 const unsigned char ReplSemiSyncBase::kPacketFlagSync = 0x01;
+const unsigned char ReplSemiSyncBase::kPacketFlagSyncAndReport = 0x02;
 
 
 const unsigned long Trace::kTraceGeneral  = 0x0001;
@@ -29,3 +30,6 @@ const unsigned long Trace::kTraceFunction = 0x0040;
 
 const unsigned char  ReplSemiSyncBase::kSyncHeader[2] =
   {ReplSemiSyncBase::kPacketMagicNum, 0};
+
+const char* const ReplSemiSyncBase::kRplSemiSyncSlaveReportExec =
+    "rpl_semi_sync_slave_report_exec";

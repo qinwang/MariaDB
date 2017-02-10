@@ -1361,12 +1361,30 @@ int ha_commit_trans(THD *thd, bool all)
   /* rw_trans is TRUE when we in a transaction changing data */
   bool rw_trans= is_real_trans &&
                  (rw_ha_count > !thd->is_current_stmt_binlog_disabled());
+  bool mdl_request_initialized= false;
   MDL_request mdl_request;
   DBUG_PRINT("info", ("is_real_trans: %d  rw_trans:  %d  rw_ha_count: %d",
                       is_real_trans, rw_trans, rw_ha_count));
 
   if (rw_trans)
   {
+    /* check READ-ONLY just before before_commit hook to decrease likelihood
+     * of having threads hanging waiting for slave-lag only to be aborted
+     * due to read-only.
+     */
+    if (opt_readonly &&
+        !(thd->security_ctx->master_access & SUPER_ACL) &&
+        !thd->slave_thread)
+    {
+      my_error(ER_OPTION_PREVENTS_STATEMENT, MYF(0), "--read-only");
+      goto err;
+    }
+
+    if (RUN_HOOK(transaction, before_commit, (thd)))
+    {
+      goto err;
+    }
+
     /*
       Acquire a metadata lock which will ensure that COMMIT is blocked
       by an active FLUSH TABLES WITH READ LOCK (and vice versa:
@@ -1375,6 +1393,7 @@ int ha_commit_trans(THD *thd, bool all)
       We allow the owner of FTWRL to COMMIT; we assume that it knows
       what it does.
     */
+    mdl_request_initialized= true;
     mdl_request.init(MDL_key::COMMIT, "", "", MDL_INTENTION_EXCLUSIVE,
                      MDL_EXPLICIT);
 
@@ -1483,7 +1502,7 @@ err:
     ha_rollback_trans(thd, all);
 
 end:
-  if (rw_trans && mdl_request.ticket)
+  if (rw_trans && mdl_request_initialized && mdl_request.ticket)
   {
     /*
       We do not always immediately release transactional locks

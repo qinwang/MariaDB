@@ -142,7 +142,7 @@ class Trans_delegate
   :public Delegate {
 public:
   typedef Trans_observer Observer;
-  int before_commit(THD *thd, bool all);
+  int before_commit(THD *thd);
   int before_rollback(THD *thd, bool all);
   int after_commit(THD *thd, bool all);
   int after_rollback(THD *thd, bool all);

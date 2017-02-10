@@ -110,6 +110,21 @@ typedef struct Trans_observer {
      @retval 1 Failure
   */
   int (*after_rollback)(Trans_param *param);
+
+  /**
+     This callback is called before transaction commit
+     If function does not return *error == 0 transaction will
+     not be committed but error code will be returned to client
+
+     @note *error!=0 and return code 0 shall be used by plugin to signal
+     that transaction should be aborted.
+     If returning non-zero transaction will also be aborted and an error
+     will be printed to error log.
+
+     @retval 0 Sucess
+     @retval non-zero error
+  */
+  int (*before_commit)(Trans_param *param, int *error);
 } Trans_observer;
 
 /**
@@ -294,6 +309,8 @@ enum Binlog_relay_IO_flags {
 };
 
 
+class Master_info;
+
 /**
   Replication binlog relay IO observer parameter
 */
@@ -309,7 +326,19 @@ typedef struct Binlog_relay_IO_param {
   my_off_t master_log_pos;
 
   MYSQL *mysql;                        /* the connection to master */
+
+  Master_info * mi;                    /* master info handle */
 } Binlog_relay_IO_param;
+
+
+/* get the master log given a Master_info
+ * and store it in filename_buf/filepos
+ * return length of filename (excluding \0)
+ *
+ * note: filename_buf should be a minimum FN_REFLEN
+ */
+size_t get_master_log_pos(const Master_info *mi,
+                          char *filename_buf, my_off_t *filepos);
 
 /**
    Observes and extends the service of slave IO thread.
@@ -561,7 +590,21 @@ int get_user_var_str(const char *name,
                      char *value, unsigned long len,
                      unsigned int precision, int *null_value);
 
-  
+
+/**
+   Set or replace the value of user variable as to an ulonglong
+
+   @param name      user variable name
+   @param value     the value
+   @param old_value pointer to where old value will be stored (or NULL)
+
+   @retval  0 Success, no prior value found
+   @retval  1 Success, old_value populated
+   @retval -1 Fail
+*/
+int set_user_var_int(const char *name,
+                     long long int value,
+                     long long int *old_value);
 
 #ifdef __cplusplus
 }

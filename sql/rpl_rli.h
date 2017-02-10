@@ -155,7 +155,9 @@ public:
     standard lock acquisition order to avoid deadlocks:
     run_lock, data_lock, relay_log.LOCK_log, relay_log.LOCK_index
   */
-  mysql_mutex_t data_lock, run_lock;
+  mutable mysql_mutex_t data_lock;
+  mysql_mutex_t run_lock;
+
   /*
     start_cond is broadcast when SQL thread is started
     stop_cond - when stopped

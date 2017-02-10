@@ -821,8 +821,22 @@ static int send_heartbeat_event(binlog_send_info *info,
     packet->append(b, sizeof(b));
   }
 
+  if (RUN_HOOK(binlog_transmit, before_send_event,
+               (info->thd, info->flags, packet, 0, 0)))
+  {
+    info->error= ER_UNKNOWN_ERROR;
+    DBUG_RETURN(-1);
+  }
+
   if (my_net_write(net, (uchar*) packet->ptr(), packet->length()) ||
       net_flush(net))
+  {
+    info->error= ER_UNKNOWN_ERROR;
+    DBUG_RETURN(-1);
+  }
+
+  if (RUN_HOOK(binlog_transmit, after_send_event,
+               (info->thd, info->flags, packet)))
   {
     info->error= ER_UNKNOWN_ERROR;
     DBUG_RETURN(-1);

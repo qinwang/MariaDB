@@ -1,0 +1,183 @@
+include/master-slave.inc
+[connection master]
+connection master;
+set global rpl_semi_sync_master_enabled = 1;
+set global rpl_semi_sync_master_max_slave_lag = 10;
+show variables like 'rpl_semi_sync_master_%slave_lag%';
+Variable_name	Value
+rpl_semi_sync_master_max_slave_lag	10
+rpl_semi_sync_master_slave_lag_heartbeat_frequency_us	500000
+rpl_semi_sync_master_slave_lag_wait_timeout	50
+connection slave;
+include/stop_slave.inc
+set global rpl_semi_sync_slave_enabled = 1;
+set global rpl_semi_sync_slave_lag_enabled = 1;
+include/start_slave.inc
+connection master;
+# create non-root user for testing READ_ONLY
+create user test@localhost;
+grant SELECT, INSERT on *.* to test@localhost;
+connect  con1,localhost,test,,test;
+CREATE TABLE t1 (i INT NOT NULL AUTO_INCREMENT PRIMARY KEY, f varchar(8))
+ENGINE=innodb;
+#
+# Check basic behaviour
+#
+INSERT INTO t1 (f) VALUES ('1'),('2'),('3');
+# Now wait for slave lag to decrease to 0
+# [ on slave ]
+connection slave;
+STOP SLAVE SQL_THREAD;
+# [ on master ]
+connection master;
+INSERT INTO t1 (f) VALUES ('4'),('5'),('6');
+# Now wait for slave lag to increase to > 0
+# [ on slave ]
+connection slave;
+START SLAVE SQL_THREAD;
+# [ on master ]
+connection master;
+# Now wait for slave lag to decrease to 0
+# [ on slave ]
+connection slave;
+STOP SLAVE SQL_THREAD;
+# [ on master ]
+connection master;
+set session rpl_semi_sync_master_slave_lag_wait_timeout = 5;
+# First transaction should succeed. slave_lag is zero when it commits
+INSERT INTO t1 (f) VALUES ('7'),('8'),('9');
+# Now wait for slave lag to increase to > 10s
+# Check that estimated_slave_lag is > 10s
+SELECT VARIABLE_VALUE > 10000000 as should_be_1
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_estimated_slave_lag';
+should_be_1
+1
+# Second transaction should now fail. slave_lag is >10s when it commits
+INSERT INTO t1 (f) VALUES ('a'),('b'),('c');
+ERROR HY000: Slave-lag timeout
+# [ on slave ]
+connection slave;
+START SLAVE SQL_THREAD;
+# [ on master ]
+connection master;
+# Now wait for slave lag to decrease to < 10s
+# And now it should succeed again
+INSERT INTO t1 (f) VALUES ('d'),('e'),('f');
+SELECT *
+FROM t1
+ORDER BY 1;
+i	f
+1	1
+2	2
+3	3
+4	4
+5	5
+6	6
+7	7
+8	8
+9	9
+13	d
+14	e
+15	f
+connection slave;
+# [ on slave ]
+connection slave;
+SELECT *
+FROM t1
+ORDER BY 1;
+i	f
+1	1
+2	2
+3	3
+4	4
+5	5
+6	6
+7	7
+8	8
+9	9
+13	d
+14	e
+15	f
+#
+# Test interaction with READ_ONLY
+#
+# [ on slave ]
+connection slave;
+STOP SLAVE SQL_THREAD;
+# [ on master ]
+connection master;
+INSERT INTO t1 (f) VALUES ('g'),('h'),('i');
+# Now wait for slave lag to increase to > 10s
+connection con1;
+# [ on con1 ]
+BEGIN;
+INSERT INTO t1 (f) VALUES ('g'),('h'),('i');
+connection master;
+# [ on master ]
+set global read_only = 1;
+connection con1;
+# [ on con1 ]
+set session rpl_semi_sync_master_slave_lag_wait_timeout = 5;
+# read-only is check *before* slave lag
+COMMIT;
+ERROR HY000: The MariaDB server is running with the --read-only option so it cannot execute this statement
+disconnect con1;
+# [ on slave ]
+connection slave;
+START SLAVE SQL_THREAD;
+connection master;
+# [ on master ]
+# Now wait for slave lag to decrease to 0
+set global read_only = 0;
+#
+# check slave_lag > 0 but less than rpl_semi_sync_master_max_slave_lag
+#
+# [ on slave ]
+connection slave;
+STOP SLAVE SQL_THREAD;
+connection master;
+# [ on master ]
+INSERT INTO t1 (f) VALUES ('j'),('k'),('l');
+# Now wait for slave lag to increase to > 0
+# Capture rpl_semi_sync_master_tx_slave_lag_waits before transaction
+select @count_before := VARIABLE_VALUE
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_tx_slave_lag_waits';
+# Set maximum allowed slave lag to 24h
+set global rpl_semi_sync_master_max_slave_lag = 86400;
+INSERT INTO t1 (f) VALUES ('m'),('n'),('o');
+# Capture rpl_semi_sync_master_tx_slave_lag_waits after transaction
+select @count_after := VARIABLE_VALUE
+FROM INFORMATION_SCHEMA.GLOBAL_STATUS
+WHERE VARIABLE_NAME = 'rpl_semi_sync_master_tx_slave_lag_waits';
+# There should have been no wait, since maximum allowed is very high
+select @count_before = @count_after as should_be_1;
+should_be_1
+1
+# [ on slave ]
+connection slave;
+START SLAVE SQL_THREAD;
+connection master;
+# [ on master ]
+# Now wait for slave lag to decrease to 0
+#
+# Clean up
+#
+connection master;
+# [ on master ]
+set global rpl_semi_sync_master_max_slave_lag = default;
+set session rpl_semi_sync_master_slave_lag_wait_timeout = default;
+DROP USER test@localhost;
+connection slave;
+include/stop_slave.inc
+set global rpl_semi_sync_slave_enabled = 0;
+set global rpl_semi_sync_slave_lag_enabled = default;
+connection master;
+set global rpl_semi_sync_master_enabled = 0;
+connection slave;
+include/start_slave.inc
+connection master;
+DROP TABLE t1;
+connection slave;
+include/rpl_end.inc

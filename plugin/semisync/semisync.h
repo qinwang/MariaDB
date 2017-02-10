@@ -75,13 +75,23 @@ public:
 
   /* Constants in network packet header. */
   static const unsigned char kPacketMagicNum;
+  /* this event should be semisync acked */
   static const unsigned char kPacketFlagSync;
+  /* this event should be semisync acked including the current SQL position */
+  static const unsigned char kPacketFlagSyncAndReport;
+
+  /* user variable for enabling exec-pos reporting */
+  static const char* const kRplSemiSyncSlaveReportExec;
 };
 
 /* The layout of a semisync slave reply packet:
    1 byte for the magic num
    8 bytes for the binlog positon
-   n bytes for the binlog filename, terminated with a '\0'
+   n bytes for the binlog filename, NOT terminated with a '\0'
+   [ optionally ]
+   1 byte == 0
+   8 bytes for the sql-thread position
+   n bytes for the sql-thread filename, terminated with a '\0'
 */
 #define REPLY_MAGIC_NUM_LEN 1
 #define REPLY_BINLOG_POS_LEN 8
