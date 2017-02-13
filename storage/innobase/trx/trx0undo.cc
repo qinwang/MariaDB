@@ -1,6 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -32,7 +33,6 @@ Created 3/26/1996 Heikki Tuuri
 #endif
 
 #include "fsp0fsp.h"
-#ifndef UNIV_HOTBACKUP
 #include "mach0data.h"
 #include "mtr0log.h"
 #include "srv0mon.h"
@@ -97,7 +97,6 @@ it until a truncate operation occurs, which can remove undo logs from the end
 of the list and release undo log segments. In stepping through the list,
 s-latches on the undo log pages are enough, but in a truncate, x-latches must
 be obtained on the rollback segment and individual pages. */
-#endif /* !UNIV_HOTBACKUP */
 
 /********************************************************************//**
 Initializes the fields in an undo log segment page. */
@@ -109,7 +108,6 @@ trx_undo_page_init(
 	ulint	type,		/*!< in: undo log segment type */
 	mtr_t*	mtr);		/*!< in: mtr */
 
-#ifndef UNIV_HOTBACKUP
 /********************************************************************//**
 Creates and initializes an undo log memory object.
 @return own: the undo log memory object */
@@ -126,7 +124,6 @@ trx_undo_mem_create(
 	const XID*	xid,	/*!< in: X/Open XA transaction identification*/
 	ulint		page_no,/*!< in: undo log header page number */
 	ulint		offset);/*!< in: undo log header byte offset on page */
-#endif /* !UNIV_HOTBACKUP */
 /***************************************************************//**
 Initializes a cached insert undo log header page for new use. NOTE that this
 function has its own log record type MLOG_UNDO_HDR_REUSE. You must NOT change
@@ -150,7 +147,6 @@ trx_undo_discard_latest_update_undo(
 	page_t*	undo_page,	/*!< in: header page of an undo log of size 1 */
 	mtr_t*	mtr);		/*!< in: mtr */
 
-#ifndef UNIV_HOTBACKUP
 /***********************************************************************//**
 Gets the previous record in an undo log from the previous page.
 @return undo log record, the page s-latched, NULL if none */
@@ -374,9 +370,6 @@ trx_undo_page_init_log(
 
 	mlog_catenate_ulint_compressed(mtr, type);
 }
-#else /* !UNIV_HOTBACKUP */
-# define trx_undo_page_init_log(undo_page,type,mtr) ((void) 0)
-#endif /* !UNIV_HOTBACKUP */
 
 /***********************************************************//**
 Parses the redo log entry of an undo log page initialization.
@@ -431,7 +424,6 @@ trx_undo_page_init(
 	trx_undo_page_init_log(undo_page, type, mtr);
 }
 
-#ifndef UNIV_HOTBACKUP
 /***************************************************************//**
 Creates a new undo log segment in file.
 @return DB_SUCCESS if page creation OK possible error codes are:
@@ -543,9 +535,6 @@ trx_undo_header_create_log(
 
 	mlog_catenate_ull_compressed(mtr, trx_id);
 }
-#else /* !UNIV_HOTBACKUP */
-# define trx_undo_header_create_log(undo_page,trx_id,mtr) ((void) 0)
-#endif /* !UNIV_HOTBACKUP */
 
 /***************************************************************//**
 Creates a new undo log header in file. NOTE that this function has its own
@@ -621,7 +610,6 @@ trx_undo_header_create(
 	return(free);
 }
 
-#ifndef UNIV_HOTBACKUP
 /********************************************************************//**
 Write X/Open XA Transaction Identification (XID) to undo log header */
 static
@@ -722,9 +710,6 @@ trx_undo_insert_header_reuse_log(
 
 	mlog_catenate_ull_compressed(mtr, trx_id);
 }
-#else /* !UNIV_HOTBACKUP */
-# define trx_undo_insert_header_reuse_log(undo_page,trx_id,mtr) ((void) 0)
-#endif /* !UNIV_HOTBACKUP */
 
 /** Parse the redo log entry of an undo log page header create or reuse.
 @param[in]	type	MLOG_UNDO_HDR_CREATE or MLOG_UNDO_HDR_REUSE
@@ -820,7 +805,6 @@ trx_undo_insert_header_reuse(
 	return(free);
 }
 
-#ifndef UNIV_HOTBACKUP
 /**********************************************************************//**
 Writes the redo log entry of an update undo log header discard. */
 UNIV_INLINE
@@ -832,9 +816,6 @@ trx_undo_discard_latest_log(
 {
 	mlog_write_initial_log_record(undo_page, MLOG_UNDO_HDR_DISCARD, mtr);
 }
-#else /* !UNIV_HOTBACKUP */
-# define trx_undo_discard_latest_log(undo_page, mtr) ((void) 0)
-#endif /* !UNIV_HOTBACKUP */
 
 /***********************************************************//**
 Parses the redo log entry of an undo log page header discard.
@@ -898,7 +879,6 @@ trx_undo_discard_latest_update_undo(
 	trx_undo_discard_latest_log(undo_page, mtr);
 }
 
-#ifndef UNIV_HOTBACKUP
 /********************************************************************//**
 Tries to add a page to the undo log segment where the undo log is placed.
 @return X-latched block if success, else NULL */
@@ -2036,7 +2016,20 @@ trx_undo_free_prepared(
 	ut_ad(srv_shutdown_state == SRV_SHUTDOWN_EXIT_THREADS);
 
 	if (trx->rsegs.m_redo.update_undo) {
-		ut_a(trx->rsegs.m_redo.update_undo->state == TRX_UNDO_PREPARED);
+		switch (trx->rsegs.m_redo.update_undo->state) {
+		case TRX_UNDO_PREPARED:
+			break;
+		case TRX_UNDO_ACTIVE:
+			/* lock_trx_release_locks() assigns
+			trx->is_recovered=false */
+			ut_a(!srv_was_started
+			     || srv_read_only_mode
+			     || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO);
+			break;
+		default:
+			ut_error;
+		}
+
 		UT_LIST_REMOVE(trx->rsegs.m_redo.rseg->update_undo_list,
 			       trx->rsegs.m_redo.update_undo);
 		trx_undo_mem_free(trx->rsegs.m_redo.update_undo);
@@ -2045,7 +2038,20 @@ trx_undo_free_prepared(
 	}
 
 	if (trx->rsegs.m_redo.insert_undo) {
-		ut_a(trx->rsegs.m_redo.insert_undo->state == TRX_UNDO_PREPARED);
+		switch (trx->rsegs.m_redo.insert_undo->state) {
+		case TRX_UNDO_PREPARED:
+			break;
+		case TRX_UNDO_ACTIVE:
+			/* lock_trx_release_locks() assigns
+			trx->is_recovered=false */
+			ut_a(!srv_was_started
+			     || srv_read_only_mode
+			     || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO);
+			break;
+		default:
+			ut_error;
+		}
+
 		UT_LIST_REMOVE(trx->rsegs.m_redo.rseg->insert_undo_list,
 			       trx->rsegs.m_redo.insert_undo);
 		trx_undo_mem_free(trx->rsegs.m_redo.insert_undo);
@@ -2176,5 +2182,3 @@ trx_undo_truncate_tablespace(
 
 	return(success);
 }
-
-#endif /* !UNIV_HOTBACKUP */

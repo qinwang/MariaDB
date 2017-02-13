@@ -171,9 +171,9 @@
 #define JSONMAX      10             // JSON Default max grp size
 
 extern "C" {
-       char version[]= "Version 1.04.0008 August 10, 2016";
+       char version[]= "Version 1.05.0001 December 13, 2016";
 #if defined(__WIN__)
-       char compver[]= "Version 1.04.0008 " __DATE__ " "  __TIME__;
+       char compver[]= "Version 1.05.0001 " __DATE__ " "  __TIME__;
        char slash= '\\';
 #else   // !__WIN__
        char slash= '/';
@@ -224,6 +224,7 @@ uint    GetWorkSize(void);
 void    SetWorkSize(uint);
 extern "C" const char *msglang(void);
 
+static void PopUser(PCONNECT xp);
 static PCONNECT GetUser(THD *thd, PCONNECT xp);
 static PGLOBAL  GetPlug(THD *thd, PCONNECT& lxp);
 
@@ -511,13 +512,13 @@ ha_create_table_option connect_table_option_list[]=
   HA_TOPTION_NUMBER("QUOTED", quoted, (ulonglong) -1, 0, 3, 1),
   HA_TOPTION_NUMBER("ENDING", ending, (ulonglong) -1, 0, INT_MAX32, 1),
   HA_TOPTION_NUMBER("COMPRESS", compressed, 0, 0, 2, 1),
-//HA_TOPTION_BOOL("COMPRESS", compressed, 0),
   HA_TOPTION_BOOL("MAPPED", mapped, 0),
   HA_TOPTION_BOOL("HUGE", huge, 0),
   HA_TOPTION_BOOL("SPLIT", split, 0),
   HA_TOPTION_BOOL("READONLY", readonly, 0),
   HA_TOPTION_BOOL("SEPINDEX", sepindex, 0),
-  HA_TOPTION_END
+	HA_TOPTION_BOOL("ZIPPED", zipped, 0),
+	HA_TOPTION_END
 };
 
 
@@ -531,7 +532,6 @@ ha_create_table_option connect_field_option_list[]=
 {
   HA_FOPTION_NUMBER("FLAG", offset, (ulonglong) -1, 0, INT_MAX32, 1),
   HA_FOPTION_NUMBER("MAX_DIST", freq, 0, 0, INT_MAX32, 1), // BLK_INDX
-//HA_FOPTION_NUMBER("DISTRIB", opt, 0, 0, 2, 1),  // used for BLK_INDX
   HA_FOPTION_NUMBER("FIELD_LENGTH", fldlen, 0, 0, INT_MAX32, 1),
   HA_FOPTION_STRING("DATE_FORMAT", dateformat),
   HA_FOPTION_STRING("FIELD_FORMAT", fieldformat),
@@ -677,7 +677,6 @@ static int connect_init_func(void *p)
   connect_hton= (handlerton *)p;
   connect_hton->state= SHOW_OPTION_YES;
   connect_hton->create= connect_create_handler;
-//connect_hton->flags= HTON_TEMPORARY_NOT_SUPPORTED | HTON_NO_PARTITION;
   connect_hton->flags= HTON_TEMPORARY_NOT_SUPPORTED;
   connect_hton->table_options= connect_table_option_list;
   connect_hton->field_options= connect_field_option_list;
@@ -831,34 +830,43 @@ ha_connect::~ha_connect(void)
                          table ? table->s->table_name.str : "<null>",
                          xp, xp ? xp->count : 0);
 
-  if (xp) {
-    PCONNECT p;
-
-    xp->count--;
-
-    for (p= user_connect::to_users; p; p= p->next)
-      if (p == xp)
-        break;
-
-    if (p && !p->count) {
-      if (p->next)
-        p->next->previous= p->previous;
-
-      if (p->previous)
-        p->previous->next= p->next;
-      else
-        user_connect::to_users= p->next;
-
-      } // endif p
-
-    if (!xp->count) {
-      PlugCleanup(xp->g, true);
-      delete xp;
-      } // endif count
-
-    } // endif xp
-
+	PopUser(xp);
 } // end of ha_connect destructor
+
+
+/****************************************************************************/
+/*  Check whether this user can be removed.                                 */
+/****************************************************************************/
+static void PopUser(PCONNECT xp)
+{
+	if (xp) {
+		xp->count--;
+
+		if (!xp->count) {
+			PCONNECT p;
+
+			for (p= user_connect::to_users; p; p= p->next)
+			  if (p == xp)
+				  break;
+
+		  if (p) {
+			  if (p->next)
+				  p->next->previous= p->previous;
+
+			  if (p->previous)
+				  p->previous->next= p->next;
+			  else
+				  user_connect::to_users= p->next;
+
+		  } // endif p
+
+			PlugCleanup(xp->g, true);
+			delete xp;
+		} // endif count
+
+	} // endif xp
+
+} // end of PopUser
 
 
 /****************************************************************************/
@@ -866,7 +874,7 @@ ha_connect::~ha_connect(void)
 /****************************************************************************/
 static PCONNECT GetUser(THD *thd, PCONNECT xp)
 {
-  if (!thd)
+	if (!thd)
     return NULL;
 
   if (xp && thd == xp->thdp)
@@ -889,7 +897,6 @@ static PCONNECT GetUser(THD *thd, PCONNECT xp)
 
   return xp;
 } // end of GetUser
-
 
 /****************************************************************************/
 /*  Get the global pointer of the user of this handler.                     */
@@ -1126,7 +1133,9 @@ bool GetBooleanTableOption(PGLOBAL g, PTOS options, char *opname, bool bdef)
     opval= options->sepindex;
   else if (!stricmp(opname, "Header"))
     opval= (options->header != 0);   // Is Boolean for some table types
-  else if (options->oplist)
+	else if (!stricmp(opname, "Zipped"))
+		opval = options->zipped;
+	else if (options->oplist)
     if ((pv= GetListOption(g, opname, options->oplist)))
       opval= (!*pv || *pv == 'y' || *pv == 'Y' || atoi(pv) != 0);
 
@@ -1233,8 +1242,10 @@ char *ha_connect::GetStringOption(char *opname, char *sdef)
 
   if (opval && (!stricmp(opname, "connect") 
              || !stricmp(opname, "tabname") 
-             || !stricmp(opname, "filename")))
-    opval = GetRealString(opval);
+             || !stricmp(opname, "filename")
+						 || !stricmp(opname, "optname")
+						 || !stricmp(opname, "entry")))
+						 opval = GetRealString(opval);
 
   if (!opval) {
     if (sdef && !strcmp(sdef, "*")) {
@@ -4155,7 +4166,8 @@ bool ha_connect::check_privileges(THD *thd, PTOS options, char *dbn, bool quick)
     case TAB_DIR:
     case TAB_MAC:
     case TAB_WMI:
-    case TAB_OEM:
+		case TAB_ZIP:
+		case TAB_OEM:
 #ifdef NO_EMBEDDED_ACCESS_CHECKS
       return false;
 #endif
@@ -5163,13 +5175,13 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
   char        v=0, spc= ',', qch= 0;
   const char *fncn= "?";
   const char *user, *fn, *db, *host, *pwd, *sep, *tbl, *src;
-  const char *col, *ocl, *rnk, *pic, *fcl, *skc;
+  const char *col, *ocl, *rnk, *pic, *fcl, *skc, *zfn;
   char       *tab, *dsn, *shm, *dpath; 
 #if defined(__WIN__)
   char       *nsp= NULL, *cls= NULL;
 #endif   // __WIN__
-  int         port= 0, hdr= 0, mxr= 0, mxe= 0, rc= 0;
-  int         cop __attribute__((unused))= 0, lrecl= 0;
+//int         hdr, mxe;
+	int         port = 0, mxr = 0, rc = 0, mul = 0, lrecl = 0;
 #if defined(ODBC_SUPPORT)
   POPARM      sop= NULL;
   char       *ucnc= NULL;
@@ -5180,7 +5192,8 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 	PJPARM      sjp= NULL;
 	char       *driver= NULL;
 	char       *url= NULL;
-	char       *tabtyp = NULL;
+//char       *prop= NULL;
+	char       *tabtyp= NULL;
 #endif   // JDBC_SUPPORT
   uint        tm, fnc= FNC_NO, supfnc= (FNC_NO | FNC_COL);
   bool        bif, ok= false, dbf= false;
@@ -5200,7 +5213,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
   if (!g)
     return HA_ERR_INTERNAL_ERROR;
 
-  user= host= pwd= tbl= src= col= ocl= pic= fcl= skc= rnk= dsn= NULL;
+  user= host= pwd= tbl= src= col= ocl= pic= fcl= skc= rnk= zfn= dsn= NULL;
 
   // Get the useful create options
   ttp= GetTypeID(topt->type);
@@ -5213,7 +5226,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
   sep= topt->separator;
   spc= (!sep) ? ',' : *sep;
   qch= topt->qchar ? *topt->qchar : (signed)topt->quoted >= 0 ? '"' : 0;
-  hdr= (int)topt->header;
+	mul = (int)topt->multiple;
 	tbl= topt->tablist;
   col= topt->colist;
 
@@ -5246,13 +5259,16 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 #if defined(JDBC_SUPPORT)
 		driver= GetListOption(g, "Driver", topt->oplist, NULL);
 //	url= GetListOption(g, "URL", topt->oplist, NULL);
+//	prop = GetListOption(g, "Properties", topt->oplist, NULL);
 		tabtyp = GetListOption(g, "Tabtype", topt->oplist, NULL);
 #endif   // JDBC_SUPPORT
-    mxe= atoi(GetListOption(g,"maxerr", topt->oplist, "0"));
 #if defined(PROMPT_OK)
     cop= atoi(GetListOption(g, "checkdsn", topt->oplist, "0"));
 #endif   // PROMPT_OK
-  } else {
+#if defined(ZIP_SUPPORT)
+		zfn = GetListOption(g, "Zipfile", topt->oplist, NULL);
+#endif   // ZIP_SUPPORT
+	} else {
     host= "localhost";
     user= (ttp == TAB_ODBC ? NULL : "root");
   } // endif option_list
@@ -5260,7 +5276,18 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
   if (!(shm= (char*)db))
     db= table_s->db.str;                   // Default value
 
-  // Check table type
+	// Save stack and allocation environment and prepare error return
+	if (g->jump_level == MAX_JUMP) {
+		strcpy(g->Message, MSG(TOO_MANY_JUMPS));
+		goto jer;
+	} // endif jump_level
+
+	if ((rc= setjmp(g->jumper[++g->jump_level])) != 0) {
+		my_message(ER_UNKNOWN_ERROR, g->Message, MYF(0));
+		goto err;
+	} // endif rc
+
+	// Check table type
   if (ttp == TAB_UNDEF) {
     topt->type= (src) ? "MYSQL" : (tab) ? "PROXY" : "DOS";
     ttp= GetTypeID(topt->type);
@@ -5269,19 +5296,8 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
   } else if (ttp == TAB_NIY) {
     sprintf(g->Message, "Unsupported table type %s", topt->type);
     my_message(ER_UNKNOWN_ERROR, g->Message, MYF(0));
-    return HA_ERR_INTERNAL_ERROR;
+		goto err;
   } // endif ttp
-
-  // Save stack and allocation environment and prepare error return
-  if (g->jump_level == MAX_JUMP) {
-    strcpy(g->Message, MSG(TOO_MANY_JUMPS));
-    return HA_ERR_INTERNAL_ERROR;
-    } // endif jump_level
-
-  if ((rc= setjmp(g->jumper[++g->jump_level])) != 0) {
-    my_message(ER_UNKNOWN_ERROR, g->Message, MYF(0));
-    goto err;
-    } // endif rc
 
   if (!tab) {
     if (ttp == TAB_TBL) {
@@ -5356,6 +5372,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 			jdef->SetName(create_info->alias);
 			sjp= (PJPARM)PlugSubAlloc(g, NULL, sizeof(JDBCPARM));
 			sjp->Driver= driver;
+//		sjp->Properties = prop;
 			sjp->Fsize= 0;
 			sjp->Scrollable= false;
 
@@ -5458,7 +5475,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
     case TAB_XML:
 #endif   // LIBXML2_SUPPORT  ||         DOMDOC_SUPPORT
     case TAB_JSON:
-      if (!fn)
+      if (!fn && !zfn && !mul)
         sprintf(g->Message, "Missing %s file name", topt->type);
       else
         ok= true;
@@ -5572,7 +5589,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
                        NULL, port, fnc == FNC_COL);
         break;
       case TAB_CSV:
-        qrp= CSVColumns(g, dpath, fn, spc, qch, hdr, mxe, fnc == FNC_COL);
+				qrp = CSVColumns(g, dpath, topt, fnc == FNC_COL);
         break;
 #if defined(__WIN__)
       case TAB_WMI:
@@ -5842,6 +5859,7 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
       rc= init_table_share(thd, table_s, create_info, &sql);
 
     g->jump_level--;
+		PopUser(xp);
     return rc;
     } // endif ok
 
@@ -5849,7 +5867,9 @@ static int connect_assisted_discovery(handlerton *, THD* thd,
 
  err:
   g->jump_level--;
-  return HA_ERR_INTERNAL_ERROR;
+ jer:
+	PopUser(xp);
+	return HA_ERR_INTERNAL_ERROR;
 } // end of connect_assisted_discovery
 
 /**
@@ -6934,7 +6954,7 @@ maria_declare_plugin(connect)
   0x0104,                                       /* version number (1.04) */
   NULL,                                         /* status variables */
   connect_system_variables,                     /* system variables */
-  "1.04.0008",                                  /* string version */
+  "1.05.0001",                                  /* string version */
   MariaDB_PLUGIN_MATURITY_GAMMA                 /* maturity */
 }
 maria_declare_plugin_end;

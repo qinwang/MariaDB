@@ -384,7 +384,6 @@ enum latch_id_t {
 	LATCH_ID_HASH_TABLE_RW_LOCK,
 	LATCH_ID_BUF_CHUNK_MAP_LATCH,
 	LATCH_ID_SYNC_DEBUG_MUTEX,
-	LATCH_ID_MASTER_KEY_ID_MUTEX,
 	LATCH_ID_SCRUB_STAT_MUTEX,
 	LATCH_ID_DEFRAGMENT_MUTEX,
 	LATCH_ID_BTR_DEFRAGMENT_MUTEX,
@@ -1033,10 +1032,10 @@ struct latch_t {
 		return(m_temp_fsp);
 	}
 
-	/** Set the temporary tablespace flag. The latch order constraints
-	are different for intrinsic tables. We don't always acquire the
-	index->lock. We need to figure out the context and add some special
-	rules during the checks. */
+	/** Set the temporary tablespace flag. (For internal temporary
+	tables, MySQL 5.7 does not always acquire the index->lock. We
+	need to figure out the context and add some special rules
+	during the checks.) */
 	void set_temp_fsp()
 		UNIV_NOTHROW
 	{
@@ -1090,26 +1089,11 @@ struct btrsea_sync_check : public sync_check_functor_t {
 	virtual bool operator()(const latch_level_t level)
 	{
 		/* If calling thread doesn't hold search latch then
-		check if there are latch level exception provided.
-
-		Note: Optimizer has added InnoDB intrinsic table as an
-		alternative to MyISAM intrinsic table. With this a new
-		control flow comes into existence, it is:
-
-		Server -> Plugin -> SE
-
-		Plugin in this case is I_S which is sharing the latch vector
-		of InnoDB and so there could be lock conflicts. Ideally
-		the Plugin should use a difference namespace latch vector
-		as it doesn't have any depedency with SE latching protocol.
-
-		Added check that will allow thread to hold I_S latches */
+		check if there are latch level exception provided. */
 
 		if (!m_has_search_latch
 		    && (level != SYNC_SEARCH_SYS
-			&& level != SYNC_FTS_CACHE
-			&& level != SYNC_TRX_I_S_RWLOCK
-			&& level != SYNC_TRX_I_S_LAST_READ)) {
+			&& level != SYNC_FTS_CACHE)) {
 
 			m_result = true;
 

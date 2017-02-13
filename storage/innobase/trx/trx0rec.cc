@@ -1,6 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2017, MariaDB Corporation
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -33,7 +34,6 @@ Created 3/26/1996 Heikki Tuuri
 #include "mach0data.h"
 #include "trx0undo.h"
 #include "mtr0log.h"
-#ifndef UNIV_HOTBACKUP
 #include "dict0dict.h"
 #include "ut0mem.h"
 #include "read0read.h"
@@ -87,7 +87,6 @@ trx_undof_page_add_undo_rec_log(
 		mlog_catenate_string(mtr, undo_page + old_free + 2, len);
 	}
 }
-#endif /* !UNIV_HOTBACKUP */
 
 /***********************************************************//**
 Parses a redo log record of adding an undo log record.
@@ -135,7 +134,6 @@ trx_undo_parse_add_undo_rec(
 	return(ptr + len);
 }
 
-#ifndef UNIV_HOTBACKUP
 /**********************************************************************//**
 Calculates the free space left for extending an undo log record.
 @return bytes left */
@@ -1245,7 +1243,6 @@ trx_undo_page_report_modify(
 
 					ut_a(prefix_len < sizeof ext_buf);
 
-
 					spatial_status =
 						dict_col_get_spatial_status(
 							col);
@@ -1791,7 +1788,6 @@ trx_undo_rec_get_partial_row(
 
 	return(const_cast<byte*>(ptr));
 }
-#endif /* !UNIV_HOTBACKUP */
 
 /***********************************************************************//**
 Erases the unused undo log page end.
@@ -1838,7 +1834,6 @@ trx_undo_parse_erase_page_end(
 	return(ptr);
 }
 
-#ifndef UNIV_HOTBACKUP
 /***********************************************************************//**
 Writes information to an undo log about an insert, update, or a delete marking
 of a clustered index record. This information is used in a rollback of the
@@ -2223,8 +2218,6 @@ trx_undo_prev_version_build(
 				/*!< in: status determine if it is going
 				into this function by purge thread or not.
 				And if we read "after image" of undo log */
-
-
 {
 	trx_undo_rec_t*	undo_rec	= NULL;
 	dtuple_t*	entry;
@@ -2242,9 +2235,9 @@ trx_undo_prev_version_build(
 	byte*		buf;
 
 	ut_ad(!rw_lock_own(&purge_sys->latch, RW_LOCK_S));
-	ut_ad(mtr_memo_contains_page(index_mtr, index_rec, MTR_MEMO_PAGE_S_FIX)
-	      || mtr_memo_contains_page(index_mtr, index_rec,
-					MTR_MEMO_PAGE_X_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(index_mtr, index_rec,
+					     MTR_MEMO_PAGE_S_FIX
+					     | MTR_MEMO_PAGE_X_FIX));
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_a(dict_index_is_clust(index));
 
@@ -2411,7 +2404,6 @@ trx_undo_prev_version_build(
 				     v_status & TRX_UNDO_PREV_IN_PURGE, NULL);
 	}
 
-
 	return(true);
 }
 
@@ -2495,4 +2487,3 @@ trx_undo_read_v_cols(
 
 	ut_ad(ptr == end_ptr);
 }
-#endif /* !UNIV_HOTBACKUP */

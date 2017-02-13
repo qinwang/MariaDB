@@ -110,6 +110,7 @@ bool JDBCDEF::SetParms(PJPARM sjp)
 	sjp->Url= Url;
 	sjp->User= Username;
 	sjp->Pwd= Password;
+//sjp->Properties = Prop;
 	return true;
 }  // end of SetParms
 
@@ -234,6 +235,7 @@ bool JDBCDEF::DefineAM(PGLOBAL g, LPCSTR am, int poff)
 		Read_Only = true;
 
 	Wrapname = GetStringCatInfo(g, "Wrapper", NULL);
+//Prop = GetStringCatInfo(g, "Properties", NULL);
 	Tabcat = GetStringCatInfo(g, "Qualifier", NULL);
 	Tabcat = GetStringCatInfo(g, "Catalog", Tabcat);
 	Tabschema = GetStringCatInfo(g, "Dbname", NULL);
@@ -337,6 +339,7 @@ TDBJDBC::TDBJDBC(PJDBCDEF tdp) : TDBASE(tdp)
 		Schema = tdp->Tabschema;
 		Ops.User = tdp->Username;
 		Ops.Pwd = tdp->Password;
+//	Ops.Properties = tdp->Prop;
 		Catalog = tdp->Tabcat;
 		Srcdef = tdp->Srcdef;
 		Qrystr = tdp->Qrystr;
@@ -356,6 +359,7 @@ TDBJDBC::TDBJDBC(PJDBCDEF tdp) : TDBASE(tdp)
 		Ops.Url = NULL;
 		Ops.User = NULL;
 		Ops.Pwd = NULL;
+//	Ops.Properties = NULL;
 		Catalog = NULL;
 		Srcdef = NULL;
 		Qrystr = NULL;
@@ -686,6 +690,9 @@ bool TDBJDBC::MakeInsert(PGLOBAL g)
 	else
 		Prepared = true;
 
+	if (trace)
+		htrc("Insert=%s\n", Query->GetStr());
+
 	return false;
 } // end of MakeInsert
 
@@ -733,17 +740,18 @@ bool TDBJDBC::MakeCommand(PGLOBAL g)
 	// If so, it must be quoted in the original query
 	strlwr(strcat(strcat(strcpy(name, " "), Name), " "));
 
-	if (!strstr(" update delete low_priority ignore quick from ", name))
-		strlwr(strcpy(name, Name));     // Not a keyword
-	else
+	if (strstr(" update delete low_priority ignore quick from ", name)) {
 		strlwr(strcat(strcat(strcpy(name, qc), Name), qc));
+		k += 2;
+	} else
+		strlwr(strcpy(name, Name));     // Not a keyword
 
 	if ((p = strstr(qrystr, name))) {
 		for (i = 0; i < p - qrystr; i++)
 			stmt[i] = (Qrystr[i] == '`') ? *qc : Qrystr[i];
 
 		stmt[i] = 0;
-		k = i + (int)strlen(Name);
+		k += i + (int)strlen(Name);
 
 		if (qtd && *(p-1) == ' ')
 			strcat(strcat(strcat(stmt, qc), TableName), qc);
@@ -764,6 +772,9 @@ bool TDBJDBC::MakeCommand(PGLOBAL g)
 			(Mode == MODE_UPDATE) ? "UPDATE" : "DELETE");
 		return 1;
 	} // endif p
+
+	if (trace)
+		htrc("Command=%s\n", stmt);
 
 	Query = new(g)STRING(g, 0, stmt);
 	return (!Query->GetSize());
@@ -1214,6 +1225,10 @@ int TDBJDBC::WriteDB(PGLOBAL g)
 	} // endif oom
 
 	Query->RepLast(')');
+
+	if (trace > 1)
+		htrc("Inserting: %s\n", Query->GetStr());
+
 	rc = Jcp->ExecuteUpdate(Query->GetStr());
 	Query->Truncate(len);     // Restore query
 

@@ -1262,6 +1262,34 @@ protected:
 
 
 #ifdef HAVE_SPATIAL
+class Create_func_geometry_from_json : public Create_native_func
+{
+public:
+  virtual Item *create_native(THD *thd, LEX_STRING name, List<Item> *item_list);
+
+  static Create_func_geometry_from_json s_singleton;
+
+protected:
+  Create_func_geometry_from_json() {}
+  virtual ~Create_func_geometry_from_json() {}
+};
+
+
+class Create_func_as_geojson : public Create_native_func
+{
+public:
+  virtual Item *create_native(THD *thd, LEX_STRING name, List<Item> *item_list);
+
+  static Create_func_as_geojson s_singleton;
+
+protected:
+  Create_func_as_geojson() {}
+  virtual ~Create_func_as_geojson() {}
+};
+#endif /*HAVE_SPATIAL*/
+
+
+#ifdef HAVE_SPATIAL
 class Create_func_geometry_type : public Create_func_arg1
 {
 public:
@@ -1732,6 +1760,46 @@ protected:
   Create_func_json_valid() {}
   virtual ~Create_func_json_valid() {}
 };
+
+
+class Create_func_json_compact : public Create_func_arg1
+{
+public:
+  virtual Item *create_1_arg(THD *thd, Item *arg1);
+
+  static Create_func_json_compact s_singleton;
+
+protected:
+  Create_func_json_compact() {}
+  virtual ~Create_func_json_compact() {}
+};
+
+
+class Create_func_json_loose : public Create_func_arg1
+{
+public:
+  virtual Item *create_1_arg(THD *thd, Item *arg1);
+
+  static Create_func_json_loose s_singleton;
+
+protected:
+  Create_func_json_loose() {}
+  virtual ~Create_func_json_loose() {}
+};
+
+
+class Create_func_json_detailed : public Create_func_arg2
+{
+public:
+  virtual Item *create_2_arg(THD *thd, Item *arg1, Item *arg2);
+
+  static Create_func_json_detailed s_singleton;
+
+protected:
+  Create_func_json_detailed() {}
+  virtual ~Create_func_json_detailed() {}
+};
+
 
 
 class Create_func_json_type : public Create_func_arg1
@@ -4533,6 +4601,101 @@ Create_func_geometry_from_wkb::create_native(THD *thd, LEX_STRING name,
 
 
 #ifdef HAVE_SPATIAL
+Create_func_geometry_from_json Create_func_geometry_from_json::s_singleton;
+
+Item*
+Create_func_geometry_from_json::create_native(THD *thd, LEX_STRING name,
+                                             List<Item> *item_list)
+{
+  Item *func= NULL;
+  int arg_count= 0;
+
+  if (item_list != NULL)
+    arg_count= item_list->elements;
+
+  switch (arg_count) {
+  case 1:
+  {
+    Item *json= item_list->pop();
+    func= new (thd->mem_root) Item_func_geometry_from_json(thd, json);
+    thd->lex->uncacheable(UNCACHEABLE_RAND);
+    break;
+  }
+  case 2:
+  {
+    Item *json= item_list->pop();
+    Item *options= item_list->pop();
+    func= new (thd->mem_root) Item_func_geometry_from_json(thd, json, options);
+    break;
+  }
+  case 3:
+  {
+    Item *json= item_list->pop();
+    Item *options= item_list->pop();
+    Item *srid= item_list->pop();
+    func= new (thd->mem_root) Item_func_geometry_from_json(thd, json, options,
+                                                           srid);
+    break;
+  }
+  default:
+  {
+    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name.str);
+    break;
+  }
+  }
+
+  return func;
+}
+
+
+Create_func_as_geojson Create_func_as_geojson::s_singleton;
+
+Item*
+Create_func_as_geojson::create_native(THD *thd, LEX_STRING name,
+                                             List<Item> *item_list)
+{
+  Item *func= NULL;
+  int arg_count= 0;
+
+  if (item_list != NULL)
+    arg_count= item_list->elements;
+
+  switch (arg_count) {
+  case 1:
+  {
+    Item *geom= item_list->pop();
+    func= new (thd->mem_root) Item_func_as_geojson(thd, geom);
+    thd->lex->uncacheable(UNCACHEABLE_RAND);
+    break;
+  }
+  case 2:
+  {
+    Item *geom= item_list->pop();
+    Item *max_dec= item_list->pop();
+    func= new (thd->mem_root) Item_func_as_geojson(thd, geom, max_dec);
+    break;
+  }
+  case 3:
+  {
+    Item *geom= item_list->pop();
+    Item *max_dec= item_list->pop();
+    Item *options= item_list->pop();
+    func= new (thd->mem_root) Item_func_as_geojson(thd, geom, max_dec, options);
+    break;
+  }
+  default:
+  {
+    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name.str);
+    break;
+  }
+  }
+
+  return func;
+}
+#endif /*HAVE_SPATIAL*/
+
+
+#ifdef HAVE_SPATIAL
 Create_func_geometry_type Create_func_geometry_type::s_singleton;
 
 Item*
@@ -4880,6 +5043,35 @@ Create_func_json_exists::create_2_arg(THD *thd, Item *arg1, Item *arg2)
 }
 
 
+Create_func_json_detailed Create_func_json_detailed::s_singleton;
+
+Item*
+Create_func_json_detailed::create_2_arg(THD *thd, Item *arg1, Item *arg2)
+{
+  return new (thd->mem_root) Item_func_json_format(thd, arg1, arg2);
+}
+
+
+Create_func_json_loose Create_func_json_loose::s_singleton;
+
+Item*
+Create_func_json_loose::create_1_arg(THD *thd, Item *arg1)
+{
+  return new (thd->mem_root) Item_func_json_format(thd, arg1,
+               Item_func_json_format::LOOSE);
+}
+
+
+Create_func_json_compact Create_func_json_compact::s_singleton;
+
+Item*
+Create_func_json_compact::create_1_arg(THD *thd, Item *arg1)
+{
+  return new (thd->mem_root) Item_func_json_format(thd, arg1,
+               Item_func_json_format::COMPACT);
+}
+
+
 Create_func_json_valid Create_func_json_valid::s_singleton;
 
 Item*
@@ -5192,7 +5384,7 @@ Create_func_json_merge::create_native(THD *thd, LEX_STRING name,
   int arg_count;
 
   if (item_list == NULL ||
-      (arg_count= item_list->elements) == 0)
+      (arg_count= item_list->elements) < 2) // json, json
   {
     my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name.str);
     func= NULL;
@@ -5218,13 +5410,13 @@ Create_func_json_contains::create_native(THD *thd, LEX_STRING name,
   if (item_list != NULL)
     arg_count= item_list->elements;
 
-  if (arg_count < 2 /* json_doc, val, [path]...*/)
+  if (arg_count == 2 || arg_count == 3/* json_doc, val, [path] */)
   {
-    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name.str);
+    func= new (thd->mem_root) Item_func_json_contains(thd, *item_list);
   }
   else
   {
-    func= new (thd->mem_root) Item_func_json_contains(thd, *item_list);
+    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name.str);
   }
 
   return func;
@@ -6365,7 +6557,7 @@ Create_func_weekofyear Create_func_weekofyear::s_singleton;
 Item*
 Create_func_weekofyear::create_1_arg(THD *thd, Item *arg1)
 {
-  Item *i1= new (thd->mem_root) Item_int(thd, (char*) "0", 3, 1);
+  Item *i1= new (thd->mem_root) Item_int(thd, (char*) "3", 3, 1);
   return new (thd->mem_root) Item_func_week(thd, arg1, i1);
 }
 
@@ -6605,14 +6797,17 @@ static Native_func_registry func_array[] =
   { { C_STRING_WITH_LEN("JSON_ARRAY") }, BUILDER(Create_func_json_array)},
   { { C_STRING_WITH_LEN("JSON_ARRAY_APPEND") }, BUILDER(Create_func_json_array_append)},
   { { C_STRING_WITH_LEN("JSON_ARRAY_INSERT") }, BUILDER(Create_func_json_array_insert)},
+  { { C_STRING_WITH_LEN("JSON_COMPACT") }, BUILDER(Create_func_json_compact)},
   { { C_STRING_WITH_LEN("JSON_CONTAINS") }, BUILDER(Create_func_json_contains)},
   { { C_STRING_WITH_LEN("JSON_CONTAINS_PATH") }, BUILDER(Create_func_json_contains_path)},
   { { C_STRING_WITH_LEN("JSON_DEPTH") }, BUILDER(Create_func_json_depth)},
+  { { C_STRING_WITH_LEN("JSON_DETAILED") }, BUILDER(Create_func_json_detailed)},
   { { C_STRING_WITH_LEN("JSON_EXISTS") }, BUILDER(Create_func_json_exists)},
   { { C_STRING_WITH_LEN("JSON_EXTRACT") }, BUILDER(Create_func_json_extract)},
   { { C_STRING_WITH_LEN("JSON_INSERT") }, BUILDER(Create_func_json_insert)},
   { { C_STRING_WITH_LEN("JSON_KEYS") }, BUILDER(Create_func_json_keys)},
   { { C_STRING_WITH_LEN("JSON_LENGTH") }, BUILDER(Create_func_json_length)},
+  { { C_STRING_WITH_LEN("JSON_LOOSE") }, BUILDER(Create_func_json_loose)},
   { { C_STRING_WITH_LEN("JSON_MERGE") }, BUILDER(Create_func_json_merge)},
   { { C_STRING_WITH_LEN("JSON_QUERY") }, BUILDER(Create_func_json_query)},
   { { C_STRING_WITH_LEN("JSON_QUOTE") }, BUILDER(Create_func_json_quote)},
@@ -6723,6 +6918,7 @@ static Native_func_registry func_array[] =
   { { C_STRING_WITH_LEN("STR_TO_DATE") }, BUILDER(Create_func_str_to_date)},
   { { C_STRING_WITH_LEN("ST_AREA") }, GEOM_BUILDER(Create_func_area)},
   { { C_STRING_WITH_LEN("ST_ASBINARY") }, GEOM_BUILDER(Create_func_as_wkb)},
+  { { C_STRING_WITH_LEN("ST_ASGEOJSON") }, GEOM_BUILDER(Create_func_as_geojson)},
   { { C_STRING_WITH_LEN("ST_ASTEXT") }, GEOM_BUILDER(Create_func_as_wkt)},
   { { C_STRING_WITH_LEN("ST_ASWKB") }, GEOM_BUILDER(Create_func_as_wkb)},
   { { C_STRING_WITH_LEN("ST_ASWKT") }, GEOM_BUILDER(Create_func_as_wkt)},
@@ -6748,6 +6944,7 @@ static Native_func_registry func_array[] =
   { { C_STRING_WITH_LEN("ST_GEOMETRYFROMWKB") }, GEOM_BUILDER(Create_func_geometry_from_wkb)},
   { { C_STRING_WITH_LEN("ST_GEOMETRYN") }, GEOM_BUILDER(Create_func_geometryn)},
   { { C_STRING_WITH_LEN("ST_GEOMETRYTYPE") }, GEOM_BUILDER(Create_func_geometry_type)},
+  { { C_STRING_WITH_LEN("ST_GEOMFROMGEOJSON") }, GEOM_BUILDER(Create_func_geometry_from_json)},
   { { C_STRING_WITH_LEN("ST_GEOMFROMTEXT") }, GEOM_BUILDER(Create_func_geometry_from_text)},
   { { C_STRING_WITH_LEN("ST_GEOMFROMWKB") }, GEOM_BUILDER(Create_func_geometry_from_wkb)},
 #ifndef DBUG_OFF

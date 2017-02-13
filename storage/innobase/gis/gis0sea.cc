@@ -1,6 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -28,8 +29,6 @@ Created 2014/01/16 Jimmy Yang
 #include "page0cur.h"
 #include "page0zip.h"
 #include "gis0rtree.h"
-
-#ifndef UNIV_HOTBACKUP
 #include "btr0cur.h"
 #include "btr0sea.h"
 #include "btr0pcur.h"
@@ -39,8 +38,6 @@ Created 2014/01/16 Jimmy Yang
 #include "trx0trx.h"
 #include "srv0mon.h"
 #include "gis0geo.h"
-
-#endif /* UNIV_HOTBACKUP */
 
 /*************************************************************//**
 Pop out used parent path entry, until we find the parent with matching
@@ -133,12 +130,10 @@ rtr_pcur_getnext_from_path(
 		      || latch_mode & BTR_MODIFY_LEAF);
 		mtr_s_lock(dict_index_get_lock(index), mtr);
 	} else {
-		ut_ad(mtr_memo_contains(mtr, dict_index_get_lock(index),
-					MTR_MEMO_SX_LOCK)
-		      || mtr_memo_contains(mtr, dict_index_get_lock(index),
-					MTR_MEMO_S_LOCK)
-		      || mtr_memo_contains(mtr, dict_index_get_lock(index),
-					   MTR_MEMO_X_LOCK));
+		ut_ad(mtr_memo_contains_flagged(mtr, &index->lock,
+						MTR_MEMO_SX_LOCK
+						| MTR_MEMO_S_LOCK
+						| MTR_MEMO_X_LOCK));
 	}
 
 	const page_size_t&	page_size = dict_table_page_size(index->table);
@@ -605,10 +600,9 @@ rtr_pcur_open_low(
 	}
 
 	if (latch_mode & BTR_MODIFY_TREE) {
-		ut_ad(mtr_memo_contains(mtr, dict_index_get_lock(index),
-					MTR_MEMO_X_LOCK)
-		      || mtr_memo_contains(mtr, dict_index_get_lock(index),
-					   MTR_MEMO_SX_LOCK));
+		ut_ad(mtr_memo_contains_flagged(mtr, &index->lock,
+						MTR_MEMO_X_LOCK
+						| MTR_MEMO_SX_LOCK));
 		tree_latched = true;
 	}
 
@@ -1550,7 +1544,6 @@ rtr_copy_buf(
 	(another) thread while it was copied. */
 	memcpy(&matches->block.page, &block->page, sizeof(buf_page_t));
 	matches->block.frame = block->frame;
-#ifndef UNIV_HOTBACKUP
 	matches->block.unzip_LRU = block->unzip_LRU;
 
 	ut_d(matches->block.in_unzip_LRU_list = block->in_unzip_LRU_list);
@@ -1569,12 +1562,9 @@ rtr_copy_buf(
 	matches->block.curr_n_fields = block->curr_n_fields;
 	matches->block.curr_left_side = block->curr_left_side;
 	matches->block.index = block->index;
-	matches->block.made_dirty_with_no_latch
-		= block->made_dirty_with_no_latch;
 
 	ut_d(matches->block.debug_latch = block->debug_latch);
 
-#endif /* !UNIV_HOTBACKUP */
 }
 
 /****************************************************************//**

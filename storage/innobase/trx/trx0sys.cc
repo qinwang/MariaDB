@@ -1,6 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2015, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -32,10 +33,6 @@ Created 3/26/1996 Heikki Tuuri
 #include "trx0sys.ic"
 #endif
 
-#ifdef UNIV_HOTBACKUP
-#include "fsp0types.h"
-
-#else	/* !UNIV_HOTBACKUP */
 #include "fsp0fsp.h"
 #include "mtr0log.h"
 #include "mtr0log.h"
@@ -64,7 +61,6 @@ struct file_format_t {
 
 /** The transaction system */
 trx_sys_t*		trx_sys		= NULL;
-#endif /* !UNIV_HOTBACKUP */
 
 /** List of animal names representing file format. */
 static const char*	file_format_name_map[] = {
@@ -134,7 +130,6 @@ ReadView::check_trx_id_sanity(
 	}
 }
 
-#ifndef UNIV_HOTBACKUP
 #ifdef UNIV_DEBUG
 /* Flag to control TRX_RSEG_N_SLOTS behavior debugging. */
 uint	trx_rseg_n_slots_debug = 0;
@@ -983,8 +978,7 @@ trx_sys_create_noredo_rsegs(
 	Slot-1....Slot-N: reserved for temp-tablespace.
 	Slot-N+1....Slot-127: reserved for system/undo-tablespace. */
 	for (ulint i = 0; i < n_nonredo_rseg; i++) {
-		ulint space = srv_tmp_space.space_id();
-		if (trx_rseg_create(space, i) == NULL) {
+		if (trx_rseg_create(SRV_TMP_SPACE_ID, i) == NULL) {
 			break;
 		}
 		++n_created;
@@ -1077,208 +1071,6 @@ trx_sys_create_rsegs(
 	return(n_used);
 }
 
-#else /* !UNIV_HOTBACKUP */
-/*****************************************************************//**
-Prints to stderr the MySQL binlog info in the system header if the
-magic number shows it valid. */
-void
-trx_sys_print_mysql_binlog_offset_from_page(
-/*========================================*/
-	const byte*	page)	/*!< in: buffer containing the trx
-				system header page, i.e., page number
-				TRX_SYS_PAGE_NO in the tablespace */
-{
-	const trx_sysf_t*	sys_header;
-
-	sys_header = page + TRX_SYS;
-
-	if (mach_read_from_4(sys_header + TRX_SYS_MYSQL_LOG_INFO
-			     + TRX_SYS_MYSQL_LOG_MAGIC_N_FLD)
-	    == TRX_SYS_MYSQL_LOG_MAGIC_N) {
-
-		ib::info() << "mysqlbackup: Last MySQL binlog file position "
-			<< mach_read_from_4(
-				sys_header + TRX_SYS_MYSQL_LOG_INFO
-				+ TRX_SYS_MYSQL_LOG_OFFSET_HIGH) << " "
-			<< mach_read_from_4(
-				sys_header + TRX_SYS_MYSQL_LOG_INFO
-				+ TRX_SYS_MYSQL_LOG_OFFSET_LOW)
-			<< ", file name " << sys_header
-			+ TRX_SYS_MYSQL_LOG_INFO + TRX_SYS_MYSQL_LOG_NAME;
-	}
-}
-
-/*****************************************************************//**
-Reads the file format id from the first system table space file.
-Even if the call succeeds and returns TRUE, the returned format id
-may be ULINT_UNDEFINED signalling that the format id was not present
-in the data file.
-@return TRUE if call succeeds */
-ibool
-trx_sys_read_file_format_id(
-/*========================*/
-	const char *pathname,  /*!< in: pathname of the first system
-				        table space file */
-	ulint *format_id)      /*!< out: file format of the system table
-				         space */
-{
-	os_file_t	file;
-	bool		success;
-	byte		buf[UNIV_PAGE_SIZE * 2];
-	page_t*		page = ut_align(buf, UNIV_PAGE_SIZE);
-	const byte*	ptr;
-	ib_id_t		file_format_id;
-
-	*format_id = ULINT_UNDEFINED;
-
-	file = os_file_create_simple_no_error_handling(
-		innodb_data_file_key,
-		pathname,
-		OS_FILE_OPEN,
-		OS_FILE_READ_ONLY,
-		srv_read_only_mode,
-		&success
-	);
-	if (!success) {
-		/* The following call prints an error message */
-		os_file_get_last_error(true);
-
-		ib::error() << "mysqlbackup: Error: trying to read system"
-			" tablespace file format, but could not open the"
-			" tablespace file " << pathname << "!";
-		return(FALSE);
-	}
-
-	/* Read the page on which file format is stored */
-
-	IORequest	read_req(IORequest::READ)
-
-	dberr_t	err = os_file_read_no_error_handling(
-		read_req, file, page, TRX_SYS_PAGE_NO * UNIV_PAGE_SIZE,
-		UNIV_PAGE_SIZE, NULL);
-
-	if (err != DB_SUCCESS) {
-		/* The following call prints an error message */
-		os_file_get_last_error(true);
-
-		ib::error() << "mysqlbackup: Error: trying to read system"
-			" tablespace file format, but failed to read the"
-			" tablespace file " << pathname << "!";
-
-		os_file_close(file);
-		return(FALSE);
-	}
-	os_file_close(file);
-
-	/* get the file format from the page */
-	ptr = page + TRX_SYS_FILE_FORMAT_TAG;
-	file_format_id = mach_read_from_8(ptr);
-	file_format_id -= TRX_SYS_FILE_FORMAT_TAG_MAGIC_N;
-
-	if (file_format_id >= FILE_FORMAT_NAME_N) {
-
-		/* Either it has never been tagged, or garbage in it. */
-		return(TRUE);
-	}
-
-	*format_id = (ulint) file_format_id;
-
-	return(TRUE);
-}
-
-/*****************************************************************//**
-Reads the file format id from the given per-table data file.
-@return TRUE if call succeeds */
-ibool
-trx_sys_read_pertable_file_format_id(
-/*=================================*/
-	const char *pathname,  /*!< in: pathname of a per-table
-				        datafile */
-	ulint *format_id)      /*!< out: file format of the per-table
-				         data file */
-{
-	os_file_t	file;
-	bool		success;
-	byte		buf[UNIV_PAGE_SIZE * 2];
-	page_t*		page = ut_align(buf, UNIV_PAGE_SIZE);
-	const byte*	ptr;
-	ib_uint32_t	flags;
-
-	*format_id = ULINT_UNDEFINED;
-
-	file = os_file_create_simple_no_error_handling(
-		innodb_data_file_key,
-		pathname,
-		OS_FILE_OPEN,
-		OS_FILE_READ_ONLY,
-		srv_read_only_mode,
-		&success
-	);
-	if (!success) {
-		/* The following call prints an error message */
-		os_file_get_last_error(true);
-
-		ib::error() << "mysqlbackup: Error: trying to read per-table"
-			" tablespace format, but could not open the tablespace"
-			" file " << pathname << "!";
-
-		return(FALSE);
-	}
-
-	IORequest	read_req(IORequest::READ);
-
-	/* Read the first page of the per-table datafile */
-
-	dberr_t	err = os_file_read_no_error_handling(
-		read_req, file, page, 0, UNIV_PAGE_SIZE, NULL);
-
-	if (err != DB_SUCCESS) {
-		/* The following call prints an error message */
-		os_file_get_last_error(true);
-
-		ib::error() << "mysqlbackup: Error: trying to per-table data"
-			" file format, but failed to read the tablespace file "
-			<< pathname << "!";
-
-		os_file_close(file);
-		return(FALSE);
-	}
-	os_file_close(file);
-
-	/* get the file format from the page */
-	ptr = page + 54;
-	flags = mach_read_from_4(ptr);
-
-	if (!fsp_flags_is_valid(flags) {
-		/* bad tablespace flags */
-		return(FALSE);
-	}
-
-	*format_id = FSP_FLAGS_GET_POST_ANTELOPE(flags);
-
-	return(TRUE);
-}
-
-
-/*****************************************************************//**
-Get the name representation of the file format from its id.
-@return pointer to the name */
-const char*
-trx_sys_file_format_id_to_name(
-/*===========================*/
-	const ulint	id)	/*!< in: id of the file format */
-{
-	if (!(id < FILE_FORMAT_NAME_N)) {
-		/* unknown id */
-		return("Unknown");
-	}
-
-	return(file_format_name_map[id]);
-}
-
-#endif /* !UNIV_HOTBACKUP */
-
-#ifndef UNIV_HOTBACKUP
 /*********************************************************************
 Shutdown/Close the transaction system. */
 void
@@ -1295,16 +1087,20 @@ trx_sys_close(void)
 			" shutdown: " << size << " read views open";
 	}
 
-	sess_close(trx_dummy_sess);
-	trx_dummy_sess = NULL;
+	if (trx_dummy_sess) {
+		sess_close(trx_dummy_sess);
+		trx_dummy_sess = NULL;
+	}
 
-	trx_purge_sys_close();
-
-	/* Free the double write data structures. */
-	buf_dblwr_free();
+	if (purge_sys) {
+		trx_purge_sys_close();
+	}
 
 	/* Only prepared transactions may be left in the system. Free them. */
-	ut_a(UT_LIST_GET_LEN(trx_sys->rw_trx_list) == trx_sys->n_prepared_trx);
+	ut_a(UT_LIST_GET_LEN(trx_sys->rw_trx_list) == trx_sys->n_prepared_trx
+	     || !srv_was_started
+	     || srv_read_only_mode
+	     || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO);
 
 	for (trx_t* trx = UT_LIST_GET_FIRST(trx_sys->rw_trx_list);
 	     trx != NULL;
@@ -1359,33 +1155,6 @@ trx_sys_close(void)
 	trx_sys = NULL;
 }
 
-/** @brief Convert an undo log to TRX_UNDO_PREPARED state on shutdown.
-
-If any prepared ACTIVE transactions exist, and their rollback was
-prevented by innodb_force_recovery, we convert these transactions to
-XA PREPARE state in the main-memory data structures, so that shutdown
-will proceed normally. These transactions will again recover as ACTIVE
-on the next restart, and they will be rolled back unless
-innodb_force_recovery prevents it again.
-
-@param[in]	trx	transaction
-@param[in,out]	undo	undo log to convert to TRX_UNDO_PREPARED */
-static
-void
-trx_undo_fake_prepared(
-	const trx_t*	trx,
-	trx_undo_t*	undo)
-{
-	ut_ad(srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO);
-	ut_ad(trx_state_eq(trx, TRX_STATE_ACTIVE));
-	ut_ad(trx->is_recovered);
-
-	if (undo != NULL) {
-		ut_ad(undo->state == TRX_UNDO_ACTIVE);
-		undo->state = TRX_UNDO_PREPARED;
-	}
-}
-
 /*********************************************************************
 Check if there are any active (non-prepared) transactions.
 @return total number of active transactions or 0 if none */
@@ -1393,46 +1162,15 @@ ulint
 trx_sys_any_active_transactions(void)
 /*=================================*/
 {
+	ulint	total_trx = 0;
+
 	trx_sys_mutex_enter();
 
-	ulint	total_trx = UT_LIST_GET_LEN(trx_sys->mysql_trx_list);
+	total_trx = UT_LIST_GET_LEN(trx_sys->rw_trx_list)
+		  + UT_LIST_GET_LEN(trx_sys->mysql_trx_list);
 
-	if (total_trx == 0) {
-		total_trx = UT_LIST_GET_LEN(trx_sys->rw_trx_list);
-		ut_a(total_trx >= trx_sys->n_prepared_trx);
-
-		if (total_trx > trx_sys->n_prepared_trx
-		    && srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO) {
-			for (trx_t* trx = UT_LIST_GET_FIRST(
-				     trx_sys->rw_trx_list);
-			     trx != NULL;
-			     trx = UT_LIST_GET_NEXT(trx_list, trx)) {
-				if (!trx_state_eq(trx, TRX_STATE_ACTIVE)
-				    || !trx->is_recovered) {
-					continue;
-				}
-				/* This was a recovered transaction
-				whose rollback was disabled by
-				the innodb_force_recovery setting.
-				Pretend that it is in XA PREPARE
-				state so that shutdown will work. */
-				trx_undo_fake_prepared(
-					trx, trx->rsegs.m_redo.insert_undo);
-				trx_undo_fake_prepared(
-					trx, trx->rsegs.m_redo.update_undo);
-				trx_undo_fake_prepared(
-					trx, trx->rsegs.m_noredo.insert_undo);
-				trx_undo_fake_prepared(
-					trx, trx->rsegs.m_noredo.update_undo);
-				trx->state = TRX_STATE_PREPARED;
-				trx_sys->n_prepared_trx++;
-				trx_sys->n_prepared_recovered_trx++;
-			}
-		}
-
-		ut_a(total_trx >= trx_sys->n_prepared_trx);
-		total_trx -= trx_sys->n_prepared_trx;
-	}
+	ut_a(total_trx >= trx_sys->n_prepared_trx);
+	total_trx -= trx_sys->n_prepared_trx;
 
 	trx_sys_mutex_exit();
 
@@ -1481,4 +1219,3 @@ trx_sys_validate_trx_list()
 	return(true);
 }
 #endif /* UNIV_DEBUG */
-#endif /* !UNIV_HOTBACKUP */

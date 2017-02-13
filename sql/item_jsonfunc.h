@@ -67,8 +67,8 @@ protected:
   String tmp_js, tmp_path;
 
 public:
-  Item_func_json_exists(THD *thd, Item *js, Item *path):
-    Item_int_func(thd, js, path) {}
+  Item_func_json_exists(THD *thd, Item *js, Item *i_path):
+    Item_int_func(thd, js, i_path) {}
   const char *func_name() const { return "json_exists"; }
   bool is_bool_type() { return true; }
   void fix_length_and_dec();
@@ -85,8 +85,8 @@ protected:
   String tmp_js, tmp_path;
 
 public:
-  Item_func_json_value(THD *thd, Item *js, Item *path):
-    Item_str_func(thd, js, path) {}
+  Item_func_json_value(THD *thd, Item *js, Item *i_path):
+    Item_str_func(thd, js, i_path) {}
   const char *func_name() const { return "json_value"; }
   void fix_length_and_dec();
   String *val_str(String *);
@@ -99,8 +99,8 @@ public:
 class Item_func_json_query: public Item_func_json_value
 {
 public:
-  Item_func_json_query(THD *thd, Item *js, Item *path):
-    Item_func_json_value(thd, js, path) {}
+  Item_func_json_query(THD *thd, Item *js, Item *i_path):
+    Item_func_json_value(thd, js, i_path) {}
   const char *func_name() const { return "json_query"; }
   bool check_and_get_value(json_engine_t *je, String *res, int *error);
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
@@ -174,17 +174,15 @@ class Item_func_json_contains: public Item_int_func
 {
 protected:
   String tmp_js;
-  json_path_with_flags *paths;
-  String *tmp_paths;
+  json_path_with_flags path;
+  String tmp_path;
   bool a2_constant, a2_parsed;
   String tmp_val, *val;
 public:
   Item_func_json_contains(THD *thd, List<Item> &list):
-    Item_int_func(thd, list), tmp_paths(0) {}
+    Item_int_func(thd, list) {}
   const char *func_name() const { return "json_contains"; }
-  bool fix_fields(THD *thd, Item **ref);
   void fix_length_and_dec();
-  void cleanup();
   longlong val_int();
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_json_contains>(thd, mem_root, this); }
@@ -199,6 +197,7 @@ protected:
   String *tmp_paths;
   bool mode_one;
   bool ooa_constant, ooa_parsed;
+  bool *p_found;
 
 public:
   Item_func_json_contains_path(THD *thd, List<Item> &list):
@@ -278,7 +277,7 @@ public:
 class Item_func_json_merge: public Item_func_json_array
 {
 protected:
-  String tmp_val;
+  String tmp_js1, tmp_js2;
 public:
   Item_func_json_merge(THD *thd, List<Item> &list):
     Item_func_json_array(thd, list) {}
@@ -293,12 +292,14 @@ public:
 class Item_func_json_length: public Item_int_func
 {
 protected:
+  json_path_with_flags path;
   String tmp_js;
   String tmp_path;
 public:
   Item_func_json_length(THD *thd, List<Item> &list):
     Item_int_func(thd, list) {}
   const char *func_name() const { return "json_length"; }
+  void fix_length_and_dec();
   longlong val_int();
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_json_length>(thd, mem_root, this); }
@@ -420,13 +421,35 @@ public:
   const char *func_name() const { return "cast_as_json"; }
   bool is_json_type() { return true; }
   void fix_length_and_dec();
-  String *val_str(String *str)
-  {
-    return args[0]->val_str(str);
-  }
-
+  String *val_str(String *str);
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_json_typecast>(thd, mem_root, this); }
+};
+
+
+class Item_func_json_format: public Item_str_func
+{
+public:
+  enum formats
+  {
+    NONE,
+    COMPACT,
+    LOOSE,
+    DETAILED
+  };
+protected:
+  formats fmt;
+  String tmp_js;
+public:
+  Item_func_json_format(THD *thd, Item *js, formats format):
+    Item_str_func(thd, js), fmt(format) {}
+  Item_func_json_format(THD *thd, Item *js, Item *tabsize):
+    Item_str_func(thd, js, tabsize), fmt(DETAILED) {}
+  const char *func_name() const;
+  void fix_length_and_dec();
+  String *val_str(String *str);
+  Item *get_copy(THD *thd, MEM_ROOT *mem_root)
+  { return get_item_copy<Item_func_json_format>(thd, mem_root, this); }
 };
 
 

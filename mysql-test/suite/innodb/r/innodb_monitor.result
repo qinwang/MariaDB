@@ -39,6 +39,7 @@ buffer_pages_written	disabled
 buffer_index_pages_written	disabled
 buffer_non_index_pages_written	disabled
 buffer_pages_read	disabled
+buffer_pages0_read	disabled
 buffer_index_sec_rec_cluster_reads	disabled
 buffer_index_sec_rec_cluster_reads_avoided	disabled
 buffer_data_reads	disabled
@@ -180,16 +181,8 @@ compress_pages_decompressed	disabled
 compression_pad_increments	disabled
 compression_pad_decrements	disabled
 compress_saved	disabled
-compress_trim_sect512	disabled
-compress_trim_sect1024	disabled
-compress_trim_sect2048	disabled
-compress_trim_sect4096	disabled
-compress_trim_sect8192	disabled
-compress_trim_sect16384	disabled
-compress_trim_sect32768	disabled
 compress_pages_page_compressed	disabled
 compress_page_compressed_trim_op	disabled
-compress_page_compressed_trim_op_saved	disabled
 compress_pages_page_decompressed	disabled
 compress_pages_page_compression_error	disabled
 compress_pages_encrypted	disabled

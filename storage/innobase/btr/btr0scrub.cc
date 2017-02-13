@@ -121,8 +121,8 @@ bool
 btr_scrub_lock_dict_func(ulint space, bool lock_to_close_table,
 			 const char * file, uint line)
 {
-	uint start = time(0);
-	uint last = start;
+	time_t start = time(0);
+	time_t last = start;
 
 	while (mutex_enter_nowait(&(dict_sys->mutex))) {
 		/* if we lock to close a table, we wait forever
@@ -136,10 +136,11 @@ btr_scrub_lock_dict_func(ulint space, bool lock_to_close_table,
 		}
 		os_thread_sleep(250000);
 
-		uint now = time(0);
+		time_t now = time(0);
+
 		if (now >= last + 30) {
 			fprintf(stderr,
-				"WARNING: %s:%u waited %u seconds for"
+				"WARNING: %s:%u waited %lu seconds for"
 				" dict_sys lock, space: %lu"
 				" lock_to_close_table: %u\n",
 				file, line, now - start, space,
@@ -366,12 +367,17 @@ btr_optimistic_scrub(
 
 	/* We play safe and reset the free bits */
 	if (!dict_index_is_clust(index) &&
-	    page_is_leaf(buf_block_get_frame(block))) {
+	    block != NULL) {
+		buf_frame_t* frame = buf_block_get_frame(block);
+		if (frame &&
+		    page_is_leaf(frame)) {
 
 			ibuf_reset_free_bits(block);
+		}
 	}
 
 	scrub_data->scrub_stat.page_reorganizations++;
+
 	return DB_SUCCESS;
 }
 
@@ -486,9 +492,13 @@ btr_pessimistic_scrub(
 		/* We play safe and reset the free bits
 		* NOTE: need to call this prior to btr_page_split_and_insert */
 		if (!dict_index_is_clust(index) &&
-		    page_is_leaf(buf_block_get_frame(block))) {
+		    block != NULL) {
+			buf_frame_t* frame = buf_block_get_frame(block);
+			if (frame &&
+			    page_is_leaf(frame)) {
 
-			ibuf_reset_free_bits(block);
+				ibuf_reset_free_bits(block);
+			}
 		}
 
 		rec = btr_page_split_and_insert(
@@ -787,11 +797,8 @@ btr_scrub_page(
 		return BTR_SCRUB_SKIP_PAGE_AND_CLOSE_TABLE;
 	}
 
-	buf_frame_t* frame = NULL;
+	buf_frame_t* frame = buf_block_get_frame(block);
 
-	if (block) {
-		frame = buf_block_get_frame(block);
-	}
 	if (!frame || btr_page_get_index_id(frame) !=
 	    scrub_data->current_index->id) {
 		/* page has been reallocated to new index */

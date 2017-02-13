@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 2000, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2013, 2016, MariaDB Corporation.
+Copyright (c) 2013, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -22,19 +22,6 @@ this program; if not, write to the Free Software Foundation, Inc.,
 /** "GEN_CLUST_INDEX" is the name reserved for InnoDB default
 system clustered index when there is no primary key. */
 extern const char innobase_index_reserve_name[];
-
-/* "innodb_file_per_table" tablespace name  is reserved by InnoDB in order
-to explicitly create a file_per_table tablespace for the table. */
-extern const char reserved_file_per_table_space_name[];
-
-/* "innodb_system" tablespace name is reserved by InnoDB for the
-system tablespace which uses space_id 0 and stores extra types of
-system pages like UNDO and doublewrite. */
-extern const char reserved_system_space_name[];
-
-/* "innodb_temporary" tablespace name is reserved by InnoDB for the
-predefined shared temporary tablespace. */
-extern const char reserved_temporary_space_name[];
 
 /* Structure defines translation table between mysql index and InnoDB
 index structures */
@@ -119,6 +106,8 @@ public:
 
 	const key_map* keys_to_use_for_scanning();
 
+	void column_bitmaps_signal();
+
 	/** Opens dictionary table object using table name. For partition, we need to
 	try alternative lower/upper case names to support moving data files across
 	platforms.
@@ -202,9 +191,6 @@ public:
 		//Ft_hints*		hints);
 
 	int ft_read(uchar* buf);
-
-	int enable_indexes(uint mode);
-	int disable_indexes(uint mode);
 
 	void position(const uchar *record);
 
@@ -458,7 +444,6 @@ protected:
 	int end_stmt();
 
 	dberr_t innobase_get_autoinc(ulonglong* value);
-	void innobase_initialize_autoinc();
 	dberr_t innobase_lock_autoinc();
 	ulonglong innobase_peek_autoinc();
 	dberr_t innobase_set_max_autoinc(ulonglong auto_inc);
@@ -467,9 +452,6 @@ protected:
 	/** Resets a query execution 'template'.
 	@see build_template() */
 	void reset_template();
-
-	/** Write Row Interface optimized for Intrinsic table. */
-	int intrinsic_table_write_row(uchar* record);
 
 protected:
 	inline void update_thd(THD* thd);
@@ -682,52 +664,6 @@ extern const char reserved_file_per_table_space_name[];
 //extern "C" int wsrep_trx_is_aborting(void *thd_ptr);
 #endif
 
-/** Check if the explicit tablespace targeted is file_per_table.
-@param[in]	create_info	Metadata for the table to create.
-@return true if the table is intended to use a file_per_table tablespace. */
-UNIV_INLINE
-bool
-tablespace_is_file_per_table(
-	const HA_CREATE_INFO*	create_info)
-{
-	return(create_info->tablespace != NULL
-	       && (0 == strcmp(create_info->tablespace,
-			       reserved_file_per_table_space_name)));
-}
-
-/** Check if table will be explicitly put in an existing shared general
-or system tablespace.
-@param[in]	create_info	Metadata for the table to create.
-@return true if the table will use a shared general or system tablespace. */
-UNIV_INLINE
-bool
-tablespace_is_shared_space(
-const HA_CREATE_INFO*	create_info)
-{
-	return(create_info->tablespace != NULL
-		&& create_info->tablespace[0] != '\0'
-		&& (0 != strcmp(create_info->tablespace,
-		reserved_file_per_table_space_name)));
-}
-
-/** Check if table will be explicitly put in a general tablespace.
-@param[in]	create_info	Metadata for the table to create.
-@return true if the table will use a general tablespace. */
-UNIV_INLINE
-bool
-tablespace_is_general_space(
-	const HA_CREATE_INFO*	create_info)
-{
-	return(create_info->tablespace != NULL
-		&& create_info->tablespace[0] != '\0'
-		&& (0 != strcmp(create_info->tablespace,
-				reserved_file_per_table_space_name))
-		&& (0 != strcmp(create_info->tablespace,
-				reserved_temporary_space_name))
-		&& (0 != strcmp(create_info->tablespace,
-				reserved_system_space_name)));
-}
-
 /** Parse hint for table and its indexes, and update the information
 in dictionary.
 @param[in]	thd		Connection thread
@@ -752,16 +688,12 @@ public:
 		TABLE*		form,
 		HA_CREATE_INFO*	create_info,
 		char*		table_name,
-		char*		temp_path,
-		char*		remote_path,
-		char*		tablespace)
+		char*		remote_path)
 	:m_thd(thd),
 	m_form(form),
 	m_create_info(create_info),
 	m_table_name(table_name),
-	m_temp_path(temp_path),
 	m_remote_path(remote_path),
-	m_tablespace(tablespace),
 	m_innodb_file_per_table(srv_file_per_table)
 	{}
 
@@ -787,6 +719,8 @@ public:
 	@return NULL if valid, string name of bad option if not. */
 	const char* create_options_are_invalid();
 
+	bool gcols_in_fulltext_or_spatial();
+
 	/** Validates engine specific table options not handled by
 	SQL-parser.
 	@return NULL if valid, string name of bad option if not. */
@@ -797,9 +731,6 @@ public:
 
 	/** Validate TABLESPACE option. */
 	bool create_option_tablespace_is_valid();
-
-	/** Validate COMPRESSION option. */
-	bool create_option_compression_is_valid();
 
 	/** Prepare to create a table. */
 	int prepare_create_table(const char*		name);
@@ -832,14 +763,6 @@ public:
 
 	THD* thd() const
 	{ return(m_thd); }
-
-	inline bool is_intrinsic_temp_table() const
-	{
-		/* DICT_TF2_INTRINSIC implies DICT_TF2_TEMPORARY */
-		ut_ad(!(m_flags2 & DICT_TF2_INTRINSIC)
-		      || (m_flags2 & DICT_TF2_TEMPORARY));
-		return((m_flags2 & DICT_TF2_INTRINSIC) != 0);
-	}
 
 	/** Normalizes a table name string.
 	A normalized name consists of the database name catenated to '/' and
@@ -879,18 +802,9 @@ private:
 
 	/** Table name */
 	char*		m_table_name;
-	/** If this is a table explicitly created by the user with the
-	TEMPORARY keyword, then this parameter is the dir path where the
-	table should be placed if we create an .ibd file for it
-	(no .ibd extension in the path, though).
-	Otherwise this is a zero length-string */
-	char*		m_temp_path;
 
 	/** Remote path (DATA DIRECTORY) or zero length-string */
 	char*		m_remote_path;
-
-	/** Tablespace name or zero length-string. */
-	char*		m_tablespace;
 
 	/** Local copy of srv_file_per_table. */
 	bool		m_innodb_file_per_table;
@@ -907,9 +821,6 @@ private:
 
 	/** Using DATA DIRECTORY */
 	bool		m_use_data_dir;
-
-	/** Using a Shared General Tablespace */
-	bool		m_use_shared_space;
 
 	/** Table flags */
 	ulint		m_flags;
@@ -1051,13 +962,9 @@ innodb_base_col_setup_for_stored(
 	dict_s_col_t*		s_col);
 
 /** whether this is a stored column */
-// JAN: TODO: MySQL 5.7 virtual fields
-//#define innobase_is_s_fld(field) ((field)->gcol_info && (field)->stored_in_db)
-#define innobase_is_s_fld(field) (field == NULL)
-// JAN: TODO: MySQL 5.7 virtual fields
+#define innobase_is_s_fld(field) ((field)->vcol_info && (field)->stored_in_db())
 /** whether this is a computed virtual column */
-//#define innobase_is_v_fld(field) ((field)->gcol_info && !(field)->stored_in_db)
-#define innobase_is_v_fld(field) (field == NULL)
+#define innobase_is_v_fld(field) ((field)->vcol_info && !(field)->stored_in_db())
 
 /** Release temporary latches.
 Call this function when mysqld passes control to the client. That is to
@@ -1134,16 +1041,14 @@ innodb_rec_per_key(
 @param[in,out]	s_templ		InnoDB template structure
 @param[in]	add_v		new virtual columns added along with
 				add index call
-@param[in]	locked		true if innobase_share_mutex is held
-@param[in]	share_tbl_name	original MySQL table name */
+@param[in]	locked		true if innobase_share_mutex is held */
 void
 innobase_build_v_templ(
 	const TABLE*		table,
 	const dict_table_t*	ib_table,
 	dict_vcol_templ_t*	s_templ,
 	const dict_add_v_col_t*	add_v,
-	bool			locked,
-	const char*		share_tbl_name);
+	bool			locked);
 
 /** callback used by MySQL server layer to initialized
 the table virtual columns' template
@@ -1158,6 +1063,13 @@ innobase_build_v_templ_callback(
 the table virtual columns' template */
 typedef void (*my_gcolumn_templatecallback_t)(const TABLE*, void*);
 
+/** Convert MySQL column number to dict_table_t::cols[] offset.
+@param[in]	field	non-virtual column
+@return	column number relative to dict_table_t::cols[] */
+unsigned
+innodb_col_no(const Field* field)
+	MY_ATTRIBUTE((nonnull, warn_unused_result));
+
 /********************************************************************//**
 Helper function to push frm mismatch error to error log and
 if needed to sql-layer. */
@@ -1171,19 +1083,3 @@ ib_push_frm_error(
 	ulint		n_keys,		/*!< in: InnoDB #keys */
 	bool		push_warning);	/*!< in: print warning ? */
 
-/*****************************************************************//**
-Validates the create options. We may build on this function
-in future. For now, it checks two specifiers:
-KEY_BLOCK_SIZE and ROW_FORMAT
-If innodb_strict_mode is not set then this function is a no-op
-@return	NULL if valid, string if not. */
-UNIV_INTERN
-const char*
-create_options_are_invalid(
-/*=======================*/
-	THD*		thd,		/*!< in: connection thread. */
-	TABLE*		form,		/*!< in: information on table
-					columns and indexes */
-	HA_CREATE_INFO*	create_info,	/*!< in: create info. */
-	bool		use_tablespace)	/*!< in: srv_file_per_table */
-	MY_ATTRIBUTE((nonnull, warn_unused_result));

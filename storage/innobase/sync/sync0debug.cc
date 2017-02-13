@@ -1544,8 +1544,6 @@ sync_latch_meta_init()
 
 	LATCH_ADD(SYNC_DEBUG_MUTEX, SYNC_NO_ORDER_CHECK, PFS_NOT_INSTRUMENTED);
 
-	LATCH_ADD(MASTER_KEY_ID_MUTEX, SYNC_NO_ORDER_CHECK, master_key_id_mutex_key);
-
 	/* JAN: TODO: Add PFS instrumentation */
 	LATCH_ADD(SCRUB_STAT_MUTEX, SYNC_NO_ORDER_CHECK, PFS_NOT_INSTRUMENTED);
 	LATCH_ADD(DEFRAGMENT_MUTEX, SYNC_NO_ORDER_CHECK, PFS_NOT_INSTRUMENTED);
@@ -1582,7 +1580,6 @@ sync_latch_meta_init()
 }
 
 /** Destroy the latch meta data */
-#ifdef JAN_DISABLED_FOR_NOW_AS_THIS_CAUSES_CRASH
 static
 void
 sync_latch_meta_destroy()
@@ -1596,7 +1593,6 @@ sync_latch_meta_destroy()
 
 	latch_meta.clear();
 }
-#endif
 
 /** Track mutex file creation name and line number. This is to avoid storing
 { const char* name; uint16_t line; } in every instance. This results in the
@@ -1810,8 +1806,6 @@ sync_check_close()
 
 	create_tracker = NULL;
 
-#ifdef JAN_DISABLED_FOR_NOW_AS_THIS_CAUSES_CRASH
 	sync_latch_meta_destroy();
-#endif
 }
 

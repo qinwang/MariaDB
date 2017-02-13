@@ -308,7 +308,7 @@ public:
   virtual bool handle_condition(THD *thd,
                                 uint sql_errno,
                                 const char* sqlstate,
-                                Sql_condition::enum_warning_level level,
+                                Sql_condition::enum_warning_level *level,
                                 const char* message,
                                 Sql_condition ** cond_hdl)
   {
@@ -1206,7 +1206,7 @@ bool Table_triggers_list::prepare_record_accessors(TABLE *table)
       (table->s->stored_fields != table->s->null_fields))
 
   {
-    int null_bytes= (table->s->stored_fields - table->s->null_fields + 7)/8;
+    int null_bytes= (table->s->fields - table->s->null_fields + 7)/8;
     if (!(extra_null_bitmap= (uchar*)alloc_root(&table->mem_root, null_bytes)))
       return 1;
     if (!(record0_field= (Field **)alloc_root(&table->mem_root,
@@ -2250,35 +2250,6 @@ add_tables_and_routines_for_triggers(THD *thd,
 
 
 /**
-  Check if any of the marked fields are used in the trigger.
-
-  @param used_fields  Bitmap over fields to check
-  @param event_type   Type of event triggers for which we are going to inspect
-  @param action_time  Type of trigger action time we are going to inspect
-*/
-
-bool Trigger::is_fields_updated_in_trigger(MY_BITMAP *used_fields)
-{
-  Item_trigger_field *trg_field;
-  sp_head *sp= body;
-  DBUG_ASSERT(used_fields->n_bits == base->trigger_table->s->fields);
-
-  for (trg_field= sp->m_trg_table_fields.first; trg_field;
-       trg_field= trg_field->next_trg_field)
-  {
-    /* We cannot check fields which does not present in table. */
-    if (trg_field->field_idx != (uint)-1)
-    {
-      if (bitmap_is_set(used_fields, trg_field->field_idx) &&
-          trg_field->get_settable_routine_parameter())
-        return true;
-    }
-  }
-  return false;
-}
-
-
-/**
   Mark fields of subject table which we read/set in its triggers
   as such.
 
@@ -2295,6 +2266,7 @@ void Table_triggers_list::mark_fields_used(trg_event_type event)
 {
   int action_time;
   Item_trigger_field *trg_field;
+  DBUG_ENTER("Table_triggers_list::mark_fields_used");
 
   for (action_time= 0; action_time < (int)TRG_ACTION_MAX; action_time++)
   {
@@ -2309,14 +2281,19 @@ void Table_triggers_list::mark_fields_used(trg_event_type event)
         /* We cannot mark fields which does not present in table. */
         if (trg_field->field_idx != (uint)-1)
         {
+          DBUG_PRINT("info", ("marking field: %d", trg_field->field_idx));
           bitmap_set_bit(trigger_table->read_set, trg_field->field_idx);
           if (trg_field->get_settable_routine_parameter())
             bitmap_set_bit(trigger_table->write_set, trg_field->field_idx);
+          if (trigger_table->field[trg_field->field_idx]->vcol_info)
+            trigger_table->mark_virtual_col(trigger_table->
+                                            field[trg_field->field_idx]);
         }
       }
     }
   }
   trigger_table->file->column_bitmaps_signal();
+  DBUG_VOID_RETURN;
 }
 
 
@@ -2527,4 +2504,3 @@ bool load_table_name_for_trigger(THD *thd,
 
   DBUG_RETURN(FALSE);
 }
-

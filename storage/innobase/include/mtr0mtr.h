@@ -2,7 +2,7 @@
 
 Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2012, Facebook Inc.
-Copyright (c) 2013, 2016, MariaDB Corporation
+Copyright (c) 2013, 2017, MariaDB Corporation
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -84,17 +84,11 @@ savepoint. */
 
 #ifdef UNIV_DEBUG
 
-/** Check if memo contains the given item ignore if table is intrinsic
-@return TRUE if contains or table is intrinsic. */
-#define mtr_is_block_fix(m, o, t, table)				\
-	(mtr_memo_contains(m, o, t)					\
-	 || dict_table_is_intrinsic(table))
+/** Check if memo contains the given item. */
+#define mtr_is_block_fix(m, o, t, table) mtr_memo_contains(m, o, t)
 
-/** Check if memo contains the given page ignore if table is intrinsic
-@return TRUE if contains or table is intrinsic. */
-#define mtr_is_page_fix(m, p, t, table)					\
-	(mtr_memo_contains_page(m, p, t)				\
-	 || dict_table_is_intrinsic(table))
+/** Check if memo contains the given page. */
+#define mtr_is_page_fix(m, p, t, table) mtr_memo_contains_page(m, p, t)
 
 /** Check if memo contains the given item.
 @return	TRUE if contains */
@@ -493,9 +487,9 @@ struct mtr_t {
 	@param type	type of object
 	@return	true if contains */
 	static bool memo_contains(
-		mtr_buf_t*	memo,
-		const void*	object,
-		ulint		type)
+		const mtr_buf_t*	memo,
+		const void*		object,
+		ulint			type)
 		MY_ATTRIBUTE((warn_unused_result));
 
 	/** Check if memo contains the given item.

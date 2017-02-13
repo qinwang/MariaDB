@@ -285,7 +285,6 @@ dfield_dup(
 	}
 }
 
-#ifndef UNIV_HOTBACKUP
 /*********************************************************************//**
 Tests if two data fields are equal.
 If len==0, tests the data length and content for equality.
@@ -330,7 +329,6 @@ dfield_data_is_binary_equal(
 	       && (len == UNIV_SQL_NULL
 		   || !memcmp(dfield_get_data(field), data, len)));
 }
-#endif /* !UNIV_HOTBACKUP */
 
 /*********************************************************************//**
 Gets info bits in a data tuple.
@@ -469,7 +467,6 @@ dtuple_create_from_mem(
 	dtuple_t*	tuple;
 	ulint		n_t_fields = n_fields + n_v_fields;
 
-	ut_ad(buf != NULL);
 	ut_a(buf_size >= DTUPLE_EST_ALLOC(n_t_fields));
 
 	tuple = (dtuple_t*) buf;

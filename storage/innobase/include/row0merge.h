@@ -114,7 +114,6 @@ struct index_field_t {
 	ulint		col_no;		/*!< column offset */
 	ulint		prefix_len;	/*!< column prefix length, or 0
 					if indexing the whole column */
-	const char*	col_name;	/*!< column name or NULL */
 	bool		is_v_col;	/*!< whether this is a virtual column */
 };
 
@@ -432,8 +431,8 @@ row_merge_sort(
 	row_merge_block_t*	block,
 	int*			tmpfd,
 	const bool		update_progress,
-	const float		pct_progress,
-	const float		pct_cost,
+	const double	pct_progress,
+	const double	pct_cost,
 	fil_space_crypt_t*	crypt_data,
 	row_merge_block_t*	crypt_block,
 	ulint			space,

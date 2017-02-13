@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1997, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2016, MariaDB Corporation.
+Copyright (c) 2016, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -45,8 +45,6 @@ my_bool	srv_ibuf_disable_background_merge;
 #ifdef UNIV_NONINL
 #include "ibuf0ibuf.ic"
 #endif
-
-#ifndef UNIV_HOTBACKUP
 
 #include "buf0buf.h"
 #include "buf0rea.h"
@@ -595,7 +593,6 @@ ibuf_max_size_update(
 }
 
 
-#endif /* !UNIV_HOTBACKUP */
 /*********************************************************************//**
 Initializes an ibuf bitmap page. */
 void
@@ -618,10 +615,7 @@ ibuf_bitmap_page_init(
 	memset(page + IBUF_BITMAP, 0, byte_offset);
 
 	/* The remaining area (up to the page trailer) is uninitialized. */
-
-#ifndef UNIV_HOTBACKUP
 	mlog_write_initial_log_record(page, MLOG_IBUF_BITMAP_INIT, mtr);
-#endif /* !UNIV_HOTBACKUP */
 }
 
 /*********************************************************************//**
@@ -644,7 +638,7 @@ ibuf_parse_bitmap_init(
 
 	return(ptr);
 }
-#ifndef UNIV_HOTBACKUP
+
 # ifdef UNIV_DEBUG
 /** Gets the desired bits for a given page from a bitmap page.
 @param[in]	page		bitmap page
@@ -862,11 +856,17 @@ ibuf_set_free_bits_low(
 	mtr_t*			mtr)	/*!< in/out: mtr */
 {
 	page_t*	bitmap_page;
+	buf_frame_t* frame;
 
 	ut_ad(mtr->is_named_space(block->page.id.space()));
 
-	if (!page_is_leaf(buf_block_get_frame(block))) {
+	if (!block) {
+		return;
+	}
 
+	frame = buf_block_get_frame(block);
+
+	if (!frame || !page_is_leaf(frame)) {
 		return;
 	}
 
@@ -1040,7 +1040,10 @@ ibuf_update_free_bits_zip(
 	page_t*	bitmap_page;
 	ulint	after;
 
-	ut_a(page_is_leaf(buf_block_get_frame(block)));
+	ut_a(block);
+	buf_frame_t* frame = buf_block_get_frame(block);
+	ut_a(frame);
+	ut_a(page_is_leaf(frame));
 	ut_a(block->page.size.is_compressed());
 
 	bitmap_page = ibuf_bitmap_get_map_page(block->page.id,
@@ -1224,8 +1227,9 @@ ibuf_rec_get_page_no_func(
 	const byte*	field;
 	ulint		len;
 
-	ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, rec,
+					     MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(ibuf_inside(mtr));
 	ut_ad(rec_get_n_fields_old(rec) > 2);
 
@@ -1262,8 +1266,8 @@ ibuf_rec_get_space_func(
 	const byte*	field;
 	ulint		len;
 
-	ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, rec, MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(ibuf_inside(mtr));
 	ut_ad(rec_get_n_fields_old(rec) > 2);
 
@@ -1312,8 +1316,8 @@ ibuf_rec_get_info_func(
 	ulint		info_len_local;
 	ulint		counter_local;
 
-	ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, rec, MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(ibuf_inside(mtr));
 	fields = rec_get_n_fields_old(rec);
 	ut_a(fields > IBUF_REC_FIELD_USER);
@@ -1384,8 +1388,8 @@ ibuf_rec_get_op_type_func(
 {
 	ulint		len;
 
-	ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, rec, MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(ibuf_inside(mtr));
 	ut_ad(rec_get_n_fields_old(rec) > 2);
 
@@ -1583,8 +1587,8 @@ ibuf_build_entry_from_ibuf_rec_func(
 	ulint		comp;
 	dict_index_t*	index;
 
-	ut_ad(mtr_memo_contains_page(mtr, ibuf_rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, ibuf_rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, ibuf_rec, MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(ibuf_inside(mtr));
 
 	data = rec_get_nth_field_old(ibuf_rec, IBUF_REC_FIELD_MARKER, &len);
@@ -1705,8 +1709,8 @@ ibuf_rec_get_volume_func(
 	ibuf_op_t	op;
 	ulint		info_len;
 
-	ut_ad(mtr_memo_contains_page(mtr, ibuf_rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, ibuf_rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, ibuf_rec, MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(ibuf_inside(mtr));
 	ut_ad(rec_get_n_fields_old(ibuf_rec) > 2);
 
@@ -2288,8 +2292,8 @@ ibuf_get_merge_page_nos_func(
 	ulint	limit;
 	ulint	n_pages;
 
-	ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, rec, MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(ibuf_inside(mtr));
 
 	*n_stored = 0;
@@ -2745,8 +2749,6 @@ ibuf_merge_in_background(
 	}
 #endif /* UNIV_DEBUG || UNIV_IBUF_DEBUG */
 
-
-
 	while (sum_pages < n_pages) {
 		ulint	n_bytes;
 
@@ -2874,8 +2876,8 @@ ibuf_get_volume_buffered_count_func(
 	const byte*	types;
 	ulint		n_fields;
 
-	ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, rec, MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(ibuf_inside(mtr));
 
 	n_fields = rec_get_n_fields_old(rec);
@@ -3247,8 +3249,8 @@ ibuf_get_entry_counter_low_func(
 	ulint		len;
 
 	ut_ad(ibuf_inside(mtr));
-	ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, rec, MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(rec_get_n_fields_old(rec) > 2);
 
 	field = rec_get_nth_field_old(rec, IBUF_REC_FIELD_MARKER, &len);
@@ -3727,9 +3729,10 @@ ibuf_insert(
 			    op, page_id.space(), page_id.page_no()));
 
 	ut_ad(dtuple_check_typed(entry));
-	ut_ad(page_id.space() != srv_tmp_space.space_id());
+	ut_ad(page_id.space() != SRV_TMP_SPACE_ID);
 
 	ut_a(!dict_index_is_clust(index));
+	ut_ad(!dict_table_is_temporary(index->table));
 
 	no_counter = use <= IBUF_USE_INSERT;
 
@@ -5122,5 +5125,3 @@ ibuf_set_bitmap_for_bulk_load(
 
 	mtr_commit(&mtr);
 }
-
-#endif /* !UNIV_HOTBACKUP */

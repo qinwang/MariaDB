@@ -149,7 +149,7 @@ show create table t1;
 Table	Create Table
 t1	CREATE TABLE "t1" (
   "f1" int(11) NOT NULL AUTO_INCREMENT,
-  "f2" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  "f2" timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   PRIMARY KEY ("f1")
 )
 set session sql_mode=no_field_options;
@@ -157,7 +157,7 @@ show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `f1` int(11) NOT NULL,
-  `f2` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `f2` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`f1`)
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 drop table t1;
@@ -742,3 +742,20 @@ DROP FUNCTION test_function;
 SET @@sql_mode= @org_mode;
 
 #End of Test for Bug#12601974 
+#
+# MDEV-11848 Automatic statement repreparation changes query semantics
+#
+SET sql_mode=DEFAULT;
+CREATE OR REPLACE TABLE t1 (a TEXT);
+PREPARE stmt FROM 'INSERT INTO t1 (a) VALUES (2||3)';
+EXECUTE stmt;
+SET sql_mode=ORACLE;
+EXECUTE stmt;
+ALTER TABLE t1 ADD b INT;
+EXECUTE stmt;
+SELECT * FROM t1;
+a	b
+1	NULL
+1	NULL
+1	NULL
+DROP TABLE t1;

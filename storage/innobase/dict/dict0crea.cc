@@ -377,75 +377,6 @@ dict_build_table_def_step(
 	return(err);
 }
 
-/** Build a tablespace to store various objects.
-@param[in,out]	tablespace	Tablespace object describing what to build.
-@return DB_SUCCESS or error code. */
-dberr_t
-dict_build_tablespace(
-	Tablespace*	tablespace)
-{
-	dberr_t		err	= DB_SUCCESS;
-	mtr_t		mtr;
-	ulint		space = 0;
-
-	ut_ad(mutex_own(&dict_sys->mutex));
-	ut_ad(tablespace);
-
-        DBUG_EXECUTE_IF("out_of_tablespace_disk",
-                         return(DB_OUT_OF_FILE_SPACE););
-	/* Get a new space id. */
-	dict_hdr_get_new_id(NULL, NULL, &space, NULL, false);
-	if (space == ULINT_UNDEFINED) {
-		return(DB_ERROR);
-	}
-	tablespace->set_space_id(space);
-
-	Datafile* datafile = tablespace->first_datafile();
-
-	/* We create a new generic empty tablespace.
-	We initially let it be 4 pages:
-	- page 0 is the fsp header and an extent descriptor page,
-	- page 1 is an ibuf bitmap page,
-	- page 2 is the first inode page,
-	- page 3 will contain the root of the clustered index of the
-	first table we create here. */
-
-	err = fil_ibd_create(
-		space,
-		tablespace->name(),
-		datafile->filepath(),
-		tablespace->flags(),
-		FIL_IBD_FILE_INITIAL_SIZE,
-		tablespace->encryption_mode(),
-		tablespace->key_id());
-
-	if (err != DB_SUCCESS) {
-		return(err);
-	}
-
-	/* Update SYS_TABLESPACES and SYS_DATAFILES */
-	err = dict_replace_tablespace_and_filepath(
-		tablespace->space_id(), tablespace->name(),
-		datafile->filepath(), tablespace->flags());
-	if (err != DB_SUCCESS) {
-		os_file_delete(innodb_data_file_key, datafile->filepath());
-		return(err);
-	}
-
-	mtr_start(&mtr);
-	mtr.set_named_space(space);
-
-	/* Once we allow temporary general tablespaces, we must do this;
-	mtr_set_log_mode(&mtr, MTR_LOG_NO_REDO); */
-	ut_a(!FSP_FLAGS_GET_TEMPORARY(tablespace->flags()));
-
-	fsp_header_init(space, FIL_IBD_FILE_INITIAL_SIZE, &mtr);
-
-	mtr_commit(&mtr);
-
-	return(err);
-}
-
 /** Builds a tablespace to contain a table, using file-per-table=1.
 @param[in,out]	table	Table to build in its own tablespace.
 @param[in]	node	Table create node
@@ -461,7 +392,7 @@ dict_build_tablespace_for_table(
 	bool		needs_file_per_table;
 	char*		filepath;
 
-	ut_ad(mutex_own(&dict_sys->mutex) || dict_table_is_intrinsic(table));
+	ut_ad(mutex_own(&dict_sys->mutex));
 
 	needs_file_per_table
 		= DICT_TF2_FLAG_IS_SET(table, DICT_TF2_USE_FILE_PER_TABLE);
@@ -473,6 +404,7 @@ dict_build_tablespace_for_table(
 					    DICT_TF2_FTS_AUX_HEX_NAME););
 
 	if (needs_file_per_table) {
+		ut_ad(!dict_table_is_temporary(table));
 		/* This table will need a new tablespace. */
 
 		ut_ad(dict_table_get_format(table) <= UNIV_FORMAT_MAX);
@@ -493,23 +425,10 @@ dict_build_tablespace_for_table(
 		table->space = static_cast<unsigned int>(space);
 
 		/* Determine the tablespace flags. */
-		bool	is_temp = dict_table_is_temporary(table);
-		bool	is_encrypted = dict_table_is_encrypted(table);
 		bool	has_data_dir = DICT_TF_HAS_DATA_DIR(table->flags);
-		ulint	fsp_flags = dict_tf_to_fsp_flags(table->flags,
-							 is_temp,
-							 is_encrypted);
+		ulint	fsp_flags = dict_tf_to_fsp_flags(table->flags);
 
-		/* Determine the full filepath */
-		if (is_temp) {
-			/* Temporary table filepath contains a full path
-			and a filename without the extension. */
-			ut_ad(table->dir_path_of_temp_table);
-			filepath = fil_make_filepath(
-				table->dir_path_of_temp_table,
-				NULL, IBD, false);
-
-		} else if (has_data_dir) {
+		if (has_data_dir) {
 			ut_ad(table->data_dir_path);
 			filepath = fil_make_filepath(
 				table->data_dir_path,
@@ -545,7 +464,6 @@ dict_build_tablespace_for_table(
 
 		mtr_start(&mtr);
 		mtr.set_named_space(table->space);
-		dict_disable_redo_if_temporary(table, &mtr);
 
 		bool ret = fsp_header_init(table->space,
 					   FIL_IBD_FILE_INITIAL_SIZE,
@@ -556,23 +474,14 @@ dict_build_tablespace_for_table(
 			return(DB_ERROR);
 		}
 	} else {
-		/* We do not need to build a tablespace for this table. It
-		is already built.  Just find the correct tablespace ID. */
-
-		if (DICT_TF_HAS_SHARED_SPACE(table->flags)) {
-			ut_ad(table->tablespace != NULL);
-
-			ut_ad(table->space == fil_space_get_id_by_name(
-				table->tablespace()));
-		} else if (dict_table_is_temporary(table)) {
+		if (dict_table_is_temporary(table)) {
 			/* Use the shared temporary tablespace.
 			Note: The temp tablespace supports all non-Compressed
 			row formats whereas the system tablespace only
 			supports Redundant and Compact */
 			ut_ad(dict_tf_get_rec_format(table->flags)
 				!= REC_FORMAT_COMPRESSED);
-			table->space = static_cast<uint32_t>(
-				srv_tmp_space.space_id());
+			table->space = SRV_TMP_SPACE_ID;
 		} else {
 			/* Create in the system tablespace. */
 			ut_ad(table->space == srv_sys_space.space_id());
@@ -920,7 +829,7 @@ dict_build_index_def(
 	dict_index_t*		index,	/*!< in/out: index */
 	trx_t*			trx)	/*!< in/out: InnoDB transaction handle */
 {
-	ut_ad(mutex_own(&dict_sys->mutex) || dict_table_is_intrinsic(table));
+	ut_ad(mutex_own(&dict_sys->mutex));
 
 	if (trx->table_id == 0) {
 		/* Record only the first table id. */
@@ -930,18 +839,7 @@ dict_build_index_def(
 	ut_ad((UT_LIST_GET_LEN(table->indexes) > 0)
 	      || dict_index_is_clust(index));
 
-	if (!dict_table_is_intrinsic(table)) {
-		dict_hdr_get_new_id(NULL, &index->id, NULL, table, false);
-	} else {
-		/* Index are re-loaded in process of creation using id.
-		If same-id is used for all indexes only first index will always
-		be retrieved when expected is iterative return of all indexes*/
-		if (UT_LIST_GET_LEN(table->indexes) > 0) {
-			index->id = UT_LIST_GET_LAST(table->indexes)->id + 1;
-		} else {
-			index->id = 1;
-		}
-	}
+	dict_hdr_get_new_id(NULL, &index->id, NULL, table, false);
 
 	/* Inherit the space id from the table; we store all indexes of a
 	table in the same tablespace */
@@ -1061,8 +959,7 @@ dict_create_index_tree_in_mem(
 	mtr_t		mtr;
 	ulint		page_no = FIL_NULL;
 
-	ut_ad(mutex_own(&dict_sys->mutex)
-	      || dict_table_is_intrinsic(index->table));
+	ut_ad(mutex_own(&dict_sys->mutex));
 
 	if (index->type == DICT_FTS) {
 		/* FTS index does not need an index tree */
@@ -1175,8 +1072,7 @@ dict_drop_index_tree_in_mem(
 	const dict_index_t*	index,		/*!< in: index */
 	ulint			page_no)	/*!< in: index page-no */
 {
-	ut_ad(mutex_own(&dict_sys->mutex)
-	      || dict_table_is_intrinsic(index->table));
+	ut_ad(mutex_own(&dict_sys->mutex));
 	ut_ad(dict_table_is_temporary(index->table));
 
 	ulint			root_page_no = page_no;
@@ -1295,8 +1191,7 @@ dict_truncate_index_tree_in_mem(
 	bool		truncate;
 	ulint		space = index->space;
 
-	ut_ad(mutex_own(&dict_sys->mutex)
-	      || dict_table_is_intrinsic(index->table));
+	ut_ad(mutex_own(&dict_sys->mutex));
 	ut_ad(dict_table_is_temporary(index->table));
 
 	ulint		type = index->type;
@@ -1784,6 +1679,11 @@ dict_create_or_check_foreign_constraint_tables(void)
 		return(DB_SUCCESS);
 	}
 
+	if (srv_read_only_mode
+	    || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO) {
+		return(DB_READ_ONLY);
+	}
+
 	trx = trx_allocate_for_mysql();
 
 	trx_set_dict_operation(trx, TRX_DICT_OP_TABLE);
@@ -1913,11 +1813,9 @@ dict_create_or_check_sys_virtual()
 		return(DB_SUCCESS);
 	}
 
-	if (srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO
-	    || srv_read_only_mode) {
-		ib::error() << "Cannot create sys_virtual system tables;"
-			" running in read-only mode.";
-		return(DB_ERROR);
+	if (srv_read_only_mode
+	    || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO) {
+		return(DB_READ_ONLY);
 	}
 
 	trx = trx_allocate_for_mysql();
@@ -2112,7 +2010,7 @@ dict_foreign_def_get(
 	char* fk_def = (char *)mem_heap_alloc(foreign->heap, 4*1024);
 	const char* tbname;
 	char tablebuf[MAX_TABLE_NAME_LEN + 1] = "";
-	int i;
+	unsigned i;
 	char* bufend;
 
 	tbname = dict_remove_db_name(foreign->id);
@@ -2130,7 +2028,7 @@ dict_foreign_def_get(
 				strlen(foreign->foreign_col_names[i]),
 				trx->mysql_thd);
 		strcat(fk_def, buf);
-		if (i < foreign->n_fields-1) {
+		if (i < static_cast<unsigned>(foreign->n_fields-1)) {
 			strcat(fk_def, (char *)",");
 		}
 	}
@@ -2154,7 +2052,7 @@ dict_foreign_def_get(
 				trx->mysql_thd);
 		buf[bufend - buf] = '\0';
 		strcat(fk_def, buf);
-		if (i < foreign->n_fields-1) {
+		if (i < (uint)foreign->n_fields-1) {
 			strcat(fk_def, (char *)",");
 		}
 	}
@@ -2203,7 +2101,6 @@ Add a foreign key definition to the data dictionary tables.
 dberr_t
 dict_create_add_foreign_to_dictionary(
 /*==================================*/
-	dict_table_t*		table,	/*!< in: table */
 	const char*		name,	/*!< in: table name */
 	const dict_foreign_t*	foreign,/*!< in: foreign key */
 	trx_t*			trx)	/*!< in/out: dictionary transaction */
@@ -2245,8 +2142,7 @@ dict_create_add_foreign_to_dictionary(
 			char*	fk_def;
 
 			innobase_convert_name(tablename, MAX_TABLE_NAME_LEN,
-				table->name.m_name, strlen(table->name.m_name),
-				trx->mysql_thd);
+				name, strlen(name), trx->mysql_thd);
 
 			innobase_convert_name(buf, MAX_TABLE_NAME_LEN,
 				foreign->id, strlen(foreign->id), trx->mysql_thd);
@@ -2277,8 +2173,7 @@ dict_create_add_foreign_to_dictionary(
 			char*	fk_def;
 
 			innobase_convert_name(tablename, MAX_TABLE_NAME_LEN,
-				table->name.m_name, strlen(table->name.m_name),
-				trx->mysql_thd);
+				name, strlen(name), trx->mysql_thd);
 			innobase_convert_name(buf, MAX_TABLE_NAME_LEN,
 				foreign->id, strlen(foreign->id), trx->mysql_thd);
 			fk_def = dict_foreign_def_get((dict_foreign_t*)foreign, trx);
@@ -2509,12 +2404,7 @@ dict_create_add_foreigns_to_dictionary(
 	dict_foreign_t*	foreign;
 	dberr_t		error;
 
-	ut_ad(mutex_own(&dict_sys->mutex)
-	      || dict_table_is_intrinsic(table));
-
-	if (dict_table_is_intrinsic(table)) {
-		goto exit_loop;
-	}
+	ut_ad(mutex_own(&dict_sys->mutex));
 
 	if (NULL == dict_table_get_low("SYS_FOREIGN")) {
 
@@ -2532,7 +2422,7 @@ dict_create_add_foreigns_to_dictionary(
 		ut_ad(foreign->id != NULL);
 
 		error = dict_create_add_foreign_to_dictionary(
-			(dict_table_t*)table, table->name.m_name, foreign, trx);
+			table->name.m_name, foreign, trx);
 
 		if (error != DB_SUCCESS) {
 
@@ -2540,7 +2430,6 @@ dict_create_add_foreigns_to_dictionary(
 		}
 	}
 
-exit_loop:
 	trx->op_info = "committing foreign key definitions";
 
 	if (trx_is_started(trx)) {
@@ -2579,7 +2468,13 @@ dict_create_or_check_sys_tablespace(void)
 
 	if (sys_tablespaces_err == DB_SUCCESS
 	    && sys_datafiles_err == DB_SUCCESS) {
+		srv_sys_tablespaces_open = true;
 		return(DB_SUCCESS);
+	}
+
+	if (srv_read_only_mode
+	    || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO) {
+		return(DB_READ_ONLY);
 	}
 
 	trx = trx_allocate_for_mysql();
@@ -2654,6 +2549,7 @@ dict_create_or_check_sys_tablespace(void)
 
 	if (err == DB_SUCCESS) {
 		ib::info() << "Tablespace and datafile system tables created.";
+		srv_sys_tablespaces_open = true;
 	}
 
 	/* Note: The master thread has not been started at this point. */
@@ -2796,14 +2692,6 @@ dict_table_assign_new_id(
 	dict_table_t*	table,
 	trx_t*		trx)
 {
-	if (dict_table_is_intrinsic(table)) {
-		/* There is no significance of this table->id (if table is
-		intrinsic) so assign it default instead of something meaningful
-		to avoid confusion.*/
-		table->id = ULINT_UNDEFINED;
-	} else {
-		dict_hdr_get_new_id(&table->id, NULL, NULL, table, false);
-	}
-
+	dict_hdr_get_new_id(&table->id, NULL, NULL, table, false);
 	trx->table_id = table->id;
 }

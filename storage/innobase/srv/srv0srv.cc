@@ -3,7 +3,7 @@
 Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2008, 2009 Google Inc.
 Copyright (c) 2009, Percona Inc.
-Copyright (c) 2013, 2016, MariaDB Corporation. All Rights Reserved.
+Copyright (c) 2013, 2017, MariaDB Corporation.
 
 Portions of this file contain modifications contributed and copyrighted by
 Google, Inc. Those modifications are gratefully acknowledged and are described
@@ -45,8 +45,6 @@ Created 10/8/1995 Heikki Tuuri
 //
 // #include "mysql/psi/mysql_stage.h"
 // #include "mysql/psi/psi.h"
-// JAN: TODO: MySQL 5.7 missing header
-//#include "sql_thd_internal_api.h"
 
 #include "ha_prototypes.h"
 
@@ -55,7 +53,6 @@ Created 10/8/1995 Heikki Tuuri
 #include "buf0lru.h"
 #include "dict0boot.h"
 #include "dict0load.h"
-#include "dict0stats_bg.h"
 #include "fsp0sysspace.h"
 #include "ibuf0ibuf.h"
 #include "lock0lock.h"
@@ -92,17 +89,13 @@ UNIV_INTERN ulong	srv_fatal_semaphore_wait_threshold =  DEFAULT_SRV_FATAL_SEMAPH
 in microseconds, in order to reduce the lagging of the purge thread. */
 ulint	srv_dml_needed_delay = 0;
 
-ibool	srv_monitor_active = FALSE;
-ibool	srv_error_monitor_active = FALSE;
+bool	srv_monitor_active;
+bool	srv_error_monitor_active;
+bool	srv_buf_dump_thread_active;
+bool	srv_dict_stats_thread_active;
+bool	srv_buf_resize_thread_active;
 
-ibool	srv_buf_dump_thread_active = FALSE;
-
-bool	srv_buf_resize_thread_active = false;
-
-UNIV_INTERN ibool	srv_log_scrub_active = FALSE;
-UNIV_INTERN my_bool	srv_scrub_log = FALSE;
-
-ibool	srv_dict_stats_thread_active = FALSE;
+my_bool	srv_scrub_log;
 
 const char*	srv_main_thread_op_info = "";
 
@@ -191,9 +184,7 @@ my_bool	srv_use_native_aio = TRUE;
 my_bool	srv_numa_interleave = FALSE;
 /* If this flag is TRUE, then we will use fallocate(PUCH_HOLE)
 to the pages */
-UNIV_INTERN my_bool	srv_use_trim = FALSE;
-/* If this flag is TRUE, then we will use posix fallocate for file extentsion */
-UNIV_INTERN my_bool	srv_use_posix_fallocate = FALSE;
+UNIV_INTERN my_bool	srv_use_trim;
 /* If this flag is TRUE, then we disable doublewrite buffer */
 UNIV_INTERN my_bool	srv_use_atomic_writes = FALSE;
 /* If this flag IS TRUE, then we use this algorithm for page compressing the pages */
@@ -204,8 +195,6 @@ UNIV_INTERN long srv_mtflush_threads = MTFLUSH_DEFAULT_WORKER;
 UNIV_INTERN my_bool	srv_use_mtflush                 = FALSE;
 
 #ifdef UNIV_DEBUG
-/** Force all user tables to use page compression. */
-ulong	srv_debug_compress;
 /** Used by SET GLOBAL innodb_master_thread_disabled_debug = X. */
 my_bool	srv_master_thread_disabled_debug;
 /** Event used to inform that master thread is disabled. */
@@ -370,11 +359,6 @@ starting from SRV_FORCE_IGNORE_CORRUPT, so that data can be recovered
 by SELECT or mysqldump. When this is nonzero, we do not allow any user
 modifications to the data. */
 ulong	srv_force_recovery;
-#ifndef DBUG_OFF
-/** Inject a crash at different steps of the recovery process.
-This is for testing and debugging only. */
-ulong	srv_force_recovery_crash;
-#endif /* !DBUG_OFF */
 
 /** Print all user-level transactions deadlocks to mysqld stderr */
 
@@ -427,7 +411,7 @@ ulong	srv_replication_delay		= 0;
 
 /*-------------------------------------------*/
 UNIV_INTERN ulong	srv_n_spin_wait_rounds	= 15;
-ulong	srv_spin_wait_delay	= 6;
+uint	srv_spin_wait_delay;
 ibool	srv_priority_boost	= TRUE;
 
 static ulint		srv_n_rows_inserted_old		= 0;
@@ -870,7 +854,6 @@ srv_suspend_thread_low(
 /*===================*/
 	srv_slot_t*	slot)	/*!< in/out: thread slot */
 {
-
 	ut_ad(!srv_read_only_mode);
 	ut_ad(srv_sys_mutex_own());
 
@@ -928,33 +911,73 @@ srv_suspend_thread(
 	return(sig_count);
 }
 
-/*********************************************************************//**
-Releases threads of the type given from suspension in the thread table.
-NOTE! The server mutex has to be reserved by the caller!
-@return number of threads released: this may be less than n if not
-        enough threads were suspended at the moment. */
-ulint
-srv_release_threads(
-/*================*/
-	srv_thread_type	type,	/*!< in: thread type */
-	ulint		n)	/*!< in: number of threads to release */
+/** Resume the calling thread.
+@param[in,out]	slot		thread slot
+@param[in]	sig_count	signal count (if wait)
+@param[in]	wait		whether to wait for the event
+@param[in]	timeout_usec	timeout in microseconds (0=infinite)
+@return	whether the wait timed out */
+static
+bool
+srv_resume_thread(srv_slot_t* slot, int64_t sig_count = 0, bool wait = true,
+		  ulint timeout_usec = 0)
 {
-	ulint		i;
-	ulint		count	= 0;
+	bool	timeout;
+
+	ut_ad(!srv_read_only_mode);
+	ut_ad(slot->in_use);
+	ut_ad(slot->suspended);
+
+	if (!wait) {
+		timeout = false;
+	} else if (timeout_usec) {
+		timeout = OS_SYNC_TIME_EXCEEDED == os_event_wait_time_low(
+			slot->event, timeout_usec, sig_count);
+	} else {
+		timeout = false;
+		os_event_wait_low(slot->event, sig_count);
+	}
+
+	srv_sys_mutex_enter();
+	ut_ad(slot->in_use);
+	ut_ad(slot->suspended);
+
+	slot->suspended = FALSE;
+	++srv_sys->n_threads_active[slot->type];
+	srv_sys_mutex_exit();
+	return(timeout);
+}
+
+/** Ensure that a given number of threads of the type given are running
+(or are already terminated).
+@param[in]	type	thread type
+@param[in]	n	number of threads that have to run */
+void
+srv_release_threads(enum srv_thread_type type, ulint n)
+{
+	ulint	running;
 
 	ut_ad(srv_thread_type_validate(type));
 	ut_ad(n > 0);
 
-	srv_sys_mutex_enter();
+	do {
+		srv_sys_mutex_enter();
 
-	for (i = 0; i < srv_sys->n_sys_threads; i++) {
-		srv_slot_t*	slot;
+		running = 0;
 
-		slot = &srv_sys->sys_threads[i];
+		for (ulint i = 0; i < srv_sys->n_sys_threads; i++) {
+			srv_slot_t*	slot;
 
-		if (slot->in_use
-		    && srv_slot_get_type(slot) == type
-		    && slot->suspended) {
+			slot = &srv_sys->sys_threads[i];
+
+			if (!slot->in_use || srv_slot_get_type(slot) != type) {
+				continue;
+			} else if (!slot->suspended) {
+				if (++running >= n) {
+					break;
+				}
+				continue;
+			}
 
 			switch (type) {
 			case SRV_NONE:
@@ -984,21 +1007,11 @@ srv_release_threads(
 				break;
 			}
 
-			slot->suspended = FALSE;
-
-			++srv_sys->n_threads_active[type];
-
 			os_event_set(slot->event);
-
-			if (++count == n) {
-				break;
-			}
 		}
-	}
 
-	srv_sys_mutex_exit();
-
-	return(count);
+		srv_sys_mutex_exit();
+	} while (running && running < n);
 }
 
 /*********************************************************************//**
@@ -1011,11 +1024,8 @@ srv_free_slot(
 {
 	srv_sys_mutex_enter();
 
-	if (!slot->suspended) {
-		/* Mark the thread as inactive. */
-		srv_suspend_thread_low(slot);
-	}
-
+	/* Mark the thread as inactive. */
+	srv_suspend_thread_low(slot);
 	/* Free the slot for reuse. */
 	ut_ad(slot->in_use);
 	slot->in_use = FALSE;
@@ -1023,11 +1033,10 @@ srv_free_slot(
 	srv_sys_mutex_exit();
 }
 
-/*********************************************************************//**
-Initializes the server. */
+/** Initialize the server. */
+static
 void
-srv_init(void)
-/*==========*/
+srv_init()
 {
 	ulint	n_sys_threads = 0;
 	ulint	srv_sys_sz = sizeof(*srv_sys);
@@ -1046,10 +1055,7 @@ srv_init(void)
 
 	srv_sys->n_sys_threads = n_sys_threads;
 
-	/* Even in read-only mode we flush pages related to intrinsic table
-	and so mutex creation is needed. */
-	{
-
+	if (!srv_read_only_mode) {
 		mutex_create(LATCH_ID_SRV_SYS, &srv_sys->mutex);
 
 		mutex_create(LATCH_ID_SRV_SYS_TASKS, &srv_sys->tasks_mutex);
@@ -1116,10 +1122,14 @@ void
 srv_free(void)
 /*==========*/
 {
+	if (!srv_sys) {
+		return;
+	}
+
 	mutex_free(&srv_innodb_monitor_mutex);
 	mutex_free(&page_zip_stat_per_index_mutex);
 
-	{
+	if (!srv_read_only_mode) {
 		mutex_free(&srv_sys->mutex);
 		mutex_free(&srv_sys->tasks_mutex);
 
@@ -1147,22 +1157,6 @@ srv_free(void)
 	ut_free(srv_sys);
 
 	srv_sys = 0;
-}
-
-/*********************************************************************//**
-Initializes the synchronization primitives, memory system, and the thread
-local storage. */
-void
-srv_general_init(void)
-/*==================*/
-{
-	sync_check_init();
-	/* Reset the system variables in the recovery module. */
-	recv_sys_var_init();
-	os_thread_init();
-	trx_pool_init();
-	que_init();
-	row_mysql_init();
 }
 
 /*********************************************************************//**
@@ -1194,10 +1188,12 @@ srv_boot(void)
 
 	srv_normalize_init_values();
 
-	/* Initialize synchronization primitives, memory management, and thread
-	local storage */
-
-	srv_general_init();
+	sync_check_init();
+	os_thread_init();
+	/* Reset the system variables in the recovery module. */
+	recv_sys_var_init();
+	trx_pool_init();
+	row_mysql_init();
 
 	/* Initialize this module */
 
@@ -1581,6 +1577,7 @@ srv_export_innodb_status(void)
 	export_vars.innodb_pages_created = stat.n_pages_created;
 
 	export_vars.innodb_pages_read = stat.n_pages_read;
+	export_vars.innodb_page0_read = srv_stats.page0_read;
 
 	export_vars.innodb_pages_written = stat.n_pages_written;
 
@@ -1630,13 +1627,10 @@ srv_export_innodb_status(void)
 
 	export_vars.innodb_available_undo_logs = srv_available_undo_logs;
 	export_vars.innodb_page_compression_saved = srv_stats.page_compression_saved;
-	export_vars.innodb_page_compression_trim_sect512 = srv_stats.page_compression_trim_sect512;
-	export_vars.innodb_page_compression_trim_sect4096 = srv_stats.page_compression_trim_sect4096;
 	export_vars.innodb_index_pages_written = srv_stats.index_pages_written;
 	export_vars.innodb_non_index_pages_written = srv_stats.non_index_pages_written;
 	export_vars.innodb_pages_page_compressed = srv_stats.pages_page_compressed;
 	export_vars.innodb_page_compressed_trim_op = srv_stats.page_compressed_trim_op;
-	export_vars.innodb_page_compressed_trim_op_saved = srv_stats.page_compressed_trim_op_saved;
 	export_vars.innodb_pages_page_decompressed = srv_stats.pages_page_decompressed;
 	export_vars.innodb_pages_page_compression_error = srv_stats.pages_page_compression_error;
 	export_vars.innodb_pages_decrypted = srv_stats.pages_decrypted;
@@ -1696,6 +1690,8 @@ srv_export_innodb_status(void)
 		crypt_stat.pages_flushed;
 	export_vars.innodb_encryption_rotation_estimated_iops =
 		crypt_stat.estimated_iops;
+	export_vars.innodb_encryption_key_requests =
+		srv_stats.n_key_requests;
 
 	export_vars.innodb_scrub_page_reorganizations =
 		scrub_stat.page_reorganizations;
@@ -1709,6 +1705,7 @@ srv_export_innodb_status(void)
 		scrub_stat.page_split_failures_missing_index;
 	export_vars.innodb_scrub_page_split_failures_unknown =
 		scrub_stat.page_split_failures_unknown;
+	export_vars.innodb_scrub_log = srv_stats.n_log_scrubs;
 
 	mutex_exit(&srv_innodb_monitor_mutex);
 }
@@ -1718,11 +1715,7 @@ A thread which prints the info output by various InnoDB monitors.
 @return a dummy parameter */
 extern "C"
 os_thread_ret_t
-DECLARE_THREAD(srv_monitor_thread)(
-/*===============================*/
-	void*	arg MY_ATTRIBUTE((unused)))
-			/*!< in: a dummy parameter required by
-			os_thread_create */
+DECLARE_THREAD(srv_monitor_thread)(void*)
 {
 	int64_t		sig_count;
 	double		time_elapsed;
@@ -1743,9 +1736,7 @@ DECLARE_THREAD(srv_monitor_thread)(
 #ifdef UNIV_PFS_THREAD
 	pfs_register_thread(srv_monitor_thread_key);
 #endif /* UNIV_PFS_THREAD */
-	srv_monitor_active = TRUE;
 
-	UT_NOT_USED(arg);
 	srv_last_monitor_time = ut_time();
 	last_table_monitor_time = ut_time();
 	last_tablespace_monitor_time = ut_time();
@@ -1878,7 +1869,7 @@ loop:
 	goto loop;
 
 exit_func:
-	srv_monitor_active = FALSE;
+	srv_monitor_active = false;
 
 	/* We count the number of threads in os_thread_exit(). A created
 	thread should always use that to exit and not use return() to exit. */
@@ -1894,11 +1885,7 @@ too long. These can be used to track bugs which cause hangs.
 @return a dummy parameter */
 extern "C"
 os_thread_ret_t
-DECLARE_THREAD(srv_error_monitor_thread)(
-/*=====================================*/
-	void*	arg MY_ATTRIBUTE((unused)))
-			/*!< in: a dummy parameter required by
-			os_thread_create */
+DECLARE_THREAD(srv_error_monitor_thread)(void*)
 {
 	/* number of successive fatal timeouts observed */
 	ulint		fatal_cnt	= 0;
@@ -1924,7 +1911,6 @@ DECLARE_THREAD(srv_error_monitor_thread)(
 #ifdef UNIV_PFS_THREAD
 	pfs_register_thread(srv_error_monitor_thread_key);
 #endif /* UNIV_PFS_THREAD */
-	srv_error_monitor_active = TRUE;
 
 loop:
 	/* Try to track a strange bug reported by Harald Fuchs and others,
@@ -1956,9 +1942,7 @@ loop:
 	if (sync_array_print_long_waits(&waiter, &sema)
 	    && sema == old_sema && os_thread_eq(waiter, old_waiter)) {
 #if defined(WITH_WSREP) && defined(WITH_INNODB_DISALLOW_WRITES)
-		if (true) {
-			// JAN: TODO: MySQL 5.7
-		//if (srv_allow_writes_event->is_set) {
+	  if (os_event_is_set(srv_allow_writes_event)) {
 #endif /* WITH_WSREP */
 		fatal_cnt++;
 #if defined(WITH_WSREP) && defined(WITH_INNODB_DISALLOW_WRITES)
@@ -1997,7 +1981,7 @@ loop:
 		goto loop;
 	}
 
-	srv_error_monitor_active = FALSE;
+	srv_error_monitor_active = false;
 
 	/* We count the number of threads in os_thread_exit(). A created
 	thread should always use that to exit and not use return() to exit. */
@@ -2042,62 +2026,22 @@ srv_get_active_thread_type(void)
 
 	srv_sys_mutex_exit();
 
-	/* Check only on shutdown. */
-	if (ret == SRV_NONE
-	    && srv_shutdown_state != SRV_SHUTDOWN_NONE
-	    && trx_purge_state() != PURGE_STATE_DISABLED
-	    && trx_purge_state() != PURGE_STATE_EXIT) {
-
-		ret = SRV_PURGE;
+	if (ret == SRV_NONE && srv_shutdown_state != SRV_SHUTDOWN_NONE
+	    && purge_sys != NULL) {
+		/* Check only on shutdown. */
+		switch (trx_purge_state()) {
+		case PURGE_STATE_RUN:
+		case PURGE_STATE_STOP:
+			ret = SRV_PURGE;
+			break;
+		case PURGE_STATE_INIT:
+		case PURGE_STATE_DISABLED:
+		case PURGE_STATE_EXIT:
+			break;
+		}
 	}
 
 	return(ret);
-}
-
-/**********************************************************************//**
-Check whether any background thread are active. If so print which thread
-is active. Send the threads wakeup signal.
-@return name of thread that is active or NULL */
-const char*
-srv_any_background_threads_are_active(void)
-/*=======================================*/
-{
-	const char*	thread_active = NULL;
-
-	if (srv_read_only_mode) {
-		if (srv_buf_resize_thread_active) {
-			thread_active = "buf_resize_thread";
-		}
-		os_event_set(srv_buf_resize_event);
-		return(thread_active);
-	} else if (srv_error_monitor_active) {
-		thread_active = "srv_error_monitor_thread";
-	} else if (lock_sys->timeout_thread_active) {
-		thread_active = "srv_lock_timeout thread";
-	} else if (srv_monitor_active) {
-		thread_active = "srv_monitor_thread";
-	} else if (srv_buf_dump_thread_active) {
-		thread_active = "buf_dump_thread";
-	} else if (srv_buf_resize_thread_active) {
-		thread_active = "buf_resize_thread";
-	} else if (srv_dict_stats_thread_active) {
-		thread_active = "dict_stats_thread";
-	} else if (srv_scrub_log && srv_log_scrub_thread_active) {
-		thread_active = "log_scrub_thread";
-	}
-
-	os_event_set(srv_error_event);
-	os_event_set(srv_monitor_event);
-	os_event_set(srv_buf_dump_event);
-	os_event_set(lock_sys->timeout_event);
-	os_event_set(dict_stats_event);
-	os_event_set(srv_buf_resize_event);
-
-	if (srv_scrub_log) {
-		os_event_set(log_scrub_event);
-	}
-
-	return(thread_active);
 }
 
 /*******************************************************************//**
@@ -2126,15 +2070,7 @@ srv_active_wake_master_thread_low()
 
 		if (slot->in_use) {
 			ut_a(srv_slot_get_type(slot) == SRV_MASTER);
-
-			if (slot->suspended) {
-
-				slot->suspended = FALSE;
-
-				++srv_sys->n_threads_active[SRV_MASTER];
-
-				os_event_set(slot->event);
-			}
+			os_event_set(slot->event);
 		}
 
 		srv_sys_mutex_exit();
@@ -2652,7 +2588,7 @@ suspend_thread:
 	manual also mentions this string in several places. */
 	srv_main_thread_op_info = "waiting for server activity";
 
-	os_event_wait(slot->event);
+	srv_resume_thread(slot);
 
 	if (srv_shutdown_state != SRV_SHUTDOWN_EXIT_THREADS) {
 		goto loop;
@@ -2669,8 +2605,13 @@ Check if purge should stop.
 static
 bool
 srv_purge_should_exit(
+	MYSQL_THD	thd,
 	ulint		n_purged)	/*!< in: pages purged in last batch */
 {
+	if (thd_kill_level(thd)) {
+		return(srv_fast_shutdown != 0 || n_purged == 0);
+	}
+
 	switch (srv_shutdown_state) {
 	case SRV_SHUTDOWN_NONE:
 		/* Normal operation. */
@@ -2741,8 +2682,7 @@ DECLARE_THREAD(srv_worker_thread)(
 	ut_ad(!srv_read_only_mode);
 	ut_a(srv_force_recovery < SRV_FORCE_NO_BACKGROUND);
 	my_thread_init();
-	// JAN: TODO: MySQL 5.7
-	// THD *thd= create_thd(false, true, true);
+	THD*		thd = innobase_create_background_thd();
 
 #ifdef UNIV_DEBUG_THREAD_CREATION
 	ib::info() << "Worker thread starting, id "
@@ -2760,13 +2700,12 @@ DECLARE_THREAD(srv_worker_thread)(
 	srv_sys_mutex_exit();
 
 	/* We need to ensure that the worker threads exit after the
-	purge coordinator thread. Otherwise the purge coordinaor can
+	purge coordinator thread. Otherwise the purge coordinator can
 	end up waiting forever in trx_purge_wait_for_workers_to_complete() */
 
 	do {
 		srv_suspend_thread(slot);
-
-		os_event_wait(slot->event);
+		srv_resume_thread(slot);
 
 		if (srv_task_execute()) {
 
@@ -2786,7 +2725,6 @@ DECLARE_THREAD(srv_worker_thread)(
 
 	ut_a(!purge_sys->running);
 	ut_a(purge_sys->state == PURGE_STATE_EXIT);
-	ut_a(srv_shutdown_state > SRV_SHUTDOWN_NONE);
 
 	rw_lock_x_unlock(&purge_sys->latch);
 
@@ -2795,9 +2733,8 @@ DECLARE_THREAD(srv_worker_thread)(
 		<< os_thread_pf(os_thread_get_curr_id());
 #endif /* UNIV_DEBUG_THREAD_CREATION */
 
-	// JAN: TODO: MySQL 5.7
-	// destroy_thd(thd);
-        my_thread_end();
+	innobase_destroy_background_thd(thd);
+	my_thread_end();
 	/* We count the number of threads in os_thread_exit(). A created
 	thread should always use that to exit and not use return() to exit. */
 	os_thread_exit();
@@ -2812,6 +2749,7 @@ static
 ulint
 srv_do_purge(
 /*=========*/
+	MYSQL_THD	thd,
 	ulint		n_threads,	/*!< in: number of threads to use */
 	ulint*		n_total_purged)	/*!< in/out: total pages purged */
 {
@@ -2882,7 +2820,7 @@ srv_do_purge(
 
 		*n_total_purged += n_pages_purged;
 
-	} while (!srv_purge_should_exit(n_pages_purged)
+	} while (!srv_purge_should_exit(thd, n_pages_purged)
 		 && n_pages_purged > 0
 		 && purge_sys->state == PURGE_STATE_RUN);
 
@@ -2895,6 +2833,7 @@ static
 void
 srv_purge_coordinator_suspend(
 /*==========================*/
+	MYSQL_THD	thd,
 	srv_slot_t*	slot,			/*!< in/out: Purge coordinator
 						thread slot */
 	ulint		rseg_history_len)	/*!< in: history list length
@@ -2911,8 +2850,6 @@ srv_purge_coordinator_suspend(
 	int64_t		sig_count = srv_suspend_thread(slot);
 
 	do {
-		ulint		ret;
-
 		rw_lock_x_lock(&purge_sys->latch);
 
 		purge_sys->running = false;
@@ -2921,32 +2858,11 @@ srv_purge_coordinator_suspend(
 
 		/* We don't wait right away on the the non-timed wait because
 		we want to signal the thread that wants to suspend purge. */
-
-		if (stop) {
-			os_event_wait_low(slot->event, sig_count);
-			ret = 0;
-		} else if (rseg_history_len <= trx_sys->rseg_history_len) {
-			ret = os_event_wait_time_low(
-				slot->event, SRV_PURGE_MAX_TIMEOUT, sig_count);
-		} else {
-			/* We don't want to waste time waiting, if the
-			history list increased by the time we got here,
-			unless purge has been stopped. */
-			ret = 0;
-		}
-
-		srv_sys_mutex_enter();
-
-		/* The thread can be in state !suspended after the timeout
-		but before this check if another thread sent a wakeup signal. */
-
-		if (slot->suspended) {
-			slot->suspended = FALSE;
-			++srv_sys->n_threads_active[slot->type];
-			ut_a(srv_sys->n_threads_active[slot->type] == 1);
-		}
-
-		srv_sys_mutex_exit();
+		const bool wait = stop
+			|| rseg_history_len <= trx_sys->rseg_history_len;
+		const bool timeout = srv_resume_thread(
+			slot, sig_count, wait,
+			stop ? 0 : SRV_PURGE_MAX_TIMEOUT);
 
 		sig_count = srv_suspend_thread(slot);
 
@@ -2958,6 +2874,19 @@ srv_purge_coordinator_suspend(
 		if (!stop) {
 			ut_a(purge_sys->n_stop == 0);
 			purge_sys->running = true;
+
+			if (timeout
+			    && rseg_history_len == trx_sys->rseg_history_len
+			    && trx_sys->rseg_history_len < 5000) {
+				/* No new records were added since the
+				wait started. Simply wait for new
+				records. The magic number 5000 is an
+				approximation for the case where we
+				have cached UNDO log records which
+				prevent truncate of the UNDO
+				segments. */
+				stop = true;
+			}
 		} else {
 			ut_a(purge_sys->n_stop > 0);
 
@@ -2966,33 +2895,9 @@ srv_purge_coordinator_suspend(
 		}
 
 		rw_lock_x_unlock(&purge_sys->latch);
+	} while (stop && !thd_kill_level(thd));
 
-		if (ret == OS_SYNC_TIME_EXCEEDED) {
-
-			/* No new records added since wait started then simply
-			wait for new records. The magic number 5000 is an
-			approximation for the case where we have cached UNDO
-			log records which prevent truncate of the UNDO
-			segments. */
-
-			if (rseg_history_len == trx_sys->rseg_history_len
-			    && trx_sys->rseg_history_len < 5000) {
-
-				stop = true;
-			}
-		}
-
-	} while (stop);
-
-	srv_sys_mutex_enter();
-
-	if (slot->suspended) {
-		slot->suspended = FALSE;
-		++srv_sys->n_threads_active[slot->type];
-		ut_a(srv_sys->n_threads_active[slot->type] == 1);
-	}
-
-	srv_sys_mutex_exit();
+	srv_resume_thread(slot, 0, false);
 }
 
 /*********************************************************************//**
@@ -3006,8 +2911,7 @@ DECLARE_THREAD(srv_purge_coordinator_thread)(
 						required by os_thread_create */
 {
 	my_thread_init();
-	// JAN: TODO: MySQL 5.7
-	// THD *thd= create_thd(false, true, true);
+	THD*		thd = innobase_create_background_thd();
 	srv_slot_t*	slot;
 	ulint           n_total_purged = ULINT_UNDEFINED;
 
@@ -3041,28 +2945,30 @@ DECLARE_THREAD(srv_purge_coordinator_thread)(
 		purge didn't purge any records then wait for activity. */
 
 		if (srv_shutdown_state == SRV_SHUTDOWN_NONE
+		    && !thd_kill_level(thd)
 		    && (purge_sys->state == PURGE_STATE_STOP
 			|| n_total_purged == 0)) {
 
-			srv_purge_coordinator_suspend(slot, rseg_history_len);
+			srv_purge_coordinator_suspend(thd, slot, rseg_history_len);
 		}
 
-		if (srv_purge_should_exit(n_total_purged)) {
-			ut_a(!slot->suspended);
+		ut_ad(!slot->suspended);
+
+		if (srv_purge_should_exit(thd, n_total_purged)) {
 			break;
 		}
 
 		n_total_purged = 0;
 
 		rseg_history_len = srv_do_purge(
-			srv_n_purge_threads, &n_total_purged);
+			thd, srv_n_purge_threads, &n_total_purged);
 
-	} while (!srv_purge_should_exit(n_total_purged));
+	} while (!srv_purge_should_exit(thd, n_total_purged));
 
 	/* Ensure that we don't jump out of the loop unless the
 	exit condition is satisfied. */
 
-	ut_a(srv_purge_should_exit(n_total_purged));
+	ut_a(srv_purge_should_exit(thd, n_total_purged));
 
 	ulint	n_pages_purged = ULINT_MAX;
 
@@ -3121,8 +3027,7 @@ DECLARE_THREAD(srv_purge_coordinator_thread)(
 		srv_release_threads(SRV_WORKER, srv_n_purge_threads - 1);
 	}
 
-	// JAN: TODO: MYSQL 5.7
-	// destroy_thd(thd);
+	innobase_destroy_background_thd(thd);
 	my_thread_end();
 	/* We count the number of threads in os_thread_exit(). A created
 	thread should always use that to exit and not use return() to exit. */
@@ -3169,11 +3074,9 @@ srv_get_task_queue_length(void)
 	return(n_tasks);
 }
 
-/**********************************************************************//**
-Wakeup the purge threads. */
+/** Wake up the purge threads. */
 void
-srv_purge_wakeup(void)
-/*==================*/
+srv_purge_wakeup()
 {
 	ut_ad(!srv_read_only_mode);
 
@@ -3220,27 +3123,6 @@ srv_was_tablespace_truncated(const fil_space_t* space)
 		return(false);
 	}
 
-	bool	has_shared_space = FSP_FLAGS_GET_SHARED(space->flags);
-
-	if (is_system_tablespace(space->id) || has_shared_space) {
-		return(false);
-	}
-
-	return(truncate_t::was_tablespace_truncated(space->id));
-}
-
-/** Call exit(3) */
-void
-srv_fatal_error()
-{
-
-	ib::error() << "Cannot continue operation.";
-
-	fflush(stderr);
-
-	ut_d(innodb_calling_exit = true);
-
-	srv_shutdown_all_bg_threads();
-
-	exit(3);
+	return (!is_system_tablespace(space->id)
+		&& truncate_t::was_tablespace_truncated(space->id));
 }

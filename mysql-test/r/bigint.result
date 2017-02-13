@@ -60,6 +60,7 @@ min(big)	max(big)	max(big)-1
 select min(big),max(big),max(big)-1 from t1 group by a;
 min(big)	max(big)	max(big)-1
 -1	9223372036854775807	9223372036854775806
+SET STATEMENT sql_mode = 'NO_ENGINE_SUBSTITUTION' FOR
 alter table t1 modify big bigint unsigned not null;
 Warnings:
 Warning	1264	Out of range value for column 'big' at row 1
@@ -90,6 +91,7 @@ min(big)	max(big)	max(big)-1
 select min(big),max(big),max(big)-1 from t1 group by a;
 min(big)	max(big)	max(big)-1
 0	18446744073709551615	18446744073709551614
+SET STATEMENT sql_mode = 'NO_ENGINE_SUBSTITUTION' FOR
 alter table t1 modify big bigint not null;
 Warnings:
 Warning	1264	Out of range value for column 'big' at row 5
@@ -208,7 +210,7 @@ a	b	c	d
 18446744073709551615	18446744073709551615	18446744073709551615	18446744073709551615
 drop table t1;
 create table t1 ( quantity decimal(2) unsigned);
-insert into t1 values (500), (-500), (~0), (-1);
+insert ignore into t1 values (500), (-500), (~0), (-1);
 Warnings:
 Warning	1264	Out of range value for column 'quantity' at row 1
 Warning	1264	Out of range value for column 'quantity' at row 2
@@ -420,22 +422,22 @@ UPDATE t1 SET b = a;
 EXPLAIN EXTENDED SELECT 1 FROM t1 WHERE a = 18446744073709551615 AND TRIM(a) = b;
 SHOW WARNINGS;
 Level	Code	Message
-Note	1003	select 1 AS `1` from `test`.`t1` where ((`test`.`t1`.`a` = 18446744073709551615) and ('18446744073709551615' = `test`.`t1`.`b`))
+Note	1003	select 1 AS `1` from `test`.`t1` where `test`.`t1`.`a` = 18446744073709551615 and '18446744073709551615' = `test`.`t1`.`b`
 # 8000000000000000
 EXPLAIN EXTENDED SELECT 1 FROM t1 WHERE a = 9223372036854775808 AND TRIM(a) = b;
 SHOW WARNINGS;
 Level	Code	Message
-Note	1003	select 1 AS `1` from `test`.`t1` where ((`test`.`t1`.`a` = 9223372036854775808) and ('9223372036854775808' = `test`.`t1`.`b`))
+Note	1003	select 1 AS `1` from `test`.`t1` where `test`.`t1`.`a` = 9223372036854775808 and '9223372036854775808' = `test`.`t1`.`b`
 # 7FFFFFFFFFFFFFFF
 EXPLAIN EXTENDED SELECT 1 FROM t1 WHERE a = 9223372036854775807 AND TRIM(a) = b;
 SHOW WARNINGS;
 Level	Code	Message
-Note	1003	select 1 AS `1` from `test`.`t1` where ((`test`.`t1`.`a` = 9223372036854775807) and ('9223372036854775807' = `test`.`t1`.`b`))
+Note	1003	select 1 AS `1` from `test`.`t1` where `test`.`t1`.`a` = 9223372036854775807 and '9223372036854775807' = `test`.`t1`.`b`
 # 0
 EXPLAIN EXTENDED SELECT 1 FROM t1 WHERE a = 0 AND TRIM(a) = b;
 SHOW WARNINGS;
 Level	Code	Message
-Note	1003	select 1 AS `1` from `test`.`t1` where ((`test`.`t1`.`a` = 0) and ('0' = `test`.`t1`.`b`))
+Note	1003	select 1 AS `1` from `test`.`t1` where `test`.`t1`.`a` = 0 and '0' = `test`.`t1`.`b`
 DROP TABLE t1;
 # End of 5.1 tests
 #

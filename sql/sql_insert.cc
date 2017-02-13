@@ -309,6 +309,32 @@ static int check_insert_fields(THD *thd, TABLE_LIST *table_list,
   DBUG_RETURN(0);
 }
 
+static bool has_no_default_value(THD *thd, Field *field, TABLE_LIST *table_list)
+{
+  if ((field->flags & NO_DEFAULT_VALUE_FLAG) && field->real_type() != MYSQL_TYPE_ENUM)
+  {
+    bool view= false;
+    if (table_list)
+    {
+      table_list= table_list->top_table();
+      view= table_list->view != NULL;
+    }
+    if (view)
+    {
+      push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN, ER_NO_DEFAULT_FOR_VIEW_FIELD,
+                          ER_THD(thd, ER_NO_DEFAULT_FOR_VIEW_FIELD),
+                          table_list->view_db.str, table_list->view_name.str);
+    }
+    else
+    {
+      push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN, ER_NO_DEFAULT_FOR_FIELD,
+                          ER_THD(thd, ER_NO_DEFAULT_FOR_FIELD), field->field_name);
+    }
+    return true;
+  }
+  return false;
+}
+
 
 /**
   Check if update fields are correct.
@@ -744,13 +770,10 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
   DBUG_ASSERT(bulk_iterations > 0);
   if (mysql_prepare_insert(thd, table_list, table, fields, values,
 			   update_fields, update_values, duplic, &unused_conds,
-                           FALSE,
-                           (fields.elements || !value_count ||
-                            table_list->view != 0),
-                           !ignore && thd->is_strict_mode()))
+                           FALSE))
     goto abort;
 
-  /* mysql_prepare_insert set table_list->table if it was not set */
+  /* mysql_prepare_insert sets table_list->table if it was not set */
   table= table_list->table;
 
   context= &thd->lex->select_lex.context;
@@ -879,6 +902,15 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
   table->prepare_triggers_for_insert_stmt_or_event();
   table->mark_columns_needed_for_insert();
 
+  if (fields.elements || !value_count || table_list->view != 0)
+  {
+    if (check_that_all_fields_are_given_values(thd, table, table_list))
+    {
+      error= 1;
+      goto values_loop_end;
+    }
+  }
+
   if (table_list->prepare_where(thd, 0, TRUE) ||
       table_list->prepare_check_option(thd))
     error= 1;
@@ -950,12 +982,7 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
             be overwritten by fill_record() anyway (and fill_record() does not
             use default values in this case).
           */
-#ifdef HAVE_valgrind
-          if (table->file->ha_table_flags() && HA_RECORD_MUST_BE_CLEAN_ON_WRITE)
-            restore_record(table,s->default_values);	// Get empty record
-          else
-#endif
-            table->record[0][0]= share->default_values[0];
+          table->record[0][0]= share->default_values[0];
 
           /* Fix undefined null_bits. */
           if (share->null_bytes > 1 && share->last_null_bit_pos)
@@ -978,6 +1005,24 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
         }
       }
 
+      /*
+        with triggers a field can get a value *conditionally*, so we have to repeat
+        has_no_default_value() check for every row
+      */
+      if (table->triggers &&
+          table->triggers->has_triggers(TRG_EVENT_INSERT, TRG_ACTION_BEFORE))
+      {
+        for (Field **f=table->field ; *f ; f++)
+        {
+          if (!(*f)->has_explicit_value() &&
+              has_no_default_value(thd, *f, table_list))
+          {
+            error= 1;
+            goto values_loop_end;
+          }
+        }
+      }
+
       if ((res= table_list->view_check_option(thd,
                                               (values_list.elements == 1 ?
                                                0 :
@@ -989,6 +1034,7 @@ bool mysql_insert(THD *thd,TABLE_LIST *table_list,
         error= 1;
         break;
       }
+
 #ifndef EMBEDDED_LIBRARY
       if (lock_type == TL_WRITE_DELAYED)
       {
@@ -1389,10 +1435,6 @@ static void prepare_for_positional_update(TABLE *table, TABLE_LIST *tables)
 			be taken from table_list->table)    
     where		Where clause (for insert ... select)
     select_insert	TRUE if INSERT ... SELECT statement
-    check_fields        TRUE if need to check that all INSERT fields are 
-                        given values.
-    abort_on_warning    whether to report if some INSERT field is not 
-                        assigned as an error (TRUE) or as a warning (FALSE).
 
   TODO (in far future)
     In cases of:
@@ -1412,9 +1454,8 @@ static void prepare_for_positional_update(TABLE *table, TABLE_LIST *tables)
 bool mysql_prepare_insert(THD *thd, TABLE_LIST *table_list,
                           TABLE *table, List<Item> &fields, List_item *values,
                           List<Item> &update_fields, List<Item> &update_values,
-                          enum_duplicates duplic,
-                          COND **where, bool select_insert,
-                          bool check_fields, bool abort_on_warning)
+                          enum_duplicates duplic, COND **where,
+                          bool select_insert)
 {
   SELECT_LEX *select_lex= &thd->lex->select_lex;
   Name_resolution_context *context= &select_lex->context;
@@ -1486,17 +1527,6 @@ bool mysql_prepare_insert(THD *thd, TABLE_LIST *table_list,
           check_insert_fields(thd, context->table_list, fields, *values,
                               !insert_into_view, 0, &map));
 
-    if (!res && check_fields)
-    {
-      bool saved_abort_on_warning= thd->abort_on_warning;
-      thd->abort_on_warning= abort_on_warning;
-      res= check_that_all_fields_are_given_values(thd, 
-                                                  table ? table : 
-                                                  context->table_list->table,
-                                                  context->table_list);
-      thd->abort_on_warning= saved_abort_on_warning;
-    }
-
     if (!res)
       res= setup_fields(thd, Ref_ptr_array(),
                         update_values, MARK_COLUMNS_READ, 0, 0);
@@ -1518,8 +1548,6 @@ bool mysql_prepare_insert(THD *thd, TABLE_LIST *table_list,
 
   if (!table)
     table= table_list->table;
-  if (table->s->virtual_stored_fields)
-    thd->lex->unit.insert_table_with_stored_vcol= table;
 
   if (!select_insert)
   {
@@ -1695,6 +1723,16 @@ int write_record(THD *thd, TABLE *table,COPY_INFO *info)
                                                         keypart_map,
                                                         HA_READ_KEY_EXACT))))
 	  goto err;
+      }
+      if (table->vfield)
+      {
+        /*
+          We have not yet called update_virtual_fields(VOL_UPDATE_FOR_READ)
+          in handler methods for the just read row in record[1].
+        */
+        table->move_fields(table->field, table->record[1], table->record[0]);
+        table->update_virtual_fields(VCOL_UPDATE_FOR_REPLACE);
+        table->move_fields(table->field, table->record[0], table->record[1]);
       }
       if (info->handle_duplicates == DUP_UPDATE)
       {
@@ -1924,8 +1962,8 @@ before_trg_err:
   Check that all fields with arn't null_fields are used
 ******************************************************************************/
 
-int check_that_all_fields_are_given_values(THD *thd, TABLE *entry,
-                                           TABLE_LIST *table_list)
+
+int check_that_all_fields_are_given_values(THD *thd, TABLE *entry, TABLE_LIST *table_list)
 {
   int err= 0;
   MY_BITMAP *write_set= entry->write_set;
@@ -1933,32 +1971,8 @@ int check_that_all_fields_are_given_values(THD *thd, TABLE *entry,
   for (Field **field=entry->field ; *field ; field++)
   {
     if (!bitmap_is_set(write_set, (*field)->field_index) &&
-        ((*field)->flags & NO_DEFAULT_VALUE_FLAG) &&
-        ((*field)->real_type() != MYSQL_TYPE_ENUM))
-    {
-      bool view= FALSE;
-      if (table_list)
-      {
-        table_list= table_list->top_table();
-        view= MY_TEST(table_list->view);
-      }
-      if (view)
-      {
-        push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
-                            ER_NO_DEFAULT_FOR_VIEW_FIELD,
-                            ER_THD(thd, ER_NO_DEFAULT_FOR_VIEW_FIELD),
-                            table_list->view_db.str,
-                            table_list->view_name.str);
-      }
-      else
-      {
-        push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
-                            ER_NO_DEFAULT_FOR_FIELD,
-                            ER_THD(thd, ER_NO_DEFAULT_FOR_FIELD),
-                            (*field)->field_name);
-      }
-      err= 1;
-    }
+        has_no_default_value(thd, *field, table_list))
+      err=1;
   }
   return thd->abort_on_warning ? err : 0;
 }
@@ -2339,6 +2353,12 @@ end_create:
   DBUG_RETURN(thd->is_error());
 }
 
+#define memdup_vcol(thd, vcol)                                            \
+  if (vcol)                                                               \
+  {                                                                       \
+    (vcol)= (Virtual_column_info*)(thd)->memdup((vcol), sizeof(*(vcol))); \
+    (vcol)->expr= NULL;                                                   \
+  }
 
 /**
   As we can't let many client threads modify the same TABLE
@@ -2360,7 +2380,6 @@ TABLE *Delayed_insert::get_local_table(THD* client_thd)
 {
   my_ptrdiff_t adjust_ptrs;
   Field **field,**org_field, *found_next_number_field;
-  Field **vfield= 0, **dfield_ptr= 0;
   TABLE *copy;
   TABLE_SHARE *share;
   uchar *bitmap;
@@ -2423,14 +2442,6 @@ TABLE *Delayed_insert::get_local_table(THD* client_thd)
   if (!copy_tmp)
     goto error;
 
-  if (share->virtual_fields)
-  {
-    vfield= (Field **) client_thd->alloc((share->virtual_fields+1)*
-                                         sizeof(Field*));
-    if (!vfield)
-      goto error;
-  }
-
   /* Copy the TABLE object. */
   copy= new (copy_tmp) TABLE;
   *copy= *table;
@@ -2449,8 +2460,16 @@ TABLE *Delayed_insert::get_local_table(THD* client_thd)
                         sizeof(Field*));
     if (!copy->default_field)
       goto error;
-    dfield_ptr= copy->default_field;
   }
+
+  if (share->virtual_fields)
+  {
+    copy->vfield= (Field **) client_thd->alloc((share->virtual_fields+1)*
+                                               sizeof(Field*));
+    if (!copy->vfield)
+      goto error;
+  }
+  copy->expr_arena= NULL;
 
   /* Ensure we don't use the table list of the original table */
   copy->pos_in_table_list= 0;
@@ -2466,12 +2485,14 @@ TABLE *Delayed_insert::get_local_table(THD* client_thd)
   found_next_number_field= table->found_next_number_field;
   for (org_field= table->field; *org_field; org_field++, field++)
   {
-    if (!(*field= (*org_field)->make_new_field(client_thd->mem_root, copy,
-                                               1)))
+    if (!(*field= (*org_field)->make_new_field(client_thd->mem_root, copy, 1)))
       goto error;
     (*field)->unireg_check= (*org_field)->unireg_check;
     (*field)->orig_table= copy;			// Remove connection
     (*field)->move_field_offset(adjust_ptrs);	// Point at copy->record[0]
+    memdup_vcol(client_thd, (*field)->vcol_info);
+    memdup_vcol(client_thd, (*field)->default_value);
+    memdup_vcol(client_thd, (*field)->check_constraint);
     if (*org_field == found_next_number_field)
       (*field)->table->found_next_number_field= *field;
   }
@@ -2484,42 +2505,9 @@ TABLE *Delayed_insert::get_local_table(THD* client_thd)
     if (!(copy->def_vcol_set= (MY_BITMAP*) alloc_root(client_thd->mem_root,
                                                       sizeof(MY_BITMAP))))
       goto error;
-    copy->vfield= vfield;
-    for (field= copy->field; *field; field++)
-    {
-      Virtual_column_info *vcol;
-      if ((*field)->vcol_info)
-      {
-        if (!(vcol= unpack_vcol_info_from_frm(client_thd,
-                                              client_thd->mem_root,
-                                              copy,
-                                              0,
-                                              (*field)->vcol_info,
-                                              &error_reported)))
-          goto error;
-        (*field)->vcol_info= vcol;
-        *vfield++= *field;
-      }
-      if ((*field)->default_value)
-      {
-        if (!(vcol= unpack_vcol_info_from_frm(client_thd,
-                                              client_thd->mem_root,
-                                              copy,
-                                              0,
-                                              (*field)->default_value,
-                                              &error_reported)))
-          goto error;
-        (*field)->default_value= vcol;
-        *dfield_ptr++= *field;
-      }
-      else
-      if ((*field)->has_update_default_function())
-        *dfield_ptr++= *field;
-    }
-    if (vfield)
-      *vfield= 0;
-    if (dfield_ptr)
-      *dfield_ptr= 0;
+
+    if (parse_vcol_defs(client_thd, client_thd->mem_root, copy, &error_reported))
+      goto error;
   }
 
   switch_defaults_to_nullable_trigger_fields(copy);
@@ -2546,10 +2534,7 @@ TABLE *Delayed_insert::get_local_table(THD* client_thd)
   }
   if (share->default_fields || share->default_expressions)
   {
-    if (!(copy->has_value_set= (MY_BITMAP*) alloc_root(client_thd->mem_root,
-                                                       sizeof(MY_BITMAP))))
-      goto error;
-    my_bitmap_init(copy->has_value_set,
+    my_bitmap_init(&copy->has_value_set,
                    (my_bitmap_map*) (bitmap +
                                      bitmaps_used*share->column_bitmap_size),
                    share->fields, FALSE);
@@ -2939,6 +2924,8 @@ pthread_handler_t handle_delayed_insert(void *arg)
     thd->mdl_context.set_needs_thr_lock_abort(TRUE);
 
     di->table->mark_columns_needed_for_insert();
+    /* Mark all columns for write as we don't know which columns we get from user */
+    bitmap_set_all(di->table->write_set);
 
     /* Now wait until we get an insert or lock to handle */
     /* We will not abort as long as a client thread uses this thread */
@@ -3106,7 +3093,7 @@ pthread_handler_t handle_delayed_insert(void *arg)
 }
 
 
-/* Remove pointers from temporary fields to allocated values */
+/* Remove all pointers to data for blob fields so that original table doesn't try to free them */
 
 static void unlink_blobs(register TABLE *table)
 {
@@ -3124,11 +3111,23 @@ static void free_delayed_insert_blobs(register TABLE *table)
   for (Field **ptr=table->field ; *ptr ; ptr++)
   {
     if ((*ptr)->flags & BLOB_FLAG)
+      ((Field_blob *) *ptr)->free();
+  }
+}
+
+
+/* set value field for blobs to point to data in record */
+
+static void set_delayed_insert_blobs(register TABLE *table)
+{
+  for (Field **ptr=table->field ; *ptr ; ptr++)
+  {
+    if ((*ptr)->flags & BLOB_FLAG)
     {
-      uchar *str;
-      ((Field_blob *) (*ptr))->get_ptr(&str);
-      my_free(str);
-      ((Field_blob *) (*ptr))->reset();
+      Field_blob *blob= ((Field_blob *) *ptr);
+      uchar *data= blob->get_ptr();
+      if (data)
+        blob->set_value(data);     // Set value.ptr() to point to data
     }
   }
 }
@@ -3183,9 +3182,12 @@ bool Delayed_insert::handle_inserts(void)
 
   while ((row=rows.get()))
   {
+    int tmp_error;
     stacked_inserts--;
     mysql_mutex_unlock(&mutex);
     memcpy(table->record[0],row->record,table->s->reclength);
+    if (table->s->blob_fields)
+      set_delayed_insert_blobs(table);
 
     thd.start_time=row->start_time;
     thd.query_start_used=row->query_start_used;
@@ -3256,7 +3258,19 @@ bool Delayed_insert::handle_inserts(void)
     if (info.handle_duplicates == DUP_UPDATE)
       table->file->extra(HA_EXTRA_INSERT_WITH_UPDATE);
     thd.clear_error(); // reset error for binlog
-    if (write_record(&thd, table, &info))
+
+    tmp_error= 0;
+    if (table->vfield)
+    {
+      /*
+        Virtual fields where not calculated by caller as the temporary
+        TABLE object used had vcol_set empty. Better to calculate them
+        here to make the caller faster.
+      */
+      tmp_error= table->update_virtual_fields(VCOL_UPDATE_FOR_WRITE);
+    }
+
+    if (tmp_error || write_record(&thd, table, &info))
     {
       info.error_count++;				// Ignore errors
       thread_safe_increment(delayed_insert_errors,&LOCK_delayed_status);
@@ -3377,6 +3391,7 @@ bool Delayed_insert::handle_inserts(void)
     if (table->s->blob_fields)
     {
       memcpy(table->record[0],row->record,table->s->reclength);
+      set_delayed_insert_blobs(table);
       free_delayed_insert_blobs(table);
     }
     delete row;
@@ -3423,9 +3438,8 @@ bool mysql_insert_select_prepare(THD *thd)
   
   if (mysql_prepare_insert(thd, lex->query_tables,
                            lex->query_tables->table, lex->field_list, 0,
-                           lex->update_list, lex->value_list,
-                           lex->duplicates,
-                           &select_lex->where, TRUE, FALSE, FALSE))
+                           lex->update_list, lex->value_list, lex->duplicates,
+                           &select_lex->where, TRUE))
     DBUG_RETURN(TRUE);
 
   DBUG_ASSERT(select_lex->leaf_tables.elements != 0);
@@ -3512,8 +3526,7 @@ select_insert::prepare(List<Item> &values, SELECT_LEX_UNIT *u)
   {
     bool saved_abort_on_warning= thd->abort_on_warning;
     thd->abort_on_warning= !info.ignore && thd->is_strict_mode();
-    res= check_that_all_fields_are_given_values(thd, table_list->table, 
-                                                table_list);
+    res= check_that_all_fields_are_given_values(thd, table_list->table, table_list);
     thd->abort_on_warning= saved_abort_on_warning;
   }
 
@@ -4021,7 +4034,6 @@ static TABLE *create_table_from_items(THD *thd,
   Item *item;
   DBUG_ENTER("create_table_from_items");
 
-  tmp_table.alias= 0;
   tmp_table.s= &share;
   init_tmp_table_share(thd, &share, "", 0, "", "");
 

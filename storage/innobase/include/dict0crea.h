@@ -67,13 +67,6 @@ dict_create_table_step(
 /*===================*/
 	que_thr_t*	thr);		/*!< in: query thread */
 
-/** Builds a tablespace to store various objects.
-@param[in,out]	tablespace	Tablespace object describing what to build.
-@return DB_SUCCESS or error code. */
-dberr_t
-dict_build_tablespace(
-	Tablespace*	tablespace);
-
 /** Builds a tablespace to contain a table, using file-per-table=1.
 @param[in,out]	table	Table to build in its own tablespace.
 @param[in]	node	Table create node
@@ -276,7 +269,6 @@ Add a foreign key definition to the data dictionary tables.
 dberr_t
 dict_create_add_foreign_to_dictionary(
 /*==================================*/
-	dict_table_t*		table,	/*!< in: table */
 	const char*		name,	/*!< in: table name */
 	const dict_foreign_t*	foreign,/*!< in: foreign key */
 	trx_t*			trx)	/*!< in/out: dictionary transaction */

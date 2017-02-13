@@ -1754,9 +1754,9 @@ RecLock::lock_alloc(
 /*********************************************************************//**
 Check if lock1 has higher priority than lock2.
 NULL has lowest priority.
-If either is a high priority transaction, the lock has higher priority.
 If neither of them is wait lock, the first one has higher priority.
 If only one of them is a wait lock, it has lower priority.
+If either is a high priority transaction, the lock has higher priority.
 Otherwise, the one with an older transaction has higher priority.
 @returns true if lock1 has higher priority, false otherwise. */
 bool
@@ -1769,25 +1769,13 @@ has_higher_priority(
 	} else if (lock2 == NULL) {
 		return true;
 	}
-	// Ask the upper server layer if any of the two trx should be prefered.
-	int preference = thd_deadlock_victim_preference(lock1->trx->mysql_thd, lock2->trx->mysql_thd);
-	if (preference == -1) {
-		// lock1 is preferred as a victim, so lock2 has higher priority
-		return false;
-	} else if (preference == 1) {
-		// lock2 is preferred as a victim, so lock1 has higher priority
-		return true;
-	}
-	if (trx_is_high_priority(lock1->trx)) {
-		return true;
-	}
-	if (trx_is_high_priority(lock2->trx)) {
-		return false;
-	}
-	// No preference. Compre them by wait mode and trx age.
+	// Granted locks has higher priority.
 	if (!lock_get_wait(lock1)) {
 		return true;
 	} else if (!lock_get_wait(lock2)) {
+		return false;
+	}
+	if (trx_is_high_priority(lock1->trx)) {
 		return false;
 	}
 	return lock1->trx->start_time_micro <= lock2->trx->start_time_micro;
@@ -2792,12 +2780,10 @@ RecLock::jump_queue(
 		ut_ad(conflict_lock->trx->lock.que_state == TRX_QUE_LOCK_WAIT);
 		ut_ad(conflict_lock->trx->lock.wait_lock == conflict_lock);
 
-#ifdef UNIV_DEBUG
-		ib::info() << "Granting High Priority Transaction (ID): "
-			   << lock->trx->id << " the lock jumping over"
-			   << " waiting Transaction (ID): "
-			   << conflict_lock->trx->id;
-#endif /* UNIV_DEBUG */
+		DBUG_LOG("trx",
+			 "Granting High Priority Transaction "
+			 << lock->trx->id << " a lock jumping over"
+			 << " waiting Transaction " << conflict_lock->trx->id);
 
 		lock_reset_lock_and_trx_wait(lock);
 		return(true);
@@ -2966,11 +2952,12 @@ RecLock::make_trx_hit_list(
 
 			/* Assert that it is not waiting for current record. */
 			ut_ad(trx->lock.wait_lock != next);
-#ifdef UNIV_DEBUG
-			ib::info() << "High Priority Transaction (ID): "
-				   << lock->trx->id << " waking up blocking"
-				   << " transaction (ID): " << trx->id;
-#endif /* UNIV_DEBUG */
+
+			DBUG_LOG("trx", "High Priority Transaction "
+				 << lock->trx->id
+				 << " waking up blocking transaction "
+				 << trx->id);
+
 			trx->lock.was_chosen_as_deadlock_victim = true;
 			lock_cancel_waiting_and_release(trx->lock.wait_lock);
 			trx_mutex_exit(trx);
@@ -4802,7 +4789,7 @@ lock_table(
 	lock_mutex_enter();
 
 	DBUG_EXECUTE_IF("fatal-semaphore-timeout",
-		{ os_thread_sleep(3600000000); });
+		{ os_thread_sleep(3600000000LL); });
 
 	/* We have to check if the new lock is compatible with any locks
 	other transactions have in the table lock queue. */
@@ -6367,8 +6354,10 @@ lock_rec_queue_validate(
 					mode, block, false, heap_no,
 					lock->trx);
 #ifdef WITH_WSREP
-			ut_a(!other_lock || wsrep_thd_is_BF(lock->trx->mysql_thd, FALSE) ||
-			     wsrep_thd_is_BF(other_lock->trx->mysql_thd, FALSE));
+			ut_a(!other_lock
+			     || wsrep_thd_is_BF(lock->trx->mysql_thd, FALSE)
+			     || wsrep_thd_is_BF(other_lock->trx->mysql_thd, FALSE));
+
 #else
 			ut_a(!other_lock);
 #endif /* WITH_WSREP */
@@ -7780,6 +7769,9 @@ lock_trx_handle_wait(
 		ut_ad(trx_mutex_own(trx));
 		trx_mutex_exit(trx);
 	}
+
+	ut_ad(err == DB_SUCCESS || err == DB_LOCK_WAIT
+	      || err == DB_DEADLOCK);
 
 	return(err);
 }

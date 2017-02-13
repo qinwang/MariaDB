@@ -1,6 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1997, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2017, MariaDB Corporation
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -467,7 +468,6 @@ row_vers_non_vc_match(
 	return(ret);
 }
 
-#ifdef MYSQL_VIRTUAL_COLUMNS
 /** build virtual column value from current cluster index record data
 @param[in,out]	row		the cluster index row in dtuple form
 @param[in]	clust_index	clustered index
@@ -841,7 +841,6 @@ row_vers_build_cur_vrow(
 					 ULINT_UNDEFINED, &heap);
 	return(cur_vrow);
 }
-#endif /* MYSQL_VIRTUAL_COLUMNS */
 
 /*****************************************************************//**
 Finds out if a version of the record, where the version >= the current
@@ -878,8 +877,8 @@ row_vers_old_has_index_entry(
 	mem_heap_t*	v_heap = NULL;
 	const dtuple_t*	cur_vrow = NULL;
 
-	ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, rec, MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(!rw_lock_own(&(purge_sys->latch), RW_LOCK_S));
 
 	clust_index = dict_table_get_first_index(index->table);
@@ -913,7 +912,6 @@ row_vers_old_has_index_entry(
 
 		if (dict_index_has_virtual(index)) {
 
-#ifdef MYSQL_VIRTUAL_COLUMNS
 
 #ifdef DBUG_OFF
 # define dbug_v_purge false
@@ -963,7 +961,6 @@ row_vers_old_has_index_entry(
 			}
 			clust_offsets = rec_get_offsets(rec, clust_index, NULL,
 							ULINT_UNDEFINED, &heap);
-#endif /* MYSQL_VIRTUAL_COLUMNS */
 		} else {
 
 			entry = row_build_index_entry(
@@ -1001,7 +998,6 @@ row_vers_old_has_index_entry(
 			}
 		}
 	} else if (dict_index_has_virtual(index)) {
-#ifdef MYSQL_VIRTUAL_COLUMNS
 		/* The current cluster index record could be
 		deleted, but the previous version of it might not. We will
 		need to get the virtual column data from undo record
@@ -1009,7 +1005,6 @@ row_vers_old_has_index_entry(
 		cur_vrow = row_vers_build_cur_vrow(
 			also_curr, rec, clust_index, &clust_offsets,
 			index, ientry, roll_ptr, trx_id, heap, v_heap, mtr);
-#endif /* MYSQL_VIRTUAL_COLUMNS */
 	}
 
 	version = rec;
@@ -1140,8 +1135,8 @@ row_vers_build_for_consistent_read(
 	dberr_t		err;
 
 	ut_ad(dict_index_is_clust(index));
-	ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, rec, MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(!rw_lock_own(&(purge_sys->latch), RW_LOCK_S));
 
 	ut_ad(rec_offs_validate(rec, index, *offsets));
@@ -1252,8 +1247,8 @@ row_vers_build_for_semi_consistent_read(
 	trx_id_t	rec_trx_id	= 0;
 
 	ut_ad(dict_index_is_clust(index));
-	ut_ad(mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_X_FIX)
-	      || mtr_memo_contains_page(mtr, rec, MTR_MEMO_PAGE_S_FIX));
+	ut_ad(mtr_memo_contains_page_flagged(mtr, rec, MTR_MEMO_PAGE_X_FIX
+					     | MTR_MEMO_PAGE_S_FIX));
 	ut_ad(!rw_lock_own(&(purge_sys->latch), RW_LOCK_S));
 
 	ut_ad(rec_offs_validate(rec, index, *offsets));

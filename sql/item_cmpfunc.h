@@ -55,7 +55,6 @@ class Arg_comparator: public Sql_alloc
   Arg_comparator *comparators;   // used only for compare_row()
   double precision;
   /* Fields used in DATE/DATETIME comparison. */
-  THD *thd;
   Item *a_cache, *b_cache;         // Cached values of a and b items
                                    //   when one of arguments is NULL.
   int set_compare_func(Item_func_or_sum *owner, Item_result type);
@@ -70,12 +69,12 @@ public:
 
   Arg_comparator(): m_compare_type(STRING_RESULT),
     m_compare_collation(&my_charset_bin),
-    set_null(TRUE), comparators(0), thd(0),
+    set_null(TRUE), comparators(0),
     a_cache(0), b_cache(0) {};
   Arg_comparator(Item **a1, Item **a2): a(a1), b(a2),
     m_compare_type(STRING_RESULT),
     m_compare_collation(&my_charset_bin),
-    set_null(TRUE), comparators(0), thd(0),
+    set_null(TRUE), comparators(0),
     a_cache(0), b_cache(0) {};
 
 public:
@@ -215,6 +214,7 @@ public:
   virtual longlong val_int();
   virtual void fix_length_and_dec();
   virtual void print(String *str, enum_query_type query_type);
+  enum precedence precedence() const { return CMP_PRECEDENCE; }
 
 protected:
   Item_func_truth(THD *thd, Item *a, bool a_value, bool a_affirmative):
@@ -480,6 +480,7 @@ public:
   {
     Item_func::print_op(str, query_type);
   }
+  enum precedence precedence() const { return CMP_PRECEDENCE; }
   Item *neg_transformer(THD *thd);
   virtual Item *negated_item(THD *thd);
   Item* propagate_equal_fields(THD *thd, const Context &ctx, COND_EQUAL *cond)
@@ -535,6 +536,7 @@ public:
   Item_func_xor(THD *thd, Item *i1, Item *i2): Item_bool_func(thd, i1, i2) {}
   enum Functype functype() const { return XOR_FUNC; }
   const char *func_name() const { return "xor"; }
+  enum precedence precedence() const { return XOR_PRECEDENCE; }
   void print(String *str, enum_query_type query_type)
   { Item_func::print_op(str, query_type); }
   longlong val_int();
@@ -559,6 +561,7 @@ public:
   longlong val_int();
   enum Functype functype() const { return NOT_FUNC; }
   const char *func_name() const { return "not"; }
+  enum precedence precedence() const { return BANG_PRECEDENCE; }
   Item *neg_transformer(THD *thd);
   bool fix_fields(THD *, Item **);
   virtual void print(String *str, enum_query_type query_type);
@@ -839,7 +842,6 @@ public:
   Item_func_opt_neg(THD *thd, List<Item> &list):
     Item_bool_func(thd, list), negated(0), pred_level(0) {}
 public:
-  inline void negate() { negated= !negated; }
   inline void top_level_item() { pred_level= 1; }
   bool is_top_level_item() const { return pred_level; }
   Item *neg_transformer(THD *thd)
@@ -867,6 +869,7 @@ public:
   longlong val_int();
   enum Functype functype() const   { return BETWEEN; }
   const char *func_name() const { return "between"; }
+  enum precedence precedence() const { return BETWEEN_PRECEDENCE; }
   void fix_length_and_dec();
   virtual void print(String *str, enum_query_type query_type);
   bool eval_not_null_tables(void *opt_arg);
@@ -1066,6 +1069,12 @@ class Item_func_nullif :public Item_func_hybrid_field_type
   */
   Item_cache *m_cache;
   int compare();
+  void reset_first_arg_if_needed()
+  { 
+    if (arg_count == 3 && args[0] != args[2])
+      args[0]= args[2];
+  }
+  Item *m_arg0;
 public:
   /*
     Here we pass three arguments to the parent constructor, as NULLIF
@@ -1077,8 +1086,14 @@ public:
   */
   Item_func_nullif(THD *thd, Item *a, Item *b):
     Item_func_hybrid_field_type(thd, a, b, a),
-    m_cache(NULL)
+    m_cache(NULL),
+    m_arg0(NULL)
   { arg_count--; }
+  void cleanup()
+  {
+    Item_func_hybrid_field_type::cleanup();
+    arg_count= 2; // See the comment to the constructor
+  }
   bool date_op(MYSQL_TIME *ltime, uint fuzzydate);
   double real_op();
   longlong int_op();
@@ -1116,6 +1131,12 @@ public:
   }
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_nullif>(thd, mem_root, this); }
+  Item *derived_field_transformer_for_having(THD *thd, uchar *arg)
+  { reset_first_arg_if_needed(); return this; }
+  Item *derived_field_transformer_for_where(THD *thd, uchar *arg)
+  { reset_first_arg_if_needed(); return this; }
+  Item *derived_grouping_field_transformer_for_where(THD *thd, uchar *arg)
+  { reset_first_arg_if_needed(); return this; }
 };
 
 
@@ -1246,15 +1267,13 @@ public:
 class in_datetime :public in_longlong
 {
 public:
-  THD *thd;
   /* An item used to issue warnings. */
   Item *warn_item;
   /* Cache for the left item. */
   Item *lval_cache;
 
   in_datetime(THD *thd, Item *warn_item_arg, uint elements)
-    :in_longlong(thd, elements), thd(current_thd), warn_item(warn_item_arg),
-     lval_cache(0) {};
+    :in_longlong(thd, elements), warn_item(warn_item_arg), lval_cache(0) {};
   void set(uint pos,Item *item);
   uchar *get_value(Item *item);
   Item *create_item(THD *thd);
@@ -1423,14 +1442,13 @@ class cmp_item_datetime : public cmp_item_scalar
 {
   longlong value;
 public:
-  THD *thd;
   /* Item used for issuing warnings. */
   Item *warn_item;
   /* Cache for the left item. */
   Item *lval_cache;
 
   cmp_item_datetime(Item *warn_item_arg)
-    :thd(current_thd), warn_item(warn_item_arg), lval_cache(0) {}
+    : warn_item(warn_item_arg), lval_cache(0) {}
   void store_value(Item *item);
   int cmp(Item *arg);
   int compare(cmp_item *ci);
@@ -1551,6 +1569,7 @@ public:
   uint decimal_precision() const;
   table_map not_null_tables() const { return 0; }
   const char *func_name() const { return "case"; }
+  enum precedence precedence() const { return BETWEEN_PRECEDENCE; }
   virtual void print(String *str, enum_query_type query_type);
   Item *find_item(String *str);
   CHARSET_INFO *compare_collation() const { return cmp_collation.collation; }
@@ -1662,7 +1681,8 @@ public:
   }
   virtual void print(String *str, enum_query_type query_type);
   enum Functype functype() const { return IN_FUNC; }
-  const char *func_name() const { return " IN "; }
+  const char *func_name() const { return "in"; }
+  enum precedence precedence() const { return CMP_PRECEDENCE; }
   bool eval_not_null_tables(void *opt_arg);
   void fix_after_pullout(st_select_lex *new_parent, Item **ref);
   bool count_sargable_conds(void *arg);
@@ -1753,10 +1773,28 @@ public:
     update_used_tables();
   }
   const char *func_name() const { return "isnull"; }
+  void print(String *str, enum_query_type query_type);
+  enum precedence precedence() const { return CMP_PRECEDENCE; }
+
+  bool arg_is_datetime_notnull_field()
+  {
+    Item **args= arguments();
+    if (args[0]->type() == Item::FIELD_ITEM)
+    {
+      Field *field=((Item_field*) args[0])->field;
+
+      if (((field->type() == MYSQL_TYPE_DATE) ||
+          (field->type() == MYSQL_TYPE_DATETIME)) &&
+          (field->flags & NOT_NULL_FLAG))
+        return true;
+    }
+    return false;
+  }
+
   /* Optimize case of not_null_column IS NULL */
   virtual void update_used_tables()
   {
-    if (!args[0]->maybe_null)
+    if (!args[0]->maybe_null && !arg_is_datetime_notnull_field())
     {
       used_tables_cache= 0;			/* is always false */
       const_item_cache= 1;
@@ -1814,10 +1852,11 @@ public:
   longlong val_int();
   enum Functype functype() const { return ISNOTNULL_FUNC; }
   const char *func_name() const { return "isnotnull"; }
+  enum precedence precedence() const { return CMP_PRECEDENCE; }
   table_map not_null_tables() const
   { return abort_on_null ? not_null_tables_cache : 0; }
   Item *neg_transformer(THD *thd);
-  virtual void print(String *str, enum_query_type query_type);
+  void print(String *str, enum_query_type query_type);
   void top_level_item() { abort_on_null=1; }
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_isnotnull>(thd, mem_root, this); }
@@ -1845,6 +1884,7 @@ class Item_func_like :public Item_bool_func2
 
   bool escape_used_in_parsing;
   bool use_sampling;
+  bool negated;
 
   DTCollation cmp_collation;
   String cmp_value1, cmp_value2;
@@ -1865,13 +1905,10 @@ public:
   Item_func_like(THD *thd, Item *a, Item *b, Item *escape_arg, bool escape_used):
     Item_bool_func2(thd, a, b), canDoTurboBM(FALSE), pattern(0), pattern_len(0),
     bmGs(0), bmBc(0), escape_item(escape_arg),
-    escape_used_in_parsing(escape_used), use_sampling(0) {}
+    escape_used_in_parsing(escape_used), use_sampling(0), negated(0) {}
   longlong val_int();
   enum Functype functype() const { return LIKE_FUNC; }
-  void print(String *str, enum_query_type query_type)
-  {
-    Item_func::print_op(str, query_type);
-  }
+  void print(String *str, enum_query_type query_type);
   CHARSET_INFO *compare_collation() const
   { return cmp_collation.collation; }
   cond_result eq_cmp_result() const
@@ -1951,6 +1988,7 @@ public:
     return this;
   }
   const char *func_name() const { return "like"; }
+  enum precedence precedence() const { return CMP_PRECEDENCE; }
   bool fix_fields(THD *thd, Item **ref);
   void fix_length_and_dec()
   {
@@ -1958,6 +1996,12 @@ public:
     agg_arg_charsets_for_comparison(cmp_collation, args, 2);
   }
   void cleanup();
+
+  Item *neg_transformer(THD *thd)
+  {
+    negated= !negated;
+    return this;
+  }
 
   bool find_selective_predicates_list_processor(void *arg);
   
@@ -2068,10 +2112,11 @@ public:
   longlong val_int();
   void fix_length_and_dec();
   const char *func_name() const { return "regexp"; }
+  enum precedence precedence() const { return CMP_PRECEDENCE; }
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_regex>(thd, mem_root, this); }
 
-  virtual inline void print(String *str, enum_query_type query_type)
+  void print(String *str, enum_query_type query_type)
   {
     print_op(str, query_type);
   }
@@ -2482,6 +2527,7 @@ public:
   enum Functype functype() const { return COND_AND_FUNC; }
   longlong val_int();
   const char *func_name() const { return "and"; }
+  enum precedence precedence() const { return AND_PRECEDENCE; }
   table_map not_null_tables() const
   { return abort_on_null ? not_null_tables_cache: and_tables_cache; }
   Item *copy_andor_structure(THD *thd);
@@ -2517,6 +2563,7 @@ public:
   enum Functype functype() const { return COND_OR_FUNC; }
   longlong val_int();
   const char *func_name() const { return "or"; }
+  enum precedence precedence() const { return OR_PRECEDENCE; }
   table_map not_null_tables() const { return and_tables_cache; }
   Item *copy_andor_structure(THD *thd);
   Item *neg_transformer(THD *thd);
@@ -2667,4 +2714,3 @@ extern Ge_creator ge_creator;
 extern Le_creator le_creator;
 
 #endif /* ITEM_CMPFUNC_INCLUDED */
-
