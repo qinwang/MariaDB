@@ -1431,7 +1431,7 @@ write_xtrabackup_info(MYSQL *connection)
 		is_partial? "Y" : "N",
 		xtrabackup_incremental ? "Y" : "N", /* incremental */
 		xb_stream_name[xtrabackup_stream_fmt], /* format */
-		xtrabackup_compact ? "Y" : "N", /* compact */
+		"N", /* compact */
 		xtrabackup_compress ? "compressed" : "N", /* compressed */
 		xtrabackup_encrypt ? "Y" : "N"); /* encrypted */
 
@@ -1489,7 +1489,7 @@ write_xtrabackup_info(MYSQL *connection)
 		<< ESCAPE_BOOL(is_partial) << ","
 		<< ESCAPE_BOOL(xtrabackup_incremental)<< ","
 		<< escape_and_quote(connection,xb_stream_name[xtrabackup_stream_fmt]) <<","
-		<< ESCAPE_BOOL(xtrabackup_compact) << ","
+		<< ESCAPE_BOOL(false) << ","
 		<< ESCAPE_BOOL(xtrabackup_compress) << ","
 		<< ESCAPE_BOOL(xtrabackup_encrypt) <<")";
 

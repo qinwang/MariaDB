@@ -296,10 +296,6 @@ ulong	innobase_active_counter	= 0;
 
 
 static char *xtrabackup_debug_sync = NULL;
-
-my_bool xtrabackup_compact = FALSE;
-my_bool xtrabackup_rebuild_indexes = FALSE;
-
 my_bool xtrabackup_incremental_force_scan = FALSE;
 
 /* The flushed lsn which is read from data files */
@@ -555,9 +551,6 @@ enum options_xtrabackup
   OPT_INNODB_THREAD_CONCURRENCY,
   OPT_INNODB_THREAD_SLEEP_DELAY,
   OPT_XTRA_DEBUG_SYNC,
-  OPT_XTRA_COMPACT,
-  OPT_XTRA_REBUILD_INDEXES,
-  OPT_XTRA_REBUILD_THREADS,
   OPT_INNODB_CHECKSUM_ALGORITHM,
   OPT_INNODB_UNDO_DIRECTORY,
   OPT_INNODB_UNDO_TABLESPACES,
@@ -911,23 +904,6 @@ Disable with --skip-innodb-doublewrite.", (G_PTR*) &innobase_use_doublewrite,
    (G_PTR*) &xtrabackup_debug_sync,
    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 #endif
-
-  {"compact", OPT_XTRA_COMPACT,
-   "Create a compact backup by skipping secondary index pages.",
-   (G_PTR*) &xtrabackup_compact, (G_PTR*) &xtrabackup_compact,
-   0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-
-  {"rebuild_indexes", OPT_XTRA_REBUILD_INDEXES,
-   "Rebuild secondary indexes in InnoDB tables after applying the log. "
-   "Only has effect with --prepare.",
-   (G_PTR*) &xtrabackup_rebuild_indexes, (G_PTR*) &xtrabackup_rebuild_indexes,
-   0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
-
-  {"rebuild_threads", OPT_XTRA_REBUILD_THREADS,
-   "Use this number of threads to rebuild indexes in a compact backup. "
-   "Only has effect with --prepare and --rebuild-indexes.",
-   (G_PTR*) &xtrabackup_rebuild_threads, (G_PTR*) &xtrabackup_rebuild_threads,
-   0, GET_UINT, REQUIRED_ARG, 1, 1, UINT_MAX, 0, 0, 0},
 
   {"innodb_checksum_algorithm", OPT_INNODB_CHECKSUM_ALGORITHM,
   "The algorithm InnoDB uses for page checksumming. [CRC32, STRICT_CRC32, "
@@ -1940,12 +1916,6 @@ xtrabackup_read_metadata(char *filename)
 	}
 	/* Optional fields */
 
-	if (fscanf(fp, "compact = %d\n", &t) == 1) {
-		xtrabackup_compact = (t == 1);
-	} else {
-		xtrabackup_compact = 0;
-	}
-
 	if (fscanf(fp, "recover_binlog_info = %d\n", &t) == 1) {
 		recover_binlog_info = (t == 1);
 	}
@@ -1974,7 +1944,7 @@ xtrabackup_print_metadata(char *buf, size_t buf_len)
 		 metadata_from_lsn,
 		 metadata_to_lsn,
 		 metadata_last_lsn,
-		 MY_TEST(xtrabackup_compact == TRUE),
+		 MY_TEST(false),
 		 MY_TEST(opt_binlog_info == BINLOG_INFO_LOCKLESS));
 }
 
@@ -2386,8 +2356,6 @@ xtrabackup_copy_datafile(fil_node_t* node, uint thread_n)
 	/* Setup the page write filter */
 	if (xtrabackup_incremental) {
 		write_filter = &wf_incremental;
-	} else if (xtrabackup_compact) {
-		write_filter = &wf_compact;
 	} else {
 		write_filter = &wf_write_through;
 	}
@@ -6234,25 +6202,6 @@ skip_check:
 		goto error_cleanup;
 	}
 
-	/* Expand compacted datafiles */
-
-	if (xtrabackup_compact) {
-		srv_compact_backup = TRUE;
-
-		if (!xb_expand_datafiles()) {
-			goto error_cleanup;
-		}
-
-		/* Reset the 'compact' flag in xtrabackup_checkpoints so we
-		don't expand on subsequent invocations. */
-		xtrabackup_compact = FALSE;
-		if (!xtrabackup_write_metadata(metadata_path)) {
-			msg("xtrabackup: error: xtrabackup_write_metadata() "
-			    "failed\n");
-			goto error_cleanup;
-		}
-	}
-
 	xb_normalize_init_values();
 
 	if (xtrabackup_incremental || innobase_log_arch_dir) {
@@ -6301,7 +6250,6 @@ skip_check:
 	}
 
 	srv_apply_log_only = (ibool) xtrabackup_apply_log_only;
-	srv_rebuild_indexes = (ibool) xtrabackup_rebuild_indexes;
 
 	/* increase IO threads */
 	if(srv_n_file_io_threads < 10) {
@@ -6674,7 +6622,6 @@ next_node:
 		}
 
 		srv_apply_log_only = FALSE;
-		srv_rebuild_indexes = FALSE;
 
 		/* increase IO threads */
 		if(srv_n_file_io_threads < 10) {

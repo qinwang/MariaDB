@@ -21,20 +21,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 #ifndef xb0xb_h
 #define xb0xb_h
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
-  /******************************************************************************
-  Rebuild all secondary indexes in all tables in separate spaces. Called from
-  innobase_start_or_create_for_mysql(). */
-  void
-    xb_compact_rebuild_indexes(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 extern void os_io_init_simple(void);
 extern os_file_t	files[1000];
