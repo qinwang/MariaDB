@@ -639,6 +639,7 @@ static bool check_cs_client(sys_var *self, THD *thd, set_var *var)
   if (check_charset_not_null(self, thd, var))
     return true;
 
+  // Currently, UCS-2 cannot be used as a client character set
   if (!is_supported_parser_charset((CHARSET_INFO *)(var->save_result.ptr)))
     return true;
 
@@ -1241,9 +1242,9 @@ static bool update_cached_max_statement_time(sys_var *self, THD *thd,
 
 static Sys_var_double Sys_max_statement_time(
        "max_statement_time",
-       "A SELECT query that have taken more than max_statement_time seconds "
+       "A query that has taken more than max_statement_time seconds "
        "will be aborted. The argument will be treated as a decimal value "
-       "with microsecond precision.  A value of 0 (default) means no timeout",
+       "with microsecond precision. A value of 0 (default) means no timeout",
        SESSION_VAR(max_statement_time_double),
        CMD_LINE(REQUIRED_ARG), VALID_RANGE(0, LONG_TIMEOUT), DEFAULT(0),
        NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
@@ -5401,3 +5402,10 @@ static Sys_var_ulong Sys_log_tc_size(
        DEFAULT(my_getpagesize() * 6),
        BLOCK_SIZE(my_getpagesize()));
 #endif
+
+static Sys_var_ulonglong Sys_max_thread_mem(
+       "max_session_mem_used", "Amount of memory a single user session "
+       "is allowed to allocate. This limits the value of the "
+       "session variable MEM_USED", SESSION_VAR(max_mem_used),
+       CMD_LINE(REQUIRED_ARG), VALID_RANGE(8192,  ULONGLONG_MAX),
+       DEFAULT(LONGLONG_MAX), BLOCK_SIZE(1));

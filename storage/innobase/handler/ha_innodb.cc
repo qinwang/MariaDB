@@ -1,10 +1,10 @@
 /*****************************************************************************
 
 Copyright (c) 2000, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2013, 2017, MariaDB Corporation.
 Copyright (c) 2008, 2009 Google Inc.
 Copyright (c) 2009, Percona Inc.
 Copyright (c) 2012, Facebook Inc.
-Copyright (c) 2013, 2016, MariaDB Corporation.
 
 Portions of this file contain modifications contributed and copyrighted by
 Google, Inc. Those modifications are gratefully acknowledged and are described
@@ -73,7 +73,6 @@ MYSQL_PLUGIN_IMPORT extern char mysql_unpacked_real_data_home[];
 #include "srv0srv.h"
 #include "trx0roll.h"
 #include "trx0trx.h"
-
 #include "trx0sys.h"
 #include "rem0types.h"
 #include "row0ins.h"
@@ -248,7 +247,6 @@ static char*	internal_innobase_data_file_path	= NULL;
 
 static char*	innodb_version_str = (char*) INNODB_VERSION_STR;
 
-extern uint srv_n_fil_crypt_threads;
 extern uint srv_fil_crypt_rotate_key_age;
 extern uint srv_n_fil_crypt_iops;
 
@@ -3450,21 +3448,16 @@ innobase_init(
 		}
 	}
 
-	if (UNIV_PAGE_SIZE != UNIV_PAGE_SIZE_DEF) {
+	/* The buffer pool needs to be able to accommodate enough many
+	pages, even for larger pages */
+	if (UNIV_PAGE_SIZE > UNIV_PAGE_SIZE_DEF
+	    && innobase_buffer_pool_size < (24 * 1024 * 1024)) {
 		ib_logf(IB_LOG_LEVEL_INFO,
-			"innodb_page_size has been "
-			"changed from default value %d to %ldd.",
-			UNIV_PAGE_SIZE_DEF, UNIV_PAGE_SIZE);
-
-		/* There is hang on buffer pool when trying to get a new
-		page if buffer pool size is too small for large page sizes */
-		if (innobase_buffer_pool_size < (24 * 1024 * 1024)) {
-			ib_logf(IB_LOG_LEVEL_INFO,
-				"innobase_page_size %lu requires "
-				"innodb_buffer_pool_size > 24M current %lld",
-				UNIV_PAGE_SIZE, innobase_buffer_pool_size);
-			goto error;
-		}
+			"innodb_page_size= " ULINTPF " requires "
+			"innodb_buffer_pool_size > 24M current %lld. ",
+			UNIV_PAGE_SIZE,
+			innobase_buffer_pool_size);
+		goto error;
 	}
 
 #ifndef HAVE_LZ4
@@ -3765,11 +3758,11 @@ innobase_change_buffering_inited_ok:
 				srv_page_size);
 		goto mem_free_and_error;
 	}
+
 	if (UNIV_PAGE_SIZE_DEF != srv_page_size) {
-		ut_print_timestamp(stderr);
-		fprintf(stderr,
-			" InnoDB: innodb-page-size has been changed"
-			" from the default value %d to %lu.\n",
+		ib_logf(IB_LOG_LEVEL_INFO,
+			" innodb-page-size has been changed"
+			" from the default value %d to " ULINTPF ".",
 			UNIV_PAGE_SIZE_DEF, srv_page_size);
 	}
 
@@ -4102,7 +4095,7 @@ innobase_commit_low(
 #ifdef WITH_WSREP
 	THD* thd = (THD*)trx->mysql_thd;
 	const char* tmp = 0;
-	if (wsrep_on(thd)) {
+	if (thd && wsrep_on(thd)) {
 #ifdef WSREP_PROC_INFO
 		char info[64];
 		info[sizeof(info) - 1] = '\0';
@@ -15836,6 +15829,37 @@ ha_innobase::get_auto_increment(
 	ulonglong	col_max_value = innobase_get_int_col_max_value(
 		table->next_number_field);
 
+	/** The following logic is needed to avoid duplicate key error
+	for autoincrement column.
+
+	(1) InnoDB gives the current autoincrement value with respect
+	to increment and offset value.
+
+	(2) Basically it does compute_next_insert_id() logic inside InnoDB
+	to avoid the current auto increment value changed by handler layer.
+
+	(3) It is restricted only for insert operations. */
+
+	if (increment > 1 && thd_sql_command(user_thd) != SQLCOM_ALTER_TABLE
+	    && autoinc < col_max_value) {
+
+		ulonglong	prev_auto_inc = autoinc;
+
+		autoinc = ((autoinc - 1) + increment - offset)/ increment;
+
+		autoinc = autoinc * increment + offset;
+
+		/* If autoinc exceeds the col_max_value then reset
+		to old autoinc value. Because in case of non-strict
+		sql mode, boundary value is not considered as error. */
+
+		if (autoinc >= col_max_value) {
+			autoinc = prev_auto_inc;
+		}
+
+		ut_ad(autoinc > 0);
+	}
+
 	/* Called for the first time ? */
 	if (trx->n_autoinc_rows == 0) {
 
@@ -18785,6 +18809,12 @@ static MYSQL_SYSVAR_BOOL(use_fallocate, innobase_use_fallocate,
   "Preallocate files fast, using operating system functionality. On POSIX systems, posix_fallocate system call is used.",
   NULL, NULL, FALSE);
 
+static MYSQL_SYSVAR_BOOL(stats_include_delete_marked,
+  srv_stats_include_delete_marked,
+  PLUGIN_VAR_OPCMDARG,
+  "Scan delete marked records for persistent stat",
+  NULL, NULL, FALSE);
+
 static MYSQL_SYSVAR_ULONG(io_capacity, srv_io_capacity,
   PLUGIN_VAR_RQCMDARG,
   "Number of IOPs the server can do. Tunes the background IO rate",
@@ -19330,13 +19360,6 @@ static MYSQL_SYSVAR_ULONG(force_recovery, srv_force_recovery,
   "Helps to save your data in case the disk image of the database becomes corrupt.",
   NULL, NULL, 0, 0, 6, 0);
 
-#ifndef DBUG_OFF
-static MYSQL_SYSVAR_ULONG(force_recovery_crash, srv_force_recovery_crash,
-  PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-  "Kills the server during crash recovery.",
-  NULL, NULL, 0, 0, 10, 0);
-#endif /* !DBUG_OFF */
-
 static MYSQL_SYSVAR_ULONG(page_size, srv_page_size,
   PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
   "Page size to use for all InnoDB tablespaces.",
@@ -19692,6 +19715,12 @@ static MYSQL_SYSVAR_BOOL(trx_purge_view_update_only_debug,
   "but the each purges were not done yet.",
   NULL, NULL, FALSE);
 
+static MYSQL_SYSVAR_UINT(data_file_size_debug,
+  srv_sys_space_size_debug,
+  PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+  "InnoDB system tablespace size to be set in recovery.",
+  NULL, NULL, 0, 0, UINT_MAX32, 0);
+
 static MYSQL_SYSVAR_ULONG(fil_make_page_dirty_debug,
   srv_fil_make_page_dirty_debug, PLUGIN_VAR_OPCMDARG,
   "Make the first page of the given tablespace dirty.",
@@ -19732,7 +19761,7 @@ static MYSQL_SYSVAR_ENUM(compression_algorithm, innodb_compression_algorithm,
   /* We use here the largest number of supported compression method to
   enable all those methods that are available. Availability of compression
   method is verified on innodb_compression_algorithm_validate function. */
-  PAGE_UNCOMPRESSED,
+  PAGE_ZLIB_ALGORITHM,
   &page_compression_algorithms_typelib);
 
 static MYSQL_SYSVAR_LONG(mtflush_threads, srv_mtflush_threads,
@@ -19905,6 +19934,7 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(doublewrite),
   MYSQL_SYSVAR(use_atomic_writes),
   MYSQL_SYSVAR(use_fallocate),
+  MYSQL_SYSVAR(stats_include_delete_marked),
   MYSQL_SYSVAR(api_enable_binlog),
   MYSQL_SYSVAR(api_enable_mdl),
   MYSQL_SYSVAR(api_disable_rowlock),
@@ -19920,9 +19950,6 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(flush_log_at_trx_commit),
   MYSQL_SYSVAR(flush_method),
   MYSQL_SYSVAR(force_recovery),
-#ifndef DBUG_OFF
-  MYSQL_SYSVAR(force_recovery_crash),
-#endif /* !DBUG_OFF */
   MYSQL_SYSVAR(ft_cache_size),
   MYSQL_SYSVAR(ft_total_cache_size),
   MYSQL_SYSVAR(ft_result_cache_limit),
@@ -20043,6 +20070,7 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(trx_rseg_n_slots_debug),
   MYSQL_SYSVAR(limit_optimistic_insert_debug),
   MYSQL_SYSVAR(trx_purge_view_update_only_debug),
+  MYSQL_SYSVAR(data_file_size_debug),
   MYSQL_SYSVAR(fil_make_page_dirty_debug),
   MYSQL_SYSVAR(saved_page_number_debug),
 #endif /* UNIV_DEBUG */

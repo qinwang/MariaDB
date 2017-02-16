@@ -787,10 +787,15 @@ JOIN::prepare(Item ***rref_pointer_array,
     if (mixed_implicit_grouping && tbl->table)
       tbl->table->maybe_null= 1;
   }
+ 
+  uint real_og_num= og_num;
+  if (skip_order_by && 
+      select_lex != select_lex->master_unit()->global_parameters())
+    real_og_num+= select_lex->order_list.elements;
 
   if ((wild_num && setup_wild(thd, tables_list, fields_list, &all_fields,
                               wild_num)) ||
-      select_lex->setup_ref_array(thd, og_num) ||
+      select_lex->setup_ref_array(thd, real_og_num) ||
       setup_fields(thd, (*rref_pointer_array), fields_list, MARK_COLUMNS_READ,
 		   &all_fields, 1) ||
       setup_without_group(thd, (*rref_pointer_array), tables_list,
@@ -1614,7 +1619,8 @@ JOIN::optimize_inner()
         <fields> to ORDER BY <fields>. There are three exceptions:
         - if skip_sort_order is set (see above), then we can simply skip
           GROUP BY;
-        - if we are in a subquery, we don't have to maintain order
+        - if we are in a subquery, we don't have to maintain order unless there
+	  is a limit clause in the subquery.
         - we can only rewrite ORDER BY if the ORDER BY fields are 'compatible'
           with the GROUP BY ones, i.e. either one is a prefix of another.
           We only check if the ORDER BY is a prefix of GROUP BY. In this case
@@ -1626,7 +1632,7 @@ JOIN::optimize_inner()
       if (!order || test_if_subpart(group_list, order))
       {
         if (skip_sort_order ||
-            select_lex->master_unit()->item) // This is a subquery
+            (select_lex->master_unit()->item && select_limit == HA_POS_ERROR)) // This is a subquery
           order= NULL;
         else
           order= group_list;
@@ -9361,8 +9367,6 @@ static void add_not_null_conds(JOIN *join)
             UPDATE t1 SET t1.f2=(SELECT MAX(t2.f4) FROM t2 WHERE t2.f3=t1.f1);
             not_null_item is the t1.f1, but it's referred_tab is 0.
           */
-          if (!referred_tab)
-            continue;
           if (!(notnull= new (join->thd->mem_root)
                 Item_func_isnotnull(join->thd, item)))
             DBUG_VOID_RETURN;
@@ -9374,16 +9378,19 @@ static void add_not_null_conds(JOIN *join)
           */
           if (notnull->fix_fields(join->thd, &notnull))
             DBUG_VOID_RETURN;
+
           DBUG_EXECUTE("where",print_where(notnull,
-                                           referred_tab->table->alias.c_ptr(),
-                                           QT_ORDINARY););
+                                            (referred_tab ?
+                                            referred_tab->table->alias.c_ptr() :
+                                            "outer_ref_cond"),
+                                            QT_ORDINARY););
           if (!tab->first_inner)
-	  {
-            COND *new_cond= referred_tab->join == join ? 
+          {
+            COND *new_cond= (referred_tab && referred_tab->join == join) ?
                               referred_tab->select_cond :
                               join->outer_ref_cond;
             add_cond_and_fix(join->thd, &new_cond, notnull);
-            if (referred_tab->join == join)
+            if (referred_tab && referred_tab->join == join)
               referred_tab->set_select_cond(new_cond, __LINE__);
             else 
               join->outer_ref_cond= new_cond;
@@ -13071,9 +13078,12 @@ COND *Item_cond_and::build_equal_items(THD *thd,
   COND_EQUAL cond_equal;
   cond_equal.upper_levels= inherited;
 
+  if (check_stack_overrun(thd, STACK_MIN_SIZE, NULL))
+    return this;                          // Fatal error flag is set!
+
   List<Item> eq_list;
   List<Item> *cond_args= argument_list();
-  
+
   List_iterator<Item> li(*cond_args);
   Item *item;
 
@@ -13083,7 +13093,7 @@ COND *Item_cond_and::build_equal_items(THD *thd,
      that are subject to substitution by multiple equality items and
      removing each such predicate from the conjunction after having 
      found/created a multiple equality whose inference the predicate is.
- */      
+ */
   while ((item= li++))
   {
     /*
@@ -17899,7 +17909,7 @@ do_select(JOIN *join,List<Item> *fields,TABLE *table,Procedure *procedure)
     join->join_tab[join->top_join_tab_count - 1].next_select= end_select;
     join_tab=join->join_tab+join->const_tables;
   }
-  join->send_records=0;
+  join->duplicate_rows= join->send_records=0;
   if (join->table_count == join->const_tables)
   {
     /*
@@ -17964,7 +17974,7 @@ do_select(JOIN *join,List<Item> *fields,TABLE *table,Procedure *procedure)
       error= NESTED_LOOP_OK;                    /* select_limit used */
   }
 
-  join->thd->limit_found_rows= join->send_records;
+  join->thd->limit_found_rows= join->send_records - join->duplicate_rows;
 
   if (error == NESTED_LOOP_NO_MORE_ROWS || join->thd->killed == ABORT_QUERY)
     error= NESTED_LOOP_OK;
@@ -19438,7 +19448,12 @@ end_send(JOIN *join, JOIN_TAB *join_tab __attribute__((unused)),
       int error;
       /* result < 0 if row was not accepted and should not be counted */
       if ((error= join->result->send_data(*join->fields)))
-        DBUG_RETURN(error < 0 ? NESTED_LOOP_OK : NESTED_LOOP_ERROR);
+      {
+        if (error > 0)
+          DBUG_RETURN(NESTED_LOOP_ERROR);
+        // error < 0 => duplicate row
+        join->duplicate_rows++;
+      }
     }
 
     ++join->send_records;
@@ -19580,7 +19595,7 @@ end_send_group(JOIN *join, JOIN_TAB *join_tab __attribute__((unused)),
               if (error < 0)
               {
                 /* Duplicate row, don't count */
-                join->send_records--;
+                join->duplicate_rows++;
                 error= 0;
               }
             }
@@ -25229,6 +25244,12 @@ void st_select_lex::print(THD *thd, String *str, enum_query_type query_type)
 
   // limit
   print_limit(thd, str, query_type);
+
+  // lock type
+  if (lock_type == TL_READ_WITH_SHARED_LOCKS)
+    str->append(" lock in share mode");
+  else if (lock_type == TL_WRITE)
+    str->append(" for update");
 
   // PROCEDURE unsupported here
 }

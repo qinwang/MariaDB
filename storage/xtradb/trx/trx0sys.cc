@@ -1335,12 +1335,14 @@ trx_sys_close(void)
 		buf_dblwr_free();
 	}
 
-	if (!IS_XTRABACKUP() || !srv_apply_log_only) {
-		ut_a(UT_LIST_GET_LEN(trx_sys->ro_trx_list) == 0);
 
-		/* Only prepared transactions may be left in the system. Free them. */
-		ut_a(UT_LIST_GET_LEN(trx_sys->rw_trx_list) == trx_sys->n_prepared_trx);
-	}
+	/* Only prepared transactions may be left in the system. Free them. */
+	ut_a(UT_LIST_GET_LEN(trx_sys->rw_trx_list) == trx_sys->n_prepared_trx
+	     || srv_read_only_mode
+	     || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO
+	     || IS_XTRABACKUP());
+
+
 	while ((trx = UT_LIST_GET_FIRST(trx_sys->rw_trx_list)) != NULL) {
 		trx_free_prepared(trx);
 	}

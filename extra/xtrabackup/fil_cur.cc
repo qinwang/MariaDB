@@ -341,17 +341,20 @@ read_retry:
 		return(XB_FIL_CUR_ERROR);
 	}
 
+	fil_system_enter();
+	fil_space_t *space = fil_space_get_by_id(cursor->space_id);
+	fil_system_exit();
+
 	/* check pages for corruption and re-read if necessary. i.e. in case of
 	partially written pages */
 	for (page = cursor->buf, i = 0; i < npages;
 	     page += cursor->page_size, i++) {
+	ib_int64_t page_no = cursor->buf_page_no + i;
 
-		bool checksum_ok = fil_space_verify_crypt_checksum(page, cursor->zip_size);
+		bool checksum_ok = fil_space_verify_crypt_checksum(page, cursor->zip_size,space, (ulint)page_no);
 
 		if (!checksum_ok &&
-		    buf_page_is_corrupted(TRUE, page, cursor->zip_size)) {
-
-			ib_int64_t page_no = cursor->buf_page_no + i;
+		    buf_page_is_corrupted(true, page, cursor->zip_size,space)) {
 
 			if (cursor->is_system &&
 			    page_no >= (ib_int64_t)FSP_EXTENT_SIZE &&

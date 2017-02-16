@@ -1,6 +1,6 @@
 /*****************************************************************************
 Copyright (C) 2013, 2015, Google Inc. All Rights Reserved.
-Copyright (c) 2015, 2016, MariaDB Corporation.
+Copyright (c) 2015, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -26,6 +26,8 @@ Created 04/01/2015 Jan Lindström
 #ifndef fil0crypt_h
 #define fil0crypt_h
 
+#include "os0sync.h"
+
 /**
 * Magic pattern in start of crypt data on page 0
 */
@@ -44,6 +46,8 @@ typedef enum {
 	FIL_SPACE_ENCRYPTION_ON = 1,		/* Tablespace is encrypted always */
 	FIL_SPACE_ENCRYPTION_OFF = 2		/* Tablespace is not encrypted */
 } fil_encryption_t;
+
+extern os_event_t fil_crypt_threads_event;
 
 /**
  * CRYPT_SCHEME_UNENCRYPTED
@@ -324,7 +328,7 @@ fil_space_check_encryption_read(
 
 /******************************************************************
 Decrypt a page
-@return true if page is decrypted, false if not. */
+@return true if page decrypted, false if not.*/
 UNIV_INTERN
 bool
 fil_space_decrypt(
@@ -332,9 +336,10 @@ fil_space_decrypt(
 	fil_space_crypt_t*	crypt_data,	/*!< in: crypt data */
 	byte*			tmp_frame,	/*!< in: temporary buffer */
 	ulint			page_size,	/*!< in: page size */
-	byte*			src_frame,	/*!< in:out: page buffer */
-	dberr_t*		err);		/*!< in: out: DB_SUCCESS or
+	byte*			src_frame,	/*!< in: out: page buffer */
+	dberr_t*		err)		/*!< in: out: DB_SUCCESS or
 						error code */
+	MY_ATTRIBUTE((warn_unused_result));
 
 /*********************************************************************
 Encrypt buffer page
@@ -351,31 +356,46 @@ fil_space_encrypt(
 	ulint	size,		/*!< in: size of data to encrypt */
 	byte*	dst_frame);	/*!< in: where to encrypt to */
 
-/*********************************************************************
-Decrypt buffer page
-@return decrypted page, or original not encrypted page if decrypt is
+/******************************************************************
+Decrypt a page
+@param[in]	space			Tablespace id
+@param[in]	tmp_frame		Temporary buffer used for decrypting
+@param[in]	page_size		Page size
+@param[in,out]	src_frame		Page to decrypt
+@param[out]	decrypted		true if page was decrypted
+@return decrypted page, or original not encrypted page if decryption is
 not needed.*/
 UNIV_INTERN
 byte*
 fil_space_decrypt(
 /*==============*/
-	ulint	space,		/*!< in: tablespace id */
-	byte*	src_frame,	/*!< in: page frame */
-	ulint	page_size,	/*!< in: size of data to encrypt */
-	byte*	dst_frame)	/*!< in: where to decrypt to */
+	ulint	space,
+	byte*	src_frame,
+	ulint	page_size,
+	byte*	dst_frame,
+	bool*	decrypted)
 	__attribute__((warn_unused_result));
 
 /*********************************************************************
-fil_space_verify_crypt_checksum
-NOTE: currently this function can only be run in single threaded mode
-as it modifies srv_checksum_algorithm (temporarily)
+Verify that post encryption checksum match calculated checksum.
+This function should be called only if tablespace contains crypt_data
+metadata (this is strong indication that tablespace is encrypted).
+Function also verifies that traditional checksum does not match
+calculated checksum as if it does page could be valid unencrypted,
+encrypted, or corrupted.
+@param[in]	page		Page to verify
+@param[in]	zip_size	zip size
+@param[in]	space		Tablespace
+@param[in]	pageno		Page no
 @return true if page is encrypted AND OK, false otherwise */
 UNIV_INTERN
 bool
 fil_space_verify_crypt_checksum(
-/*============================*/
-	const byte* src_frame,/*!< in: page frame */
-	ulint zip_size);      /*!< in: size of data to encrypt */
+	byte*			page,
+	ulint			zip_size,
+	const fil_space_t*	space,
+	ulint			pageno)
+	__attribute__((warn_unused_result));
 
 /*********************************************************************
 Init threads for key rotation */
@@ -390,12 +410,6 @@ void
 fil_crypt_set_thread_cnt(
 /*=====================*/
 	uint new_cnt); /*!< in: requested #threads */
-
-/*********************************************************************
-End threads for key rotation */
-UNIV_INTERN
-void
-fil_crypt_threads_end();
 
 /*********************************************************************
 Cleanup resources for threads for key rotation */

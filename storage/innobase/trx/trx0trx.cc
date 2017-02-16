@@ -312,7 +312,11 @@ trx_free_prepared(
 /*==============*/
 	trx_t*	trx)	/*!< in, own: trx object */
 {
-	ut_a(trx_state_eq(trx, TRX_STATE_PREPARED));
+	ut_a(trx_state_eq(trx, TRX_STATE_PREPARED)
+	     || (trx_state_eq(trx, TRX_STATE_ACTIVE)
+		 && trx->is_recovered
+		 && (srv_read_only_mode
+		     || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO)));
 	ut_a(trx->magic_n == TRX_MAGIC_N);
 
 	lock_trx_release_locks(trx);
@@ -1349,7 +1353,7 @@ trx_commit_in_memory(
 	ut_ad(!trx->in_rw_trx_list);
 
 #ifdef WITH_WSREP
-	if (wsrep_on(trx->mysql_thd)) {
+	if (trx->mysql_thd && wsrep_on(trx->mysql_thd)) {
 		trx->lock.was_chosen_as_deadlock_victim = FALSE;
 	}
 #endif

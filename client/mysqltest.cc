@@ -3339,6 +3339,8 @@ void do_exec(struct st_command *command)
   DBUG_ENTER("do_exec");
   DBUG_PRINT("enter", ("cmd: '%s'", cmd));
 
+  var_set_int("$sys_errno",0);
+
   /* Skip leading space */
   while (*cmd && my_isspace(charset_info, *cmd))
     cmd++;
@@ -3452,6 +3454,7 @@ void do_exec(struct st_command *command)
         report_or_die("command \"%s\" failed with wrong error: %d",
                       command->first_argument, status);
     }
+    var_set_int("$sys_errno",status);
   }
   else if (command->expected_errors.err[0].type == ERR_ERRNO &&
            command->expected_errors.err[0].code.errnum != 0)
@@ -5860,6 +5863,7 @@ void do_connect(struct st_command *command)
   my_bool con_shm __attribute__ ((unused))= 0;
   int read_timeout= 0;
   int write_timeout= 0;
+  int connect_timeout= 0;
   struct st_connection* con_slot;
 
   static DYNAMIC_STRING ds_connection_name;
@@ -5966,6 +5970,11 @@ void do_connect(struct st_command *command)
     {
       write_timeout= atoi(con_options + sizeof("write_timeout=")-1);
     }
+    else if (strncasecmp(con_options, "connect_timeout=",
+                         sizeof("connect_timeout=")-1) == 0)
+    {
+      connect_timeout= atoi(con_options + sizeof("connect_timeout=")-1);
+    }
     else
       die("Illegal option to connect: %.*s", 
           (int) (end - con_options), con_options);
@@ -6048,6 +6057,12 @@ void do_connect(struct st_command *command)
   {
     mysql_options(con_slot->mysql, MYSQL_OPT_WRITE_TIMEOUT,
                   (char*)&write_timeout);
+  }
+
+  if (connect_timeout)
+  {
+    mysql_options(con_slot->mysql, MYSQL_OPT_CONNECT_TIMEOUT,
+                  (char*)&connect_timeout);
   }
 
 #ifdef HAVE_SMEM

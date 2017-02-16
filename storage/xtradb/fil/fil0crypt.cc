@@ -1,6 +1,6 @@
 /*****************************************************************************
 Copyright (C) 2013, 2015, Google Inc. All Rights Reserved.
-Copyright (C) 2014, 2016, MariaDB Corporation. All Rights Reserved.
+Copyright (c) 2014, 2017, MariaDB Corporation. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -56,7 +56,7 @@ UNIV_INTERN ulong srv_encrypt_tables = 0;
 UNIV_INTERN uint srv_n_fil_crypt_threads = 0;
 
 /** No of key rotation threads started */
-static uint srv_n_fil_crypt_threads_started = 0;
+UNIV_INTERN uint srv_n_fil_crypt_threads_started = 0;
 
 /** At this age or older a space/page will be rotated */
 UNIV_INTERN uint srv_fil_crypt_rotate_key_age = 1;
@@ -65,7 +65,7 @@ UNIV_INTERN uint srv_fil_crypt_rotate_key_age = 1;
 static os_event_t fil_crypt_event;
 
 /** Event to signal TO the key rotation threads. */
-static os_event_t fil_crypt_threads_event;
+UNIV_INTERN os_event_t fil_crypt_threads_event;
 
 /** Event for waking up threads throttle */
 static os_event_t fil_crypt_throttle_sleep_event;
@@ -625,6 +625,8 @@ fil_encrypt_buf(
 	// store the post-encryption checksum after the key-version
 	mach_write_to_4(dst_frame + FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION + 4, checksum);
 
+	ut_ad(fil_space_verify_crypt_checksum(dst_frame, zip_size, NULL, offset));
+
 	srv_stats.pages_encrypted.inc();
 
 	return dst_frame;
@@ -676,6 +678,7 @@ fil_space_encrypt(
 		byte* comp_mem = NULL;
 		byte* uncomp_mem = NULL;
 		ulint size = (zip_size) ? zip_size : UNIV_PAGE_SIZE;
+		fil_space_t* tspace = fil_space_found_by_id(space);
 
 		if (page_compressed_encrypted) {
 			comp_mem = (byte *)malloc(UNIV_PAGE_SIZE);
@@ -685,7 +688,7 @@ fil_space_encrypt(
 			src = uncomp_mem;
 		}
 
-		bool corrupted1 = buf_page_is_corrupted(true, src, zip_size);
+		bool corrupted1 = buf_page_is_corrupted(true, src, zip_size, tspace);
 		bool ok = fil_space_decrypt(crypt_data, tmp_mem, size, tmp, &err);
 
 		/* Need to decompress the page if it was also compressed */
@@ -694,7 +697,7 @@ fil_space_encrypt(
 			fil_decompress_page(tmp_mem, comp_mem, UNIV_PAGE_SIZE, NULL);
 		}
 
-		bool corrupted = buf_page_is_corrupted(true, tmp_mem, zip_size);
+		bool corrupted = buf_page_is_corrupted(true, tmp_mem, zip_size, tspace);
 		bool different = memcmp(src, tmp_mem, size);
 
 		if (!ok || corrupted || corrupted1 || err != DB_SUCCESS || different) {
@@ -858,19 +861,25 @@ fil_space_decrypt(
 
 /******************************************************************
 Decrypt a page
-@return encrypted page, or original not encrypted page if encryption is
-not needed. */
+@param[in]	space			Tablespace id
+@param[in]	tmp_frame		Temporary buffer used for decrypting
+@param[in]	page_size		Page size
+@param[in,out]	src_frame		Page to decrypt
+@param[out]	decrypted		true if page was decrypted
+@return decrypted page, or original not encrypted page if decryption is
+not needed.*/
 UNIV_INTERN
 byte*
 fil_space_decrypt(
-/*==============*/
-	ulint		space,		/*!< in: Fil space id */
-	byte*		tmp_frame,	/*!< in: temporary buffer */
-	ulint		page_size,	/*!< in: page size */
-	byte*		src_frame)	/*!< in/out: page buffer */
+	ulint		space,
+	byte*		tmp_frame,
+	ulint		page_size,
+	byte*		src_frame,
+	bool*		decrypted)
 {
 	dberr_t err = DB_SUCCESS;
 	byte* res = NULL;
+	*decrypted = false;
 
 	bool encrypted = fil_space_decrypt(
 				fil_space_get_crypt_data(space),
@@ -881,6 +890,7 @@ fil_space_decrypt(
 
 	if (err == DB_SUCCESS) {
 		if (encrypted) {
+			*decrypted = true;
 			/* Copy the decrypted page back to page buffer, not
 			really any other options. */
 			memcpy(src_frame, tmp_frame, page_size);
@@ -934,85 +944,134 @@ fil_crypt_calculate_checksum(
 }
 
 /*********************************************************************
-Verify checksum for a page (iff it's encrypted)
-NOTE: currently this function can only be run in single threaded mode
-as it modifies srv_checksum_algorithm (temporarily)
+Verify that post encryption checksum match calculated checksum.
+This function should be called only if tablespace contains crypt_data
+metadata (this is strong indication that tablespace is encrypted).
+Function also verifies that traditional checksum does not match
+calculated checksum as if it does page could be valid unencrypted,
+encrypted, or corrupted.
+@param[in]	page		Page to verify
+@param[in]	zip_size	zip size
+@param[in]	space		Tablespace
+@param[in]	pageno		Page no
 @return true if page is encrypted AND OK, false otherwise */
 UNIV_INTERN
 bool
 fil_space_verify_crypt_checksum(
-/*============================*/
-	const byte* 	src_frame,	/*!< in: page the verify */
-	ulint		zip_size)  	/*!< in: compressed size if
-					row_format compressed */
+	byte* 			page,
+	ulint			zip_size,
+	const fil_space_t*	space,
+	ulint			pageno)
 {
-	ulint page_size = zip_size ? zip_size : UNIV_PAGE_SIZE;
+	uint key_version = mach_read_from_4(page+ FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION);
 
-	// key version
-	uint key_version = mach_read_from_4(
-		src_frame + FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION);
-
+	/* If page is not encrypted, return false */
 	if (key_version == 0) {
-		return false; // unencrypted page
+		return false;
 	}
 
-	/* "trick" the normal checksum routines by storing the post-encryption
-	* checksum into the normal checksum field allowing for reuse of
-	* the normal routines */
-
-	// post encryption checksum
-	ib_uint32_t stored_post_encryption = mach_read_from_4(
-		src_frame + FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION + 4);
-
-	// save pre encryption checksum for restore in end of this function
-	ib_uint32_t stored_pre_encryption = mach_read_from_4(
-		src_frame + FIL_PAGE_SPACE_OR_CHKSUM);
-
-	ib_uint32_t checksum_field2 = mach_read_from_4(
-		src_frame + page_size - FIL_PAGE_END_LSN_OLD_CHKSUM);
-
-	/** prepare frame for usage of normal checksum routines */
-	mach_write_to_4(const_cast<byte*>(src_frame) + FIL_PAGE_SPACE_OR_CHKSUM,
-			stored_post_encryption);
-
-	/* NOTE: this function is (currently) only run when restoring
-	* dblwr-buffer, server is single threaded so it's safe to modify
-	* srv_checksum_algorithm */
-	srv_checksum_algorithm_t save_checksum_algorithm =
-		(srv_checksum_algorithm_t)srv_checksum_algorithm;
-
-	if (zip_size == 0 &&
-	    (save_checksum_algorithm == SRV_CHECKSUM_ALGORITHM_STRICT_INNODB ||
-	     save_checksum_algorithm == SRV_CHECKSUM_ALGORITHM_INNODB)) {
-		/* handle ALGORITHM_INNODB specially,
-		* "downgrade" to ALGORITHM_INNODB and store BUF_NO_CHECKSUM_MAGIC
-		* checksum_field2 is sort of pointless anyway...
-		*/
-		srv_checksum_algorithm = SRV_CHECKSUM_ALGORITHM_INNODB;
-		mach_write_to_4(const_cast<byte*>(src_frame) +
-				page_size - FIL_PAGE_END_LSN_OLD_CHKSUM,
-				BUF_NO_CHECKSUM_MAGIC);
+	srv_checksum_algorithm_t algorithm =
+			static_cast<srv_checksum_algorithm_t>(srv_checksum_algorithm);
+	/* If no checksum is used, can't continue checking. */
+	if (algorithm == SRV_CHECKSUM_ALGORITHM_NONE) {
+		return(true);
 	}
 
-	/* verify checksums */
-	ibool corrupted = buf_page_is_corrupted(false, src_frame, zip_size);
+	/* Read stored post encryption checksum. */
+	ib_uint32_t checksum = mach_read_from_4(
+		page + FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION + 4);
 
-	/** restore frame & algorithm */
-	srv_checksum_algorithm = save_checksum_algorithm;
-
-	mach_write_to_4(const_cast<byte*>(src_frame) +
-			FIL_PAGE_SPACE_OR_CHKSUM,
-			stored_pre_encryption);
-
-	mach_write_to_4(const_cast<byte*>(src_frame) +
-			page_size - FIL_PAGE_END_LSN_OLD_CHKSUM,
-			checksum_field2);
-
-	if (!corrupted) {
-		return true;  // page was encrypted and checksum matched
-	} else {
-		return false; // page was encrypted but checksum didn't match
+	/* Declare empty pages non-corrupted */
+	if (checksum == 0
+	    && *reinterpret_cast<const ib_uint64_t*>(page + FIL_PAGE_LSN) == 0
+	    && buf_page_is_zeroes(page, zip_size)) {
+		return(true);
 	}
+
+	/* Compressed and encrypted pages do not have checksum. Assume not
+	corrupted. Page verification happens after decompression in
+	buf_page_io_complete() using buf_page_is_corrupted(). */
+	if (mach_read_from_2(page+FIL_PAGE_TYPE) == FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED) {
+		return (true);
+	}
+
+
+	/* Compressed pages use different checksum method. We first store
+	the post encryption checksum on checksum location and after function
+	restore the original. */
+	if (zip_size) {
+		ib_uint32_t old = static_cast<ib_uint32_t>(mach_read_from_4(
+				page + FIL_PAGE_SPACE_OR_CHKSUM));
+
+		mach_write_to_4(page + FIL_PAGE_SPACE_OR_CHKSUM, checksum);
+
+		bool valid = page_zip_verify_checksum(page, zip_size);
+
+		mach_write_to_4(page + FIL_PAGE_SPACE_OR_CHKSUM, old);
+
+		return (valid);
+	}
+
+	/* If stored checksum matches one of the calculated checksums
+	page is not corrupted. */
+
+	ib_uint32_t cchecksum1 = buf_calc_page_crc32(page);
+	ib_uint32_t cchecksum2 = (ib_uint32_t) buf_calc_page_new_checksum(
+				page);
+	bool encrypted = (checksum == cchecksum1 || checksum == cchecksum2
+		|| checksum == BUF_NO_CHECKSUM_MAGIC);
+
+	/* MySQL 5.6 and MariaDB 10.0 and 10.1 will write an LSN to the
+	first page of each system tablespace file at
+	FIL_PAGE_FILE_FLUSH_LSN offset. On other pages and in other files,
+	the field might have been uninitialized until MySQL 5.5. In MySQL 5.7
+	(and MariaDB Server 10.2.2) WL#7990 stopped writing the field for other
+	than page 0 of the system tablespace.
+
+
+	Starting from MariaDB 10.1 the field has been repurposed for
+	encryption key_version.
+
+	Starting with MySQL 5.7 (and MariaDB Server 10.2), the
+	field has been repurposed for SPATIAL INDEX pages for
+	FIL_RTREE_SPLIT_SEQ_NUM.
+
+	Note that FIL_PAGE_FILE_FLUSH_LSN is not included in the InnoDB page
+	checksum.
+
+	Thus, FIL_PAGE_FILE_FLUSH_LSN could contain any value. While the
+	field would usually be 0 for pages that are not encrypted, we cannot
+	assume that a nonzero value means that the page is encrypted.
+	Therefore we must validate the page both as encrypted and unencrypted
+	when FIL_PAGE_FILE_FLUSH_LSN does not contain 0.
+	*/
+
+	ulint checksum1 = mach_read_from_4(
+		page + FIL_PAGE_SPACE_OR_CHKSUM);
+
+	ulint checksum2 = mach_read_from_4(
+		page + UNIV_PAGE_SIZE - FIL_PAGE_END_LSN_OLD_CHKSUM);
+
+
+	bool valid = (buf_page_is_checksum_valid_crc32(page,checksum1,checksum2)
+		|| buf_page_is_checksum_valid_none(page,checksum1,checksum2)
+		|| buf_page_is_checksum_valid_innodb(page,checksum1, checksum2));
+
+	if (encrypted && valid) {
+		/* If page is encrypted and traditional checksums match,
+		page could be still encrypted, or not encrypted and valid or
+		corrupted. */
+		ib_logf(IB_LOG_LEVEL_ERROR,
+			" Page %lu in space %s (%lu) maybe corrupted."
+			" Post encryption checksum %u stored [%lu:%lu] key_version %u",
+			pageno,
+			space ? space->name : "N/A",
+			mach_read_from_4(page + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID),
+			checksum, checksum1, checksum2, key_version);
+		encrypted = false;
+	}
+
+	return(encrypted);
 }
 
 /***********************************************************************/
@@ -1305,10 +1364,20 @@ struct rotate_thread_t {
 	btr_scrub_t scrub_data;      /* thread local data used by btr_scrub-functions
 				     * when iterating pages of tablespace */
 
-	/* check if this thread should shutdown */
+	/** @return whether this thread should terminate */
 	bool should_shutdown() const {
-		return ! (srv_shutdown_state == SRV_SHUTDOWN_NONE &&
-			  thread_no < srv_n_fil_crypt_threads);
+		switch (srv_shutdown_state) {
+		case SRV_SHUTDOWN_NONE:
+		case SRV_SHUTDOWN_CLEANUP:
+			return thread_no >= srv_n_fil_crypt_threads;
+		case SRV_SHUTDOWN_FLUSH_PHASE:
+			return true;
+		case SRV_SHUTDOWN_LAST_PHASE:
+		case SRV_SHUTDOWN_EXIT_THREADS:
+			break;
+		}
+		ut_ad(0);
+		return true;
 	}
 };
 
@@ -2461,23 +2530,16 @@ fil_crypt_threads_init()
 }
 
 /*********************************************************************
-End threads for key rotation */
-UNIV_INTERN
-void
-fil_crypt_threads_end()
-/*===================*/
-{
-	/* stop threads */
-	fil_crypt_set_thread_cnt(0);
-}
-
-/*********************************************************************
 Clean up key rotation threads resources */
 UNIV_INTERN
 void
 fil_crypt_threads_cleanup()
 /*=======================*/
 {
+	if (!fil_crypt_threads_inited) {
+		return;
+	}
+	ut_a(!srv_n_fil_crypt_threads_started);
 	os_event_free(fil_crypt_event);
 	os_event_free(fil_crypt_threads_event);
 	mutex_free(&fil_crypt_threads_mutex);
