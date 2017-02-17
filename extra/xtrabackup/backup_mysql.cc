@@ -38,6 +38,7 @@ this program; if not, write to the Free Software Foundation, Inc., 59 Temple
 Place, Suite 330, Boston, MA 02111-1307 USA
 
 *******************************************************/
+#define MYSQL_CLIENT
 
 #include <my_global.h>
 #include <mysql.h>
@@ -89,6 +90,7 @@ time_t history_lock_time;
 
 MYSQL *mysql_connection;
 
+my_bool opt_ssl_verify_server_cert;
 
 MYSQL *
 xb_mysql_connect()
@@ -110,6 +112,19 @@ xb_mysql_connect()
 	       "port: %d, socket: %s\n", opt_host ? opt_host : "localhost",
 	       opt_user, opt_password ? "set" : "not set",
 	       opt_port, opt_socket);
+
+
+	if (opt_use_ssl && false)
+	{
+		mysql_ssl_set(connection, opt_ssl_key, opt_ssl_cert,
+						opt_ssl_ca, opt_ssl_capath,
+						opt_ssl_cipher);
+		mysql_options(connection, MYSQL_OPT_SSL_CRL, opt_ssl_crl);
+		mysql_options(connection, MYSQL_OPT_SSL_CRLPATH,
+						opt_ssl_crlpath);
+		mysql_options(connection, MYSQL_OPT_SSL_VERIFY_SERVER_CERT,
+			(char*)&opt_ssl_verify_server_cert);
+	}
 
 	if (!mysql_real_connect(connection,
 				opt_host ? opt_host : "localhost",
