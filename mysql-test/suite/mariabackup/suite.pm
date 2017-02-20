@@ -1,4 +1,4 @@
-package My::Suite::XtraBackup;
+package My::Suite::MariaBackup;
 
 @ISA = qw(My::Suite);
 use My::Find;
@@ -7,26 +7,26 @@ use strict;
 
 return "Not run for embedded server" if $::opt_embedded_server;
 
-my $xtrabackup_exe=
+my $mariabackup_exe=
 ::mtr_exe_maybe_exists(
-  "$::bindir/extra/xtrabackup$::opt_vs_config/xtrabackup",
-  "$::path_client_bindir/xtrabackup");
+  "$::bindir/extra/mariabackup$::opt_vs_config/mariabackup",
+  "$::path_client_bindir/mariabackup");
 
-return "No xtrabackup" if !$xtrabackup_exe;
+return "No mariabackup" if !$mariabackup_exe;
 
 
-$ENV{XTRABACKUP}= $xtrabackup_exe;
+$ENV{XTRABACKUP}= $mariabackup_exe;
 
 $ENV{XBSTREAM}= ::mtr_exe_maybe_exists(
-      "$::bindir/extra/xtrabackup/$::opt_vs_config/xbstream",
-      "$::path_client_bindir/xbstream");
+      "$::bindir/extra/mariabackup/$::opt_vs_config/mbstream",
+      "$::path_client_bindir/mbstream");
 
 my $tar_version = `tar --version 2>&1`;
 $ENV{HAVE_TAR} = $! ? 0: 1;
-my $xtrabackup_help=`$xtrabackup_exe --help 2>&1`;
-$ENV{HAVE_XTRABACKUP_TAR_SUPPORT} =  (index($xtrabackup_help,"'tar'") == -1) ? 0 : 1;
+my $mariabackup_help=`$mariabackup_exe --help 2>&1`;
+$ENV{HAVE_XTRABACKUP_TAR_SUPPORT} =  (index($mariabackup_help,"'tar'") == -1) ? 0 : 1;
 
-$ENV{INNOBACKUPEX}= "$xtrabackup_exe --innobackupex";
+$ENV{INNOBACKUPEX}= "$mariabackup_exe --innobackupex";
 
 sub skip_combinations {
   my %skip;

@@ -126,7 +126,7 @@ ADD_DEFINITIONS(-UMYSQL_SERVER)
 
 ADD_DEFINITIONS(-DPCRE_STATIC=1)
 
-MYSQL_ADD_EXECUTABLE(xtrabackup
+MYSQL_ADD_EXECUTABLE(mariabackup
   xtrabackup.cc
   innobackupex.cc
   changed_page_bitmap.cc
@@ -151,35 +151,25 @@ MYSQL_ADD_EXECUTABLE(xtrabackup
   backup_copy.cc
   encryption_plugin.cc
   ${PROJECT_SOURCE_DIR}/libmysql/libmysql.c
-  ${mysqld_def}
+  COMPONENT backup
   )
 
 
 # Export all symbols on Unix, for better crash callstacks
-SET_TARGET_PROPERTIES(xtrabackup PROPERTIES ENABLE_EXPORTS TRUE)
+SET_TARGET_PROPERTIES(mariabackup PROPERTIES ENABLE_EXPORTS TRUE)
 
 
-TARGET_LINK_LIBRARIES(xtrabackup sql)
+TARGET_LINK_LIBRARIES(mariabackup sql)
 
 IF(NOT HAVE_SYSTEM_REGEX)
-  TARGET_LINK_LIBRARIES(xtrabackup pcreposix)
+  TARGET_LINK_LIBRARIES(mariabackup pcreposix)
 ENDIF()
 
-IF(UNIX)
-  # innobackupex symlink
-  ADD_CUSTOM_COMMAND(TARGET xtrabackup
-                   COMMAND ${CMAKE_COMMAND} ARGS -E create_symlink
-                           xtrabackup innobackupex)
-  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/innobackupex DESTINATION ${INSTALL_BINDIR})
-ELSE()
-  # Windows
-  INSTALL(FILES innobackupex.bat DESTINATION ${INSTALL_BINDIR})
-ENDIF(UNIX)
 
 ########################################################################
 # xbstream binary
 ########################################################################
-MYSQL_ADD_EXECUTABLE(xbstream
+MYSQL_ADD_EXECUTABLE(mbstream
   ds_buffer.c
   ds_local.c
   ds_stdout.c
@@ -187,13 +177,15 @@ MYSQL_ADD_EXECUTABLE(xbstream
   xbstream.c
   xbstream_read.c
   xbstream_write.c
+
+  COMPONENT backup
   )
 
 
-TARGET_LINK_LIBRARIES(xbstream
+TARGET_LINK_LIBRARIES(mbstream
   mysys
 )
 
 IF(MSVC)
-  SET_TARGET_PROPERTIES(xbstream PROPERTIES LINK_FLAGS setargv.obj)
+  SET_TARGET_PROPERTIES(mbstream PROPERTIES LINK_FLAGS setargv.obj)
 ENDIF()

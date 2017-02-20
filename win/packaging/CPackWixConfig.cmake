@@ -9,7 +9,7 @@ IF(ESSENTIALS)
  ENDIF()
 ELSE()
   SET(CPACK_COMPONENTS_USED 
-    "Server;Client;Development;SharedLibraries;Embedded;Documentation;IniFiles;Readme;Debuginfo;Common;connect-engine;ClientPlugins;gssapi-server;gssapi-client;aws-key-management")
+    "Server;Client;Development;SharedLibraries;Embedded;Documentation;IniFiles;Readme;Debuginfo;Common;connect-engine;ClientPlugins;gssapi-server;gssapi-client;aws-key-management;backup")
 ENDIF()
 
 SET( WIX_FEATURE_MySQLServer_EXTRA_FEATURES "DBInstance;SharedClientServerComponents")
@@ -55,6 +55,10 @@ SET(CPACK_COMPONENT_GROUP_MYSQLSERVER_DESCRIPTION "Install server")
    "Debug/trace versions of executables and libraries" )
  #SET(CPACK_COMPONENT_DEBUGBINARIES_WIX_LEVEL 2)
  
+ SET(CPACK_COMPONENT_BACKUP_GROUP "MySQLServer")
+ SET(CPACK_COMPONENT_BACKUP_DISPLAY_NAME "Backup utilities")
+ SET(CPACK_COMPONENT_BACKUP_DESCRIPTION "Installs backup utilities(mariabackup and mbstream)")
+
  
  #Miscellaneous (hidden) components, part of server / or client programs
  FOREACH(comp connect-engine ClientPlugins gssapi-server gssapi-client aws-key-management)
@@ -87,7 +91,13 @@ SET(CPACK_COMPONENT_GROUP_DEBUGSYMBOLS_DESCRIPTION "Installs Debug Symbols")
 SET(CPACK_COMPONENT_DEBUGSYMBOLS_WIX_LEVEL 2)
  SET(CPACK_COMPONENT_DEBUGINFO_GROUP "DebugSymbols")
  SET(CPACK_COMPONENT_DEBUGINFO_HIDDEN 1)
+ 
+#Feature "Backup"
+SET(CPACK_COMPONENT_GROUP_MYSQLSERVER_DISPLAY_NAME "MariaDB Server")
+SET(CPACK_COMPONENT_GROUP_MYSQLSERVER_EXPANDED "1")
+SET(CPACK_COMPONENT_GROUP_MYSQLSERVER_DESCRIPTION "Install server")
 
+ 
 #Feature Documentation
 SET(CPACK_COMPONENT_DOCUMENTATION_DISPLAY_NAME "Documentation")
 SET(CPACK_COMPONENT_DOCUMENTATION_DESCRIPTION "Installs documentation")
