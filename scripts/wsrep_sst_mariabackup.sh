@@ -631,7 +631,7 @@ send_donor()
 }
 
 if [[ ! -x `which $INNOBACKUPEX_BIN` ]];then 
-    wsrep_log_error "innobackupex not in path: $PATH"
+    wsrep_log_error "${INNOBACKUPEX_BIN} not in path: $PATH"
     exit 2
 fi
 
@@ -677,15 +677,15 @@ if [[ $ssyslog -eq 1 ]];then
             logger  -p daemon.info -t ${ssystag}wsrep-sst-$WSREP_SST_OPT_ROLE "$@" 
         }
 
-        INNOAPPLY="${INNOBACKUPEX_BIN} $disver $iapts --apply-log \$rebuildcmd \${DATA} 2>&1  | logger -p daemon.err -t ${ssystag}innobackupex-apply "
-        INNOMOVE="${INNOBACKUPEX_BIN} ${WSREP_SST_OPT_CONF} $disver $impts  --move-back --force-non-empty-directories \${DATA} 2>&1 | logger -p daemon.err -t ${ssystag}innobackupex-move "
-        INNOBACKUP="${INNOBACKUPEX_BIN} ${WSREP_SST_OPT_CONF} $disver $iopts \$tmpopts \$INNOEXTRA --galera-info --stream=\$sfmt \$itmpdir 2> >(logger -p daemon.err -t ${ssystag}innobackupex-backup)"
+        INNOAPPLY="${INNOBACKUPEX_BIN} --innobackupex $disver $iapts --apply-log \$rebuildcmd \${DATA} 2>&1  | logger -p daemon.err -t ${ssystag}innobackupex-apply "
+        INNOMOVE="${INNOBACKUPEX_BIN} --innobackupex ${WSREP_SST_OPT_CONF} $disver $impts  --move-back --force-non-empty-directories \${DATA} 2>&1 | logger -p daemon.err -t ${ssystag}innobackupex-move "
+        INNOBACKUP="${INNOBACKUPEX_BIN} --innobackupex ${WSREP_SST_OPT_CONF} $disver $iopts \$tmpopts \$INNOEXTRA --galera-info --stream=\$sfmt \$itmpdir 2> >(logger -p daemon.err -t ${ssystag}innobackupex-backup)"
     fi
 
 else 
-    INNOAPPLY="${INNOBACKUPEX_BIN} $disver $iapts --apply-log \$rebuildcmd \${DATA} &>\${DATA}/innobackup.prepare.log"
-    INNOMOVE="${INNOBACKUPEX_BIN} ${WSREP_SST_OPT_CONF} $disver $impts  --move-back --force-non-empty-directories \${DATA} &>\${DATA}/innobackup.move.log"
-    INNOBACKUP="${INNOBACKUPEX_BIN} ${WSREP_SST_OPT_CONF} $disver $iopts \$tmpopts \$INNOEXTRA --galera-info --stream=\$sfmt \$itmpdir 2>\${DATA}/innobackup.backup.log"
+    INNOAPPLY="${INNOBACKUPEX_BIN} --innobackupex $disver $iapts --apply-log \$rebuildcmd \${DATA} &>\${DATA}/innobackup.prepare.log"
+    INNOMOVE="${INNOBACKUPEX_BIN} --innobackupex ${WSREP_SST_OPT_CONF} $disver $impts  --move-back --force-non-empty-directories \${DATA} &>\${DATA}/innobackup.move.log"
+    INNOBACKUP="${INNOBACKUPEX_BIN} --innobackupex ${WSREP_SST_OPT_CONF} $disver $iopts \$tmpopts \$INNOEXTRA --galera-info --stream=\$sfmt \$itmpdir 2>\${DATA}/innobackup.backup.log"
 fi
 
 get_stream
