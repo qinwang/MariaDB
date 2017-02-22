@@ -819,6 +819,7 @@ void read_wsrep_xid_uuid(const XID* xid, unsigned char* buf)
 
 #endif /* UNIV_DEBUG */
 
+UNIV_INTERN
 void
 trx_sys_update_wsrep_checkpoint(
         const XID*      xid,        /*!< in: transaction XID */
@@ -876,6 +877,7 @@ trx_sys_update_wsrep_checkpoint(
 
 }
 
+UNIV_INTERN
 void
 trx_sys_read_wsrep_checkpoint(XID* xid)
 /*===================================*/
