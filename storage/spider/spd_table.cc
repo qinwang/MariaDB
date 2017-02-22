@@ -61,9 +61,6 @@ extern SPIDER_DBTON spider_dbton_mysql;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 extern SPIDER_DBTON spider_dbton_handlersocket;
 #endif
-#ifdef HAVE_ORACLE_OCI
-extern SPIDER_DBTON spider_dbton_oracle;
-#endif
 
 #ifdef HAVE_PSI_INTERFACE
 PSI_mutex_key spd_key_mutex_tbl;
@@ -6729,11 +6726,6 @@ int spider_db_init(
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   spider_dbton_handlersocket.dbton_id = dbton_id;
   spider_dbton[dbton_id] = spider_dbton_handlersocket;
-  ++dbton_id;
-#endif
-#ifdef HAVE_ORACLE_OCI
-  spider_dbton_oracle.dbton_id = dbton_id;
-  spider_dbton[dbton_id] = spider_dbton_oracle;
   ++dbton_id;
 #endif
   for (roop_count = 0; roop_count < SPIDER_DBTON_SIZE; roop_count++)
