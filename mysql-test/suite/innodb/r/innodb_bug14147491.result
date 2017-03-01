@@ -1,6 +1,7 @@
 call mtr.add_suppression("InnoDB: Database page corruption on disk or a failed.*");
 call mtr.add_suppression("InnoDB: Corruption: Block in space_id .* in file .* corrupted.");
 call mtr.add_suppression("InnoDB: Based on page type .*");
+call mtr.add_suppression("InnoDB: Unable to read tablespace .* page no .* into the buffer pool after .* attempts");
 CALL mtr.add_suppression("InnoDB: Error: Unable to read tablespace .* page no .* into the buffer pool after 100 attempts");
 CALL mtr.add_suppression("InnoDB: Database page corruption on disk or a failed");
 CALL mtr.add_suppression("InnoDB: Space .* file test/t1 read of page .*");

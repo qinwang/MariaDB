@@ -1,0 +1,23 @@
+call mtr.add_suppression("InnoDB: Block in space_id .* in file .* encrypted.");
+call mtr.add_suppression("InnoDB: However key management plugin or used key_version 1 is not found or used encryption algorithm or method does not match.");
+call mtr.add_suppression("InnoDB: Marking tablespace as missing. You may drop this table or install correct key management plugin and key file.");
+SET GLOBAL innodb_file_format = `Barracuda`;
+SET GLOBAL innodb_file_per_table = ON;
+set GLOBAL innodb_default_encryption_key_id=4;
+create table t1(a int not null primary key, b blob) engine=innodb row_format=compressed;
+create table t2(a int not null primary key, b blob) engine=innodb row_format=compressed encrypted=yes;
+create table t3(a int not null primary key, b blob) engine=innodb row_format=compressed encrypted=no;
+CREATE INDEX test ON t1 (b(10));
+CREATE INDEX test ON t2 (b(10));
+CREATE INDEX test ON t3 (b(10));
+insert into t1 values (1, repeat('secret',6000));
+insert into t2 values (1, repeat('secret',6000));
+insert into t3 values (1, repeat('secret',6000));
+select count(*) from t1 FORCE INDEX (test) where b like 'secret%';
+ERROR HY000: Got error 192 'Table encrypted but decryption failed. This could be because correct encryption management plugin is not loaded, used encryption key is not available or encryption method does not match.' from InnoDB
+select count(*) from t2 FORCE INDEX (test) where b like 'secret%';
+ERROR HY000: Got error 192 'Table encrypted but decryption failed. This could be because correct encryption management plugin is not loaded, used encryption key is not available or encryption method does not match.' from InnoDB
+select count(*) from t3 FORCE INDEX (test) where b like 'secret%';
+count(*)
+1
+drop table t1,t2,t3;

@@ -3,7 +3,7 @@
 Copyright (c) 1994, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2008, Google Inc.
 Copyright (c) 2012, Facebook Inc.
-Copyright (c) 2015, MariaDB Corporation.
+Copyright (c) 2015, 2017, MariaDB Corporation.
 
 Portions of this file contain modifications contributed and copyrighted by
 Google, Inc. Those modifications are gratefully acknowledged and are described
@@ -988,7 +988,7 @@ btr_cur_open_at_index_side_func(
 		block = buf_page_get_gen(space, zip_size, page_no,
 					 RW_NO_LATCH, NULL, BUF_GET,
 					 file, line, mtr, &err);
-		if (err != DB_SUCCESS) {
+		if (!block || err != DB_SUCCESS) {
 			if (err == DB_DECRYPTION_FAILED) {
 				ib_push_warning((void *)NULL,
 					DB_DECRYPTION_FAILED,
@@ -1161,7 +1161,7 @@ btr_cur_open_at_rnd_pos_func(
 					 RW_NO_LATCH, NULL, BUF_GET,
 					 file, line, mtr, &err);
 
-		if (err != DB_SUCCESS) {
+		if (!block || err != DB_SUCCESS) {
 			if (err == DB_DECRYPTION_FAILED) {
 				ib_push_warning((void *)NULL,
 					DB_DECRYPTION_FAILED,
@@ -3854,7 +3854,7 @@ btr_estimate_n_rows_in_range_on_level(
 					 NULL, BUF_GET_POSSIBLY_FREED,
 					 __FILE__, __LINE__, &mtr, &err);
 
-		if (err != DB_SUCCESS) {
+		if (!block || err != DB_SUCCESS) {
 			if (err == DB_DECRYPTION_FAILED) {
 				ib_push_warning((void *)NULL,
 					DB_DECRYPTION_FAILED,

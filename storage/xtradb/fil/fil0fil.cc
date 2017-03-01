@@ -6198,8 +6198,15 @@ _fil_io(
 			mutex_exit(&fil_system->mutex);
 			if (mode == OS_AIO_NORMAL) {
 				ut_a(space->purpose == FIL_TABLESPACE);
-				buf_page_io_complete(static_cast<buf_page_t *>
-						     (message));
+				dberr_t err = buf_page_io_complete(static_cast<buf_page_t *>
+					(message));
+
+				if (err != DB_SUCCESS) {
+					ib_logf(IB_LOG_LEVEL_ERROR,
+						"Write operation failed for tablespace %s ("
+						ULINTPF ") offset " ULINTPF " error=%d.",
+						space->name, space->id, byte_offset, err);
+				}
 			}
 		}
 
@@ -6315,7 +6322,15 @@ fil_aio_wait(
 
 	if (fil_node->space->purpose == FIL_TABLESPACE) {
 		srv_set_io_thread_op_info(segment, "complete io for buf page");
-		buf_page_io_complete(static_cast<buf_page_t*>(message));
+		buf_page_t* bpage = static_cast<buf_page_t*>(message);
+		dberr_t err = buf_page_io_complete(bpage);
+
+		if (err != DB_SUCCESS) {
+			ib_logf(IB_LOG_LEVEL_ERROR,
+				"ibuf write operation failed for tablespace "
+				"%u offset %u error=%d.",
+				bpage->space, bpage->offset, err);
+		}
 	} else {
 		srv_set_io_thread_op_info(segment, "complete io for log");
 		log_io_complete(static_cast<log_group_t*>(message));

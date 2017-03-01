@@ -7,6 +7,7 @@
 call mtr.add_suppression("InnoDB: Database page corruption on disk or a failed.*");
 call mtr.add_suppression("InnoDB: Corruption: Block in space_id .* in file .* corrupted.");
 call mtr.add_suppression("InnoDB: Based on page type .*");
+call mtr.add_suppression("InnoDB: Unable to read tablespace .* page no .* into the buffer pool after .* attempts");
 
 # Don't test under valgrind, memory leaks will occur
 source include/not_valgrind.inc;

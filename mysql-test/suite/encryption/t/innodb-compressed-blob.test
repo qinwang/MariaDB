@@ -1,0 +1,84 @@
+-- source include/have_innodb.inc
+-- source include/have_file_key_management_plugin.inc
+
+# embedded does not support restart
+-- source include/not_embedded.inc
+
+call mtr.add_suppression("InnoDB: Block in space_id .* in file .* encrypted.");
+call mtr.add_suppression("InnoDB: However key management plugin or used key_version 1 is not found or used encryption algorithm or method does not match.");
+call mtr.add_suppression("InnoDB: Marking tablespace as missing. You may drop this table or install correct key management plugin and key file.");
+
+--disable_query_log
+let $innodb_file_format_orig = `SELECT @@innodb_file_format`;
+let $innodb_file_per_table_orig = `SELECT @@innodb_file_per_table`;
+--enable_query_log
+
+--exec echo "wait" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+--shutdown_server
+--source include/wait_until_disconnected.inc
+
+--write_file $MYSQLTEST_VARDIR/keys1.txt
+1;770A8A65DA156D24EE2A093277530142
+4;770A8A65DA156D24EE2A093277530143
+EOF
+
+--exec echo "restart:--innodb-encrypt-tables --innodb-stats-persistent --plugin-load-add=file_key_management.so --file-key-management --file-key-management-filename=$MYSQLTEST_VARDIR/keys1.txt" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+
+
+SET GLOBAL innodb_file_format = `Barracuda`;
+SET GLOBAL innodb_file_per_table = ON;
+
+set GLOBAL innodb_default_encryption_key_id=4;
+create table t1(a int not null primary key, b blob) engine=innodb row_format=compressed;
+create table t2(a int not null primary key, b blob) engine=innodb row_format=compressed encrypted=yes;
+create table t3(a int not null primary key, b blob) engine=innodb row_format=compressed encrypted=no;
+CREATE INDEX test ON t1 (b(10));
+CREATE INDEX test ON t2 (b(10));
+CREATE INDEX test ON t3 (b(10));
+
+
+insert into t1 values (1, repeat('secret',6000));
+insert into t2 values (1, repeat('secret',6000));
+insert into t3 values (1, repeat('secret',6000));
+
+--exec echo "wait" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+--shutdown_server
+--source include/wait_until_disconnected.inc
+
+--write_file $MYSQLTEST_VARDIR/keys2.txt
+1;770A8A65DA156D24EE2A093277530142
+4;770A8A65DA156D24EE2A093277530144
+EOF
+
+--exec echo "restart:--innodb-encrypt-tables --innodb-stats-persistent --plugin-load-add=file_key_management.so --file-key-management --file-key-management-filename=$MYSQLTEST_VARDIR/keys2.txt" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+--source include/restart_mysqld.inc
+
+--error 1296
+select count(*) from t1 FORCE INDEX (test) where b like 'secret%';
+--error 1296
+select count(*) from t2 FORCE INDEX (test) where b like 'secret%';
+select count(*) from t3 FORCE INDEX (test) where b like 'secret%';
+
+--exec echo "wait" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+--shutdown_server
+--source include/wait_until_disconnected.inc
+
+--remove_file $MYSQLTEST_VARDIR/keys1.txt
+--remove_file $MYSQLTEST_VARDIR/keys2.txt
+
+--write_file $MYSQLTEST_VARDIR/keys1.txt
+1;770A8A65DA156D24EE2A093277530142
+4;770A8A65DA156D24EE2A093277530143
+EOF
+
+--exec echo "restart:--innodb-encrypt-tables --innodb-stats-persistent --plugin-load-add=file_key_management.so --file-key-management --file-key-management-filename=$MYSQLTEST_VARDIR/keys1.txt" > $MYSQLTEST_VARDIR/tmp/mysqld.1.expect
+--enable_reconnect
+--source include/wait_until_connected_again.inc
+
+drop table t1,t2,t3;
+
+--remove_file $MYSQLTEST_VARDIR/keys1.txt
