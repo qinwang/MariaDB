@@ -1279,6 +1279,9 @@ public:
     ulong sql_type,
     int link_idx
   ) = 0;
+  virtual bool is_sole_projection_field(
+      uint16 field_index
+  ) = 0;
   virtual bool is_bulk_insert_exec_period(
     bool bulk_end
   ) = 0;
@@ -1665,6 +1668,7 @@ typedef struct st_spider_result_list
   bool                    snap_direct_aggregate;
   SPIDER_DB_ROW           *snap_row;
 #endif
+  bool                    is_partitioned_config;
   bool                    in_cmp_ref;
   bool                    set_split_read;
   bool                    insert_dup_update_pushdown;
