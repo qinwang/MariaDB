@@ -25,6 +25,7 @@ openssl ca -days 7300 -batch -cert cacert.pem -policy policy_anything -out serve
 
 openssl req -newkey rsa:1024 -keyout client-key.pem -out demoCA/client-req.pem -days 7300 -nodes -subj '/CN=client/C=FI/ST=Helsinki/L=Helsinki/O=MariaDB'
 openssl rsa -in client-key.pem -out client-key.pem
+openssl rsa -in client-key.pem -out client-key-enc.pem -passin pass:qwert
 openssl ca -days 7300 -batch -cert cacert.pem -policy policy_anything -out client-cert.pem -infiles demoCA/client-req.pem
-
+openssl x509 -in server-cert.pem -sha1 -fingerprint -noout | sed 's/SHA1 Fingerprint=//;s/://g' > server_cert.sha1
 rm -rf demoCA
