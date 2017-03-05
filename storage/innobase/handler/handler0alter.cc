@@ -589,7 +589,7 @@ ha_innobase::check_if_supported_inplace_alter(
 	}
 
 	update_thd();
-	trx_search_latch_release_if_reserved(m_prebuilt->trx);
+	trx_assert_no_search_latch(m_prebuilt->trx);
 
 	/* Change on engine specific table options require rebuild of the
 	table */
@@ -1898,7 +1898,7 @@ innobase_row_to_mysql(
 	}
 	if (table->vfield) {
 		my_bitmap_map*	old_vcol_set = tmp_use_all_columns(table, table->vcol_set);
-		table->update_virtual_fields(VCOL_UPDATE_FOR_READ);
+		table->update_virtual_fields(table->file, VCOL_UPDATE_FOR_READ);
 		tmp_restore_column_map(table->vcol_set, old_vcol_set);
 	}
 }
@@ -7791,25 +7791,10 @@ commit_try_rebuild(
 		user_table, rebuilt_table, ctx->tmp_name, trx);
 
 	/* We must be still holding a table handle. */
-	DBUG_ASSERT(user_table->get_ref_count() >= 1);
+	DBUG_ASSERT(user_table->get_ref_count() == 1);
 
 	DBUG_EXECUTE_IF("ib_ddl_crash_after_rename", DBUG_SUICIDE(););
 	DBUG_EXECUTE_IF("ib_rebuild_cannot_rename", error = DB_ERROR;);
-
-	if (user_table->get_ref_count() > 1) {
-		/* This should only occur when an innodb_memcached
-		connection with innodb_api_enable_mdl=off was started
-		before commit_inplace_alter_table() locked the data
-		dictionary. We must roll back the ALTER TABLE, because
-		we cannot drop a table while it is being used. */
-
-		/* Normally, n_ref_count must be 1, because purge
-		cannot be executing on this very table as we are
-		holding dict_operation_lock X-latch. */
-		my_printf_error(ER_ILLEGAL_HA, "Cannot complete the operation "
-			"because table is referenced by another connection.", MYF(0));
-		DBUG_RETURN(true);
-	}
 
 	switch (error) {
 	case DB_SUCCESS:
@@ -8814,22 +8799,15 @@ foreign_fail:
 	}
 
 	if (ctx0->num_to_drop_vcol || ctx0->num_to_add_vcol) {
-
-		if (ctx0->old_table->get_ref_count() > 1) {
-
-			row_mysql_unlock_data_dictionary(trx);
-			trx_free_for_mysql(trx);
-			my_printf_error(ER_ILLEGAL_HA, "Cannot complete the operation "
-				"because table is referenced by another connection.", MYF(0));
-			DBUG_RETURN(true);
-		}
+		DBUG_ASSERT(ctx0->old_table->get_ref_count() == 1);
 
 		trx_commit_for_mysql(m_prebuilt->trx);
-
+#ifdef BTR_CUR_HASH_ADAPT
 		if (btr_search_enabled) {
 			btr_search_disable(false);
 			btr_search_enable();
 		}
+#endif /* BTR_CUR_HASH_ADAPT */
 
 		char	tb_name[FN_REFLEN];
 		ut_strcpy(tb_name, m_prebuilt->table->name.m_name);

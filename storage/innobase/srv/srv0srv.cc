@@ -3,7 +3,7 @@
 Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2008, 2009 Google Inc.
 Copyright (c) 2009, Percona Inc.
-Copyright (c) 2013, 2017, MariaDB Corporation.
+Copyright (c) 2013, 2017, MariaDB Corporation. All Rights Reserved.
 
 Portions of this file contain modifications contributed and copyrighted by
 Google, Inc. Those modifications are gratefully acknowledged and are described
@@ -205,9 +205,9 @@ extern bool		trx_commit_disallowed;
 #endif /* UNIV_DEBUG */
 
 /*------------------------- LOG FILES ------------------------ */
-char*	srv_log_group_home_dir	= NULL;
+char*	srv_log_group_home_dir;
 
-ulong	srv_n_log_files		= SRV_N_LOG_FILES_MAX;
+ulong	srv_n_log_files;
 /** At startup, this is the current redo log file size.
 During startup, if this is different from srv_log_file_size_requested
 (innodb_log_file_size), the redo log will be rebuilt and this size
@@ -371,7 +371,7 @@ my_bool	srv_cmp_per_index_enabled = FALSE;
 merge to completion before shutdown. If it is set to 2, do not even flush the
 buffer pool to data files at the shutdown: we effectively 'crash'
 InnoDB (but lose no committed transactions). */
-ulint	srv_fast_shutdown	= 0;
+uint	srv_fast_shutdown;
 
 /* Generate a innodb_status.<pid> file */
 ibool	srv_innodb_status	= FALSE;
@@ -507,9 +507,6 @@ thread ensures that we flush the log files at least once per
 second. */
 static time_t	srv_last_log_flush_time;
 
-/** Enable semaphore request instrumentation */
-UNIV_INTERN my_bool 	srv_instrument_semaphores = FALSE;
-
 /* Interval in seconds at which various tasks are performed by the
 master thread when server is active. In order to balance the workload,
 we should try to keep intervals such that they are not multiple of
@@ -631,7 +628,11 @@ struct srv_sys_t{
 	ulint		n_sys_threads;		/*!< size of the sys_threads
 						array */
 
-	srv_slot_t*	sys_threads;		/*!< server thread table */
+	srv_slot_t*	sys_threads;		/*!< server thread table;
+						os_event_set() and
+						os_event_reset() on
+						sys_threads[]->event are
+						covered by srv_sys_t::mutex */
 
 	ulint		n_threads_active[SRV_MASTER + 1];
 						/*!< number of threads active
@@ -644,13 +645,16 @@ struct srv_sys_t{
 
 static srv_sys_t*	srv_sys	= NULL;
 
-/** Event to signal the monitor thread. */
+/** Event to signal srv_monitor_thread. Not protected by a mutex.
+Set after setting srv_print_innodb_monitor. */
 os_event_t	srv_monitor_event;
 
-/** Event to signal the error thread */
+/** Event to signal the shutdown of srv_error_monitor_thread.
+Not protected by a mutex. */
 os_event_t	srv_error_event;
 
-/** Event to signal the buffer pool dump/load thread */
+/** Event for waking up buf_dump_thread. Not protected by a mutex.
+Set on shutdown or by buf_dump_start() or buf_load_start(). */
 os_event_t	srv_buf_dump_event;
 
 /** Event to signal the buffer pool resize thread */
@@ -1152,6 +1156,8 @@ srv_free(void)
 	srv_master_thread_disabled_event = NULL;
 #endif /* UNIV_DEBUG */
 
+	dict_ind_free();
+
 	trx_i_s_cache_free(trx_i_s_cache);
 
 	ut_free(srv_sys);
@@ -1213,7 +1219,9 @@ srv_refresh_innodb_monitor_stats(void)
 
 	os_aio_refresh_stats();
 
+#ifdef BTR_CUR_HASH_ADAPT
 	btr_cur_n_sea_old = btr_cur_n_sea;
+#endif /* BTR_CUR_HASH_ADAPT */
 	btr_cur_n_non_sea_old = btr_cur_n_non_sea;
 
 	log_refresh_stats();
@@ -1344,6 +1352,7 @@ srv_printf_innodb_monitor(
 	      "-------------------------------------\n", file);
 	ibuf_print(file);
 
+#ifdef BTR_CUR_HASH_ADAPT
 	for (ulint i = 0; i < btr_ahi_parts; ++i) {
 		rw_lock_s_lock(btr_search_latches[i]);
 		ha_print_info(file, btr_search_sys->hash_tables[i]);
@@ -1357,6 +1366,12 @@ srv_printf_innodb_monitor(
 		(btr_cur_n_non_sea - btr_cur_n_non_sea_old)
 		/ time_elapsed);
 	btr_cur_n_sea_old = btr_cur_n_sea;
+#else /* BTR_CUR_HASH_ADAPT */
+	fprintf(file,
+		"%.2f non-hash searches/s\n",
+		(btr_cur_n_non_sea - btr_cur_n_non_sea_old)
+		/ time_elapsed);
+#endif /* BTR_CUR_HASH_ADAPT */
 	btr_cur_n_non_sea_old = btr_cur_n_non_sea;
 
 	fputs("---\n"
@@ -2608,15 +2623,14 @@ srv_purge_should_exit(
 	MYSQL_THD	thd,
 	ulint		n_purged)	/*!< in: pages purged in last batch */
 {
-	if (thd_kill_level(thd)) {
-		return(srv_fast_shutdown != 0 || n_purged == 0);
-	}
-
 	switch (srv_shutdown_state) {
 	case SRV_SHUTDOWN_NONE:
-		/* Normal operation. */
-		break;
-
+		if ((!srv_was_started || srv_running)
+		    && !thd_kill_level(thd)) {
+			/* Normal operation. */
+			break;
+		}
+		/* close_connections() was called; fall through */
 	case SRV_SHUTDOWN_CLEANUP:
 	case SRV_SHUTDOWN_EXIT_THREADS:
 		/* Exit unless slow shutdown requested or all done. */

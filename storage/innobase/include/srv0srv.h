@@ -3,7 +3,7 @@
 Copyright (c) 1995, 2016, Oracle and/or its affiliates. All rights reserved.
 Copyright (c) 2008, 2009, Google Inc.
 Copyright (c) 2009, Percona Inc.
-Copyright (c) 2013, 2017, MariaDB Corporation
+Copyright (c) 2013, 2017, MariaDB Corporation. All Rights Reserved.
 
 Portions of this file contain modifications contributed and copyrighted by
 Google, Inc. Those modifications are gratefully acknowledged and are described
@@ -188,13 +188,16 @@ extern const char*	srv_main_thread_op_info;
 /** Prefix used by MySQL to indicate pre-5.1 table name encoding */
 extern const char	srv_mysql50_table_name_prefix[10];
 
-/* The monitor thread waits on this event. */
+/** Event to signal srv_monitor_thread. Not protected by a mutex.
+Set after setting srv_print_innodb_monitor. */
 extern os_event_t	srv_monitor_event;
 
-/* The error monitor thread waits on this event. */
+/** Event to signal the shutdown of srv_error_monitor_thread.
+Not protected by a mutex. */
 extern os_event_t	srv_error_event;
 
-/** The buffer pool dump/load thread waits on this event. */
+/** Event for waking up buf_dump_thread. Not protected by a mutex.
+Set on shutdown or by buf_dump_start() or buf_load_start(). */
 extern os_event_t	srv_buf_dump_event;
 
 /** The buffer pool resize thread waits on this event. */
@@ -451,13 +454,18 @@ extern ulong	srv_flushing_avg_loops;
 
 extern ulong	srv_force_recovery;
 
-extern ulint	srv_fast_shutdown;	/*!< If this is 1, do not do a
+extern uint	srv_fast_shutdown;	/*!< If this is 1, do not do a
 					purge and index buffer merge.
 					If this 2, do not even flush the
 					buffer pool to data files at the
 					shutdown: we effectively 'crash'
 					InnoDB (but lose no committed
 					transactions). */
+
+/** Signal to shut down InnoDB (NULL if shutdown was signaled, or if
+running in innodb_read_only mode, srv_read_only_mode) */
+extern volatile st_my_thread_var *srv_running;
+
 extern ibool	srv_innodb_status;
 
 extern unsigned long long	srv_stats_transient_sample_pages;
@@ -562,9 +570,6 @@ extern uint srv_simulate_comp_failures;
 that semaphore times out in InnoDB */
 #define DEFAULT_SRV_FATAL_SEMAPHORE_TIMEOUT 600
 extern ulong	srv_fatal_semaphore_wait_threshold;
-
-/** Enable semaphore request instrumentation */
-extern my_bool srv_instrument_semaphores;
 
 /** Buffer pool dump status frequence in percentages */
 extern ulong srv_buf_dump_status_frequency;

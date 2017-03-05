@@ -113,8 +113,24 @@ static int st_append_escaped(String *s, const String *a)
 }
 
 
+static const int TAB_SIZE_LIMIT= 8;
+static const char tab_arr[TAB_SIZE_LIMIT+1]= "        ";
+
+static int append_tab(String *js, int depth, int tab_size)
+{
+  if (js->append("\n", 1))
+    return 1;
+  for (int i=0; i<depth; i++)
+  {
+    if (js->append(tab_arr, tab_size))
+      return 1;
+  }
+  return 0;
+}
+
+
 static int json_nice(json_engine_t *je, String *nice_js,
-                     Item_func_json_format::formats mode)
+                     Item_func_json_format::formats mode, int tab_size=4)
 {
   int depth= 0;
   const char *comma, *colon;
@@ -122,19 +138,24 @@ static int json_nice(json_engine_t *je, String *nice_js,
   int first_value= 1;
 
   DBUG_ASSERT(je->s.cs == nice_js->charset());
+  DBUG_ASSERT(mode != Item_func_json_format::DETAILED ||
+              (tab_size >= 0 && tab_size <= TAB_SIZE_LIMIT));
 
+  comma= ", ";
+  colon= "\": ";
   if (mode == Item_func_json_format::LOOSE)
   {
-    comma= ", ";
     comma_len= 2;
-    colon= "\": ";
+    colon_len= 3;
+  }
+  else if (mode == Item_func_json_format::DETAILED)
+  {
+    comma_len= 1;
     colon_len= 3;
   }
   else
   {
-    comma= ",";
     comma_len= 1;
-    colon= "\":";
     colon_len= 2;
   }
 
@@ -158,6 +179,10 @@ static int json_nice(json_engine_t *je, String *nice_js,
         if (!first_value)
           nice_js->append(comma, comma_len);
 
+        if (mode == Item_func_json_format::DETAILED &&
+            append_tab(nice_js, depth, tab_size))
+          goto error;
+
         nice_js->append("\"", 1);
         append_simple(nice_js, key_start, key_end - key_start);
         nice_js->append(colon, colon_len);
@@ -169,6 +194,11 @@ static int json_nice(json_engine_t *je, String *nice_js,
     case JST_VALUE:
       if (!first_value)
         nice_js->append(comma, comma_len);
+
+      if (mode == Item_func_json_format::DETAILED &&
+          depth > 0 &&
+          append_tab(nice_js, depth, tab_size))
+        goto error;
 
 handle_value:
       if (json_read_value(je))
@@ -183,6 +213,10 @@ handle_value:
       }
       else
       {
+        if (mode == Item_func_json_format::DETAILED &&
+            depth > 0 &&
+            append_tab(nice_js, depth, tab_size))
+          goto error;
         nice_js->append((je->value_type == JSON_VALUE_OBJECT) ? "{" : "[", 1);
         first_value= 1;
         depth++;
@@ -193,6 +227,9 @@ handle_value:
     case JST_OBJ_END:
     case JST_ARRAY_END:
       depth--;
+      if (mode == Item_func_json_format::DETAILED &&
+          append_tab(nice_js, depth, tab_size))
+        goto error;
       nice_js->append((je->state == JST_OBJ_END) ? "}": "]", 1);
       first_value= 0;
       break;
@@ -336,7 +373,7 @@ static int path_setup_nwc(json_path_t *p, CHARSET_INFO *i_cs,
 
 longlong Item_func_json_valid::val_int()
 {
-  String *js= args[0]->val_str(&tmp_value);
+  String *js= args[0]->val_json(&tmp_value);
   json_engine_t je;
 
   if ((null_value= args[0]->null_value))
@@ -364,7 +401,7 @@ longlong Item_func_json_exists::val_int()
   json_engine_t je;
   uint array_counters[JSON_DEPTH_LIMIT];
 
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
 
   if (!path.parsed)
   {
@@ -417,7 +454,7 @@ void Item_func_json_value::fix_length_and_dec()
 String *Item_func_json_value::val_str(String *str)
 {
   json_engine_t je;
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   int error= 0;
   uint array_counters[JSON_DEPTH_LIMIT];
 
@@ -550,7 +587,7 @@ void Item_func_json_unquote::fix_length_and_dec()
 
 String *Item_func_json_unquote::val_str(String *str)
 {
-  String *js= args[0]->val_str(&tmp_s);
+  String *js= args[0]->val_json(&tmp_s);
   json_engine_t je;
   int c_len;
 
@@ -675,7 +712,7 @@ static bool path_ok(const json_path_with_flags *paths_list, int n_paths,
 
 String *Item_func_json_extract::val_str(String *str)
 {
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   json_engine_t je, sav_je;
   json_path_t p;
   const uchar *value;
@@ -780,7 +817,7 @@ return_null:
 
 longlong Item_func_json_extract::val_int()
 {
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   json_engine_t je;
   uint n_arg;
   uint array_counters[JSON_DEPTH_LIMIT];
@@ -1003,7 +1040,7 @@ static int check_contains(json_engine_t *js, json_engine_t *value)
 
 longlong Item_func_json_contains::val_int()
 {
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   json_engine_t je, ve;
   int result;
 
@@ -1012,7 +1049,7 @@ longlong Item_func_json_contains::val_int()
 
   if (!a2_parsed)
   {
-    val= args[1]->val_str(&tmp_val);
+    val= args[1]->val_json(&tmp_val);
     a2_parsed= a2_constant;
   }
 
@@ -1142,7 +1179,7 @@ static int parse_one_or_all(const Item_func *f, Item *ooa_arg,
 #ifdef DUMMY
 longlong Item_func_json_contains_path::val_int()
 {
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   json_engine_t je;
   uint n_arg;
   longlong result;
@@ -1210,7 +1247,7 @@ return_null:
 
 longlong Item_func_json_contains_path::val_int()
 {
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   json_engine_t je;
   uint n_arg;
   longlong result;
@@ -1314,7 +1351,7 @@ static int append_json_value(String *str, Item *item, String *tmp_val)
     return str->append(t_f, t_f_len);
   }
   {
-    String *sv= item->val_str(tmp_val);
+    String *sv= item->val_json(tmp_val);
     if (item->null_value)
       goto append_null;
     if (item->is_json_type())
@@ -1424,7 +1461,7 @@ void Item_func_json_array_append::fix_length_and_dec()
 String *Item_func_json_array_append::val_str(String *str)
 {
   json_engine_t je;
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   uint n_arg, n_path, str_rest_len;
   const uchar *ar_end;
 
@@ -1551,7 +1588,7 @@ return_null:
 String *Item_func_json_array_insert::val_str(String *str)
 {
   json_engine_t je;
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   uint n_arg, n_path;
 
   DBUG_ASSERT(fixed == 1);
@@ -1922,7 +1959,7 @@ String *Item_func_json_merge::val_str(String *str)
 {
   DBUG_ASSERT(fixed == 1);
   json_engine_t je1, je2;
-  String *js1= args[0]->val_str(&tmp_js1), *js2;
+  String *js1= args[0]->val_json(&tmp_js1), *js2;
   uint n_arg;
 
   if (args[0]->null_value)
@@ -1933,7 +1970,7 @@ String *Item_func_json_merge::val_str(String *str)
     str->set_charset(js1->charset());
     str->length(0);
 
-    js2= args[n_arg]->val_str(&tmp_js2);
+    js2= args[n_arg]->val_json(&tmp_js2);
     if (args[n_arg]->null_value)
       goto null_return;
 
@@ -1991,7 +2028,7 @@ void Item_func_json_length::fix_length_and_dec()
 
 longlong Item_func_json_length::val_int()
 {
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   json_engine_t je;
   uint length= 0;
   uint array_counters[JSON_DEPTH_LIMIT];
@@ -2068,7 +2105,7 @@ null_return:
 
 longlong Item_func_json_depth::val_int()
 {
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   json_engine_t je;
   uint depth= 0, c_depth= 0;
   bool inc_depth= TRUE;
@@ -2127,7 +2164,7 @@ void Item_func_json_type::fix_length_and_dec()
 
 String *Item_func_json_type::val_str(String *str)
 {
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   json_engine_t je;
   const char *type;
 
@@ -2195,7 +2232,7 @@ void Item_func_json_insert::fix_length_and_dec()
 String *Item_func_json_insert::val_str(String *str)
 {
   json_engine_t je;
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   uint n_arg, n_path;
   json_string_t key_name;
 
@@ -2441,7 +2478,7 @@ void Item_func_json_remove::fix_length_and_dec()
 String *Item_func_json_remove::val_str(String *str)
 {
   json_engine_t je;
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   uint n_arg, n_path;
   json_string_t key_name;
 
@@ -2624,7 +2661,7 @@ void Item_func_json_keys::fix_length_and_dec()
 String *Item_func_json_keys::val_str(String *str)
 {
   json_engine_t je;
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   uint n_keys= 0;
   uint array_counters[JSON_DEPTH_LIMIT];
 
@@ -2800,7 +2837,7 @@ static int append_json_path(String *str, const json_path_t *p)
 
 String *Item_func_json_search::val_str(String *str)
 {
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   String *s_str= args[2]->val_str(&tmp_js);
   json_engine_t je;
   json_path_t p, sav_path;
@@ -2897,21 +2934,6 @@ null_return:
 }
 
 
-void Item_json_typecast::fix_length_and_dec()
-{
-  maybe_null= args[0]->maybe_null;
-  max_length= args[0]->max_length;
-}
-
-
-String *Item_json_typecast::val_str(String *str)
-{
-  String *vs= args[0]->val_str(str);
-  null_value= args[0]->null_value;
-  return vs;
-}
-
-
 const char *Item_func_json_format::func_name() const
 {
   switch (fmt)
@@ -2939,17 +2961,36 @@ void Item_func_json_format::fix_length_and_dec()
 
 String *Item_func_json_format::val_str(String *str)
 {
-  String *js= args[0]->val_str(&tmp_js);
+  String *js= args[0]->val_json(&tmp_js);
   json_engine_t je;
+  int tab_size= 4;
+
   if ((null_value= args[0]->null_value))
     return 0;
+
+  if (fmt == DETAILED)
+  {
+    if (arg_count > 1)
+    {
+      tab_size= args[1]->val_int();
+      if (args[1]->null_value)
+      {
+        null_value= 1;
+        return 0;
+      }
+    }
+    if (tab_size < 0)
+      tab_size= 0;
+    else if (tab_size > TAB_SIZE_LIMIT)
+      tab_size= TAB_SIZE_LIMIT;
+  }
 
   json_scan_start(&je, js->charset(), (const uchar *) js->ptr(),
                   (const uchar *) js->ptr()+js->length());
 
   str->length(0);
   str->set_charset(js->charset());
-  if (json_nice(&je, str, fmt))
+  if (json_nice(&je, str, fmt, tab_size))
   {
     null_value= 1;
     report_json_error(js, &je, 0);
@@ -2957,6 +2998,15 @@ String *Item_func_json_format::val_str(String *str)
   }
 
   return str;
+}
+
+
+String *Item_func_json_format::val_json(String *str)
+{
+  String *js= args[0]->val_json(&tmp_js);
+  if ((null_value= args[0]->null_value))
+    return 0;
+  return js;
 }
 
 

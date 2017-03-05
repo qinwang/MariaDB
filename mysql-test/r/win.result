@@ -2925,3 +2925,174 @@ WHERE EXISTS ( SELECT * FROM t2 WHERE c IN ( SELECT MAX(d) FROM t3 ) );
 a	MAX(a)	AVG(a) OVER (PARTITION BY b)
 NULL	NULL	NULL
 DROP TABLE t1,t2,t3;
+#
+# MDEV-10859: Wrong result of aggregate window function in query
+#                  with HAVING and no ORDER BY
+#
+create table empsalary (depname varchar(32), empno smallint primary key, salary int);
+insert into empsalary values
+('develop', 1, 5000), ('develop', 2, 4000),('sales', 3, '6000'),('sales', 4, 5000);
+SELECT depname, empno, salary, avg(salary) OVER (PARTITION BY depname) FROM empsalary;
+depname	empno	salary	avg(salary) OVER (PARTITION BY depname)
+develop	1	5000	4500.0000
+develop	2	4000	4500.0000
+sales	3	6000	5500.0000
+sales	4	5000	5500.0000
+SELECT depname, empno, salary, avg(salary) OVER (PARTITION BY depname) FROM empsalary ORDER BY depname;
+depname	empno	salary	avg(salary) OVER (PARTITION BY depname)
+develop	1	5000	4500.0000
+develop	2	4000	4500.0000
+sales	3	6000	5500.0000
+sales	4	5000	5500.0000
+#
+# These last 2 should have the same row results, ignoring order.
+#
+SELECT depname, empno, salary, avg(salary) OVER (PARTITION BY depname) FROM empsalary HAVING empno > 1;
+depname	empno	salary	avg(salary) OVER (PARTITION BY depname)
+develop	2	4000	4000.0000
+sales	3	6000	5500.0000
+sales	4	5000	5500.0000
+SELECT depname, empno, salary, avg(salary) OVER (PARTITION BY depname) FROM empsalary HAVING empno > 1 ORDER BY depname;
+depname	empno	salary	avg(salary) OVER (PARTITION BY depname)
+develop	2	4000	4000.0000
+sales	3	6000	5500.0000
+sales	4	5000	5500.0000
+drop table empsalary;
+#
+# MDEV-11868: min(distinct) over () returns wrong value
+#
+create table TDEC (CDEC int, RNUM int);
+create view VDEC as select * from TDEC;
+insert into TDEC (CDEC) values (null),(-1),(0),(1),(0),(10);
+select TDEC.CDEC, min(TDEC.CDEC) over () from TDEC;
+CDEC	min(TDEC.CDEC) over ()
+NULL	-1
+-1	-1
+0	-1
+1	-1
+0	-1
+10	-1
+select VDEC.CDEC, min(VDEC.CDEC) over () from VDEC;
+CDEC	min(VDEC.CDEC) over ()
+NULL	-1
+-1	-1
+0	-1
+1	-1
+0	-1
+10	-1
+select TDEC.CDEC, max(TDEC.CDEC) over () from TDEC;
+CDEC	max(TDEC.CDEC) over ()
+NULL	10
+-1	10
+0	10
+1	10
+0	10
+10	10
+select VDEC.CDEC, max(VDEC.CDEC) over () from VDEC;
+CDEC	max(VDEC.CDEC) over ()
+NULL	10
+-1	10
+0	10
+1	10
+0	10
+10	10
+select TDEC.CDEC, min(distinct TDEC.CDEC) over () from TDEC;
+CDEC	min(distinct TDEC.CDEC) over ()
+NULL	-1
+-1	-1
+0	-1
+1	-1
+0	-1
+10	-1
+select VDEC.CDEC, min(distinct VDEC.CDEC) over () from VDEC;
+CDEC	min(distinct VDEC.CDEC) over ()
+NULL	-1
+-1	-1
+0	-1
+1	-1
+0	-1
+10	-1
+select TDEC.CDEC, max(distinct TDEC.CDEC) over () from TDEC;
+CDEC	max(distinct TDEC.CDEC) over ()
+NULL	10
+-1	10
+0	10
+1	10
+0	10
+10	10
+select VDEC.CDEC, max(distinct VDEC.CDEC) over () from VDEC;
+CDEC	max(distinct VDEC.CDEC) over ()
+NULL	10
+-1	10
+0	10
+1	10
+0	10
+10	10
+#
+# These should be removed once support for them is added.
+#
+select TDEC.CDEC, count(distinct TDEC.CDEC) over () from TDEC;
+ERROR 42000: This version of MariaDB doesn't yet support 'COUNT(DISTINCT) aggregate as window function'
+select VDEC.CDEC, count(distinct VDEC.CDEC) over () from VDEC;
+ERROR 42000: This version of MariaDB doesn't yet support 'COUNT(DISTINCT) aggregate as window function'
+select TDEC.CDEC, sum(distinct TDEC.CDEC) over () from TDEC;
+ERROR 42000: This version of MariaDB doesn't yet support 'SUM(DISTINCT) aggregate as window function'
+select VDEC.CDEC, sum(distinct VDEC.CDEC) over () from VDEC;
+ERROR 42000: This version of MariaDB doesn't yet support 'SUM(DISTINCT) aggregate as window function'
+select TDEC.CDEC, avg(distinct TDEC.CDEC) over () from TDEC;
+ERROR 42000: This version of MariaDB doesn't yet support 'AVG(DISTINCT) aggregate as window function'
+select VDEC.CDEC, avg(distinct VDEC.CDEC) over () from VDEC;
+ERROR 42000: This version of MariaDB doesn't yet support 'AVG(DISTINCT) aggregate as window function'
+select TDEC.CDEC, GROUP_CONCAT(TDEC.CDEC) over () from TDEC;
+ERROR 42000: This version of MariaDB doesn't yet support 'GROUP_CONCAT() aggregate as window function'
+select VDEC.CDEC, GROUP_CONCAT(distinct VDEC.CDEC) over () from VDEC;
+ERROR 42000: This version of MariaDB doesn't yet support 'GROUP_CONCAT() aggregate as window function'
+drop table TDEC;
+drop view VDEC;
+#
+# MDEV-10700: 10.2.2 windowing function returns incorrect result
+#
+create table t(a int,b int, c int , d int);
+insert into t(a,b,c,d) values(1, rand(10)*1000, rand(10)*1000, rand(10)*1000);
+insert into t(a,b,c,d) values(1, rand(10)*1000, rand(10)*1000, rand(10)*1000);
+replace into t(a,b,c,d) select 1, rand(10)*1000, rand(10)*1000, rand(10)*1000 from t t1, t t2, t t3, t t4, t t5, t t6, t t7, t t8, t t9, t t10, t t11, t t12, t t13, t t14, t t15, t t16, t t17;
+select count(distinct s) from (select sum(d) over(partition by a,b,c) as s from t) Z where s > 0;
+count(distinct s)
+993
+select count(distinct s) from (select sum(d) as s from t group by a,b,c) Z where s > 0;
+count(distinct s)
+993
+select count(distinct s) from (select sum(d) over(partition by a,b) as s from t) Z where s > 0;
+count(distinct s)
+993
+select count(distinct s) from (select sum(d) as s from t group by a,b) Z where s > 0;
+count(distinct s)
+993
+select count(distinct s) from (select sum(d) over(partition by a) as s from t) Z where s > 0;
+count(distinct s)
+1
+select count(distinct s) from (select sum(d) as s from t group by a) Z where s > 0;
+count(distinct s)
+1
+drop table t;
+#
+# MDEV-9924: window function in query with group by optimized away 
+#
+create table t1 (i int);
+insert into t1 values (2),(3),(1);
+select row_number() over () from t1 group by 1+2;
+row_number() over ()
+1
+select max(i), row_number() over () from t1 group by 1+2;
+max(i)	row_number() over ()
+3	1
+select rank() over (order by max(i)) from t1 group by 1+2;
+rank() over (order by max(i))
+1
+select i, row_number() over () from t1 group by 1+2;
+i	row_number() over ()
+2	1
+select i, rank() over (order by i) rnk from t1 group by 1+2;
+i	rnk
+2	1
+drop table t1;

@@ -214,12 +214,6 @@ struct recv_sys_t{
 	ibool		apply_batch_on;
 				/*!< this is TRUE when a log rec application
 				batch is running */
-	byte*		last_block;
-				/*!< possible incomplete last recovered log
-				block */
-	byte*		last_block_buf_start;
-				/*!< the nonaligned start address of the
-				preceding buffer */
 	byte*		buf;	/*!< buffer for parsing log records */
 	ulint		len;	/*!< amount of data in buf */
 	lsn_t		parse_start_lsn;
@@ -302,14 +296,5 @@ the log and store the scanned log records in the buffer pool: we will
 use these free frames to read in pages when we start applying the
 log records to the database. */
 extern ulint	recv_n_pool_free_frames;
-
-/******************************************************//**
-Checks the 4-byte checksum to the trailer checksum field of a log
-block.  */
-bool
-log_block_checksum_is_ok(
-/*===================================*/
-	const byte*	block,	/*!< in: pointer to a log block */
-	bool            print_err); /*!< in print error ? */
 
 #endif

@@ -2,7 +2,7 @@
 
 Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2012, Facebook Inc.
-Copyright (c) 2013, 2016, MariaDB Corporation.
+Copyright (c) 2013, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -1407,8 +1407,6 @@ dict_table_can_be_evicted(
 	ut_a(table->referenced_set.empty());
 
 	if (table->get_ref_count() == 0) {
-		dict_index_t*	index;
-
 		/* The transaction commit and rollback are called from
 		outside the handler interface. This means that there is
 		a window where the table->n_ref_count can be zero but
@@ -1418,7 +1416,8 @@ dict_table_can_be_evicted(
 			return(FALSE);
 		}
 
-		for (index = dict_table_get_first_index(table);
+#ifdef BTR_CUR_HASH_ADAPT
+		for (dict_index_t* index = dict_table_get_first_index(table);
 		     index != NULL;
 		     index = dict_table_get_next_index(index)) {
 
@@ -1440,6 +1439,7 @@ dict_table_can_be_evicted(
 				return(FALSE);
 			}
 		}
+#endif /* BTR_CUR_HASH_ADAPT */
 
 		return(TRUE);
 	}
@@ -2611,7 +2611,9 @@ dict_index_add_to_cache_w_vcol(
 	UT_LIST_ADD_LAST(table->indexes, new_index);
 	new_index->table = table;
 	new_index->table_name = table->name.m_name;
+#ifdef BTR_CUR_ADAPT
 	new_index->search_info = btr_search_info_create(new_index->heap);
+#endif /* BTR_CUR_ADAPT */
 
 	new_index->page = page_no;
 	rw_lock_create(index_tree_rw_lock_key, &new_index->lock,
@@ -2636,8 +2638,6 @@ dict_index_remove_from_cache_low(
 					to make room in the table LRU list */
 {
 	lint		size;
-	ulint		retries = 0;
-	btr_search_t*	info;
 
 	ut_ad(table && index);
 	ut_ad(table->magic_n == DICT_TABLE_MAGIC_N);
@@ -2652,9 +2652,11 @@ dict_index_remove_from_cache_low(
 		row_log_free(index->online_log);
 	}
 
+#ifdef BTR_CUR_HASH_ADAPT
 	/* We always create search info whether or not adaptive
 	hash index is enabled or not. */
-	info = btr_search_get_info(index);
+	btr_search_t*	info = btr_search_get_info(index);
+	ulint		retries = 0;
 	ut_ad(info);
 
 	/* We are not allowed to free the in-memory index struct
@@ -2688,10 +2690,9 @@ dict_index_remove_from_cache_low(
 
 		/* To avoid a hang here we commit suicide if the
 		ref_count doesn't drop to zero in 600 seconds. */
-		if (retries >= 60000) {
-			ut_error;
-		}
+		ut_a(retries < 60000);
 	} while (srv_shutdown_state == SRV_SHUTDOWN_NONE || !lru_evict);
+#endif /* BTR_CUR_HASH_ADAPT */
 
 	rw_lock_free(&index->lock);
 
@@ -6342,11 +6343,9 @@ dict_set_merge_threshold_all_debug(
 
 #endif /* UNIV_DEBUG */
 
-/**********************************************************************//**
-Inits dict_ind_redundant. */
+/** Initialize dict_ind_redundant. */
 void
-dict_ind_init(void)
-/*===============*/
+dict_ind_init()
 {
 	dict_table_t*		table;
 
@@ -6364,16 +6363,11 @@ dict_ind_init(void)
 	dict_ind_redundant->cached = TRUE;
 }
 
-/**********************************************************************//**
-Frees dict_ind_redundant. */
-static
+/** Free dict_ind_redundant. */
 void
-dict_ind_free(void)
-/*===============*/
+dict_ind_free()
 {
-	dict_table_t*	table;
-
-	table = dict_ind_redundant->table;
+	dict_table_t*	table = dict_ind_redundant->table;
 	dict_mem_index_free(dict_ind_redundant);
 	dict_ind_redundant = NULL;
 	dict_mem_table_free(table);
@@ -6895,8 +6889,6 @@ dict_close(void)
 	/* The elements are the same instance as in dict_sys->table_hash,
 	therefore we don't delete the individual elements. */
 	hash_table_free(dict_sys->table_id_hash);
-
-	dict_ind_free();
 
 	mutex_free(&dict_sys->mutex);
 

@@ -1095,6 +1095,8 @@ public:
     Returns the val_str() value converted to the given character set.
   */
   String *val_str(String *str, String *converter, CHARSET_INFO *to);
+
+  virtual String *val_json(String *str) { return val_str(str); }
   /*
     Return decimal representation of item with fixed point.
 
@@ -5185,7 +5187,7 @@ public:
     param->set_default();
     return false;
   }
-  table_map used_tables() const { return (table_map)0L; }
+  table_map used_tables() const;
   Field *get_tmp_table_field() { return 0; }
   Item *get_tmp_table_item(THD *thd) { return this; }
   Item_field *field_for_view_update() { return 0; }
