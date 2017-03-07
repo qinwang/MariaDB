@@ -1523,6 +1523,8 @@ public:
     max_length = WSREP_GTID_STR_LEN;
     maybe_null = true;
   }
+  Item *get_copy(THD *thd, MEM_ROOT *mem_root)
+  { return get_item_copy<Item_func_wsrep_last_written_gtid>(thd, mem_root, this); }
 };
 
 class Item_func_wsrep_last_seen_gtid: public Item_str_ascii_func
@@ -1537,6 +1539,8 @@ public:
     max_length = WSREP_GTID_STR_LEN;
     maybe_null = true;
   }
+  Item *get_copy(THD *thd, MEM_ROOT *mem_root)
+  { return get_item_copy<Item_func_wsrep_last_seen_gtid>(thd, mem_root, this); }
 };
 
 class Item_func_wsrep_sync_wait_upto: public Item_int_func
@@ -1547,6 +1551,8 @@ public:
  Item_func_wsrep_sync_wait_upto(THD *thd, Item *a, Item* b): Item_int_func(thd, a, b) {}
   const char *func_name() const { return "wsrep_sync_wait_upto_gtid"; }
   longlong val_int();
+  Item *get_copy(THD *thd, MEM_ROOT *mem_root)
+  { return get_item_copy<Item_func_wsrep_sync_wait_upto>(thd, mem_root, this); }
 };
 #endif /* WITH_WSREP */
 #endif /* ITEM_STRFUNC_INCLUDED */

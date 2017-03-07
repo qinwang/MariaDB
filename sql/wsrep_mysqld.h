@@ -219,6 +219,9 @@ extern wsrep_seqno_t wsrep_locked_seqno;
 #define WSREP_EMULATE_BINLOG_NNULL(thd) \
   (WSREP_NNULL(thd) && wsrep_emulate_bin_log)
 
+#define WSREP_EMULATE_BINLOG(thd) \
+  (WSREP(thd) && wsrep_emulate_bin_log)
+
 #define WSREP_FORMAT(my_format)                           \
   ((wsrep_forced_binlog_format != BINLOG_FORMAT_UNSPEC)   \
     ? wsrep_forced_binlog_format : (ulong)(my_format))
@@ -255,6 +258,9 @@ extern wsrep_seqno_t wsrep_locked_seqno;
 
 #define WSREP_PROVIDER_EXISTS                                                  \
   (wsrep_provider && strncasecmp(wsrep_provider, WSREP_NONE, FN_REFLEN))
+
+#define WSREP_QUERY(thd)                                \
+  (thd->query())
 
 extern void wsrep_ready_wait();
 
