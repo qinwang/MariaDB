@@ -1,6 +1,6 @@
 /*
    Copyright (c) 2002, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2011, 2013, Monty Program Ab.
+   Copyright (c) 2011, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -2255,7 +2255,7 @@ int Gis_multi_line_string::num_geometries(uint32 *num) const
 
 int Gis_multi_line_string::geometry_n(uint32 num, String *result) const
 {
-  uint32 n_line_strings, n_points, length;
+  size_t n_line_strings, n_points, length;
   const char *data= m_data;
 
   if (no_data(data, 4))
@@ -2278,7 +2278,7 @@ int Gis_multi_line_string::geometry_n(uint32 num, String *result) const
       break;
     data+= length;
   }
-  return result->append(data, length, (uint32) 0);
+  return result->append(data, length, static_cast<size_t>(0));
 }
 
 
@@ -2710,8 +2710,9 @@ int Gis_multi_polygon::geometry_n(uint32 num, String *result) const
   } while (--num);
   if (no_data(data, 0))				// We must check last segment
     return 1;
-  return result->append(start_of_polygon, (uint32) (data - start_of_polygon),
-			(uint32) 0);
+  return result->append(start_of_polygon,
+                        static_cast<size_t>(data - start_of_polygon),
+                        static_cast<size_t>(0));
 }
 
 

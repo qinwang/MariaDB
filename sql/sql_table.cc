@@ -2853,7 +2853,7 @@ bool check_duplicates_in_interval(const char *set_or_name,
     void
 */
 void calculate_interval_lengths(CHARSET_INFO *cs, TYPELIB *interval,
-                                uint32 *max_length, uint32 *tot_length)
+                                size_t *max_length, size_t *tot_length)
 {
   const char **pos;
   uint *len;
@@ -2863,7 +2863,7 @@ void calculate_interval_lengths(CHARSET_INFO *cs, TYPELIB *interval,
   {
     size_t length= cs->cset->numchars(cs, *pos, *pos + *len);
     *tot_length+= length;
-    set_if_bigger(*max_length, (uint32)length);
+    set_if_bigger(*max_length, length);
   }
 }
 
@@ -3275,7 +3275,7 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
     if (sql_field->sql_type == MYSQL_TYPE_SET ||
         sql_field->sql_type == MYSQL_TYPE_ENUM)
     {
-      uint32 dummy;
+      size_t dummy;
       CHARSET_INFO *cs= sql_field->charset;
       TYPELIB *interval= sql_field->interval;
 
@@ -3336,13 +3336,13 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 
       if (sql_field->sql_type == MYSQL_TYPE_SET)
       {
-        uint32 field_length;
+        size_t field_length;
         calculate_interval_lengths(cs, interval, &dummy, &field_length);
         sql_field->length= field_length + (interval->count - 1);
       }
       else  /* MYSQL_TYPE_ENUM */
       {
-        uint32 field_length;
+        size_t field_length;
         DBUG_ASSERT(sql_field->sql_type == MYSQL_TYPE_ENUM);
         calculate_interval_lengths(cs, interval, &field_length, &dummy);
         sql_field->length= field_length;
@@ -4374,7 +4374,7 @@ void sp_prepare_create_field(THD *thd, Column_definition *sql_field)
   if (sql_field->sql_type == MYSQL_TYPE_SET ||
       sql_field->sql_type == MYSQL_TYPE_ENUM)
   {
-    uint32 field_length, dummy;
+    size_t field_length, dummy;
     if (sql_field->sql_type == MYSQL_TYPE_SET)
     {
       calculate_interval_lengths(sql_field->charset,

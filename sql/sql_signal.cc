@@ -1,4 +1,5 @@
 /* Copyright (c) 2008, 2010, Oracle and/or its affiliates. All rights reserved.
+   Copyright (c) 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -149,7 +150,7 @@ static bool assign_fixed_string(MEM_ROOT *mem_root,
   char* dst_str;
   size_t dst_len;
   size_t dst_copied;
-  uint32 dummy_offset;
+  size_t dummy_offset;
 
   src_str= src->ptr();
   if (src_str == NULL)

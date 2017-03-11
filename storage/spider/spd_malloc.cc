@@ -253,7 +253,7 @@ void *spider_bulk_alloc_mem(
 #define SPIDER_STRING_CALC_MEM \
   if (mem_calc_inited) \
   { \
-    uint32 new_alloc_mem = \
+    size_t new_alloc_mem = \
       (this->str.is_alloced() ? this->str.alloced_length() : 0); \
     if (new_alloc_mem != current_alloc_mem) \
     { \
@@ -277,7 +277,7 @@ spider_string::spider_string(
 }
 
 spider_string::spider_string(
-  uint32 length_arg
+  size_t length_arg
 ) : str(length_arg), next(NULL)
 {
   DBUG_ENTER("spider_string::spider_string");
@@ -299,7 +299,7 @@ spider_string::spider_string(
 
 spider_string::spider_string(
   const char *str,
-  uint32 len,
+  size_t len,
   CHARSET_INFO *cs
 ) : str(str, len, cs), next(NULL)
 {
@@ -311,7 +311,7 @@ spider_string::spider_string(
 
 spider_string::spider_string(
   char *str,
-  uint32 len,
+  size_t len,
   CHARSET_INFO *cs
 ) : str(str, len, cs), next(NULL)
 {
@@ -396,21 +396,21 @@ CHARSET_INFO *spider_string::charset() const
   DBUG_RETURN(str.charset());
 }
 
-uint32 spider_string::length() const
+size_t spider_string::length() const
 {
   DBUG_ENTER("spider_string::length");
   DBUG_PRINT("info",("spider this=%p", this));
   DBUG_RETURN(str.length());
 }
 
-uint32 spider_string::alloced_length() const
+size_t spider_string::alloced_length() const
 {
   DBUG_ENTER("spider_string::alloced_length");
   DBUG_PRINT("info",("spider this=%p", this));
   DBUG_RETURN(str.alloced_length());
 }
 
-char &spider_string::operator [] (uint32 i) const
+char &spider_string::operator [] (size_t i) const
 {
   DBUG_ENTER("spider_string::operator []");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -418,7 +418,7 @@ char &spider_string::operator [] (uint32 i) const
 }
 
 void spider_string::length(
-  uint32 len
+  size_t len
 ) {
   DBUG_ENTER("spider_string::length");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -480,8 +480,8 @@ LEX_STRING spider_string::lex_string() const
 
 void spider_string::set(
   String &str,
-  uint32 offset,
-  uint32 arg_length
+  size_t offset,
+  size_t arg_length
 ) {
   DBUG_ENTER("spider_string::set");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -495,7 +495,7 @@ void spider_string::set(
 
 void spider_string::set(
   char *str,
-  uint32 arg_length,
+  size_t arg_length,
   CHARSET_INFO *cs
 ) {
   DBUG_ENTER("spider_string::set");
@@ -510,7 +510,7 @@ void spider_string::set(
 
 void spider_string::set(
   const char *str,
-  uint32 arg_length,
+  size_t arg_length,
   CHARSET_INFO *cs
 ) {
   DBUG_ENTER("spider_string::set");
@@ -525,7 +525,7 @@ void spider_string::set(
 
 bool spider_string::set_ascii(
   const char *str,
-  uint32 arg_length
+  size_t arg_length
 ) {
   DBUG_ENTER("spider_string::set_ascii");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -539,7 +539,7 @@ bool spider_string::set_ascii(
 
 void spider_string::set_quick(
   char *str,
-  uint32 arg_length,
+  size_t arg_length,
   CHARSET_INFO *cs
 ) {
   DBUG_ENTER("spider_string::set_quick");
@@ -634,7 +634,7 @@ void spider_string::free()
   DBUG_VOID_RETURN;
 }
 
-bool spider_string::alloc(uint32 arg_length)
+bool spider_string::alloc(size_t arg_length)
 {
   bool res;
   DBUG_ENTER("spider_string::alloc");
@@ -647,7 +647,7 @@ bool spider_string::alloc(uint32 arg_length)
   DBUG_RETURN(res);
 }
 
-bool spider_string::real_alloc(uint32 arg_length)
+bool spider_string::real_alloc(size_t arg_length)
 {
   bool res;
   DBUG_ENTER("spider_string::real_alloc");
@@ -667,7 +667,7 @@ bool spider_string::real_alloc(uint32 arg_length)
   DBUG_RETURN(res);
 }
 
-bool spider_string::realloc(uint32 arg_length)
+bool spider_string::realloc(size_t arg_length)
 {
   bool res;
   DBUG_ENTER("spider_string::realloc");
@@ -686,7 +686,7 @@ bool spider_string::realloc(uint32 arg_length)
 }
 
 void spider_string::shrink(
-  uint32 arg_length
+  size_t arg_length
 ) {
   DBUG_ENTER("spider_string::shrink");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -758,7 +758,7 @@ bool spider_string::copy(
 
 bool spider_string::copy(
   const char *s,
-  uint32 arg_length,
+  size_t arg_length,
   CHARSET_INFO *cs
 ) {
   DBUG_ENTER("spider_string::copy");
@@ -772,10 +772,10 @@ bool spider_string::copy(
 }
 
 bool spider_string::needs_conversion(
-  uint32 arg_length,
+  size_t arg_length,
   CHARSET_INFO *cs_from,
   CHARSET_INFO *cs_to,
-  uint32 *offset
+  size_t *offset
 ) {
   DBUG_ENTER("spider_string::needs_conversion");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -784,8 +784,8 @@ bool spider_string::needs_conversion(
 
 bool spider_string::copy_aligned(
   const char *s,
-  uint32 arg_length,
-  uint32 offset,
+  size_t arg_length,
+  size_t offset,
   CHARSET_INFO *cs
 ) {
   DBUG_ENTER("spider_string::copy_aligned");
@@ -800,7 +800,7 @@ bool spider_string::copy_aligned(
 
 bool spider_string::set_or_copy_aligned(
   const char *s,
-  uint32 arg_length,
+  size_t arg_length,
   CHARSET_INFO *cs
 ) {
   DBUG_ENTER("spider_string::set_or_copy_aligned");
@@ -815,7 +815,7 @@ bool spider_string::set_or_copy_aligned(
 
 bool spider_string::copy(
   const char *s,
-  uint32 arg_length,
+  size_t arg_length,
   CHARSET_INFO *csfrom,
   CHARSET_INFO *csto,
   uint *errors
@@ -884,7 +884,7 @@ bool spider_string::append(
 
 bool spider_string::append(
   const char *s,
-  uint32 arg_length
+  size_t arg_length
 ) {
   DBUG_ENTER("spider_string::append");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -898,7 +898,7 @@ bool spider_string::append(
 
 bool spider_string::append(
   const char *s,
-  uint32 arg_length,
+  size_t arg_length,
   CHARSET_INFO *cs
 ) {
   DBUG_ENTER("spider_string::append");
@@ -926,7 +926,7 @@ bool spider_string::append_ulonglong(
 
 bool spider_string::append(
   IO_CACHE *file,
-  uint32 arg_length
+  size_t arg_length
 ) {
   DBUG_ENTER("spider_string::append");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -940,8 +940,8 @@ bool spider_string::append(
 
 bool spider_string::append_with_prefill(
   const char *s,
-  uint32 arg_length,
-  uint32 full_length,
+  size_t arg_length,
+  size_t full_length,
   char fill_char
 ) {
   DBUG_ENTER("spider_string::append_with_prefill");
@@ -957,7 +957,7 @@ bool spider_string::append_with_prefill(
 
 int spider_string::strstr(
   const String &search,
-  uint32 offset
+  size_t offset
 ) {
   DBUG_ENTER("spider_string::strstr");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -966,7 +966,7 @@ int spider_string::strstr(
 
 int spider_string::strrstr(
   const String &search,
-  uint32 offset
+  size_t offset
 ) {
   DBUG_ENTER("spider_string::strrstr");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -974,10 +974,10 @@ int spider_string::strrstr(
 }
 
 bool spider_string::replace(
-  uint32 offset,
-  uint32 arg_length,
+  size_t offset,
+  size_t arg_length,
   const char *to,
-  uint32 length
+  size_t length
 ) {
   DBUG_ENTER("spider_string::replace");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -990,8 +990,8 @@ bool spider_string::replace(
 }
 
 bool spider_string::replace(
-  uint32 offset,
-  uint32 arg_length,
+  size_t offset,
+  size_t arg_length,
   const String &to
 ) {
   DBUG_ENTER("spider_string::replace");
@@ -1018,7 +1018,7 @@ bool spider_string::append(
 }
 
 bool spider_string::fill(
-  uint32 max_length,
+  size_t max_length,
   char fill
 ) {
   DBUG_ENTER("spider_string::fill");
@@ -1039,7 +1039,7 @@ void spider_string::strip_sp()
   DBUG_VOID_RETURN;
 }
 
-uint32 spider_string::numchars()
+size_t spider_string::numchars()
 {
   DBUG_ENTER("spider_string::numchars");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -1048,7 +1048,7 @@ uint32 spider_string::numchars()
 
 int spider_string::charpos(
   int i,
-  uint32 offset
+  size_t offset
 ) {
   DBUG_ENTER("spider_string::charpos");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -1056,7 +1056,7 @@ int spider_string::charpos(
 }
 
 int spider_string::reserve(
-  uint32 space_needed
+  size_t space_needed
 ) {
   DBUG_ENTER("spider_string::reserve");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -1069,8 +1069,8 @@ int spider_string::reserve(
 }
 
 int spider_string::reserve(
-  uint32 space_needed,
-  uint32 grow_by
+  size_t space_needed,
+  size_t grow_by
 ) {
   DBUG_ENTER("spider_string::reserve");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -1092,7 +1092,7 @@ void spider_string::q_append(
 }
 
 void spider_string::q_append(
-  const uint32 n
+  size_t n
 ) {
   DBUG_ENTER("spider_string::q_append");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -1120,7 +1120,7 @@ void spider_string::q_append(
 
 void spider_string::q_append(
   const char *data,
-  uint32 data_len
+  size_t data_len
 ) {
   DBUG_ENTER("spider_string::q_append");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -1130,7 +1130,7 @@ void spider_string::q_append(
 
 void spider_string::write_at_position(
   int position,
-  uint32 value
+  size_t value
 ) {
   DBUG_ENTER("spider_string::write_at_position");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -1140,7 +1140,7 @@ void spider_string::write_at_position(
 
 void spider_string::qs_append(
   const char *str,
-  uint32 len
+  size_t len
 ) {
   DBUG_ENTER("spider_string::qs_append");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -1194,8 +1194,8 @@ void spider_string::qs_append(
 }
 
 char *spider_string::prep_append(
-  uint32 arg_length,
-  uint32 step_alloc
+  size_t arg_length,
+  size_t step_alloc
 ) {
   DBUG_ENTER("spider_string::prep_append");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -1209,8 +1209,8 @@ char *spider_string::prep_append(
 
 bool spider_string::append(
   const char *s,
-  uint32 arg_length,
-  uint32 step_alloc
+  size_t arg_length,
+  size_t step_alloc
 ) {
   DBUG_ENTER("spider_string::append");
   DBUG_PRINT("info",("spider this=%p", this));

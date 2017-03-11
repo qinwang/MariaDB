@@ -764,7 +764,7 @@ create_typelib(MEM_ROOT *mem_root, Column_definition *field_def, List<String> *s
     String conv;
     for (uint i=0; i < result->count; i++)
     {
-      uint32 dummy;
+      size_t dummy;
       uint length;
       String *tmp= it++;
 

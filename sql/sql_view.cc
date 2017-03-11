@@ -1,5 +1,5 @@
 /* Copyright (c) 2004, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2011, 2016, MariaDB Corporation
+   Copyright (c) 2011, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -925,7 +925,7 @@ static int mysql_register_view(THD *thd, TABLE_LIST *view,
 
     thd->variables.sql_mode|= sql_mode;
   }
-  DBUG_PRINT("info", ("View: %.*s", view_query.length(), view_query.ptr()));
+  DBUG_PRINT("info", ("View: %.*s", (int) view_query.length(), view_query.ptr()));
 
   /* fill structure */
   view->source= thd->lex->create_view_select;

@@ -237,12 +237,12 @@ public:
   const char *func_name;
   const char *file_name;
   ulong line_no;
-  uint32 current_alloc_mem;
+  size_t current_alloc_mem;
   spider_string *next;
 
   spider_string();
   spider_string(
-    uint32 length_arg
+    size_t length_arg
   );
   spider_string(
     const char *str,
@@ -250,12 +250,12 @@ public:
   );
   spider_string(
     const char *str,
-    uint32 len,
+    size_t len,
     CHARSET_INFO *cs
   );
   spider_string(
     char *str,
-    uint32 len,
+    size_t len,
     CHARSET_INFO *cs
   );
   spider_string(
@@ -274,13 +274,13 @@ public:
     CHARSET_INFO *charset_arg
   );
   CHARSET_INFO *charset() const;
-  uint32 length() const;
-  uint32 alloced_length() const;
+  size_t length() const;
+  size_t alloced_length() const;
   char &operator [] (
-    uint32 i
+    size_t i
   ) const;
   void length(
-    uint32 len
+    size_t len
   );
   bool is_empty() const;
   const char *ptr() const;
@@ -290,26 +290,26 @@ public:
   LEX_STRING lex_string() const;
   void set(
     String &str,
-    uint32 offset,
-    uint32 arg_length
+    size_t offset,
+    size_t arg_length
   );
   void set(
     char *str,
-    uint32 arg_length,
+    size_t arg_length,
     CHARSET_INFO *cs
   );
   void set(
     const char *str,
-    uint32 arg_length,
+    size_t arg_length,
     CHARSET_INFO *cs
   );
   bool set_ascii(
     const char *str,
-    uint32 arg_length
+    size_t arg_length
   );
   void set_quick(
     char *str,
-    uint32 arg_length,
+    size_t arg_length,
     CHARSET_INFO *cs
   );
   bool set_int(
@@ -333,16 +333,16 @@ public:
   void chop();
   void free();
   bool alloc(
-    uint32 arg_length
+    size_t arg_length
   );
   bool real_alloc(
-    uint32 arg_length
+    size_t arg_length
   );
   bool realloc(
-    uint32 arg_length
+    size_t arg_length
   );
   void shrink(
-    uint32 arg_length
+    size_t arg_length
   );
   bool is_alloced();
   spider_string& operator = (
@@ -357,29 +357,29 @@ public:
   );
   bool copy(
     const char *s,
-    uint32 arg_length,
+    size_t arg_length,
     CHARSET_INFO *cs
   );
   bool needs_conversion(
-    uint32 arg_length,
+    size_t arg_length,
     CHARSET_INFO *cs_from,
     CHARSET_INFO *cs_to,
-    uint32 *offset
+    size_t *offset
   );
   bool copy_aligned(
     const char *s,
-    uint32 arg_length,
-    uint32 offset,
+    size_t arg_length,
+    size_t offset,
     CHARSET_INFO *cs
   );
   bool set_or_copy_aligned(
     const char *s,
-    uint32 arg_length,
+    size_t arg_length,
     CHARSET_INFO *cs
   );
   bool copy(
     const char *s,
-    uint32 arg_length,
+    size_t arg_length,
     CHARSET_INFO *csfrom,
     CHARSET_INFO *csto,
     uint *errors
@@ -398,11 +398,11 @@ public:
   );
   bool append(
     const char *s,
-    uint32 arg_length
+    size_t arg_length
   );
   bool append(
     const char *s,
-    uint32 arg_length,
+    size_t arg_length,
     CHARSET_INFO *cs
   );
   bool append_ulonglong(
@@ -410,58 +410,58 @@ public:
   );
   bool append(
     IO_CACHE *file,
-    uint32 arg_length
+    size_t arg_length
   );
   bool append_with_prefill(
     const char *s,
-    uint32 arg_length,
-    uint32 full_length,
+    size_t arg_length,
+    size_t full_length,
     char fill_char
   );
   int strstr(
     const String &search,
-    uint32 offset = 0
+    size_t offset = 0
   );
   int strrstr(
     const String &search,
-    uint32 offset = 0
+    size_t offset = 0
   );
   bool replace(
-    uint32 offset,
-    uint32 arg_length,
+    size_t offset,
+    size_t arg_length,
     const char *to,
-    uint32 length
+    size_t length
   );
   bool replace(
-    uint32 offset,
-    uint32 arg_length,
+    size_t offset,
+    size_t arg_length,
     const String &to
   );
   inline bool append(
     char chr
   );
   bool fill(
-    uint32 max_length,
+    size_t max_length,
     char fill
   );
   void strip_sp();
-  uint32 numchars();
+  size_t numchars();
   int charpos(
     int i,
-    uint32 offset=0
+    size_t offset=0
   );
   int reserve(
-    uint32 space_needed
+    size_t space_needed
   );
   int reserve(
-    uint32 space_needed,
-    uint32 grow_by
+    size_t space_needed,
+    size_t grow_by
   );
   void q_append(
     const char c
   );
   void q_append(
-    const uint32 n
+    const size_t n
   );
   void q_append(
     double d
@@ -471,15 +471,15 @@ public:
   );
   void q_append(
     const char *data,
-    uint32 data_len
+    size_t data_len
   );
   void write_at_position(
     int position,
-    uint32 value
+    size_t value
   );
   void qs_append(
     const char *str,
-    uint32 len
+    size_t len
   );
   void qs_append(
     double d
@@ -497,13 +497,13 @@ public:
     uint i
   );
   char *prep_append(
-    uint32 arg_length,
-    uint32 step_alloc
+    size_t arg_length,
+    size_t step_alloc
   );
   bool append(
     const char *s,
-    uint32 arg_length,
-    uint32 step_alloc
+    size_t arg_length,
+    size_t step_alloc
   );
   void append_escape_string(
     const char *st,

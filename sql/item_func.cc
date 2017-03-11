@@ -4212,7 +4212,7 @@ longlong Item_func_get_lock::val_int()
 
   if (!ull_name_ok(res))
     DBUG_RETURN(0);
-  DBUG_PRINT("enter", ("lock: %.*s", res->length(), res->ptr()));
+  DBUG_PRINT("enter", ("lock: %.*s", (int) res->length(), res->ptr()));
   /* HASH entries are of type User_level_lock. */
   if (! my_hash_inited(&thd->ull_hash) &&
         my_hash_init(&thd->ull_hash, &my_charset_bin,
@@ -4290,7 +4290,7 @@ longlong Item_func_release_lock::val_int()
   if (!ull_name_ok(res))
     DBUG_RETURN(0);
 
-  DBUG_PRINT("enter", ("lock: %.*s", res->length(), res->ptr()));
+  DBUG_PRINT("enter", ("lock: %.*s", (int) res->length(), res->ptr()));
 
   MDL_key ull_key;
   ull_key.mdl_key_init(MDL_key::USER_LOCK, res->c_ptr_safe(), "");

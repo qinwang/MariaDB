@@ -2322,7 +2322,7 @@ bool THD::convert_string(String *s, CHARSET_INFO *from_cs, CHARSET_INFO *to_cs)
 
 void THD::update_charset()
 {
-  uint32 not_used;
+  size_t not_used;
   charset_is_system_charset=
     !String::needs_conversion(0,
                               variables.character_set_client,

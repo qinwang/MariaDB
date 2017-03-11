@@ -1,5 +1,5 @@
 /* Copyright (c) 2000, 2015, Oracle and/or its affiliates.
-   Copyright (c) 2008, 2015, MariaDB
+   Copyright (c) 2008, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -3494,7 +3494,7 @@ Item_func_group_concat::fix_fields(THD *thd, Item **ref)
               / collation.collation->mbminlen
               * collation.collation->mbmaxlen);
 
-  uint32 offset;
+  size_t offset;
   if (separator->needs_conversion(separator->length(), separator->charset(),
                                   collation.collation, &offset))
   {

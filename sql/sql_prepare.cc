@@ -793,7 +793,7 @@ static void setup_one_conversion_function(THD *thd, Item_param *param,
     {
       CHARSET_INFO *fromcs= thd->variables.character_set_client;
       CHARSET_INFO *tocs= thd->variables.collation_connection;
-      uint32 dummy_offset;
+      size_t dummy_offset;
 
       param->value.cs_info.character_set_of_placeholder= fromcs;
       param->value.cs_info.character_set_client= fromcs;
@@ -2747,7 +2747,7 @@ bool LEX::get_dynamic_sql_string(LEX_CSTRING *dst, String *buffer)
   */
   CHARSET_INFO *to_cs= thd->variables.character_set_client;
 
-  uint32 unused;
+  size_t unused;
   if (String::needs_conversion(str->length(), str->charset(), to_cs, &unused))
   {
     if (!(dst->str= sql_strmake_with_convert(thd, str->ptr(), str->length(),
