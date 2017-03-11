@@ -1,5 +1,5 @@
 /* Copyright (c) 2000, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2009, 2016, MariaDB
+   Copyright (c) 2009, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -5147,7 +5147,7 @@ bool fix_escape_item(THD *thd, Item *escape_item, String *tmp_str,
           code instead of Unicode code as "escape" argument.
           Convert to "cs" if charset of escape differs.
         */
-        uint32 unused;
+        size_t unused;
         if (escape_str->needs_conversion(escape_str->length(),
                                          escape_str->charset(),cmp_cs,&unused))
         {

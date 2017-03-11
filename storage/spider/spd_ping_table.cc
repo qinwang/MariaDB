@@ -107,7 +107,7 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_mon_list(
   mutex_hash = spider_udf_calc_hash(str->c_ptr(),
     spider_param_udf_table_mon_mutex_count());
   DBUG_PRINT("info",("spider hash key=%s", str->c_ptr()));
-  DBUG_PRINT("info",("spider hash key length=%u", str->length()));
+  DBUG_PRINT("info",("spider hash key length=%zu", str->length()));
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
   hash_value = my_calc_hash(
     &spider_udf_table_mon_list_hash[mutex_hash],

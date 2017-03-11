@@ -865,7 +865,7 @@ void THD::clear_data_list()
 static char *dup_str_aux(MEM_ROOT *root, const char *from, uint length,
 			 CHARSET_INFO *fromcs, CHARSET_INFO *tocs)
 {
-  uint32 dummy32;
+  size_t dummy32;
   uint dummy_err;
   char *result;
 

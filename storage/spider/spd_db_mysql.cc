@@ -2922,7 +2922,7 @@ int spider_db_mysql_util::append_column_value(
     tmp_str.mem_calc();
   }
   DBUG_PRINT("info", ("spider field->type() is %d", field->type()));
-  DBUG_PRINT("info", ("spider ptr->length() is %d", ptr->length()));
+  DBUG_PRINT("info", ("spider ptr->length() is %zu", ptr->length()));
 /*
   if (
     field->type() == MYSQL_TYPE_BIT ||
@@ -8805,7 +8805,7 @@ int spider_mysql_handler::append_insert_terminator(
 ) {
   DBUG_ENTER("spider_mysql_handler::append_insert_terminator");
   DBUG_PRINT("info",("spider this=%p", this));
-  DBUG_PRINT("info",("spider dup_update_sql.length=%u", dup_update_sql.length()));
+  DBUG_PRINT("info",("spider dup_update_sql.length=%zu", dup_update_sql.length()));
   if (
     spider->result_list.insert_dup_update_pushdown &&
     dup_update_sql.length()
@@ -9580,7 +9580,7 @@ bool spider_mysql_handler::is_bulk_insert_exec_period(
 ) {
   DBUG_ENTER("spider_mysql_handler::is_bulk_insert_exec_period");
   DBUG_PRINT("info",("spider this=%p", this));
-  DBUG_PRINT("info",("spider insert_sql.length=%u", insert_sql.length()));
+  DBUG_PRINT("info",("spider insert_sql.length=%zu", insert_sql.length()));
   DBUG_PRINT("info",("spider insert_pos=%d", insert_pos));
   DBUG_PRINT("info",("spider insert_sql=%s", insert_sql.c_ptr_safe()));
   if (
@@ -10148,7 +10148,7 @@ int spider_mysql_handler::set_sql_for_exec(
       append_table_name_with_adjusting(exec_insert_sql, link_idx,
         sql_type);
       exec_insert_sql->length(tmp_pos);
-      DBUG_PRINT("info",("spider exec_insert_sql->length=%u",
+      DBUG_PRINT("info",("spider exec_insert_sql->length=%zu",
         exec_insert_sql->length()));
       DBUG_PRINT("info",("spider exec_insert_sql=%s",
         exec_insert_sql->c_ptr_safe()));

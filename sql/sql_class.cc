@@ -2389,7 +2389,7 @@ Item_string *THD::make_string_literal(const char *str, size_t length,
 
 void THD::update_charset()
 {
-  uint32 not_used;
+  size_t not_used;
   charset_is_system_charset=
     !String::needs_conversion(0,
                               variables.character_set_client,

@@ -9651,7 +9651,7 @@ bool Column_definition::create_interval_from_interval_list(MEM_ROOT *mem_root,
 
   for (uint i= 0; i < interval->count; i++)
   {
-    uint32 dummy;
+    size_t dummy;
     String *tmp= it++;
     LEX_CSTRING value;
     if (String::needs_conversion(tmp->length(), tmp->charset(),

@@ -3859,7 +3859,7 @@ void Item_param::CONVERSION_INFO::set(THD *thd, CHARSET_INFO *fromcs)
     are different only if conversion is necessary: this will
     make later checks easier.
   */
-  uint32 dummy_offset;
+  size_t dummy_offset;
   final_character_set_of_str_value=
     String::needs_conversion(0, fromcs, tocs, &dummy_offset) ?
     tocs : fromcs;
