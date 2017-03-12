@@ -1,6 +1,6 @@
 /*
    Copyright (c) 2000, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2008, 2013, Monty Program Ab.
+   Copyright (c) 2008, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1323,7 +1323,7 @@ bool Field::can_optimize_range(const Item_bool_func *cond,
 }
 
 
-int Field::store_hex_hybrid(const char *str, uint length)
+int Field::store_hex_hybrid(const char *str, size_t length)
 {
   DBUG_ASSERT(result_type() != STRING_RESULT);
   ulonglong nr;
@@ -1795,7 +1795,7 @@ bool Field::compatible_field_size(uint field_metadata,
 }
 
 
-int Field::store(const char *to, uint length, CHARSET_INFO *cs,
+int Field::store(const char *to, size_t length, CHARSET_INFO *cs,
                  enum_check_fields check_level)
 {
   int res;
@@ -2389,7 +2389,7 @@ void Field_decimal::overflow(bool negative)
 }
 
 
-int Field_decimal::store(const char *from_arg, uint len, CHARSET_INFO *cs)
+int Field_decimal::store(const char *from_arg, size_t len, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   char buff[STRING_BUFFER_USUAL_SIZE];
@@ -3133,7 +3133,7 @@ bool Field_new_decimal::store_value(const my_decimal *decimal_value)
 }
 
 
-int Field_new_decimal::store(const char *from, uint length,
+int Field_new_decimal::store(const char *from, size_t length,
                              CHARSET_INFO *charset_arg)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
@@ -3523,7 +3523,7 @@ int Field_num::store_time_dec(MYSQL_TIME *ltime, uint dec_arg)
 ** tiny int
 ****************************************************************************/
 
-int Field_tiny::store(const char *from,uint len,CHARSET_INFO *cs)
+int Field_tiny::store(const char *from, size_t len, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   int error;
@@ -3699,7 +3699,7 @@ void Field_tiny::sql_type(String &res) const
  Field type short int (2 byte)
 ****************************************************************************/
 
-int Field_short::store(const char *from,uint len,CHARSET_INFO *cs)
+int Field_short::store(const char *from, size_t len, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   int store_tmp;
@@ -3888,7 +3888,7 @@ void Field_short::sql_type(String &res) const
   Field type medium int (3 byte)
 ****************************************************************************/
 
-int Field_medium::store(const char *from,uint len,CHARSET_INFO *cs)
+int Field_medium::store(const char *from, size_t len, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   int store_tmp;
@@ -4079,7 +4079,7 @@ void Field_medium::sql_type(String &res) const
 ** long int
 ****************************************************************************/
 
-int Field_long::store(const char *from,uint len,CHARSET_INFO *cs)
+int Field_long::store(const char *from, size_t len, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   long store_tmp;
@@ -4266,7 +4266,7 @@ void Field_long::sql_type(String &res) const
  Field type longlong int (8 bytes)
 ****************************************************************************/
 
-int Field_longlong::store(const char *from,uint len,CHARSET_INFO *cs)
+int Field_longlong::store(const char *from, size_t len, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   int error= 0;
@@ -4422,7 +4422,7 @@ void Field_longlong::sql_type(String &res) const
   single precision float
 ****************************************************************************/
 
-int Field_float::store(const char *from,uint len,CHARSET_INFO *cs)
+int Field_float::store(const char *from, size_t len, CHARSET_INFO *cs)
 {
   int error;
   Field_float::store(get_double(from, len, cs, &error));
@@ -4601,7 +4601,7 @@ void Field_float::sql_type(String &res) const
   double precision floating point numbers
 ****************************************************************************/
 
-int Field_double::store(const char *from,uint len,CHARSET_INFO *cs)
+int Field_double::store(const char *from, size_t len, CHARSET_INFO *cs)
 {
   int error;
   Field_double::store(get_double(from, len, cs, &error));
@@ -5045,7 +5045,7 @@ int Field_timestamp::store_time_dec(MYSQL_TIME *ltime, uint dec)
 }
 
 
-int Field_timestamp::store(const char *from,uint len,CHARSET_INFO *cs)
+int Field_timestamp::store(const char *from, size_t len, CHARSET_INFO *cs)
 {
   MYSQL_TIME l_time;
   MYSQL_TIME_STATUS status;
@@ -5567,7 +5567,7 @@ int Field_temporal_with_date::store_TIME_with_warning(MYSQL_TIME *ltime,
 }
 
 
-int Field_temporal_with_date::store(const char *from, uint len, CHARSET_INFO *cs)
+int Field_temporal_with_date::store(const char *from, size_t len, CHARSET_INFO *cs)
 {
   MYSQL_TIME ltime;
   MYSQL_TIME_STATUS status;
@@ -5759,7 +5759,7 @@ void Field_time::store_TIME(MYSQL_TIME *ltime)
   int3store(ptr,tmp);
 }
 
-int Field_time::store(const char *from,uint len,CHARSET_INFO *cs)
+int Field_time::store(const char *from, size_t len, CHARSET_INFO *cs)
 {
   MYSQL_TIME ltime;
   MYSQL_TIME_STATUS status;
@@ -6162,7 +6162,7 @@ bool Field_timef::get_date(MYSQL_TIME *ltime, ulonglong fuzzydate)
 ** Can handle 2 byte or 4 byte years!
 ****************************************************************************/
 
-int Field_year::store(const char *from, uint len,CHARSET_INFO *cs)
+int Field_year::store(const char *from, size_t len, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   char *end;
@@ -6911,7 +6911,7 @@ Field_longstr::report_if_important_data(const char *pstr, const char *end,
 
 	/* Copy a string and fill with space */
 
-int Field_string::store(const char *from,uint length,CHARSET_INFO *cs)
+int Field_string::store(const char *from, size_t length, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   uint copy_length;
@@ -7455,7 +7455,7 @@ int Field_varstring::do_save_field_metadata(uchar *metadata_ptr)
   return 2;
 }
 
-int Field_varstring::store(const char *from,uint length,CHARSET_INFO *cs)
+int Field_varstring::store(const char *from, size_t length, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   uint copy_length;
@@ -7920,7 +7920,7 @@ int Field_blob::copy_value(Field_blob *from)
 }
 
 
-int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
+int Field_blob::store(const char *from, size_t length, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   uint copy_length, new_length;
@@ -8013,7 +8013,7 @@ int Field_blob::store(double nr)
 {
   CHARSET_INFO *cs=charset();
   value.set_real(nr, NOT_FIXED_DEC, cs);
-  return Field_blob::store(value.ptr(),(uint) value.length(), cs);
+  return Field_blob::store(value.ptr(), value.length(), cs);
 }
 
 
@@ -8021,7 +8021,7 @@ int Field_blob::store(longlong nr, bool unsigned_val)
 {
   CHARSET_INFO *cs=charset();
   value.set_int(nr, unsigned_val, cs);
-  return Field_blob::store(value.ptr(), (uint) value.length(), cs);
+  return Field_blob::store(value.ptr(), value.length(), cs);
 }
 
 
@@ -8550,7 +8550,7 @@ int Field_geom::store_decimal(const my_decimal *)
 }
 
 
-int Field_geom::store(const char *from, uint length, CHARSET_INFO *cs)
+int Field_geom::store(const char *from, size_t length, CHARSET_INFO *cs)
 {
   if (!length)
     bzero(ptr, Field_blob::pack_length());
@@ -8659,7 +8659,7 @@ void Field_enum::store_type(ulonglong value)
     (if there isn't a empty value in the enum)
 */
 
-int Field_enum::store(const char *from,uint length,CHARSET_INFO *cs)
+int Field_enum::store(const char *from, size_t length, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   int err= 0;
@@ -8838,7 +8838,7 @@ Field *Field_enum::make_new_field(MEM_ROOT *root, TABLE *new_table,
 */
 
 
-int Field_set::store(const char *from,uint length,CHARSET_INFO *cs)
+int Field_set::store(const char *from, size_t length, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   bool got_warning= 0;
@@ -9249,8 +9249,8 @@ uint Field_bit::is_equal(Create_field *new_field)
           new_field->length == max_display_length());
 }
 
-                       
-int Field_bit::store(const char *from, uint length, CHARSET_INFO *cs)
+
+int Field_bit::store(const char *from, size_t length, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   int delta;
@@ -9686,7 +9686,7 @@ Field_bit_as_char::Field_bit_as_char(uchar *ptr_arg, uint32 len_arg,
 }
 
 
-int Field_bit_as_char::store(const char *from, uint length, CHARSET_INFO *cs)
+int Field_bit_as_char::store(const char *from, size_t length, CHARSET_INFO *cs)
 {
   ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
   int delta;

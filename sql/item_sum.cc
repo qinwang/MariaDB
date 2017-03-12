@@ -1335,13 +1335,13 @@ void Item_sum_sum::fix_length_and_dec()
   case ROW_RESULT:
     DBUG_ASSERT(0);
   }
-  DBUG_PRINT("info", ("Type: %s (%d, %d)",
+  DBUG_PRINT("info", ("Type: %s (%zu, %u)",
                       (result_type() == REAL_RESULT ? "REAL_RESULT" :
                        result_type() == DECIMAL_RESULT ? "DECIMAL_RESULT" :
                        result_type() == INT_RESULT ? "INT_RESULT" :
                        "--ILLEGAL!!!--"),
                       max_length,
-                      (int)decimals));
+                      decimals));
   DBUG_VOID_RETURN;
 }
 
@@ -1896,7 +1896,7 @@ void Item_sum_variance::fix_length_and_dec()
   case TIME_RESULT:
     DBUG_ASSERT(0);
   }
-  DBUG_PRINT("info", ("Type: REAL_RESULT (%d, %d)", max_length, (int)decimals));
+  DBUG_PRINT("info", ("Type: REAL_RESULT (%zu, %u)", max_length, decimals));
   DBUG_VOID_RETURN;
 }
 

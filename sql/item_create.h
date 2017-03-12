@@ -1,5 +1,5 @@
 /* Copyright (c) 2000, 2010, Oracle and/or its affiliates.
-   Copyright (c) 2008-2011 Monty Program Ab
+   Copyright (c) 2008, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -169,7 +169,7 @@ create_func_cast(THD *thd, Item *a, Cast_target cast_type,
                  CHARSET_INFO *cs);
 
 Item *create_temporal_literal(THD *thd,
-                              const char *str, uint length,
+                              const char *str, size_t length,
                               CHARSET_INFO *cs,
                               enum_field_types type,
                               bool send_error);

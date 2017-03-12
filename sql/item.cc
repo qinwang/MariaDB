@@ -1036,7 +1036,7 @@ bool Item::check_cols(uint c)
 }
 
 
-void Item::set_name(THD *thd, const char *str, uint length, CHARSET_INFO *cs)
+void Item::set_name(THD *thd, const char *str, size_t length, CHARSET_INFO *cs)
 {
   if (!length)
   {
@@ -10248,13 +10248,13 @@ enum_field_types Item_type_holder::get_real_type(Item *item)
 
 bool Item_type_holder::join_types(THD *thd, Item *item)
 {
-  uint max_length_orig= max_length;
+  size_t max_length_orig= max_length;
   uint decimals_orig= decimals;
   DBUG_ENTER("Item_type_holder::join_types");
-  DBUG_PRINT("info:", ("was type %d len %d, dec %d name %s",
+  DBUG_PRINT("info:", ("was type %d len %zu, dec %u name %s",
                        real_field_type(), max_length, decimals,
                        (name ? name : "<NULL>")));
-  DBUG_PRINT("info:", ("in type %d len %d, dec %d",
+  DBUG_PRINT("info:", ("in type %d len %zu, dec %u",
                        get_real_type(item),
                        item->max_length, item->decimals));
   set_handler_by_real_type(Field::field_type_merge(real_field_type(),
@@ -10327,8 +10327,8 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
       if (item->max_length != max_length_orig ||
           item->decimals != decimals_orig)
       {
-        int delta1= max_length_orig - decimals_orig;
-        int delta2= item->max_length - item->decimals;
+        ssize_t delta1= max_length_orig - decimals_orig;
+        ssize_t delta2= item->max_length - item->decimals;
         max_length= MY_MAX(delta1, delta2) + decimals;
         if (Item_type_holder::real_field_type() == MYSQL_TYPE_FLOAT &&
             max_length > FLT_DIG + 2)
@@ -10357,8 +10357,8 @@ bool Item_type_holder::join_types(THD *thd, Item *item)
 
   /* Remember decimal integer part to be used in DECIMAL_RESULT handleng */
   prev_decimal_int_part= decimal_int_part();
-  DBUG_PRINT("info", ("become type: %d  len: %u  dec: %u",
-                      (int) real_field_type(), max_length, (uint) decimals));
+  DBUG_PRINT("info", ("become type: %d  len: %zu  dec: %u",
+                      (int) real_field_type(), max_length, decimals));
   DBUG_RETURN(FALSE);
 }
 

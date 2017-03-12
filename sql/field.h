@@ -309,7 +309,7 @@ protected:
     return decimal_value;
   }
 
-  longlong longlong_from_hex_hybrid(const char *str, uint32 length)
+  longlong longlong_from_hex_hybrid(const char *str, size_t length)
   {
     const char *end= str + length;
     const char *ptr= end - MY_MIN(length, sizeof(longlong));
@@ -835,15 +835,15 @@ public:
     @retval false - conversion is needed
   */
   virtual bool memcpy_field_possible(const Field *from) const= 0;
-  virtual int  store(const char *to, uint length,CHARSET_INFO *cs)=0;
-  virtual int  store_hex_hybrid(const char *str, uint length);
+  virtual int  store(const char *to, size_t length,CHARSET_INFO *cs)=0;
+  virtual int  store_hex_hybrid(const char *str, size_t length);
   virtual int  store(double nr)=0;
   virtual int  store(longlong nr, bool unsigned_val)=0;
   virtual int  store_decimal(const my_decimal *d)=0;
   virtual int  store_time_dec(MYSQL_TIME *ltime, uint dec);
   int store_time(MYSQL_TIME *ltime)
   { return store_time_dec(ltime, TIME_SECOND_PART_DIGITS); }
-  int store(const char *to, uint length, CHARSET_INFO *cs,
+  int store(const char *to, size_t length, CHARSET_INFO *cs,
             enum_check_fields check_level);
   int store(const LEX_STRING *ls, CHARSET_INFO *cs)
   { return store(ls->str, ls->length, cs); }
@@ -1083,7 +1083,7 @@ public:
     }
     return update_fl;
   }
-  virtual void store_field_value(uchar *val, uint len)
+  virtual void store_field_value(uchar *val, size_t len)
   {
      memcpy(ptr, val, len);
   }
@@ -1682,8 +1682,8 @@ public:
   int  store(double nr);
   int  store(longlong nr, bool unsigned_val)=0;
   int  store_decimal(const my_decimal *);
-  int  store(const char *to,uint length,CHARSET_INFO *cs)=0;
-  int  store_hex_hybrid(const char *str, uint length)
+  int  store(const char *to, size_t length,CHARSET_INFO *cs)=0;
+  int  store_hex_hybrid(const char *str, size_t length)
   {
     return store(str, length, &my_charset_bin);
   }
@@ -1823,7 +1823,7 @@ public:
     return eq_def(from) ? get_identical_copy_func() : do_field_string;
   }
   int reset(void);
-  int store(const char *to,uint length,CHARSET_INFO *charset);
+  int store(const char *to, size_t length,CHARSET_INFO *charset);
   int store(double nr);
   int store(longlong nr, bool unsigned_val);
   double val_real(void);
@@ -1885,7 +1885,7 @@ public:
   bool store_value(const my_decimal *decimal_value);
   bool store_value(const my_decimal *decimal_value, int *native_error);
   void set_value_on_overflow(my_decimal *decimal_value, bool sign);
-  int  store(const char *to, uint length, CHARSET_INFO *charset);
+  int  store(const char *to, size_t length, CHARSET_INFO *charset);
   int  store(double nr);
   int  store(longlong nr, bool unsigned_val);
   int  store_time_dec(MYSQL_TIME *ltime, uint dec);
@@ -1932,7 +1932,7 @@ public:
   enum_field_types type() const { return MYSQL_TYPE_TINY;}
   enum ha_base_keytype key_type() const
     { return unsigned_flag ? HA_KEYTYPE_BINARY : HA_KEYTYPE_INT8; }
-  int store(const char *to,uint length,CHARSET_INFO *charset);
+  int store(const char *to, size_t length, CHARSET_INFO *charset);
   int store(double nr);
   int store(longlong nr, bool unsigned_val);
   int reset(void) { ptr[0]=0; return 0; }
@@ -1981,7 +1981,7 @@ public:
   enum_field_types type() const { return MYSQL_TYPE_SHORT;}
   enum ha_base_keytype key_type() const
     { return unsigned_flag ? HA_KEYTYPE_USHORT_INT : HA_KEYTYPE_SHORT_INT;}
-  int store(const char *to,uint length,CHARSET_INFO *charset);
+  int store(const char *to, size_t length, CHARSET_INFO *charset);
   int store(double nr);
   int store(longlong nr, bool unsigned_val);
   int reset(void) { ptr[0]=ptr[1]=0; return 0; }
@@ -2016,7 +2016,7 @@ public:
   enum_field_types type() const { return MYSQL_TYPE_INT24;}
   enum ha_base_keytype key_type() const
     { return unsigned_flag ? HA_KEYTYPE_UINT24 : HA_KEYTYPE_INT24; }
-  int store(const char *to,uint length,CHARSET_INFO *charset);
+  int store(const char *to, size_t length, CHARSET_INFO *charset);
   int store(double nr);
   int store(longlong nr, bool unsigned_val);
   int reset(void) { ptr[0]=ptr[1]=ptr[2]=0; return 0; }
@@ -2055,7 +2055,7 @@ public:
   enum_field_types type() const { return MYSQL_TYPE_LONG;}
   enum ha_base_keytype key_type() const
     { return unsigned_flag ? HA_KEYTYPE_ULONG_INT : HA_KEYTYPE_LONG_INT; }
-  int store(const char *to,uint length,CHARSET_INFO *charset);
+  int store(const char *to, size_t length, CHARSET_INFO *charset);
   int store(double nr);
   int store(longlong nr, bool unsigned_val);
   int reset(void) { ptr[0]=ptr[1]=ptr[2]=ptr[3]=0; return 0; }
@@ -2101,7 +2101,7 @@ public:
   enum_field_types type() const { return MYSQL_TYPE_LONGLONG;}
   enum ha_base_keytype key_type() const
     { return unsigned_flag ? HA_KEYTYPE_ULONGLONG : HA_KEYTYPE_LONGLONG; }
-  int store(const char *to,uint length,CHARSET_INFO *charset);
+  int store(const char *to, size_t length, CHARSET_INFO *charset);
   int store(double nr);
   int store(longlong nr, bool unsigned_val);
   int reset(void)
@@ -2154,7 +2154,7 @@ public:
     }
   enum_field_types type() const { return MYSQL_TYPE_FLOAT;}
   enum ha_base_keytype key_type() const { return HA_KEYTYPE_FLOAT; }
-  int store(const char *to,uint length,CHARSET_INFO *charset);
+  int store(const char *to, size_t length, CHARSET_INFO *charset);
   int store(double nr);
   int store(longlong nr, bool unsigned_val);
   int reset(void) { bzero(ptr,sizeof(float)); return 0; }
@@ -2204,7 +2204,7 @@ public:
     }
   enum_field_types type() const { return MYSQL_TYPE_DOUBLE;}
   enum ha_base_keytype key_type() const { return HA_KEYTYPE_DOUBLE; }
-  int  store(const char *to,uint length,CHARSET_INFO *charset);
+  int  store(const char *to, size_t length, CHARSET_INFO *charset);
   int  store(double nr);
   int  store(longlong nr, bool unsigned_val);
   int reset(void) { bzero(ptr,sizeof(double)); return 0; }
@@ -2244,7 +2244,7 @@ public:
   {
     return do_field_string;
   }
-  int  store(const char *to, uint length, CHARSET_INFO *cs)
+  int  store(const char *, size_t, CHARSET_INFO *)
   { null[0]=1; return 0; }
   int store(double nr)   { null[0]=1; return 0; }
   int store(longlong nr, bool unsigned_val) { null[0]=1; return 0; }
@@ -2290,7 +2290,7 @@ public:
                field_name_arg)
     { flags|= BINARY_FLAG; }
   Item_result result_type () const { return STRING_RESULT; }   
-  int  store_hex_hybrid(const char *str, uint length)
+  int  store_hex_hybrid(const char *str, size_t length)
   {
     return store(str, length, &my_charset_bin);
   }
@@ -2368,7 +2368,7 @@ public:
     :Field_temporal(ptr_arg, len_arg, null_ptr_arg, null_bit_arg,
                     unireg_check_arg, field_name_arg)
     {}
-  int  store(const char *to, uint length, CHARSET_INFO *charset);
+  int  store(const char *to, size_t length, CHARSET_INFO *charset);
   int  store(double nr);
   int  store(longlong nr, bool unsigned_val);
   int  store_time_dec(MYSQL_TIME *ltime, uint dec);
@@ -2388,7 +2388,7 @@ public:
 		  TABLE_SHARE *share);
   enum_field_types type() const { return MYSQL_TYPE_TIMESTAMP;}
   enum ha_base_keytype key_type() const { return HA_KEYTYPE_ULONG_INT; }
-  int  store(const char *to,uint length,CHARSET_INFO *charset);
+  int  store(const char *to, size_t length, CHARSET_INFO *charset);
   int  store(double nr);
   int  store(longlong nr, bool unsigned_val);
   int  store_time_dec(MYSQL_TIME *ltime, uint dec);
@@ -2574,7 +2574,7 @@ public:
     }
     return do_field_int;
   }
-  int  store(const char *to,uint length,CHARSET_INFO *charset);
+  int  store(const char *to, size_t length, CHARSET_INFO *charset);
   int  store(double nr);
   int  store(longlong nr, bool unsigned_val);
   int  store_time_dec(MYSQL_TIME *ltime, uint dec);
@@ -2687,7 +2687,7 @@ public:
            decimals() == from->decimals();
   }
   int store_time_dec(MYSQL_TIME *ltime, uint dec);
-  int store(const char *to,uint length,CHARSET_INFO *charset);
+  int store(const char *to, size_t length, CHARSET_INFO *charset);
   int store(double nr);
   int store(longlong nr, bool unsigned_val);
   int  store_decimal(const my_decimal *);
@@ -3051,7 +3051,7 @@ public:
                           (has_charset() ? ' ' : 0));
     return 0;
   }
-  int store(const char *to,uint length,CHARSET_INFO *charset);
+  int store(const char *to, size_t length, CHARSET_INFO *charset);
   int store(longlong nr, bool unsigned_val);
   int store(double nr) { return Field_str::store(nr); } /* QQ: To be deleted */
   double val_real(void);
@@ -3147,7 +3147,7 @@ public:
     return Field_str::memcpy_field_possible(from) &&
            length_bytes == ((Field_varstring*) from)->length_bytes;
   }
-  int  store(const char *to,uint length,CHARSET_INFO *charset);
+  int  store(const char *to, size_t length, CHARSET_INFO *charset);
   int  store(longlong nr, bool unsigned_val);
   int  store(double nr) { return Field_str::store(nr); } /* QQ: To be deleted */
   double val_real(void);
@@ -3267,7 +3267,7 @@ public:
     return Field_str::memcpy_field_possible(from) &&
            !table->copy_blobs;
   }
-  int  store(const char *to,uint length,CHARSET_INFO *charset);
+  int  store(const char *to, size_t length, CHARSET_INFO *charset);
   int  store(double nr);
   int  store(longlong nr, bool unsigned_val);
   double val_real(void);
@@ -3434,7 +3434,7 @@ public:
                                   bool is_eq_func) const;
   void sql_type(String &str) const;
   uint is_equal(Create_field *new_field);
-  int  store(const char *to, uint length, CHARSET_INFO *charset);
+  int  store(const char *to, size_t length, CHARSET_INFO *charset);
   int  store(double nr);
   int  store(longlong nr, bool unsigned_val);
   int  store_decimal(const my_decimal *);
@@ -3515,7 +3515,7 @@ public:
     return save_in_field_str(to);
   }
   bool memcpy_field_possible(const Field *from) const { return false; }
-  int  store(const char *to,uint length,CHARSET_INFO *charset);
+  int  store(const char *to, size_t length, CHARSET_INFO *charset);
   int  store(double nr);
   int  store(longlong nr, bool unsigned_val);
   double val_real(void);
@@ -3579,7 +3579,7 @@ public:
       flags=(flags & ~ENUM_FLAG) | SET_FLAG;
     }
   int  store_field(Field *from) { return from->save_in_field(this); }
-  int  store(const char *to,uint length,CHARSET_INFO *charset);
+  int  store(const char *to, size_t length, CHARSET_INFO *charset);
   int  store(double nr) { return Field_set::store((longlong) nr, FALSE); }
   int  store(longlong nr, bool unsigned_val);
 
@@ -3636,7 +3636,7 @@ public:
   }
   int save_in_field(Field *to) { return to->store(val_int(), true); }
   bool memcpy_field_possible(const Field *from) const { return false; }
-  int store(const char *to, uint length, CHARSET_INFO *charset);
+  int store(const char *to, size_t length, CHARSET_INFO *charset);
   int store(double nr);
   int store(longlong nr, bool unsigned_val);
   int store_decimal(const my_decimal *);
@@ -3683,7 +3683,7 @@ public:
     }
     return update_fl;
   }
-  void store_field_value(uchar *val, uint len)
+  void store_field_value(uchar *val, size_t len)
   {
     store(*((longlong *)val), TRUE);
   }
@@ -3755,7 +3755,7 @@ public:
                     enum utype unireg_check_arg, const char *field_name_arg);
   enum ha_base_keytype key_type() const { return HA_KEYTYPE_BINARY; }
   uint size_of() const { return sizeof(*this); }
-  int store(const char *to, uint length, CHARSET_INFO *charset);
+  int store(const char *to, size_t length, CHARSET_INFO *charset);
   int store(double nr) { return Field_bit::store(nr); }
   int store(longlong nr, bool unsigned_val)
   { return Field_bit::store(nr, unsigned_val); }

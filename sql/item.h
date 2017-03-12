@@ -615,7 +615,7 @@ public:
     The maximum value length in characters multiplied by collation->mbmaxlen.
     Almost always it's the maximum value length in bytes.
   */
-  uint32 max_length;
+  size_t max_length;
   bool unsigned_flag;
   Type_std_attributes()
    :collation(&my_charset_bin, DERIVATION_COERCIBLE),
@@ -762,7 +762,7 @@ public:
     name=0;
 #endif
   }		/*lint -e1509 */
-  void set_name(THD *thd, const char *str, uint length, CHARSET_INFO *cs);
+  void set_name(THD *thd, const char *str, size_t length, CHARSET_INFO *cs);
   void set_name_no_truncate(THD *thd, const char *str, uint length,
                             CHARSET_INFO *cs);
   void set_name_for_rollback(THD *thd, const char *str, uint length,
@@ -1840,7 +1840,7 @@ public:
   String *check_well_formed_result(String *str, bool send_error= 0);
   bool eq_by_collation(Item *item, bool binary_cmp, CHARSET_INFO *cs); 
   uint32 max_char_length() const
-  { return max_length / collation.collation->mbmaxlen; }
+  { return static_cast<uint32>(max_length / collation.collation->mbmaxlen); }
   bool too_big_for_varchar() const
   { return max_char_length() > CONVERT_IF_BIGGER_TO_BLOB; }
   void fix_length_and_charset(uint32 max_char_length_arg, CHARSET_INFO *cs)
@@ -2145,9 +2145,9 @@ inline void Item_sp_variable::make_field(THD *thd, Send_field *field)
   Item *it= this_item();
 
   if (name)
-    it->set_name(thd, name, (uint) strlen(name), system_charset_info);
+    it->set_name(thd, name, strlen(name), system_charset_info);
   else
-    it->set_name(thd, m_name.str, (uint) m_name.length, system_charset_info);
+    it->set_name(thd, m_name.str, m_name.length, system_charset_info);
   it->make_field(thd, field);
 }
 
@@ -3243,7 +3243,8 @@ protected:
     fixed= 1;
   }
 public:
-  Item_string(THD *thd, CHARSET_INFO *csi, const char *str_arg, uint length_arg):
+  Item_string(THD *thd, CHARSET_INFO *csi,
+              const char *str_arg, size_t length_arg):
     Item_basic_constant(thd)
   {
     collation.set(csi, DERIVATION_COERCIBLE);
@@ -3499,7 +3500,7 @@ public:
 class Item_blob :public Item_partition_func_safe_string
 {
 public:
-  Item_blob(THD *thd, const char *name_arg, uint length):
+  Item_blob(THD *thd, const char *name_arg, size_t length):
     Item_partition_func_safe_string(thd, name_arg, strlen(name_arg), &my_charset_bin)
   { max_length= length; }
   enum Type type() const { return TYPE_HOLDER; }

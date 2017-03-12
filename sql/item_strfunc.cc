@@ -1471,9 +1471,9 @@ String *Item_func_insert::val_str(String *str)
       args[3]->null_value)
     goto null; /* purecov: inspected */
 
-  if ((start < 0) || (start > res->length()))
+  if ((start < 0) || (start > (longlong) res->length()))
     return res;                                 // Wrong param; skip insert
-  if ((length < 0) || (length > res->length()))
+  if ((length < 0) || (length > (longlong) res->length()))
     length= res->length();
 
   /*
@@ -1491,13 +1491,13 @@ String *Item_func_insert::val_str(String *str)
   }
 
   /* start and length are now sufficiently valid to pass to charpos function */
-   start= res->charpos((int) start);
-   length= res->charpos((int) length, (uint32) start);
+   start= res->charpos(start);
+   length= res->charpos(length, (uint32) start);
 
   /* Re-testing with corrected params */
-  if (start + 1 > res->length()) // remember, start = args[1].val_int() - 1
+  if ((size_t) start >= res->length()) // remember, start = args[1].val_int()-1
     return res; /* purecov: inspected */        // Wrong param; skip insert
-  if (length > res->length() - start)
+  if ((size_t) length > res->length() - start)
     length= res->length() - start;
 
   {
@@ -1513,7 +1513,7 @@ String *Item_func_insert::val_str(String *str)
     }
   }
   res=copy_if_not_alloced(str,res,res->length());
-  res->replace((uint32) start,(uint32) length,*res2);
+  res->replace((size_t) start, (size_t) length,*res2);
   return res;
 null:
   null_value=1;
