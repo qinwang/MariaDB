@@ -524,7 +524,7 @@ class Item_func_trim :public Item_str_func
 protected:
   String tmp_value;
   String remove;
-  String *trimmed_value(String *res, uint32 offset, uint32 length)
+  String *trimmed_value(String *res, size_t offset, size_t length)
   {
     tmp_value.set(*res, offset, length);
     /*

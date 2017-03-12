@@ -1287,8 +1287,8 @@ void Item_sum_sum::fix_length_and_dec()
   DBUG_ENTER("Item_sum_sum::fix_length_and_dec");
   maybe_null=null_value=1;
   args[0]->cast_to_int_type_handler()->Item_sum_sum_fix_length_and_dec(this);
-  DBUG_PRINT("info", ("Type: %s (%d, %d)", type_handler()->name().ptr(),
-                      max_length, (int) decimals));
+  DBUG_PRINT("info", ("Type: %s (%zu, %u)", type_handler()->name().ptr(),
+                      max_length, decimals));
   DBUG_VOID_RETURN;
 }
 
@@ -1847,8 +1847,8 @@ void Item_sum_variance::fix_length_and_dec()
   */
 
   args[0]->type_handler()->Item_sum_variance_fix_length_and_dec(this);
-  DBUG_PRINT("info", ("Type: %s (%d, %d)", type_handler()->name().ptr(),
-                      max_length, (int)decimals));
+  DBUG_PRINT("info", ("Type: %s (%zu, %u)", type_handler()->name().ptr(),
+                      max_length, decimals));
   DBUG_VOID_RETURN;
 }
 

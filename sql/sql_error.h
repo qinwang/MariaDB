@@ -811,8 +811,8 @@ private:
 };
 
 
-extern char *err_conv(char *buff, uint to_length, const char *from,
-                      uint from_length, CHARSET_INFO *from_cs);
+extern char *err_conv(char *buff, size_t to_length, const char *from,
+                      size_t from_length, CHARSET_INFO *from_cs);
 
 class ErrConv
 {

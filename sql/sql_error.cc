@@ -1,4 +1,5 @@
 /* Copyright (c) 1995, 2011, Oracle and/or its affiliates. All rights reserved.
+   Copyright (c) 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -850,8 +851,8 @@ bool mysqld_show_warnings(THD *thd, ulong levels_to_show)
    result string
 */
 
-char *err_conv(char *buff, uint to_length, const char *from,
-               uint from_length, CHARSET_INFO *from_cs)
+char *err_conv(char *buff, size_t to_length, const char *from,
+               size_t from_length, CHARSET_INFO *from_cs)
 {
   char *to= buff;
   const char *from_start= from;

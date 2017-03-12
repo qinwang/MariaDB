@@ -1128,7 +1128,7 @@ bool Item::check_type_scalar(const char *opname) const
 }
 
 
-void Item::set_name(THD *thd, const char *str, uint length, CHARSET_INFO *cs)
+void Item::set_name(THD *thd, const char *str, size_t length, CHARSET_INFO *cs)
 {
   if (!length)
   {

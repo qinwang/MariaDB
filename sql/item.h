@@ -676,7 +676,7 @@ public:
     name.length= 0;
 #endif
   }		/*lint -e1509 */
-  void set_name(THD *thd, const char *str, uint length, CHARSET_INFO *cs);
+  void set_name(THD *thd, const char *str, size_t length, CHARSET_INFO *cs);
   void set_name_no_truncate(THD *thd, const char *str, uint length,
                             CHARSET_INFO *cs);
   void init_make_field(Send_field *tmp_field,enum enum_field_types type);
@@ -3470,7 +3470,8 @@ protected:
     fixed= 1;
   }
 public:
-  Item_string(THD *thd, CHARSET_INFO *csi, const char *str_arg, uint length_arg):
+  Item_string(THD *thd, CHARSET_INFO *csi,
+              const char *str_arg, size_t length_arg):
     Item_basic_constant(thd)
   {
     collation.set(csi, DERIVATION_COERCIBLE);
@@ -3728,7 +3729,7 @@ public:
 class Item_blob :public Item_partition_func_safe_string
 {
 public:
-  Item_blob(THD *thd, const char *name_arg, uint length):
+  Item_blob(THD *thd, const char *name_arg, size_t length):
     Item_partition_func_safe_string(thd, name_arg, safe_strlen(name_arg), &my_charset_bin)
   { max_length= length; }
   enum Type type() const { return TYPE_HOLDER; }

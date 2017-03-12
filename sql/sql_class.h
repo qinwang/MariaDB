@@ -3798,7 +3798,7 @@ public:
     mysql_mutex_unlock(&LOCK_thd_data);
 #ifdef HAVE_PSI_THREAD_INTERFACE
     if (result)
-      PSI_THREAD_CALL(set_thread_db)(new_db, new_db_len);
+      PSI_THREAD_CALL(set_thread_db)(new_db, static_cast<int>(new_db_len));
 #endif
     return result;
   }
@@ -3823,7 +3823,7 @@ public:
       db_length= new_db_len;
       mysql_mutex_unlock(&LOCK_thd_data);
 #ifdef HAVE_PSI_THREAD_INTERFACE
-      PSI_THREAD_CALL(set_thread_db)(new_db, new_db_len);
+      PSI_THREAD_CALL(set_thread_db)(new_db, static_cast<int>(new_db_len));
 #endif
     }
   }
