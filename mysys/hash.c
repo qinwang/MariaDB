@@ -804,7 +804,7 @@ my_bool my_hash_iterate(HASH *hash, my_hash_walk_action action, void *argument)
 
 my_bool my_hash_check(HASH *hash)
 {
-  int error;
+  my_bool error;
   uint i,rec_link,found,max_links,seek,links,idx;
   uint records;
   size_t blength;

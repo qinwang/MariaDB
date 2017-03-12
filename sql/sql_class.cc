@@ -2237,7 +2237,7 @@ void THD::cleanup_after_query()
 */
 
 bool THD::convert_string(LEX_STRING *to, CHARSET_INFO *to_cs,
-			 const char *from, uint from_length,
+			 const char *from, size_t from_length,
 			 CHARSET_INFO *from_cs)
 {
   DBUG_ENTER("THD::convert_string");
@@ -2264,7 +2264,7 @@ bool THD::convert_string(LEX_STRING *to, CHARSET_INFO *to_cs,
   dstcs and srccs cannot be &my_charset_bin.
 */
 bool THD::convert_fix(CHARSET_INFO *dstcs, LEX_STRING *dst,
-                      CHARSET_INFO *srccs, const char *src, uint src_length,
+                      CHARSET_INFO *srccs, const char *src, size_t src_length,
                       String_copier *status)
 {
   DBUG_ENTER("THD::convert_fix");
@@ -2282,7 +2282,7 @@ bool THD::convert_fix(CHARSET_INFO *dstcs, LEX_STRING *dst,
   Copy or convert a string.
 */
 bool THD::copy_fix(CHARSET_INFO *dstcs, LEX_STRING *dst,
-                   CHARSET_INFO *srccs, const char *src, uint src_length,
+                   CHARSET_INFO *srccs, const char *src, size_t src_length,
                    String_copier *status)
 {
   DBUG_ENTER("THD::copy_fix");
@@ -2299,7 +2299,7 @@ bool THD::copy_fix(CHARSET_INFO *dstcs, LEX_STRING *dst,
 class String_copier_with_error: public String_copier
 {
 public:
-  bool check_errors(CHARSET_INFO *srccs, const char *src, uint src_length)
+  bool check_errors(CHARSET_INFO *srccs, const char *src, size_t src_length)
   {
     if (most_important_error_pos())
     {
@@ -2314,7 +2314,7 @@ public:
 
 bool THD::convert_with_error(CHARSET_INFO *dstcs, LEX_STRING *dst,
                              CHARSET_INFO *srccs,
-                             const char *src, uint src_length)
+                             const char *src, size_t src_length)
 {
   String_copier_with_error status;
   return convert_fix(dstcs, dst, srccs, src, src_length, &status) ||
@@ -2324,7 +2324,7 @@ bool THD::convert_with_error(CHARSET_INFO *dstcs, LEX_STRING *dst,
 
 bool THD::copy_with_error(CHARSET_INFO *dstcs, LEX_STRING *dst,
                           CHARSET_INFO *srccs,
-                          const char *src, uint src_length)
+                          const char *src, size_t src_length)
 {
   String_copier_with_error status;
   return copy_fix(dstcs, dst, srccs, src, src_length, &status) ||
@@ -5318,7 +5318,7 @@ void THD::set_status_no_good_index_used()
 
 /** Assign a new value to thd->query and thd->query_id.  */
 
-void THD::set_query_and_id(char *query_arg, uint32 query_length_arg,
+void THD::set_query_and_id(char *query_arg, size_t query_length_arg,
                            CHARSET_INFO *cs,
                            query_id_t new_query_id)
 {

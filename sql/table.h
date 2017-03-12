@@ -2321,8 +2321,8 @@ struct TABLE_LIST
   inline void set_merged_derived()
   {
     DBUG_ENTER("set_merged_derived");
-    derived_type= ((derived_type & DTYPE_MASK) |
-                   DTYPE_TABLE | DTYPE_MERGE);
+    derived_type= static_cast<uint8>((derived_type & DTYPE_MASK) |
+                                     DTYPE_TABLE | DTYPE_MERGE);
     set_check_merged();
     DBUG_VOID_RETURN;
   }
@@ -2333,8 +2333,9 @@ struct TABLE_LIST
   void set_materialized_derived()
   {
     DBUG_ENTER("set_materialized_derived");
-    derived_type= ((derived_type & (derived ? DTYPE_MASK : DTYPE_VIEW)) |
-                   DTYPE_TABLE | DTYPE_MATERIALIZE);
+    derived_type= static_cast<uint8>((derived_type &
+                                      (derived ? DTYPE_MASK : DTYPE_VIEW)) |
+                                     DTYPE_TABLE | DTYPE_MATERIALIZE);
     set_check_materialized();
     DBUG_VOID_RETURN;
   }

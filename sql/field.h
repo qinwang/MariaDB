@@ -1130,7 +1130,7 @@ public:
 
   uint null_offset() const
   { return null_offset(table->record[0]); }
-  void set_null_ptr(uchar *p_null_ptr, uint p_null_bit)
+  void set_null_ptr(uchar *p_null_ptr, uchar p_null_bit)
   {
     null_ptr= p_null_ptr;
     null_bit= p_null_bit;

@@ -107,13 +107,13 @@ public:
   /*
      Copy a string. Fix bad bytes/characters to '?'.
   */
-  uint well_formed_copy(CHARSET_INFO *to_cs, char *to, uint to_length,
-                        CHARSET_INFO *from_cs, const char *from,
-                        uint from_length, uint nchars);
+  size_t well_formed_copy(CHARSET_INFO *to_cs, char *to, size_t to_length,
+                          CHARSET_INFO *from_cs, const char *from,
+                          size_t from_length, size_t nchars);
   // Same as above, but without the "nchars" limit.
-  uint well_formed_copy(CHARSET_INFO *to_cs, char *to, uint to_length,
-                        CHARSET_INFO *from_cs, const char *from,
-                        uint from_length)
+  size_t well_formed_copy(CHARSET_INFO *to_cs, char *to, size_t to_length,
+                          CHARSET_INFO *from_cs, const char *from,
+                          size_t from_length)
   {
     return well_formed_copy(to_cs, to, to_length,
                             from_cs, from, from_length,

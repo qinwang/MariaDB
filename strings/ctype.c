@@ -1,5 +1,5 @@
 /* Copyright (c) 2000, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2009, 2014, SkySQL Ab.
+   Copyright (c) 2009, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1000,10 +1000,10 @@ my_charset_is_ascii_based(CHARSET_INFO *cs)
   @return Number of bytes copied to 'to' string
 */
 
-uint32
-my_convert_using_func(char *to, uint32 to_length,
+size_t
+my_convert_using_func(char *to, size_t to_length,
                       CHARSET_INFO *to_cs, my_charset_conv_wc_mb wc_mb,
-                      const char *from, uint32 from_length,
+                      const char *from, size_t from_length,
                       CHARSET_INFO *from_cs, my_charset_conv_mb_wc mb_wc,
                       uint *errors)
 {
@@ -1057,7 +1057,7 @@ outp:
       break;
   }
   *errors= error_count;
-  return (uint32) (to - to_start);
+  return (size_t) (to - to_start);
 }
 
 
@@ -1077,12 +1077,12 @@ outp:
   @return Number of bytes copied to 'to' string
 */
 
-uint32
-my_convert(char *to, uint32 to_length, CHARSET_INFO *to_cs,
-           const char *from, uint32 from_length,
+size_t
+my_convert(char *to, size_t to_length, CHARSET_INFO *to_cs,
+           const char *from, size_t from_length,
            CHARSET_INFO *from_cs, uint *errors)
 {
-  uint32 length, length2;
+  size_t length, length2;
   /*
     If any of the character sets is not ASCII compatible,
     immediately switch to slow mb_wc->wc_mb method.
@@ -1121,7 +1121,7 @@ my_convert(char *to, uint32 to_length, CHARSET_INFO *to_cs,
     }
     if (*((unsigned char*) from) > 0x7F) /* A non-ASCII character */
     {
-      uint32 copied_length= length2 - length;
+      size_t copied_length= length2 - length;
       to_length-= copied_length;
       from_length-= copied_length;
       return copied_length + my_convert_using_func(to, to_length, to_cs,

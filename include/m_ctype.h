@@ -1,4 +1,5 @@
 /* Copyright (c) 2000, 2013, Oracle and/or its affiliates.
+   Copyright (c) 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -944,8 +945,8 @@ extern size_t my_vsnprintf_ex(CHARSET_INFO *cs, char *to, size_t n,
   Bad byte sequences as well as characters that cannot be
   encoded in the destination character set are replaced to '?'.
 */
-uint32 my_convert(char *to, uint32 to_length, CHARSET_INFO *to_cs,
-                  const char *from, uint32 from_length,
+size_t my_convert(char *to, size_t to_length, CHARSET_INFO *to_cs,
+                  const char *from, size_t from_length,
                   CHARSET_INFO *from_cs, uint *errors);
 
 /**
@@ -954,9 +955,9 @@ uint32 my_convert(char *to, uint32 to_length, CHARSET_INFO *to_cs,
   Protocol::store_warning() uses this to escape control
   and non-convertable characters.
 */
-uint32 my_convert_using_func(char *to, uint32 to_length, CHARSET_INFO *to_cs,
+size_t my_convert_using_func(char *to, size_t to_length, CHARSET_INFO *to_cs,
                              my_charset_conv_wc_mb mb_wc,
-                             const char *from, uint32 from_length,
+                             const char *from, size_t from_length,
                              CHARSET_INFO *from_cs,
                              my_charset_conv_mb_wc wc_mb,
                              uint *errors);

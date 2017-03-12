@@ -1067,12 +1067,12 @@ my_copy_with_hex_escaping(CHARSET_INFO *cs,
 
   @returns                   number of bytes that were written to 'to'
 */
-uint
+size_t
 String_copier::well_formed_copy(CHARSET_INFO *to_cs,
-                                char *to, uint to_length,
+                                char *to, size_t to_length,
                                 CHARSET_INFO *from_cs,
-                                const char *from, uint from_length,
-                                uint nchars)
+                                const char *from, size_t from_length,
+                                size_t nchars)
 {
   if ((to_cs == &my_charset_bin) || 
       (from_cs == &my_charset_bin) ||

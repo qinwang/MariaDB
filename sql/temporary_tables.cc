@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2016 MariaDB Corporation
+  Copyright (c) 2016, 2017, MariaDB Corporation.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -168,7 +168,7 @@ TABLE *THD::find_temporary_table(const TABLE_LIST *tl)
           Failure                     NULL
 */
 TMP_TABLE_SHARE *THD::find_tmp_table_share_w_base_key(const char *key,
-                                                      uint key_length)
+                                                      size_t key_length)
 {
   DBUG_ENTER("THD::find_tmp_table_share_w_base_key");
 
@@ -252,7 +252,7 @@ TMP_TABLE_SHARE *THD::find_tmp_table_share(const TABLE_LIST *tl)
   @return Success                     A pointer to table share object
           Failure                     NULL
 */
-TMP_TABLE_SHARE *THD::find_tmp_table_share(const char *key, uint key_length)
+TMP_TABLE_SHARE *THD::find_tmp_table_share(const char *key, size_t key_length)
 {
   DBUG_ENTER("THD::find_tmp_table_share");
 
@@ -553,7 +553,7 @@ bool THD::rename_temporary_table(TABLE *table,
   DBUG_ENTER("THD::rename_temporary_table");
 
   char *key;
-  uint key_length;
+  size_t key_length;
 
   TABLE_SHARE *share= table->s;
 
@@ -893,8 +893,8 @@ inline bool THD::has_temporary_tables()
     4 bytes of master thread id
     4 bytes of pseudo thread id
 */
-uint THD::create_tmp_table_def_key(char *key, const char *db,
-                                    const char *table_name)
+size_t THD::create_tmp_table_def_key(char *key, const char *db,
+                                     const char *table_name)
 {
   DBUG_ENTER("THD::create_tmp_table_def_key");
 
@@ -1029,7 +1029,7 @@ TMP_TABLE_SHARE *THD::create_temporary_table(handlerton *hton,
   @return Success                     Pointer to the table instance.
           Failure                     NULL
 */
-TABLE *THD::find_temporary_table(const char *key, uint key_length,
+TABLE *THD::find_temporary_table(const char *key, size_t key_length,
                                  Temporary_table_state state)
 {
   DBUG_ENTER("THD::find_temporary_table");

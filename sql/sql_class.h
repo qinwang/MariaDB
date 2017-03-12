@@ -1073,7 +1073,7 @@ public:
   {
     query_string= string_arg;
   }
-  void set_query_inner(char *query_arg, uint32 query_length_arg,
+  void set_query_inner(char *query_arg, size_t query_length_arg,
                        CHARSET_INFO *cs_arg)
   {
     set_query_inner(CSET_STRING(query_arg, query_length_arg, cs_arg));
@@ -3344,7 +3344,8 @@ public:
     return alloc_root(&transaction.mem_root,size);
   }
 
-  LEX_STRING *make_lex_string(LEX_STRING *lex_str, const char* str, uint length)
+  LEX_STRING *make_lex_string(LEX_STRING *lex_str,
+                              const char* str, size_t length)
   {
     if (!(lex_str->str= strmake_root(mem_root, str, length)))
     {
@@ -3365,7 +3366,7 @@ public:
     return lex_str;
   }
 
-  LEX_STRING *make_lex_string(const char* str, uint length)
+  LEX_STRING *make_lex_string(const char* str, size_t length)
   {
     LEX_STRING *lex_str;
     if (!(lex_str= (LEX_STRING *)alloc_root(mem_root, sizeof(LEX_STRING))))
@@ -3382,7 +3383,7 @@ public:
   }
 
   // Allocate LEX_STRING for character set conversion
-  bool alloc_lex_string(LEX_STRING *dst, uint length)
+  bool alloc_lex_string(LEX_STRING *dst, size_t length)
   {
     if ((dst->str= (char*) alloc(length)))
       return false;
@@ -3390,7 +3391,7 @@ public:
     return true;     // EOM
   }
   bool convert_string(LEX_STRING *to, CHARSET_INFO *to_cs,
-		      const char *from, uint from_length,
+		      const char *from, size_t from_length,
 		      CHARSET_INFO *from_cs);
   /*
     Convert a strings between character sets.
@@ -3398,7 +3399,7 @@ public:
     dstcs and srccs cannot be &my_charset_bin.
   */
   bool convert_fix(CHARSET_INFO *dstcs, LEX_STRING *dst,
-                   CHARSET_INFO *srccs, const char *src, uint src_length,
+                   CHARSET_INFO *srccs, const char *src, size_t src_length,
                    String_copier *status);
 
   /*
@@ -3407,7 +3408,7 @@ public:
   */
   bool convert_with_error(CHARSET_INFO *dstcs, LEX_STRING *dst,
                           CHARSET_INFO *srccs,
-                          const char *src, uint src_length);
+                          const char *src, size_t src_length);
 
   /*
     If either "dstcs" or "srccs" is &my_charset_bin,
@@ -3415,7 +3416,7 @@ public:
     Otherwise, performs Unicode conversion using convert_fix().
   */
   bool copy_fix(CHARSET_INFO *dstcs, LEX_STRING *dst,
-                CHARSET_INFO *srccs, const char *src, uint src_length,
+                CHARSET_INFO *srccs, const char *src, size_t src_length,
                 String_copier *status);
 
   /*
@@ -3423,7 +3424,8 @@ public:
     in case of bad byte sequences or Unicode conversion problems.
   */
   bool copy_with_error(CHARSET_INFO *dstcs, LEX_STRING *dst,
-                       CHARSET_INFO *srccs, const char *src, uint src_length);
+                       CHARSET_INFO *srccs, const char *src,
+                       size_t src_length);
 
   bool convert_string(String *s, CHARSET_INFO *from_cs, CHARSET_INFO *to_cs);
 
@@ -4021,12 +4023,12 @@ public:
     Assign a new value to thd->query and thd->query_id and mysys_var.
     Protected with LOCK_thd_data mutex.
   */
-  void set_query(char *query_arg, uint32 query_length_arg,
+  void set_query(char *query_arg, size_t query_length_arg,
                  CHARSET_INFO *cs_arg)
   {
     set_query(CSET_STRING(query_arg, query_length_arg, cs_arg));
   }
-  void set_query(char *query_arg, uint32 query_length_arg) /*Mutex protected*/
+  void set_query(char *query_arg, size_t query_length_arg) /*Mutex protected*/
   {
     set_query(CSET_STRING(query_arg, query_length_arg, charset()));
   }
@@ -4042,7 +4044,7 @@ public:
   }
   void reset_query()               /* Mutex protected */
   { set_query(CSET_STRING()); }
-  void set_query_and_id(char *query_arg, uint32 query_length_arg,
+  void set_query_and_id(char *query_arg, size_t query_length_arg,
                         CHARSET_INFO *cs, query_id_t new_query_id);
   void set_query_id(query_id_t new_query_id)
   {
@@ -4229,11 +4231,11 @@ public:
   TABLE *find_temporary_table(const TABLE_LIST *tl);
 
   TMP_TABLE_SHARE *find_tmp_table_share_w_base_key(const char *key,
-                                                   uint key_length);
+                                                   size_t key_length);
   TMP_TABLE_SHARE *find_tmp_table_share(const char *db,
                                         const char *table_name);
   TMP_TABLE_SHARE *find_tmp_table_share(const TABLE_LIST *tl);
-  TMP_TABLE_SHARE *find_tmp_table_share(const char *key, uint key_length);
+  TMP_TABLE_SHARE *find_tmp_table_share(const char *key, size_t key_length);
 
   bool open_temporary_table(TABLE_LIST *tl);
   bool open_temporary_tables(TABLE_LIST *tl);
@@ -4261,12 +4263,12 @@ private:
   };
 
   bool has_temporary_tables();
-  uint create_tmp_table_def_key(char *key, const char *db,
-                                const char *table_name);
+  size_t create_tmp_table_def_key(char *key, const char *db,
+                                  const char *table_name);
   TMP_TABLE_SHARE *create_temporary_table(handlerton *hton, LEX_CUSTRING *frm,
                                           const char *path, const char *db,
                                           const char *table_name);
-  TABLE *find_temporary_table(const char *key, uint key_length,
+  TABLE *find_temporary_table(const char *key, size_t key_length,
                               Temporary_table_state state);
   TABLE *open_temporary_table(TMP_TABLE_SHARE *share, const char *alias,
                               bool open_in_engine);
