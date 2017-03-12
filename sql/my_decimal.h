@@ -1,5 +1,5 @@
 /* Copyright (c) 2005, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2011, 2014, SkySQL Ab.
+   Copyright (c) 2011, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -365,11 +365,11 @@ int str2my_decimal(uint mask, const char *str, my_decimal *d, char **end)
 }
 
 
-int str2my_decimal(uint mask, const char *from, uint length,
+int str2my_decimal(uint mask, const char *from, size_t length,
                    CHARSET_INFO *charset, my_decimal *decimal_value,
                    const char **end);
 
-inline int str2my_decimal(uint mask, const char *from, uint length,
+inline int str2my_decimal(uint mask, const char *from, size_t length,
                           CHARSET_INFO *charset, my_decimal *decimal_value)
 {
   const char *end;

@@ -1,5 +1,5 @@
 /*
-   Copyright (c) 2013 Monty Program Ab
+   Copyright (c) 2013, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License
@@ -95,9 +95,15 @@ public:
   ha_rows records_in_range(uint inx, key_range *min_key,
                                    key_range *max_key);
 
-  double scan_time() { return (double)nvalues(); }
-  double read_time(uint index, uint ranges, ha_rows rows) { return (double)rows; }
-  double keyread_time(uint index, uint ranges, ha_rows rows) { return (double)rows; }
+  double scan_time() { return static_cast<double>(nvalues()); }
+  double read_time(uint, uint, ha_rows rows)
+  {
+    return static_cast<double>(rows);
+  }
+  double keyread_time(uint, uint, ha_rows rows)
+  {
+    return static_cast<double>(rows);
+  }
 
 private:
   void set(uchar *buf);

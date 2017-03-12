@@ -419,7 +419,7 @@ class String;
    a backward-compatible behaviour.
 */
 
-#define LOG_EVENT_BINLOG_IN_USE_F       0x1
+#define LOG_EVENT_BINLOG_IN_USE_F       0x1U
 
 /**
   @def LOG_EVENT_THREAD_SPECIFIC_F
@@ -429,7 +429,7 @@ class String;
   SET @@PSEUDO_THREAD_ID=xx; before the query (it would not hurt to print it
   for every query but this would be slow).
 */
-#define LOG_EVENT_THREAD_SPECIFIC_F 0x4
+#define LOG_EVENT_THREAD_SPECIFIC_F 0x4U
 
 /**
   @def LOG_EVENT_SUPPRESS_USE_F
@@ -444,7 +444,7 @@ class String;
   replication logic together with the flags --binlog-do-db and
   --replicated-do-db.
  */
-#define LOG_EVENT_SUPPRESS_USE_F    0x8
+#define LOG_EVENT_SUPPRESS_USE_F    0x8U
 
 /*
   Note: this is a place holder for the flag
@@ -461,7 +461,7 @@ class String;
    These events should not update the master log position when slave
    SQL thread executes them.
 */
-#define LOG_EVENT_ARTIFICIAL_F 0x20
+#define LOG_EVENT_ARTIFICIAL_F 0x20U
 
 /**
    @def LOG_EVENT_RELAY_LOG_F
@@ -469,7 +469,7 @@ class String;
    Events with this flag set are created by slave IO thread and written
    to relay log
 */
-#define LOG_EVENT_RELAY_LOG_F 0x40
+#define LOG_EVENT_RELAY_LOG_F 0x40U
 
 /**
    @def LOG_EVENT_IGNORABLE_F
@@ -480,7 +480,7 @@ class String;
    is ignored. Otherwise, 's' acknowledges that it has
    found an unknown event in the relay log.
 */
-#define LOG_EVENT_IGNORABLE_F 0x80
+#define LOG_EVENT_IGNORABLE_F 0x80U
 
 /**
    @def LOG_EVENT_SKIP_REPLICATION_F
@@ -492,7 +492,7 @@ class String;
    This is a MariaDB flag; we allocate it from the end of the available
    values to reduce risk of conflict with new MySQL flags.
 */
-#define LOG_EVENT_SKIP_REPLICATION_F 0x8000
+#define LOG_EVENT_SKIP_REPLICATION_F 0x8000U
 
 
 /**
@@ -4395,7 +4395,7 @@ public:
   virtual ~Rows_log_event();
 
   void set_flags(flag_set flags_arg) { m_flags |= flags_arg; }
-  void clear_flags(flag_set flags_arg) { m_flags &= ~flags_arg; }
+  void clear_flags(flag_set flags_arg) { m_flags &= (flag_set) ~flags_arg; }
   flag_set get_flags(flag_set flags_arg) const { return m_flags & flags_arg; }
   void update_flags() { int2store(temp_buf + m_flags_pos, m_flags); }
 

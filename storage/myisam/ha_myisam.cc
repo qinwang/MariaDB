@@ -306,8 +306,8 @@ int table2myisam(TABLE *table_arg, MI_KEYDEF **keydef_out,
       {
         keydef[i].seg[j].bit_length= ((Field_bit *) field)->bit_len;
         keydef[i].seg[j].bit_start= ((Field_bit *) field)->bit_ofs;
-        keydef[i].seg[j].bit_pos= (uint) (((Field_bit *) field)->bit_ptr -
-                                          (uchar*) table_arg->record[0]);
+        keydef[i].seg[j].bit_pos= (uint16) (((Field_bit *) field)->bit_ptr -
+                                            (uchar*) table_arg->record[0]);
       }
     }
     keyseg+= pos->user_defined_key_parts;
@@ -384,8 +384,8 @@ int table2myisam(TABLE *table_arg, MI_KEYDEF **keydef_out,
     if (found->null_ptr)
     {
       recinfo_pos->null_bit= found->null_bit;
-      recinfo_pos->null_pos= (uint) (found->null_ptr -
-                                     (uchar*) table_arg->record[0]);
+      recinfo_pos->null_pos= (uint16) (found->null_ptr -
+                                       (uchar*) table_arg->record[0]);
     }
     else
     {

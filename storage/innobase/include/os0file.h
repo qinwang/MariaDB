@@ -316,7 +316,7 @@ public:
 	/** Clear the punch hole flag */
 	void clear_punch_hole()
 	{
-		m_type &= ~PUNCH_HOLE;
+		m_type &= uint16_t(~PUNCH_HOLE);
 	}
 
 	/** @return true if partial read warning disabled */
@@ -365,7 +365,7 @@ public:
 	/** Clear the do not wake flag */
 	void clear_do_not_wake()
 	{
-		m_type &= ~DO_NOT_WAKE;
+		m_type &= uint16_t(~DO_NOT_WAKE);
 	}
 
 	/** Set the pointer to file node for IO

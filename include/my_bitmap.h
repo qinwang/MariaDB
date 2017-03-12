@@ -1,5 +1,5 @@
 /* Copyright (c) 2001, 2011, Oracle and/or its affiliates.
-   Copyright (c) 2009-2011, Monty Program Ab
+   Copyright (c) 2009, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -88,13 +88,13 @@ extern void bitmap_lock_clear_bit(MY_BITMAP *map, uint bitmap_bit);
 #define no_words_in_map(map) (((map)->n_bits + 31)/32)
 #define bytes_word_aligned(bytes) (4*((bytes + 3)/4))
 #define _bitmap_set_bit(MAP, BIT) (((uchar*)(MAP)->bitmap)[(BIT) / 8] \
-                                  |= (1 << ((BIT) & 7)))
+                                   |= (uchar) (1 << ((BIT) & 7)))
 #define _bitmap_flip_bit(MAP, BIT) (((uchar*)(MAP)->bitmap)[(BIT) / 8] \
-                                  ^= (1 << ((BIT) & 7)))
+                                    ^= (uchar) (1 << ((BIT) & 7)))
 #define _bitmap_clear_bit(MAP, BIT) (((uchar*)(MAP)->bitmap)[(BIT) / 8] \
-                                  &= ~ (1 << ((BIT) & 7)))
+                                     &= (uchar) ~(1 << ((BIT) & 7)))
 #define _bitmap_is_set(MAP, BIT) (uint) (((uchar*)(MAP)->bitmap)[(BIT) / 8] \
-                                         & (1 << ((BIT) & 7)))
+                                         & (uchar) (1 << ((BIT) & 7)))
 /*
   WARNING!
 
