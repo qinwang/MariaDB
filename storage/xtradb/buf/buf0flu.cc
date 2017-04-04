@@ -992,7 +992,13 @@ buf_flush_write_block_low(
 	if (sync) {
 		ut_ad(flush_type == BUF_FLUSH_SINGLE_PAGE);
 		fil_flush(buf_page_get_space(bpage));
+
+#ifdef UNIV_DEBUG
+		dberr_t err =
+#endif
 		buf_page_io_complete(bpage);
+
+		ut_ad(err == DB_SUCCESS);
 	}
 
 	/* Increment the counter of I/O operations used

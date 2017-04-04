@@ -582,9 +582,11 @@ void defrag_analysis(unsigned long long id, const per_index_stats& index)
       }
     }
   }
-  if (index.leaf_pages)
-    printf("count = %lu free = %lu\n", index.count, index.free_pages);
-    printf("%llu\t\t%llu\t\t%lu\t\t%lu\t\t%lu\t\t%.2f\t%lu\n",
+  if (!n_leaf_pages) {
+	  n_leaf_pages=1;
+  }
+  printf("count = %lu free = %lu\n", index.count, index.free_pages);
+  printf("%llu\t\t%llu\t\t%lu\t\t%lu\t\t%lu\t\t%.2f\t%lu\n",
            id, index.leaf_pages, n_leaf_pages, n_merge, n_pages,
            1.0 - (double)n_pages / (double)n_leaf_pages, index.max_data_size);
 }
