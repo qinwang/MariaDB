@@ -1,4 +1,5 @@
 connection node_1;
+CALL mtr.add_suppression("WSREP: Refusing exit for the last slave thread.");
 CREATE TABLE t1 (f1 INT PRIMARY KEY) Engine=InnoDB;
 CREATE TABLE t2 (f1 INT AUTO_INCREMENT PRIMARY KEY) Engine=InnoDB;
 connection node_2;
