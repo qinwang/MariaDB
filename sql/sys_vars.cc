@@ -459,8 +459,12 @@ static bool binlog_format_check(sys_var *self, THD *thd, set_var *var)
 
     if (var->type == OPT_GLOBAL)
     {
-      WSREP_ERROR("MariaDB Galera and flashback do not support binlog format: %s",
-                  binlog_format_names[var->save_result.ulonglong_value]);
+      if (WSREP(thd))
+        WSREP_ERROR("MariaDB Galera does not support binlog format: %s",
+                      binlog_format_names[var->save_result.ulonglong_value]);
+      else
+        my_error(ER_FLASHBACK_NOT_SUPPORTED,MYF(0),"binlog_format",
+                      binlog_format_names[var->save_result.ulonglong_value]);
       return true;
     }
   }
