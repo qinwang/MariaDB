@@ -2091,12 +2091,14 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
                        m_name.str));
   }
   save_enable_slow_log= thd->enable_slow_log;
-  if (!(m_flags & LOG_SLOW_STATEMENTS) && save_enable_slow_log)
+  if (!(m_flags & LOG_SLOW_STATEMENTS) && save_enable_slow_log &&
+      !opt_sp_slow_log)
   {
     DBUG_PRINT("info", ("Disabling slow log for the execution"));
     thd->enable_slow_log= FALSE;
   }
-  if (!(m_flags & LOG_GENERAL_LOG) && !(thd->variables.option_bits & OPTION_LOG_OFF))
+  if (!(m_flags & LOG_GENERAL_LOG) &&
+      !(thd->variables.option_bits & OPTION_LOG_OFF) && !opt_sp_log)
   {
     DBUG_PRINT("info", ("Disabling general log for the execution"));
     save_log_general= true;

@@ -4184,7 +4184,6 @@ int ha_partition::write_row(uchar * buf)
   sql_mode_t saved_sql_mode= thd->variables.sql_mode;
   bool saved_auto_inc_field_not_null= table->auto_increment_field_not_null;
   DBUG_ENTER("ha_partition::write_row");
-  DBUG_ASSERT(buf == m_rec0);
 
   /*
     If we have an auto_increment column and we are writing a changed row
@@ -7189,6 +7188,13 @@ void ha_partition::return_top_record(uchar *buf)
   memcpy(buf, rec_buffer, m_rec_length);
   m_last_part= part_id;
   m_top_entry= part_id;
+  m_file[part_id]->return_record_by_parent();
+}
+
+
+void ha_partition::return_record_by_parent()
+{
+  m_file[m_last_part]->return_record_by_parent();
 }
 
 

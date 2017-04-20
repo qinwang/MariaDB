@@ -395,6 +395,7 @@ my_bool opt_log, debug_assert_if_crashed_table= 0, opt_help= 0;
 my_bool debug_assert_on_not_freed_memory= 0;
 my_bool disable_log_notes;
 static my_bool opt_abort;
+uint opt_log_result_errors;
 ulonglong log_output_options;
 my_bool opt_userstat_running;
 my_bool opt_log_queries_not_using_indexes= 0;
@@ -480,6 +481,8 @@ ulong opt_replicate_events_marked_for_skip;
 volatile bool mqh_used = 0;
 my_bool opt_noacl;
 my_bool sp_automatic_privileges= 1;
+my_bool opt_sp_log= 0;
+my_bool opt_sp_slow_log= 0;
 
 ulong opt_binlog_rows_event_max_size;
 my_bool opt_master_verify_checksum= 0;

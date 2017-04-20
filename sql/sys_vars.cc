@@ -369,6 +369,20 @@ static Sys_var_mybool Sys_automatic_sp_privileges(
        GLOBAL_VAR(sp_automatic_privileges),
        CMD_LINE(OPT_ARG), DEFAULT(TRUE));
 
+static Sys_var_mybool Sys_sp_general_log(
+       "sp_general_log",
+       "Log queries in procedure if general_log is on",
+       GLOBAL_VAR(opt_sp_log), CMD_LINE(OPT_ARG),
+       DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
+       ON_UPDATE(0));
+
+static Sys_var_mybool Sys_sp_slow_query_log(
+       "sp_slow_query_log",
+       "Log slow queries in procedure if slow_query_log is on",
+       GLOBAL_VAR(opt_sp_slow_log), CMD_LINE(OPT_ARG),
+       DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
+       ON_UPDATE(0));
+
 static Sys_var_ulong Sys_back_log(
        "back_log", "The number of outstanding connection requests "
        "MariaDB can have. This comes into play when the main MySQL thread "
@@ -4264,6 +4278,11 @@ static bool fix_log_state(sys_var *self, THD *thd, enum_var_type type)
   mysql_mutex_lock(&LOCK_global_system_variables);
   return res;
 }
+
+static Sys_var_uint Sys_log_result_errors(
+       "log_result_errors", "log result errors into error log file",
+       GLOBAL_VAR(opt_log_result_errors), CMD_LINE(REQUIRED_ARG),
+       VALID_RANGE(0, 4), DEFAULT(0), BLOCK_SIZE(1));
 
 static bool check_not_empty_set(sys_var *self, THD *thd, set_var *var)
 {

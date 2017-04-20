@@ -2179,6 +2179,18 @@ lookup:
   else
     status_var_add(thd->status_var.rows_sent, thd->get_sent_row_count());
 
+  if (opt_log_result_errors >= 4)
+  {
+    time_t cur_time = (time_t)time((time_t*)0);
+    struct tm lt;
+    struct tm *l_time = localtime_r(&cur_time, &lt);
+    fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [INFO RESULT] to %ld:  "
+            "qcache:  found_rows: %llu  status: %u\n",
+            l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+            l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
+            thd->thread_id, thd->limit_found_rows, thd->server_status);
+  }
+
   /*
     End the statement transaction potentially started by an
     engine callback. We ignore the return value for now,

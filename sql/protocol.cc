@@ -228,6 +228,46 @@ net_send_ok(THD *thd,
     DBUG_RETURN(FALSE);
   }
 
+  if (opt_log_result_errors >= 2 && statement_warn_count > 0)
+  {
+    time_t cur_time = (time_t)time((time_t*)0);
+    struct tm lt;
+    struct tm *l_time = localtime_r(&cur_time, &lt);
+    fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN RESULT] to %ld:  "
+            "affected_rows: %llu  id: %llu  status: %u  warning_count: %u\n",
+            l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+            l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
+            thd->thread_id, affected_rows, id, server_status,
+            statement_warn_count);
+    if (opt_log_result_errors >= 3)
+    {
+      const Sql_condition *warn;
+      Diagnostics_area::Sql_condition_iterator it(thd->get_stmt_da()->
+                                                       sql_conditions());
+      while ((warn = it++))
+      {
+        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN RESULT] to %ld:  "
+                "Level: %s  Code: %u  Message: %s\n",
+                l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+                l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
+                thd->thread_id, warning_level_names[warn->get_level()].str,
+                warn->get_sql_errno(), warn->get_message_text());
+      }
+    }
+  }
+  else if (opt_log_result_errors >= 4)
+  {
+    time_t cur_time = (time_t)time((time_t*)0);
+    struct tm lt;
+    struct tm *l_time = localtime_r(&cur_time, &lt);
+    fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [INFO RESULT] to %ld:  "
+            "affected_rows: %llu  id: %llu  status: %u  warning_count: %u\n",
+            l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+            l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
+            thd->thread_id, affected_rows, id, server_status,
+            statement_warn_count);
+  }
+
   /*
     OK send instead of EOF still require 0xFE header, but OK packet content.
   */
@@ -354,6 +394,47 @@ net_send_eof(THD *thd, uint server_status, uint statement_warn_count)
     thd->get_stmt_da()->set_overwrite_status(false);
     DBUG_PRINT("info", ("EOF sent, so no more error sending allowed"));
   }
+
+  if (opt_log_result_errors >= 2 && statement_warn_count > 0)
+  {
+    time_t cur_time = (time_t)time((time_t*)0);
+    struct tm lt;
+    struct tm *l_time = localtime_r(&cur_time, &lt);
+    fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN RESULT] to %ld:  "
+            "found_rows: %llu  status: %u  warning_count: %u\n",
+            l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+            l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
+            thd->thread_id, thd->limit_found_rows, server_status,
+            statement_warn_count);
+    if (opt_log_result_errors >= 3)
+    {
+      const Sql_condition *warn;
+      Diagnostics_area::Sql_condition_iterator it(thd->get_stmt_da()->
+                                                       sql_conditions());
+      while ((warn = it++))
+      {
+        fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [WARN RESULT] to %ld:  "
+                "Level: %s  Code: %u  Message: %s\n",
+                l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+                l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
+                thd->thread_id, warning_level_names[warn->get_level()].str,
+                warn->get_sql_errno(), warn->get_message_text());
+      }
+    }
+  }
+  else if (opt_log_result_errors >= 4)
+  {
+    time_t cur_time = (time_t)time((time_t*)0);
+    struct tm lt;
+    struct tm *l_time = localtime_r(&cur_time, &lt);
+    fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [INFO RESULT] to %ld:  "
+            "found_rows: %llu  status: %u  warning_count: %u\n",
+            l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+            l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
+            thd->thread_id, thd->limit_found_rows, server_status,
+            statement_warn_count);
+  }
+
   DBUG_RETURN(error);
 }
 
@@ -438,6 +519,18 @@ bool net_send_error_packet(THD *thd, uint sql_errno, const char *err,
       fprintf(stderr,"ERROR: %d  %s\n",sql_errno,err);
     }
     DBUG_RETURN(FALSE);
+  }
+
+  if (opt_log_result_errors >= 1)
+  {
+    time_t cur_time = (time_t)time((time_t*)0);
+    struct tm lt;
+    struct tm *l_time = localtime_r(&cur_time, &lt);
+    fprintf(stderr, "%04d%02d%02d %02d:%02d:%02d [ERROR RESULT] to %ld: "
+            "%d %s\n",
+            l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+            l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
+            thd->thread_id, sql_errno, err);
   }
 
   int2store(buff,sql_errno);

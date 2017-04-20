@@ -325,6 +325,7 @@ public:
      m_part_info= part_info;
      m_is_sub_partitioned= part_info->is_sub_partitioned();
   }
+  virtual void return_record_by_parent();
   /*
     -------------------------------------------------------------------------
     MODULE create/delete handler object
