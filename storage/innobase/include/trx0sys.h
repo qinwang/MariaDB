@@ -33,6 +33,7 @@ Created 3/26/1996 Heikki Tuuri
 #include "fil0fil.h"
 #include "trx0types.h"
 #include "mem0mem.h"
+#include "mem0mem.h"
 #include "mtr0mtr.h"
 #include "ut0byte.h"
 #include "mem0mem.h"

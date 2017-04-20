@@ -338,6 +338,26 @@ fts_ast_create_node_phrase_list(
 /*============================*/
 	void*		arg);			/*!< in: ast state */
 
+/******************************************************************//**
+Create an AST term node, makes a copy of ptr for plugin parser
+@return node */
+extern
+fts_ast_node_t*
+fts_ast_create_node_term_for_parser(
+/*==========i=====================*/
+	void*		arg,			/*!< in: ast state */
+	const char*	ptr,			/*!< in: term string */
+	const ulint	len);			/*!< in: term string length */
+
+/******************************************************************//**
+Create an AST phrase list node for plugin parser
+@return node */
+extern
+fts_ast_node_t*
+fts_ast_create_node_phrase_list(
+/*============================*/
+	void*		arg);			/*!< in: ast state */
+
 #ifdef UNIV_DEBUG
 const char*
 fts_ast_node_type_get(fts_ast_type_t	type);

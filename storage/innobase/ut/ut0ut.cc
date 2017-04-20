@@ -749,6 +749,8 @@ ut_strerr(
 	case DB_FORCED_ABORT:
 		return("Transaction aborted by another higher priority "
 		       "transaction");
+	case DB_WRONG_FILE_NAME:
+		return("Invalid Filename");
 	case DB_COMPUTE_VALUE_FAILED:
 		return("Compute generated column failed");
 	case DB_NO_FK_ON_S_BASE_COL:

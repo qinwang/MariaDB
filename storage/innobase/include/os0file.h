@@ -101,6 +101,16 @@ typedef int	os_file_t;
 
 #endif /* _WIN32 */
 
+/** Common file descriptor for file IO instrumentation with PFS
+on windows and other platforms */
+struct pfs_os_file_t
+{
+	os_file_t   m_file;
+#ifdef UNIV_PFS_IO
+	struct PSI_file *m_psi;
+#endif
+};
+
 static const os_file_t OS_FILE_CLOSED = os_file_t(~0);
 
 /** The next value should be smaller or equal to the smallest sector size used

@@ -290,7 +290,7 @@ void
 ut_list_insert(
 	List&				list,
 	typename List::elem_type*	elem1,
-        typename List::elem_type*	elem2,
+	typename List::elem_type*	elem2,
 	Functor				get_node)
 {
 	ut_ad(elem1 != elem2);
@@ -316,8 +316,8 @@ ut_list_insert(
 	}
 
 	++list.count;
-
 }
+
 /*******************************************************************//**
 Removes a node from a two-way linked list.
 @param list the base node (not a pointer to it)

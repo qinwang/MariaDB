@@ -84,6 +84,11 @@ dict_table_assign_new_id(
 	dict_table_t*	table,
 	trx_t*		trx);
 
+void
+dict_table_assign_new_id(
+	dict_table_t*	table,
+	trx_t*		trx);
+
 /***********************************************************//**
 Creates an index. This is a high-level function used in SQL execution
 graphs.

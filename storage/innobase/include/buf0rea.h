@@ -44,8 +44,7 @@ buf_read_page(
 	const page_size_t&	page_size,
 	buf_page_t**		bpage);
 
-/********************************************************************//**
-High-level function which reads a page asynchronously from a file to the
+/** High-level function which reads a page asynchronously from a file to the
 buffer buf_pool if it is not already there. Sets the io_fix flag and sets
 an exclusive lock on the buffer frame. The flag is cleared and the x-lock
 released by the i/o-handler thread.

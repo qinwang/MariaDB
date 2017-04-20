@@ -184,7 +184,6 @@ ib_wqueue_nowait(
 
 	if(!ib_list_is_empty(wq->items)) {
 		node = ib_list_get_first(wq->items);
-
 		if (node) {
 			ib_list_remove(wq->items, node);
 

@@ -1,7 +1,7 @@
 /*****************************************************************************
 
-Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2016, MariaDB Corporation.
+Copyright (c) 1996, 2017, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2016, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -25,6 +25,7 @@ Created 4/18/1996 Heikki Tuuri
 *******************************************************/
 
 #include "ha_prototypes.h"
+
 
 #include "dict0boot.h"
 #include "dict0crea.h"
@@ -488,8 +489,12 @@ dict_boot(void)
 	err = ibuf_init_at_db_start();
 
 	if (err == DB_SUCCESS) {
-		if (srv_read_only_mode && !ibuf_is_empty()) {
+		if (srv_force_recovery != SRV_FORCE_NO_LOG_REDO
+		    && srv_read_only_mode && !ibuf_is_empty()) {
 
+			/** If innodb_force_recovery is set to 4 then allow
+			the innodb to start the server even though ibuf is not
+			empty. Note that MySQL 5.7 uses 6 here !*/
 			if (srv_force_recovery < SRV_FORCE_NO_IBUF_MERGE) {
 				ib::error() << "Change buffer must be empty when"
 					" --innodb-read-only is set!"

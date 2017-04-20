@@ -94,7 +94,7 @@ struct fts_psort_t {
 	ulint			state;		/*!< parent thread state */
 	fts_doc_list_t		fts_doc_list;	/*!< doc list to process */
 	fts_psort_common_t*	psort_common;	/*!< ptr to all psort info */
-	os_thread_t		thread_hdl;	/*!< thread handler */
+	os_thread_id_t		thread_hdl;	/*!< thread handle */
 	dberr_t			error;		/*!< db error during psort */
 	ulint			memory_used;	/*!< memory used by fts_doc_list */
 	ib_mutex_t		mutex;		/*!< mutex for fts_doc_list */
@@ -204,9 +204,8 @@ row_fts_psort_info_init(
 					store Doc ID during sort */
 	fts_psort_t**		psort,	/*!< out: parallel sort info to be
 					instantiated */
-	fts_psort_t**		merge)	/*!< out: parallel merge info
+	fts_psort_t**		merge);	/*!< out: parallel merge info
 					to be instantiated */
-	MY_ATTRIBUTE((nonnull));
 /********************************************************************//**
 Clean up and deallocate FTS parallel sort structures, and close
 temparary merge sort files */
@@ -256,7 +255,6 @@ row_fts_merge_insert(
 	dict_index_t*	index,		/*!< in: index */
 	dict_table_t*	table,		/*!< in: new table */
 	fts_psort_t*	psort_info,	/*!< parallel sort info */
-	ulint		id)		/* !< in: which auxiliary table's data
+	ulint		id);		/* !< in: which auxiliary table's data
 					to insert to */
-	MY_ATTRIBUTE((nonnull));
 #endif /* row0ftsort_h */

@@ -155,4 +155,8 @@ DECLARE_THREAD(dict_stats_thread)(
 void
 dict_stats_shutdown();
 
+/** Shutdown the dict stats thread. */
+void
+dict_stats_shutdown();
+
 #endif /* dict0stats_bg_h */

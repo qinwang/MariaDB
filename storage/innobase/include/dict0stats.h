@@ -252,6 +252,20 @@ dict_stats_save_index_stat(
 	const char*	stat_description,
 	trx_t*		trx);
 
+/*********************************************************************//**
+Renames an index in InnoDB persistent stats storage.
+This function creates its own transaction and commits it.
+@return DB_SUCCESS or error code. DB_STATS_DO_NOT_EXIST will be returned
+if the persistent stats do not exist. */
+dberr_t
+dict_stats_rename_index(
+/*====================*/
+	const dict_table_t*	table,		/*!< in: table whose index
+						is renamed */
+	const char*		old_index_name,	/*!< in: old index name */
+	const char*		new_index_name)	/*!< in: new index name */
+	MY_ATTRIBUTE((warn_unused_result));
+
 #include "dict0stats.ic"
 
 #ifdef UNIV_ENABLE_UNIT_TEST_DICT_STATS

@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
@@ -27,8 +27,6 @@ Created 9/8/1995 Heikki Tuuri
 
 #ifndef os0thread_h
 #define os0thread_h
-
-#include "univ.i"
 
 /* Maximum number of threads which can be created in the program;
 this is also the size of the wait slot array for MySQL threads which
@@ -106,8 +104,7 @@ Creates a new thread of execution. The execution starts from
 the function given.
 NOTE: We count the number of threads in os_thread_exit(). A created
 thread should always use that to exit so thatthe thread count will be
-decremented.
-We do not return an error code because if there is one, we crash here. */
+decremented */
 os_thread_t
 os_thread_create_func(
 /*==================*/
@@ -118,9 +115,19 @@ os_thread_create_func(
 	os_thread_id_t*		thread_id);	/*!< out: id of the created
 						thread, or NULL */
 
-/** Exits the current thread. */
+/** Waits until the specified thread completes and joins it.
+Its return value is ignored.
+@param[in,out]	thread	thread to join */
 void
-os_thread_exit()
+os_thread_join(
+	os_thread_id_t	thread);
+
+/** Exits the current thread.
+@param[in]	detach	if true, the thread will be detached right before
+exiting. If false, another thread is responsible for joining this thread */
+void
+os_thread_exit(
+	bool	detach = true)
 	UNIV_COLD MY_ATTRIBUTE((noreturn));
 
 /*****************************************************************//**
@@ -140,6 +147,25 @@ void
 os_thread_sleep(
 /*============*/
 	ulint	tm);	/*!< in: time in microseconds */
+
+/**
+Initializes OS thread management data structures. */
+void
+os_thread_init();
+/*============*/
+
+/**
+Frees OS thread management data structures. */
+void
+os_thread_free();
+/*============*/
+
+/*****************************************************************//**
+Check if there are threads active.
+@return true if the thread count > 0. */
+bool
+os_thread_active();
+/*==============*/
 
 /**
 Initializes OS thread management data structures. */

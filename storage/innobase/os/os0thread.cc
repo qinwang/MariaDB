@@ -108,7 +108,7 @@ os_thread_create_func(
 	os_thread_id_t*		thread_id)	/*!< out: id of the created
 						thread, or NULL */
 {
-	os_thread_id_t	new_thread_id;
+	os_thread_id_t	new_thread_id=0;
 
 #ifdef _WIN32
 	HANDLE		handle;
@@ -158,12 +158,36 @@ os_thread_create_func(
 	if (thread_id != NULL) {
 		*thread_id = new_thread_id;
 	}
+
 	return((os_thread_t)new_thread_id);
 }
 
-/** Exits the current thread. */
+/** Waits until the specified thread completes and joins it.
+Its return value is ignored.
+@param[in,out]	thread	thread to join */
 void
-os_thread_exit()
+os_thread_join(
+	os_thread_id_t	thread)
+{
+#ifdef _WIN32
+	/* Do nothing. */
+#else
+#ifdef UNIV_DEBUG
+	const int	ret =
+#endif /* UNIV_DEBUG */
+	pthread_join(thread, NULL);
+
+	/* Waiting on already-quit threads is allowed. */
+	ut_ad(ret == 0 || ret == ESRCH);
+#endif /* _WIN32 */
+}
+
+/** Exits the current thread.
+@param[in]	detach	if true, the thread will be detached right before
+exiting. If false, another thread is responsible for joining this thread */
+void
+os_thread_exit(
+	bool	detach)
 {
 #ifdef UNIV_DEBUG_THREAD_CREATION
 	ib::info() << "Thread exits, id "
@@ -179,12 +203,19 @@ os_thread_exit()
 	os_thread_count--;
 
 #ifdef _WIN32
+	DWORD win_thread_id = GetCurrentThreadId();
+	HANDLE handle = win_thread_map[win_thread_id];
+	CloseHandle(handle);
+	size_t ret = win_thread_map.erase(win_thread_id);
+	ut_a(ret == 1);
 	mutex_exit(&thread_mutex);
 
 	ExitThread(0);
 #else
 	mutex_exit(&thread_mutex);
-	pthread_detach(pthread_self());
+	if (detach) {
+		pthread_detach(pthread_self());
+	}
 	pthread_exit(NULL);
 #endif
 }

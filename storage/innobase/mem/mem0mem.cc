@@ -26,6 +26,7 @@ Created 6/9/1994 Heikki Tuuri
 
 #include "ha_prototypes.h"
 
+
 #include "mem0mem.h"
 #include "buf0buf.h"
 #include "srv0srv.h"
@@ -420,7 +421,6 @@ mem_heap_block_free(
 	buf_block_t*	buf_block;
 
 	buf_block = static_cast<buf_block_t*>(block->buf_block);
-
 	mem_block_validate(block);
 
 	UT_LIST_REMOVE(heap->base, block);

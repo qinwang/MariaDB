@@ -30,6 +30,7 @@ Created 10/25/1995 Heikki Tuuri
 #include "fil0crypt.h"
 
 #include "btr0btr.h"
+#include "btr0sea.h"
 #include "buf0buf.h"
 #include "dict0boot.h"
 #include "dict0dict.h"
@@ -1944,6 +1945,20 @@ fil_space_get_flags(
 	return(flags);
 }
 
+/** Check if table is mark for truncate.
+@param[in]	id	space id
+@return true if tablespace is marked for truncate. */
+bool
+fil_space_is_being_truncated(
+	ulint id)
+{
+	bool	mark_for_truncate;
+	mutex_enter(&fil_system->mutex);
+	mark_for_truncate = fil_space_get_by_id(id)->is_being_truncated;
+	mutex_exit(&fil_system->mutex);
+	return(mark_for_truncate);
+}
+
 /** Open each fil_node_t of a named fil_space_t if not already open.
 @param[in]	name	Tablespace name
 @return true if all nodes are open  */
@@ -3266,20 +3281,34 @@ fil_prepare_for_truncate(
 	return(err);
 }
 
-/**********************************************************************//**
-Reinitialize the original tablespace header with the same space id
-for single tablespace */
+/** Reinitialize the original tablespace header with the same space id
+for single tablespace
+@param[in]      id              space id of the tablespace
+@param[in]      size            size in blocks
+@param[in]      trx             Transaction covering truncate */
 void
 fil_reinit_space_header(
-/*====================*/
-	ulint		id,	/*!< in: space id */
-	ulint		size)	/*!< in: size in blocks */
+	ulint		id,
+	ulint		size,
+	trx_t*		trx)
 {
 	ut_a(!is_system_tablespace(id));
 
 	/* Invalidate in the buffer pool all pages belonging
-	to the tablespace */
+	to the tablespace. The buffer pool scan may take long
+	time to complete, therefore we release dict_sys->mutex
+	and the dict operation lock during the scan and aquire
+	it again after the buffer pool scan.*/
+
+	row_mysql_unlock_data_dictionary(trx);
+
+	/* Lock the search latch in shared mode to prevent user
+	from disabling AHI during the scan */
+	btr_search_s_lock_all();
+	DEBUG_SYNC_C("simulate_buffer_pool_scan");
 	buf_LRU_flush_or_remove_pages(id, BUF_REMOVE_ALL_NO_WRITE, 0);
+	btr_search_s_unlock_all();
+	row_mysql_lock_data_dictionary(trx);
 
 	/* Remove all insert buffer entries for the tablespace */
 	ibuf_delete_for_discarded_space(id);
@@ -3950,6 +3979,8 @@ fil_ibd_create(
 
 	space = fil_space_create(name, space_id, flags, FIL_TYPE_TABLESPACE,
 				 crypt_data, true, mode);
+
+	DEBUG_SYNC_C("fil_ibd_created_space");
 
 	fil_node_t* node = NULL;
 
@@ -6478,6 +6509,12 @@ fil_names_clear(
 	bool	do_write)
 {
 	mtr_t	mtr;
+	ulint	mtr_checkpoint_size = LOG_CHECKPOINT_FREE_PER_THREAD;
+
+	DBUG_EXECUTE_IF(
+		"increase_mtr_checkpoint_size",
+		mtr_checkpoint_size = 75 * 1024;
+		);
 
 	ut_ad(log_mutex_own());
 
@@ -6511,11 +6548,24 @@ fil_names_clear(
 		fil_names_write(space, &mtr);
 		do_write = true;
 
+		const mtr_buf_t* mtr_log = mtr_get_log(&mtr);
+
+		/** If the mtr buffer size exceeds the size of
+		LOG_CHECKPOINT_FREE_PER_THREAD then commit the multi record
+		mini-transaction, start the new mini-transaction to
+		avoid the parsing buffer overflow error during recovery. */
+
+		if (mtr_log->size() > mtr_checkpoint_size) {
+			ut_ad(mtr_log->size() < (RECV_PARSING_BUF_SIZE / 2));
+			mtr.commit_checkpoint(lsn, false);
+			mtr.start();
+		}
+
 		space = next;
 	}
 
 	if (do_write) {
-		mtr.commit_checkpoint(lsn);
+		mtr.commit_checkpoint(lsn, true);
 	} else {
 		ut_ad(!mtr.has_modifications());
 	}

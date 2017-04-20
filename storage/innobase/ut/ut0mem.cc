@@ -26,8 +26,7 @@ Created 5/11/1994 Heikki Tuuri
 #include "ut0mem.h"
 #include "os0thread.h"
 #include "srv0srv.h"
-#include <stdlib.h>
-
+# include <stdlib.h>
 /**********************************************************************//**
 Copies up to size - 1 characters from the NUL-terminated string src to
 dst, NUL-terminating the result. Returns strlen(src), so truncation

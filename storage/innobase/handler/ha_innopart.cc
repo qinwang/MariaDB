@@ -828,6 +828,17 @@ ha_innopart::alter_table_flags(
 	return(HA_PARTITION_FUNCTION_SUPPORTED | HA_FAST_CHANGE_PARTITION);
 }
 
+/** Internally called for initializing auto increment value.
+Only called from ha_innobase::discard_or_import_table_space()
+and should not do anything, since it is ha_innopart will initialize
+it on first usage. */
+int
+ha_innopart::innobase_initialize_autoinc()
+{
+	ut_ad(0);
+	return(0);
+}
+
 /** Set the autoinc column max value.
 This should only be called once from ha_innobase::open().
 Therefore there's no need for a covering lock.
@@ -1521,6 +1532,22 @@ ha_innopart::update_partition(
 	}
 	m_last_part = part_id;
 	DBUG_VOID_RETURN;
+}
+
+/** Save currently highest auto increment value.
+@param[in]	nr	Auto increment value to save. */
+void
+ha_innopart::save_auto_increment(
+	ulonglong	nr)
+{
+
+	/* Store it in the shared dictionary of the partition.
+	TODO: When the new DD is done, store it in the table and make it
+	persistent! */
+
+	dict_table_autoinc_lock(m_prebuilt->table);
+	dict_table_autoinc_update_if_greater(m_prebuilt->table, nr + 1);
+	dict_table_autoinc_unlock(m_prebuilt->table);
 }
 
 /** Was the last returned row semi consistent read.
@@ -2607,13 +2634,17 @@ ha_innopart::create(
 	int		error;
 	/** {database}/{tablename} */
 	char		table_name[FN_REFLEN];
+	/** absolute path of temp frm */
+	char		temp_path[FN_REFLEN];
 	/** absolute path of table */
 	char		remote_path[FN_REFLEN];
 	char		partition_name[FN_REFLEN];
+	char		tablespace_name[NAME_LEN + 1];
 	char*		table_name_end;
 	size_t		table_name_len;
 	char*		partition_name_start;
 	char		table_data_file_name[FN_REFLEN];
+	char		table_level_tablespace_name[NAME_LEN + 1];
 	const char*	index_file_name;
 	size_t		len;
 
@@ -2646,6 +2677,7 @@ ha_innopart::create(
 	if (error != 0) {
 		DBUG_RETURN(error);
 	}
+	ut_ad(temp_path[0] == '\0');
 	strcpy(partition_name, table_name);
 	partition_name_start = partition_name + strlen(partition_name);
 	table_name_len = strlen(table_name);
@@ -3070,7 +3102,7 @@ ha_innopart::records_in_range(
 	/* In case MySQL calls this in the middle of a SELECT query, release
 	possible adaptive hash latch to avoid deadlocks of threads. */
 
-	trx_assert_no_search_latch(m_prebuilt->trx);
+	trx_search_latch_release_if_reserved(m_prebuilt->trx);
 
 	active_index = keynr;
 
@@ -3209,7 +3241,7 @@ ha_innopart::estimate_rows_upper_bound()
 	/* In case MySQL calls this in the middle of a SELECT query, release
 	possible adaptive hash latch to avoid deadlocks of threads. */
 
-	trx_assert_no_search_latch(m_prebuilt->trx);
+	trx_search_latch_release_if_reserved(m_prebuilt->trx);
 
 	for (uint i = m_part_info->get_first_used_partition();
 	     i < m_tot_parts;
@@ -3327,7 +3359,7 @@ ha_innopart::info_low(
 
 	m_prebuilt->trx->op_info = (char*)"returning various info to MySQL";
 
-	trx_assert_no_search_latch(m_prebuilt->trx);
+	trx_search_latch_release_if_reserved(m_prebuilt->trx);
 
 	ut_ad(m_part_share->get_table_part(0)->n_ref_count > 0);
 

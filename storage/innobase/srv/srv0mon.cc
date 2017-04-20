@@ -29,6 +29,7 @@ Created 12/9/2009 Jimmy Yang
 #include "dict0mem.h"
 #include "ibuf0ibuf.h"
 #include "lock0lock.h"
+#include "lock0lock.h"
 #include "mach0data.h"
 #include "os0file.h"
 #include "srv0mon.h"

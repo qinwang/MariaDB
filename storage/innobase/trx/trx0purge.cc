@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1996, 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2017, MariaDB Corporation. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
@@ -254,7 +254,7 @@ trx_purge_add_update_undo_to_history(
 	trx_undo_t*	undo		= trx->rsegs.m_redo.update_undo;
 	trx_rseg_t*	rseg		= undo->rseg;
 	trx_rsegf_t*	rseg_header	= trx_rsegf_get(
-		rseg->space, rseg->page_no, mtr);
+		rseg->space, rseg->page_no, undo->rseg->page_size, mtr);
 	trx_ulogf_t*	undo_header	= undo_page + undo->hdr_offset;
 
 	if (undo->state != TRX_UNDO_CACHED) {
@@ -349,7 +349,8 @@ trx_purge_free_segment(trx_rseg_t* rseg, fil_addr_t hdr_addr)
 
 		mutex_enter(&rseg->mutex);
 
-		rseg_hdr = trx_rsegf_get(rseg->space, rseg->page_no, &mtr);
+		rseg_hdr = trx_rsegf_get(
+			rseg->space, rseg->page_no, rseg->page_size, &mtr);
 
 		undo_page = trx_undo_page_get(
 			page_id_t(rseg->space, hdr_addr.page), &mtr);
@@ -439,7 +440,8 @@ trx_purge_truncate_rseg_history(trx_rseg_t* rseg, const purge_iter_t* limit)
 	ut_ad(rseg->is_persistent());
 	mutex_enter(&(rseg->mutex));
 
-	rseg_hdr = trx_rsegf_get(rseg->space, rseg->page_no, &mtr);
+	rseg_hdr = trx_rsegf_get(
+		rseg->space, rseg->page_no, rseg->page_size, &mtr);
 
 	hdr_addr = trx_purge_get_log_from_hist(
 		flst_get_last(rseg_hdr + TRX_RSEG_HISTORY, &mtr));
@@ -506,7 +508,8 @@ loop:
 	mtr_start(&mtr);
 	mutex_enter(&(rseg->mutex));
 
-	rseg_hdr = trx_rsegf_get(rseg->space, rseg->page_no, &mtr);
+	rseg_hdr = trx_rsegf_get(
+		rseg->space, rseg->page_no, rseg->page_size, &mtr);
 
 	hdr_addr = prev_hdr_addr;
 

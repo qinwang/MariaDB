@@ -149,8 +149,7 @@ void
 row_merge_dup_report(
 /*=================*/
 	row_merge_dup_t*	dup,	/*!< in/out: for reporting duplicates */
-	const dfield_t*		entry)	/*!< in: duplicate index entry */
-	MY_ATTRIBUTE((nonnull));
+	const dfield_t*		entry);	/*!< in: duplicate index entry */
 
 /*********************************************************************//**
 Sets an exclusive lock on a table, for the duration of creating indexes.
@@ -161,7 +160,7 @@ row_merge_lock_table(
 	trx_t*		trx,		/*!< in/out: transaction */
 	dict_table_t*	table,		/*!< in: table to lock */
 	enum lock_mode	mode)		/*!< in: LOCK_X or LOCK_S */
-	MY_ATTRIBUTE((nonnull(1,2), warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /*********************************************************************//**
 Drop indexes that were created before an error occurred.
@@ -171,8 +170,7 @@ void
 row_merge_drop_indexes_dict(
 /*========================*/
 	trx_t*		trx,	/*!< in/out: dictionary transaction */
-	table_id_t	table_id)/*!< in: table identifier */
-	MY_ATTRIBUTE((nonnull));
+	table_id_t	table_id);/*!< in: table identifier */
 
 /*********************************************************************//**
 Drop those indexes which were created before an error occurred.
@@ -183,9 +181,8 @@ row_merge_drop_indexes(
 /*===================*/
 	trx_t*		trx,	/*!< in/out: transaction */
 	dict_table_t*	table,	/*!< in/out: table containing the indexes */
-	ibool		locked)	/*!< in: TRUE=table locked,
+	ibool		locked);	/*!< in: TRUE=table locked,
 				FALSE=may need to do a lazy drop */
-	MY_ATTRIBUTE((nonnull));
 
 /*********************************************************************//**
 Drop all partially created indexes during crash recovery. */
@@ -219,7 +216,7 @@ row_make_new_pathname(
 /*==================*/
 	dict_table_t*	table,		/*!< in: table to be renamed */
 	const char*	new_name)	/*!< in: new name */
-	MY_ATTRIBUTE((nonnull, warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /*********************************************************************//**
 Rename the tables in the data dictionary.  The data dictionary must
@@ -235,7 +232,7 @@ row_merge_rename_tables_dict(
 					old_table->name */
 	const char*	tmp_name,	/*!< in: new name for old_table */
 	trx_t*		trx)		/*!< in/out: dictionary transaction */
-	MY_ATTRIBUTE((nonnull, warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /*********************************************************************//**
 Rename an index in the dictionary that was created. The data
@@ -247,8 +244,7 @@ row_merge_rename_index_to_add(
 /*==========================*/
 	trx_t*		trx,		/*!< in/out: transaction */
 	table_id_t	table_id,	/*!< in: table identifier */
-	index_id_t	index_id)	/*!< in: index identifier */
-	MY_ATTRIBUTE((nonnull(1), warn_unused_result));
+	index_id_t	index_id);	/*!< in: index identifier */
 
 /*********************************************************************//**
 Rename an index in the dictionary that is to be dropped. The data
@@ -260,9 +256,7 @@ row_merge_rename_index_to_drop(
 /*===========================*/
 	trx_t*		trx,		/*!< in/out: transaction */
 	table_id_t	table_id,	/*!< in: table identifier */
-	index_id_t	index_id)	/*!< in: index identifier */
-	MY_ATTRIBUTE((nonnull(1), warn_unused_result));
-
+	index_id_t	index_id);	/*!< in: index identifier */
 /** Create the index and load in to the dictionary.
 @param[in,out]	trx		trx (sets error_state)
 @param[in,out]	table		the index is on this table
@@ -289,7 +283,7 @@ row_merge_is_index_usable(
 /*======================*/
 	const trx_t*		trx,	/*!< in: transaction */
 	const dict_index_t*	index)	/*!< in: index to check */
-	MY_ATTRIBUTE((nonnull, warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /*********************************************************************//**
 Drop a table. The caller must have ensured that the background stats
@@ -302,7 +296,7 @@ row_merge_drop_table(
 /*=================*/
 	trx_t*		trx,		/*!< in: transaction */
 	dict_table_t*	table)		/*!< in: table instance to drop */
-	MY_ATTRIBUTE((nonnull, warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Build indexes on a table by reading a clustered index, creating a temporary
 file containing index entries, merge sorting these index entries and inserting
@@ -350,7 +344,7 @@ row_merge_build_indexes(
 	ut_stage_alter_t*	stage,
 	const dict_add_v_col_t*	add_v,
 	struct TABLE*		eval_table)
-	MY_ATTRIBUTE((warn_unused_result));
+MY_ATTRIBUTE((warn_unused_result));
 
 /********************************************************************//**
 Write a buffer to a block. */
@@ -359,8 +353,8 @@ row_merge_buf_write(
 /*================*/
 	const row_merge_buf_t*	buf,	/*!< in: sorted buffer */
 	const merge_file_t*	of,	/*!< in: output file */
-	row_merge_block_t*	block)	/*!< out: buffer for writing to file */
-	MY_ATTRIBUTE((nonnull));
+	row_merge_block_t*	block);	/*!< out: buffer for writing to file */
+
 
 /********************************************************************//**
 Sort a buffer. */
@@ -368,9 +362,8 @@ void
 row_merge_buf_sort(
 /*===============*/
 	row_merge_buf_t*	buf,	/*!< in/out: sort buffer */
-	row_merge_dup_t*	dup)	/*!< in/out: reporter of duplicates
+	row_merge_dup_t*	dup);	/*!< in/out: reporter of duplicates
 					(NULL if non-unique index) */
-	MY_ATTRIBUTE((nonnull(1)));
 
 /********************************************************************//**
 Write a merge block to the file system.
@@ -394,7 +387,7 @@ row_merge_buf_t*
 row_merge_buf_empty(
 /*================*/
 	row_merge_buf_t*	buf)	/*!< in,own: sort buffer */
-	MY_ATTRIBUTE((warn_unused_result, nonnull));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Create a merge file in the given location.
 @param[out]	merge_file	merge file structure
@@ -404,7 +397,7 @@ int
 row_merge_file_create(
 	merge_file_t*	merge_file,
 	const char*	path)
-	MY_ATTRIBUTE((warn_unused_result, nonnull));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Merge disk files.
 @param[in]	trx	transaction
@@ -424,7 +417,6 @@ and then stage->inc() will be called for each record processed.
 @return DB_SUCCESS or error code */
 dberr_t
 row_merge_sort(
-/*===========*/
 	trx_t*			trx,
 	const row_merge_dup_t*	dup,
 	merge_file_t*		file,
@@ -446,23 +438,21 @@ row_merge_buf_t*
 row_merge_buf_create(
 /*=================*/
 	dict_index_t*	index)	/*!< in: secondary index */
-	MY_ATTRIBUTE((warn_unused_result, nonnull, malloc));
+	MY_ATTRIBUTE((warn_unused_result, malloc));
 
 /*********************************************************************//**
 Deallocate a sort buffer. */
 void
 row_merge_buf_free(
 /*===============*/
-	row_merge_buf_t*	buf)	/*!< in,own: sort buffer to be freed */
-	MY_ATTRIBUTE((nonnull));
+	row_merge_buf_t*	buf);	/*!< in,own: sort buffer to be freed */
 
 /*********************************************************************//**
 Destroy a merge file. */
 void
 row_merge_file_destroy(
 /*===================*/
-	merge_file_t*	merge_file)	/*!< in/out: merge file structure */
-	MY_ATTRIBUTE((nonnull));
+	merge_file_t*	merge_file);	/*!< in/out: merge file structure */
 
 /********************************************************************//**
 Read a merge block from the file system.

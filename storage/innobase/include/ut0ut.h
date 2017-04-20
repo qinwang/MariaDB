@@ -609,6 +609,5 @@ private:
 } // namespace ib
 
 #include "ut0ut.ic"
-
 #endif
 

@@ -55,6 +55,8 @@ extern ulong innodb_lock_schedule_algorithm;
 // Forward declaration
 class ReadView;
 
+extern my_bool	innobase_deadlock_detect;
+
 /*********************************************************************//**
 Gets the size of a lock struct.
 @return size in bytes */
@@ -325,6 +327,55 @@ lock_rec_enqueue_waiting(
 	que_thr_t*		thr,	/*!< in: query thread */
 	lock_prdt_t*		prdt);	/*!< in: Minimum Bounding Box */
 
+/*************************************************************//**
+Removes a record lock request, waiting or granted, from the queue and
+grants locks to other transactions in the queue if they now are entitled
+to a lock. NOTE: all record locks contained in in_lock are removed. */
+void
+lock_rec_dequeue_from_page(
+/*=======================*/
+        lock_t*         in_lock);        /*!< in: record lock object: all
+                                        record locks which are contained in
+                                        this lock object are removed;
+                                        transactions waiting behind will
+                                        get their lock requests granted,
+                                        if they are now qualified to it */
+
+/*************************************************************//**
+Moves the locks of a record to another record and resets the lock bits of
+the donating record. */
+UNIV_INLINE
+void
+lock_rec_move(
+/*==========*/
+        const buf_block_t*      receiver,       /*!< in: buffer block containing
+                                                the receiving record */
+        const buf_block_t*      donator,        /*!< in: buffer block containing
+                                                the donating record */
+        ulint                   receiver_heap_no,/*!< in: heap_no of the record
+                                                which gets the locks; there
+                                                must be no lock requests
+                                                on it! */
+        ulint                   donator_heap_no);/*!< in: heap_no of the record
+                                                which gives the locks */
+
+/*************************************************************//**
+Moves the locks of a record to another record and resets the lock bits of
+the donating record. */
+void
+lock_rec_move_low(
+/*==============*/
+	hash_table_t*		lock_hash,	/*!< in: hash  table to use */
+        const buf_block_t*      receiver,       /*!< in: buffer block containing
+                                                the receiving record */
+        const buf_block_t*      donator,        /*!< in: buffer block containing
+                                                the donating record */
+        ulint                   receiver_heap_no,/*!< in: heap_no of the record
+                                                which gets the locks; there
+                                                must be no lock requests
+                                                on it! */
+        ulint                   donator_heap_no);/*!< in: heap_no of the record
+                                                which gives the locks */
 /*********************************************************************//**
 Checks if locks of other transactions prevent an immediate modify (update,
 delete mark, or delete unmark) of a clustered index record. If they do,

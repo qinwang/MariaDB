@@ -276,7 +276,7 @@ ibuf_page_low(
 	const char*		file,
 	unsigned		line,
 	mtr_t*			mtr)
-	MY_ATTRIBUTE((warn_unused_result));
+MY_ATTRIBUTE((warn_unused_result));
 
 #ifdef UNIV_DEBUG
 

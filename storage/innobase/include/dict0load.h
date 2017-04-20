@@ -111,6 +111,13 @@ dict_get_and_save_data_dir_path(
 	bool		dict_mutex_own);
 
 /** Loads a table definition and also all its index definitions, and also
+@param[in]	dict_mutex_own)	true if dict_sys->mutex is owned already */
+void
+dict_get_and_save_space_name(
+	dict_table_t*	table,
+	bool		dict_mutex_own);
+
+/** Loads a table definition and also all its index definitions, and also
 the cluster definition if the table is a member in a cluster. Also loads
 all foreign key constraints where the foreign key is in the table or where
 a foreign key references columns in this table.

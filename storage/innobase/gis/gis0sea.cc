@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
@@ -38,15 +38,7 @@ Created 2014/01/16 Jimmy Yang
 #include "trx0trx.h"
 #include "srv0mon.h"
 #include "gis0geo.h"
-
-/** Restore the stored position of a persistent cursor bufferfixing the page */
-static
-bool
-rtr_cur_restore_position(
-	ulint		latch_mode,	/*!< in: BTR_SEARCH_LEAF, ... */
-	btr_cur_t*	cursor,		/*!< in: detached persistent cursor */
-	ulint		level,		/*!< in: index level */
-	mtr_t*		mtr);		/*!< in: mtr */
+#include "sync0sync.h"
 
 /*************************************************************//**
 Pop out used parent path entry, until we find the parent with matching
@@ -687,18 +679,47 @@ rtr_page_get_father(
 	mem_heap_free(heap);
 }
 
-/** Returns the upper level node pointer to a R-Tree page. It is assumed
-that mtr holds an SX-latch or X-latch on the tree.
-@return	rec_get_offsets() of the node pointer record */
-static
+/************************************************************//**
+Returns the father block to a page. It is assumed that mtr holds
+an X or SX latch on the tree.
+@return rec_get_offsets() of the node pointer record */
 ulint*
-rtr_page_get_father_node_ptr(
+rtr_page_get_father_block(
+/*======================*/
+	ulint*		offsets,/*!< in: work area for the return value */
+	mem_heap_t*	heap,	/*!< in: memory heap to use */
+	dict_index_t*	index,	/*!< in: b-tree index */
+	buf_block_t*	block,	/*!< in: child page in the index */
+	mtr_t*		mtr,	/*!< in: mtr */
+	btr_cur_t*	sea_cur,/*!< in: search cursor, contains information
+				about parent nodes in search */
+	btr_cur_t*	cursor)	/*!< out: cursor on node pointer record,
+				its page x-latched */
+{
+
+	rec_t*  rec = page_rec_get_next(
+		page_get_infimum_rec(buf_block_get_frame(block)));
+	btr_cur_position(index, rec, block, cursor);
+
+	return(rtr_page_get_father_node_ptr(offsets, heap, sea_cur,
+					    cursor, mtr));
+}
+
+/************************************************************//**
+Returns the upper level node pointer to a R-Tree page. It is assumed
+that mtr holds an x-latch on the tree.
+@return	rec_get_offsets() of the node pointer record */
+ulint*
+rtr_page_get_father_node_ptr_func(
+/*==============================*/
 	ulint*		offsets,/*!< in: work area for the return value */
 	mem_heap_t*	heap,	/*!< in: memory heap to use */
 	btr_cur_t*	sea_cur,/*!< in: search cursor */
 	btr_cur_t*	cursor,	/*!< in: cursor pointing to user record,
 				out: cursor on node pointer record,
 				its page x-latched */
+	const char*	file,	/*!< in: file name */
+	ulint		line,	/*!< in: line where called */
 	mtr_t*		mtr)	/*!< in: mtr */
 {
 	dtuple_t*	tuple;
@@ -778,31 +799,6 @@ rtr_page_get_father_node_ptr(
 	}
 
 	return(offsets);
-}
-
-/************************************************************//**
-Returns the father block to a page. It is assumed that mtr holds
-an X or SX latch on the tree.
-@return rec_get_offsets() of the node pointer record */
-ulint*
-rtr_page_get_father_block(
-/*======================*/
-	ulint*		offsets,/*!< in: work area for the return value */
-	mem_heap_t*	heap,	/*!< in: memory heap to use */
-	dict_index_t*	index,	/*!< in: b-tree index */
-	buf_block_t*	block,	/*!< in: child page in the index */
-	mtr_t*		mtr,	/*!< in: mtr */
-	btr_cur_t*	sea_cur,/*!< in: search cursor, contains information
-				about parent nodes in search */
-	btr_cur_t*	cursor)	/*!< out: cursor on node pointer record,
-				its page x-latched */
-{
-	rec_t*  rec = page_rec_get_next(
-		page_get_infimum_rec(buf_block_get_frame(block)));
-	btr_cur_position(index, rec, block, cursor);
-
-	return(rtr_page_get_father_node_ptr(offsets, heap, sea_cur,
-					    cursor, mtr));
 }
 
 /********************************************************************//**
@@ -1258,13 +1254,16 @@ rtr_check_discard_page(
 	lock_mutex_exit();
 }
 
-/** Restore the stored position of a persistent cursor bufferfixing the page */
-static
+/**************************************************************//**
+Restores the stored position of a persistent cursor bufferfixing the page */
 bool
-rtr_cur_restore_position(
-	ulint		latch_mode,	/*!< in: BTR_SEARCH_LEAF, ... */
+rtr_cur_restore_position_func(
+/*==========================*/
+	ulint		latch_mode,	/*!< in: BTR_CONT_MODIFY_TREE, ... */
 	btr_cur_t*	btr_cur,	/*!< in: detached persistent cursor */
 	ulint		level,		/*!< in: index level */
+	const char*	file,		/*!< in: file name */
+	ulint		line,		/*!< in: line where called */
 	mtr_t*		mtr)		/*!< in: mtr */
 {
 	dict_index_t*	index;
@@ -1293,9 +1292,8 @@ rtr_cur_restore_position(
 
 	if (!buf_pool_is_obsolete(r_cursor->withdraw_clock)
 	    && buf_page_optimistic_get(RW_X_LATCH,
-				       r_cursor->block_when_stored,
-				       r_cursor->modify_clock,
-				       __FILE__, __LINE__, mtr)) {
+				    r_cursor->block_when_stored,
+				    r_cursor->modify_clock, file, line, mtr)) {
 		ut_ad(r_cursor->pos_state == BTR_PCUR_IS_POSITIONED);
 
 		ut_ad(r_cursor->rel_pos == BTR_PCUR_ON);
@@ -1566,6 +1564,7 @@ rtr_copy_buf(
 	matches->block.curr_n_fields = block->curr_n_fields;
 	matches->block.curr_left_side = block->curr_left_side;
 	matches->block.index = block->index;
+
 #endif /* BTR_CUR_HASH_ADAPT */
 	ut_d(matches->block.debug_latch = block->debug_latch);
 

@@ -26,6 +26,7 @@ Created 2/6/1997 Heikki Tuuri
 
 #include "ha_prototypes.h"
 
+
 #include "row0vers.h"
 #include "dict0dict.h"
 #include "dict0boot.h"
@@ -498,6 +499,7 @@ row_vers_build_clust_v_col(
 		mem_heap_free(local_heap);
 	}
 }
+
 /** Build latest virtual column data from undo log
 @param[in]	in_purge	whether this is the purge thread
 @param[in]	rec		clustered index record
@@ -835,6 +837,7 @@ row_vers_build_cur_vrow(
 	*clust_offsets = rec_get_offsets(rec, clust_index, NULL,
 					 ULINT_UNDEFINED, &heap);
 	return(cur_vrow);
+	return(cur_vrow);
 }
 
 /*****************************************************************//**
@@ -911,7 +914,7 @@ row_vers_old_has_index_entry(
 #ifdef DBUG_OFF
 # define dbug_v_purge false
 #else /* DBUG_OFF */
-                        bool    dbug_v_purge = false;
+			bool    dbug_v_purge = false;
 #endif /* DBUG_OFF */
 
 			DBUG_EXECUTE_IF(

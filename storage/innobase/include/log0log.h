@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1995, 2016, Oracle and/or its affiliates. All rights reserved.
+Copyright (c) 1995, 2017, Oracle and/or its affiliates. All rights reserved.
 Copyright (c) 2009, Google Inc.
 Copyright (c) 2017, MariaDB Corporation. All Rights Reserved.
 
@@ -40,11 +40,19 @@ Created 12/9/1995 Heikki Tuuri
 #include "log0types.h"
 #include "os0event.h"
 
+
+
 /** Redo log group */
 struct log_group_t;
 
 /** Magic value to use instead of log checksums when they are disabled */
 #define LOG_NO_CHECKSUM_MAGIC 0xDEADBEEFUL
+
+/* Margin for the free space in the smallest log group, before a new query
+step which modifies the database, is started */
+
+#define LOG_CHECKPOINT_FREE_PER_THREAD	(4 * UNIV_PAGE_SIZE)
+#define LOG_CHECKPOINT_EXTRA_FREE	(8 * UNIV_PAGE_SIZE)
 
 typedef ulint (*log_checksum_func_t)(const byte* log_block);
 
@@ -55,6 +63,7 @@ extern log_checksum_func_t log_checksum_algorithm_ptr;
 /** Append a string to the log.
 @param[in]	str		string
 @param[in]	len		string length
+@param[out]	start_lsn	start LSN of the log record
 @param[out]	start_lsn	start LSN of the log record
 @return end lsn of the log record, zero if did not succeed */
 UNIV_INLINE
@@ -370,6 +379,7 @@ log_block_init(
 /*===========*/
 	byte*	log_block,	/*!< in: pointer to the log buffer */
 	lsn_t	lsn);		/*!< in: lsn within the log block */
+
 /************************************************************//**
 Converts a lsn to a log block number.
 @return log block number, it is > 0 and <= 1G */
@@ -481,7 +491,6 @@ extern my_bool	innodb_log_checksums;
 /** start LSN of the MLOG_CHECKPOINT mini-transaction corresponding
 to this checkpoint, or 0 if the information has not been written */
 #define LOG_CHECKPOINT_END_LSN		OS_FILE_LOG_BLOCK_SIZE - 16
-
 /* @} */
 
 /** Offsets of a log file header */
@@ -593,7 +602,6 @@ struct log_t{
 	lsn_t		lsn;		/*!< log sequence number */
 	ulint		buf_free;	/*!< first free offset within the log
 					buffer in use */
-
 	char		pad2[CACHE_LINE_SIZE];/*!< Padding */
 	LogSysMutex	mutex;		/*!< mutex protecting the log */
 	char		pad3[CACHE_LINE_SIZE]; /*!< Padding */
@@ -621,6 +629,7 @@ struct log_t{
 					half of the aligned(buf_ptr), false
 					if the second half */
 	ulint		buf_size;	/*!< log buffer size of each in bytes */
+
 	ulint		max_buf_free;	/*!< recommended maximum value of
 					buf_free for the buffer in use, after
 					which the buffer is flushed */

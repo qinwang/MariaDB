@@ -93,6 +93,7 @@ sync_array_print_long_waits(
 	os_thread_id_t*	waiter,	/*!< out: longest waiting thread */
 	const void**	sema);	/*!< out: longest-waited-for semaphore */
 
+
 /**********************************************************************//**
 Prints info of the wait array. */
 void

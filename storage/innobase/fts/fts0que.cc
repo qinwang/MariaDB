@@ -38,6 +38,7 @@ Completed 2011/7/10 Sunny and Jimmy Yang
 #include "ut0new.h"
 
 #include <iomanip>
+#include <iomanip>
 #include <vector>
 
 #define FTS_ELEM(t, n, i, j) (t[(i) * n + (j)])
@@ -3941,6 +3942,12 @@ fts_query_can_optimize(
 @param[in]	query_len	FTS query string len in bytes
 @param[in,out]	result		result doc ids
 @param[in]	limit		limit value
+@param[in]	index		fts index to search
+@param[in]	flags		FTS search mode
+@param[in]	query_str	FTS query
+@param[in]	query_len	FTS query string len in bytes
+@param[in,out]	result		result doc ids
+@param[in]	limit		limit value
 @return DB_SUCCESS if successful otherwise error code */
 dberr_t
 fts_query(
@@ -4002,6 +4009,11 @@ fts_query(
 	query.word_freqs = rbt_create_arg_cmp(
 		sizeof(fts_word_freq_t), innobase_fts_text_cmp,
                 (void*) charset);
+
+	if (flags & FTS_EXPAND) {
+		query.wildcard_words = rbt_create_arg_cmp(
+			sizeof(fts_string_t), innobase_fts_text_cmp, (void *)charset);
+	}
 
 	if (flags & FTS_EXPAND) {
 		query.wildcard_words = rbt_create_arg_cmp(

@@ -294,21 +294,15 @@ next_page:
 			continue;
 		}
 
-		mutex_enter(&((buf_block_t*) bpage)->mutex);
-
-		{
-			bool	skip = bpage->buf_fix_count > 0
+		bool	skip = bpage->buf_fix_count > 0
 				|| !((buf_block_t*) bpage)->index;
 
-			mutex_exit(&((buf_block_t*) bpage)->mutex);
-
-			if (skip) {
-				/* Skip this block, because there are
-				no adaptive hash index entries
-				pointing to it, or because we cannot
-				drop them due to the buffer-fix. */
-				goto next_page;
-			}
+		if (skip) {
+			/* Skip this block, because there are
+			no adaptive hash index entries
+			pointing to it, or because we cannot
+			drop them due to the buffer-fix. */
+			goto next_page;
 		}
 
 		/* Store the page number so that we can drop the hash
@@ -1649,7 +1643,7 @@ buf_unzip_LRU_add_block(
 }
 
 /******************************************************************//**
-Adds a block to the LRU list. Please make sure that the page_size is
+Adds a block to the LRU list end. Please make sure that the zip_size is
 already set when invoking the function, so that we can get correct
 page_size from the buffer page when adding a block into LRU */
 UNIV_INLINE
@@ -2210,6 +2204,7 @@ buf_LRU_block_remove_hashed(
 	}
 
 	hashed_bpage = buf_page_hash_get_low(buf_pool, bpage->id);
+
 	if (bpage != hashed_bpage) {
 		ib::error() << "Page " << bpage->id
 			<< " not found in the hash table";

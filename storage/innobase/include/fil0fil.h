@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2013, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
@@ -657,6 +657,13 @@ fil_space_get_flags(
 /*================*/
 	ulint	id);	/*!< in: space id */
 
+/** Check if table is mark for truncate.
+@param[in]	id	space id
+@return true if tablespace is marked for truncate. */
+bool
+fil_space_is_being_truncated(
+	ulint id);
+
 /** Open each fil_node_t of a named fil_space_t if not already open.
 @param[in]	name	Tablespace name
 @return true if all file nodes are opened. */
@@ -923,14 +930,18 @@ dberr_t
 fil_prepare_for_truncate(
 /*=====================*/
 	ulint	id);			/*!< in: space id */
-/**********************************************************************//**
-Reinitialize the original tablespace header with the same space id
-for single tablespace */
-void
+
+/** Reinitialize the original tablespace header with the same space id
+for single tablespace
+@param[in]	id		space id of the tablespace
+@param[in]	size            size in blocks
+@param[in]	trx		Transaction covering truncate */
+ void
 fil_reinit_space_header(
-/*====================*/
-	ulint		id,	/*!< in: space id */
-	ulint		size);	/*!< in: size in blocks */
+	ulint		id,
+	ulint		size,
+	trx_t*		trx);
+
 /*******************************************************************//**
 Closes a single-table tablespace. The tablespace must be cached in the
 memory cache. Free all pages used by the tablespace.

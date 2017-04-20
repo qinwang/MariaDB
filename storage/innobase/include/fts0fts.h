@@ -104,8 +104,8 @@ those defined in mysql file ft_global.h */
 should not exceed FTS_DOC_ID_MAX_STEP */
 #define FTS_DOC_ID_MAX_STEP		65535
 
-/** Maximum possible Fulltext word length in bytes (assuming mbmaxlen=4) */
-#define FTS_MAX_WORD_LEN		(HA_FT_MAXCHARLEN * 4)
+/** Maximum possible Fulltext word length */
+#define FTS_MAX_WORD_LEN		HA_FT_MAXBYTELEN
 
 /** Maximum possible Fulltext word length (in characters) */
 #define FTS_MAX_WORD_LEN_IN_CHAR	HA_FT_MAXCHARLEN
@@ -121,12 +121,12 @@ should not exceed FTS_DOC_ID_MAX_STEP */
 #define FTS_CONFIG_TABLE_KEY_COL_LEN	50
 #define FTS_CONFIG_TABLE_VALUE_COL_LEN	200
 
+#define FTS_INDEX_WORD_LEN		FTS_MAX_WORD_LEN
 #define FTS_INDEX_FIRST_DOC_ID_LEN	8
 #define FTS_INDEX_LAST_DOC_ID_LEN	8
 #define FTS_INDEX_DOC_COUNT_LEN		4
 /* BLOB COLUMN, 0 means VARIABLE SIZE */
 #define FTS_INDEX_ILIST_LEN		0
-
 
 /** Variable specifying the FTS parallel sort degree */
 extern ulong		fts_sort_pll_degree;
@@ -409,6 +409,7 @@ extern bool		fts_need_sync;
 /** Variable specifying the table that has Fulltext index to display its
 content through information schema table */
 extern char*		fts_internal_tbl_name;
+extern char*		fts_internal_tbl_name2;
 
 #define	fts_que_graph_free(graph)			\
 do {							\
@@ -803,6 +804,25 @@ void
 fts_drop_orphaned_tables(void);
 /*==========================*/
 
+/* Get parent table name if it's a fts aux table
+@param[in]	aux_table_name	aux table name
+@param[in]	aux_table_len	aux table length
+@return parent table name, or NULL */
+char*
+fts_get_parent_table_name(
+	const char*	aux_table_name,
+	ulint		aux_table_len);
+
+/******************************************************************//**
+Since we do a horizontal split on the index table, we need to drop
+all the split tables.
+@return DB_SUCCESS or error code */
+dberr_t
+fts_drop_index_split_tables(
+/*========================*/
+	trx_t*		trx,			/*!< in: transaction */
+	dict_index_t*	index)			/*!< in: fts instance */
+	MY_ATTRIBUTE((warn_unused_result));
 /** Run SYNC on the table, i.e., write out data from the cache to the
 FTS auxiliary INDEX table and clear the cache at the end.
 @param[in,out]	table		fts table

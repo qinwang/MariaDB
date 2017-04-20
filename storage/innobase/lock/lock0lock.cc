@@ -56,6 +56,9 @@ Created 5/7/1996 Heikki Tuuri
 /** Lock scheduling algorithm */
 ulong innodb_lock_schedule_algorithm = INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS;
 
+/* Flag to enable/disable deadlock detector. */
+my_bool	innobase_deadlock_detect = TRUE;
+
 /** Total number of cached record locks */
 static const ulint	REC_LOCK_CACHE = 8;
 
@@ -124,7 +127,7 @@ public:
 	@return id of transaction chosen as victim or 0 */
 	static const trx_t* check_and_resolve(
 		const lock_t*	lock,
-		const trx_t*	trx);
+		trx_t*		trx);
 
 private:
 	/** Do a shallow copy. Default destructor OK.
@@ -2136,25 +2139,8 @@ RecLock::deadlock_check(lock_t* lock)
 	ut_ad(lock->trx == m_trx);
 	ut_ad(trx_mutex_own(m_trx));
 
-	bool	async_rollback = m_trx->in_innodb & TRX_FORCE_ROLLBACK_ASYNC;
-
-	/* This is safe, because DeadlockChecker::check_and_resolve()
-	is invoked when a lock wait is enqueued for the currently
-	running transaction. Because m_trx is a running transaction
-	(it is not currently suspended because of a lock wait),
-	its state can only be changed by this thread, which is
-	currently associated with the transaction. */
-
-	trx_mutex_exit(m_trx);
-
-	/* If transaction is marked for ASYNC rollback then we should
-	not allow it to wait for another lock causing possible deadlock.
-	We return current transaction as deadlock victim here. */
-
-	const trx_t*	victim_trx = async_rollback ? m_trx
-			: DeadlockChecker::check_and_resolve(lock, m_trx);
-
-	trx_mutex_enter(m_trx);
+	const trx_t*	victim_trx =
+			DeadlockChecker::check_and_resolve(lock, m_trx);
 
 	/* Check the outcome of the deadlock test. It is possible that
 	the transaction that blocked our lock was rolled back and we
@@ -3090,7 +3076,6 @@ lock_grant_and_move_on_page(
 Removes a record lock request, waiting or granted, from the queue and
 grants locks to other transactions in the queue if they now are entitled
 to a lock. NOTE: all record locks contained in in_lock are removed. */
-static
 void
 lock_rec_dequeue_from_page(
 /*=======================*/
@@ -3395,7 +3380,6 @@ lock_rec_inherit_to_gap_if_gap_lock(
 /*************************************************************//**
 Moves the locks of a record to another record and resets the lock bits of
 the donating record. */
-static
 void
 lock_rec_move_low(
 /*==============*/
@@ -3477,28 +3461,6 @@ lock_move_granted_locks_to_front(
 			lock = prev;
 		}
 	}
-}
-
-/*************************************************************//**
-Moves the locks of a record to another record and resets the lock bits of
-the donating record. */
-UNIV_INLINE
-void
-lock_rec_move(
-/*==========*/
-	const buf_block_t*	receiver,       /*!< in: buffer block containing
-						the receiving record */
-	const buf_block_t*	donator,        /*!< in: buffer block containing
-						the donating record */
-	ulint			receiver_heap_no,/*!< in: heap_no of the record
-						which gets the locks; there
-						must be no lock requests
-						on it! */
-	ulint			donator_heap_no)/*!< in: heap_no of the record
-                                                which gives the locks */
-{
-	lock_rec_move_low(lock_sys->rec_hash, receiver, donator,
-			  receiver_heap_no, donator_heap_no);
 }
 
 /*************************************************************//**
@@ -4664,25 +4626,8 @@ lock_table_enqueue_waiting(
 	/* Enqueue the lock request that will wait to be granted */
 	lock = lock_table_create(c_lock, table, mode | LOCK_WAIT, trx);
 
-	bool	async_rollback = trx->in_innodb & TRX_FORCE_ROLLBACK_ASYNC;
-	/* Release the mutex to obey the latching order.
-	This is safe, because DeadlockChecker::check_and_resolve()
-	is invoked when a lock wait is enqueued for the currently
-	running transaction. Because trx is a running transaction
-	(it is not currently suspended because of a lock wait),
-	its state can only be changed by this thread, which is
-	currently associated with the transaction. */
-
-	trx_mutex_exit(trx);
-
-	/* If transaction is marked for ASYNC rollback then we should
-	not allow it to wait for another lock causing possible deadlock.
-	We return current transaction as deadlock victim here. */
-
-	const trx_t*	victim_trx = async_rollback ? trx
-			: DeadlockChecker::check_and_resolve(lock, trx);
-
-	trx_mutex_enter(trx);
+	const trx_t*	victim_trx =
+			DeadlockChecker::check_and_resolve(lock, trx);
 
 	if (victim_trx != 0) {
 		ut_ad(victim_trx == trx);
@@ -8452,16 +8397,36 @@ and rolling it back. It will attempt to resolve all deadlocks. The returned
 transaction id will be the joining transaction instance or NULL if some other
 transaction was chosen as a victim and rolled back or no deadlock found.
 
-@param lock lock the transaction is requesting
-@param trx transaction requesting the lock
+@param[in]	lock lock the transaction is requesting
+@param[in,out]	trx transaction requesting the lock
 
 @return transaction instanace chosen as victim or 0 */
 const trx_t*
-DeadlockChecker::check_and_resolve(const lock_t* lock, const trx_t* trx)
+DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
 {
 	ut_ad(lock_mutex_own());
+	ut_ad(trx_mutex_own(trx));
 	check_trx_state(trx);
 	ut_ad(!srv_read_only_mode);
+
+	/* If transaction is marked for ASYNC rollback then we should
+	not allow it to wait for another lock causing possible deadlock.
+	We return current transaction as deadlock victim here. */
+	if (trx->in_innodb & TRX_FORCE_ROLLBACK_ASYNC) {
+		return(trx);
+	} else if (!innobase_deadlock_detect) {
+		return(NULL);
+	}
+
+	/*  Release the mutex to obey the latching order.
+	This is safe, because DeadlockChecker::check_and_resolve()
+	is invoked when a lock wait is enqueued for the currently
+	running transaction. Because m_trx is a running transaction
+	(it is not currently suspended because of a lock wait),
+	its state can only be changed by this thread, which is
+	currently associated with the transaction. */
+
+	trx_mutex_exit(trx);
 
 	const trx_t*	victim_trx;
 	THD*		start_mysql_thd;
@@ -8502,7 +8467,7 @@ DeadlockChecker::check_and_resolve(const lock_t* lock, const trx_t* trx)
 
 			break;
 
-		} else if (victim_trx != 0 && victim_trx != trx) {
+		} else if (victim_trx != NULL && victim_trx != trx) {
 
 			ut_ad(victim_trx == checker.m_wait_lock->trx);
 
@@ -8522,6 +8487,8 @@ DeadlockChecker::check_and_resolve(const lock_t* lock, const trx_t* trx)
 
 		lock_deadlock_found = true;
 	}
+
+	trx_mutex_enter(trx);
 
 	return(victim_trx);
 }

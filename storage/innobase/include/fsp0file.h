@@ -67,7 +67,8 @@ public:
 		m_first_page(),
 		m_last_os_error(),
 		m_file_info(),
-		m_crypt_info()
+	        m_crypt_info(),
+		m_atomic_write()
 	{
 		/* No op */
 	}
@@ -90,7 +91,8 @@ public:
 		m_first_page(),
 		m_last_os_error(),
 		m_file_info(),
-		m_crypt_info()
+		m_crypt_info(),
+		m_atomic_write()
 	{
 		ut_ad(m_name != NULL);
 		/* No op */
@@ -111,7 +113,8 @@ public:
 		m_first_page(),
 		m_last_os_error(),
 		m_file_info(),
-		m_crypt_info()
+		m_crypt_info(),
+		m_atomic_write()
 	{
 		m_name = mem_strdup(file.m_name);
 		ut_ad(m_name != NULL);
@@ -171,6 +174,7 @@ public:
 		m_first_page = NULL;
 		/* Do not copy crypt info it is read from first page */
 		m_crypt_info = NULL;
+		m_atomic_write = file.m_atomic_write;
 
 		return(*this);
 	}
@@ -468,6 +472,8 @@ public:
 
 	/** Encryption information */
 	fil_space_crypt_t* 	m_crypt_info;
+
+	bool m_atomic_write;
 };
 
 

@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1997, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1997, 2017, Oracle and/or its affiliates. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -43,6 +43,7 @@ Created 3/14/1997 Heikki Tuuri
 #include "srv0start.h"
 #include "handler.h"
 #include "ha_innodb.h"
+#include "fil0fil.h"
 
 /*************************************************************************
 IMPORTANT NOTE: Any operation that generates redo MUST check that there
@@ -852,7 +853,22 @@ try_again:
 		/* The table has been dropped: no need to do purge */
 		goto err_exit;
 	}
+
 	ut_ad(!dict_table_is_temporary(node->table));
+
+	if (fil_space_is_being_truncated(node->table->space)) {
+
+#if UNIV_DEBUG
+		ib::info() << "Record with space id "
+			   << node->table->space
+			   << " belongs to table which is being truncated"
+			   << " therefore skipping this undo record.";
+#endif
+		ut_ad(dict_table_is_file_per_table(node->table));
+		dict_table_close(node->table, FALSE, FALSE);
+		node->table = NULL;
+		goto err_exit;
+	}
 
 	if (node->table->n_v_cols && !node->table->vc_templ
 	    && dict_table_has_indexed_v_cols(node->table)) {
@@ -870,6 +886,30 @@ try_again:
 
 		/* Initialize the template for the table */
 		innobase_init_vc_templ(node->table);
+	}
+
+	if (node->table->n_v_cols && !node->table->vc_templ
+	    && dict_table_has_indexed_v_cols(node->table)) {
+		/* Need server fully up for virtual column computation */
+		if (!mysqld_server_started) {
+
+			dict_table_close(node->table, FALSE, FALSE);
+			rw_lock_s_unlock(dict_operation_lock);
+			if (srv_shutdown_state != SRV_SHUTDOWN_NONE) {
+				return(false);
+			}
+			os_thread_sleep(1000000);
+			goto try_again;
+		}
+
+		/* Initialize the template for the table */
+		innobase_init_vc_templ(node->table);
+	}
+
+	/* Disable purging for temp-tables as they are short-lived
+	and no point in re-organzing such short lived tables */
+	if (dict_table_is_temporary(node->table)) {
+		goto close_exit;
 	}
 
 	if (node->table->ibd_file_missing) {

@@ -69,6 +69,7 @@ mem_heap_free_block_free(
 /*=====================*/
 	mem_heap_t*	heap);	/*!< in: heap */
 
+
 /***************************************************************//**
 Adds a new block to a memory heap.
 @param[in]	heap	memory heap

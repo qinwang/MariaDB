@@ -107,7 +107,6 @@ lock_prdt_set_prdt(
 @param[in]	prdt2	second predicate lock
 @param[in]	op	predicate comparison operator
 @return	true if consistent */
-static
 bool
 lock_prdt_consistent(
 	lock_prdt_t*	prdt1,

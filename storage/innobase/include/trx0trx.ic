@@ -37,10 +37,7 @@ bool
 trx_state_eq(
 /*=========*/
 	const trx_t*	trx,	/*!< in: transaction */
-	trx_state_t	state,	/*!< in: state;
-				if state != TRX_STATE_NOT_STARTED
-				asserts that
-				trx->state != TRX_STATE_NOT_STARTED */
+	trx_state_t	state,	/*!< in: state; */
 	bool		relaxed)
 				/*!< in: whether to allow
 				trx->state == TRX_STATE_NOT_STARTED
@@ -211,6 +208,16 @@ ok:
 
 	trx->ddl = true;
 	trx->dict_operation = op;
+}
+
+/**
+Releases the search latch if trx has reserved it.
+@param[in,out] trx		Transaction that may own the AHI latch */
+UNIV_INLINE
+void
+trx_search_latch_release_if_reserved(trx_t* trx)
+{
+	ut_a(!trx->has_search_latch);
 }
 
 /**

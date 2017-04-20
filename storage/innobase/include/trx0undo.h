@@ -211,7 +211,7 @@ trx_undo_get_first_rec(
 @retval	NULL	on failure */
 buf_block_t*
 trx_undo_add_page(trx_t* trx, trx_undo_t* undo, mtr_t* mtr)
-	MY_ATTRIBUTE((nonnull, warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** Free the last undo log page. The caller must hold the rseg mutex.
 @param[in,out]	undo	undo log
@@ -269,7 +269,7 @@ trx_undo_assign_undo(
 	trx_rseg_t*	rseg,
 	trx_undo_t**	undo,
 	ulint		type)
-	MY_ATTRIBUTE((nonnull, warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 /******************************************************************//**
 Sets the state of the undo log segment at a transaction finish.
 @return undo log segment header page, x-latched */
@@ -319,7 +319,7 @@ void
 trx_undo_free_prepared(
 /*===================*/
 	trx_t*	trx)	/*!< in/out: PREPARED transaction */
-	UNIV_COLD MY_ATTRIBUTE((nonnull));
+	UNIV_COLD;
 
 /* Forward declaration. */
 namespace undo {

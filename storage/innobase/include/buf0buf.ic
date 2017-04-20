@@ -872,7 +872,7 @@ buf_frame_copy(
 	return(buf);
 }
 
-/********************************************************************//**
+/*********************************************************************//**
 Gets the youngest modification log sequence number for a frame.
 Returns zero if not file page or no modification occurred yet.
 @return newest modification to page */

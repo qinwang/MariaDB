@@ -38,6 +38,14 @@ Created 12/15/2009	Jimmy Yang
 
 #include <stdint.h>
 
+
+#ifndef __STDC_LIMIT_MACROS
+/* Required for FreeBSD so that INT64_MAX is defined. */
+#define __STDC_LIMIT_MACROS
+#endif /* __STDC_LIMIT_MACROS */
+
+#include <stdint.h>
+
 /** Possible status values for "mon_status" in "struct monitor_value" */
 enum monitor_running_status {
 	MONITOR_STARTED = 1,	/*!< Monitor has been turned on */

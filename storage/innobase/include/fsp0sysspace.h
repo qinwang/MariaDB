@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 2013, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2013, 2017, Oracle and/or its affiliates. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -150,6 +150,15 @@ public:
 	{
 		return(sys_tablespace_auto_extend_increment
 		       * ((1024 * 1024) / UNIV_PAGE_SIZE));
+	}
+
+	/** Roundoff to MegaBytes is similar as done in
+	SysTablespace::parse_units() function.
+	@return the pages when given size of file (bytes). */
+	ulint get_pages_from_size(os_offset_t size)
+	{
+		return (ulint)((size / (1024 * 1024))
+			       * ((1024 * 1024) / UNIV_PAGE_SIZE));
 	}
 
 	/**

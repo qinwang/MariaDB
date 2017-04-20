@@ -821,6 +821,7 @@ ibuf_bitmap_get_map_page_func(
 	}
 
 
+
 	buf_block_dbg_add_level(block, SYNC_IBUF_BITMAP);
 
 	return(buf_block_get_frame(block));
@@ -4884,7 +4885,6 @@ leave_loop:
 	ibuf_mtr_commit(&mtr);
 	btr_pcur_close(&pcur);
 
-	ibuf_add_ops(ibuf->n_discarded_ops, dops);
 
 	mem_heap_free(heap);
 }
@@ -5126,3 +5126,4 @@ ibuf_set_bitmap_for_bulk_load(
 
 	mtr_commit(&mtr);
 }
+

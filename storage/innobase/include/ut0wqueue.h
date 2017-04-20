@@ -104,5 +104,4 @@ ib_wqueue_len(
 /*==========*/
 	ib_wqueue_t*	wq);		/*<! in: work queue */
 
-
 #endif /* IB_WORK_QUEUE_H */

@@ -25,6 +25,7 @@ Created 7/1/1994 Heikki Tuuri
 
 #include "ha_prototypes.h"
 
+
 #include "rem0cmp.h"
 #include "handler0alter.h"
 #include "srv0srv.h"

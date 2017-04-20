@@ -25,6 +25,7 @@ Created 4/20/1996 Heikki Tuuri
 
 #include "ha_prototypes.h"
 
+
 #include "row0row.h"
 #include "data0type.h"
 #include "dict0dict.h"

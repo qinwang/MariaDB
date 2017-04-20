@@ -167,6 +167,10 @@ be less than 256 */
 
 #define	DATA_N_SYS_COLS 3	/* number of system columns defined above */
 
+#define	DATA_ITT_N_SYS_COLS	2
+				/* number of system columns for intrinsic
+				temporary table */
+
 #define DATA_FTS_DOC_ID	3	/* Used as FTS DOC ID column */
 
 #define DATA_SYS_PRTYPE_MASK 0xFU /* mask to extract the above from prtype */
@@ -228,6 +232,30 @@ length from corresponding column or index definition, instead of this MACRO
 	unsigned(UNIV_EXPECT((mbminmaxlen) % DATA_MBMAX, 1))
 /* Get mbmaxlen from mbminmaxlen. */
 #define DATA_MBMAXLEN(mbminmaxlen) unsigned((mbminmaxlen) / DATA_MBMAX)
+
+/* For checking if a geom_type is POINT */
+#define DATA_POINT_MTYPE(mtype) ((mtype) == DATA_POINT			\
+				 || (mtype) == DATA_VAR_POINT)
+
+/* For checking if mtype is GEOMETRY datatype */
+#define DATA_GEOMETRY_MTYPE(mtype)	(DATA_POINT_MTYPE(mtype)	\
+					 || (mtype) == DATA_GEOMETRY)
+
+/* For checking if mtype is BLOB or GEOMETRY, since we use BLOB as
+the underling datatype of GEOMETRY(not DATA_POINT) data. */
+#define DATA_LARGE_MTYPE(mtype) ((mtype) == DATA_BLOB			\
+				 || (mtype) == DATA_VAR_POINT		\
+				 || (mtype) == DATA_GEOMETRY)
+
+/* For checking if data type is big length data type. */
+#define DATA_BIG_LEN_MTYPE(len, mtype) ((len) > 255 || DATA_LARGE_MTYPE(mtype))
+
+/* For checking if the column is a big length column. */
+#define DATA_BIG_COL(col) DATA_BIG_LEN_MTYPE((col)->len, (col)->mtype)
+
+/* For checking if data type is large binary data type. */
+#define DATA_LARGE_BINARY(mtype,prtype) ((mtype) == DATA_GEOMETRY || \
+	((mtype) == DATA_BLOB && !((prtype) & DATA_BINARY_TYPE)))
 
 /* For checking if a geom_type is POINT */
 #define DATA_POINT_MTYPE(mtype) ((mtype) == DATA_POINT			\

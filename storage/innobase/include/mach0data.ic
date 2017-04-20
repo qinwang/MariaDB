@@ -486,7 +486,6 @@ mach_u64_read_much_compressed(
 	const byte*	b)	/*!< in: pointer to memory from where to read */
 {
 	ib_uint64_t	n;
-
 	if (*b != 0xFF) {
 		return(mach_read_compressed(b));
 	}
@@ -839,6 +838,8 @@ mach_swap_byte_order(
 }
 
 /*************************************************************
+	ut_ad(len >= 1 && len <= 8);
+
 Convert a ulonglong integer from host byte order to (big-endian)
 storage byte order. */
 UNIV_INLINE

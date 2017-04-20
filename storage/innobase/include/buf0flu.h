@@ -463,7 +463,6 @@ buf_flush_batch(
 	flush_counters_t*	n);	/*!< out: flushed/evicted page
 					counts  */
 
-
 #include "buf0flu.ic"
 
 #endif

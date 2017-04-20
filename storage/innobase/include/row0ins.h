@@ -138,6 +138,12 @@ row_ins_index_entry_set_vals(
 	dtuple_t*		entry,
 	const dtuple_t*		row);
 
+dberr_t
+row_ins_index_entry_set_vals(
+	const dict_index_t*	index,
+	dtuple_t*		entry,
+	const dtuple_t*		row);
+
 /***************************************************************//**
 Inserts an entry into a clustered index. Tries first optimistic,
 then pessimistic descent down the tree. If the entry matches enough

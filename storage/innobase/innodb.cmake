@@ -149,17 +149,104 @@ IF(HAVE_NANOSLEEP)
  ADD_DEFINITIONS(-DHAVE_NANOSLEEP=1)
 ENDIF()
 
+IF(NOT MSVC)
+  CHECK_C_SOURCE_RUNS(
+  "
+  #define _GNU_SOURCE
+  #include <fcntl.h>
+  #include <linux/falloc.h>
+  int main()
+  {
+    /* Ignore the return value for now. Check if the flags exist.
+    The return value is checked  at runtime. */
+    fallocate(0, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, 0, 0);
+
+    return(0);
+  }"
+  HAVE_FALLOC_PUNCH_HOLE_AND_KEEP_SIZE
+  )
+ENDIF()
+
 IF(HAVE_FALLOC_PUNCH_HOLE_AND_KEEP_SIZE)
  ADD_DEFINITIONS(-DHAVE_FALLOC_PUNCH_HOLE_AND_KEEP_SIZE=1)
 ENDIF()
 
 IF(NOT MSVC)
-  # workaround for gcc 4.1.2 RHEL5/x86, gcc atomic ops only work under -march=i686
-  IF(CMAKE_SYSTEM_PROCESSOR STREQUAL "i686" AND CMAKE_COMPILER_IS_GNUCC AND
-     CMAKE_C_COMPILER_VERSION VERSION_LESS "4.1.3")
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=i686")
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=i686")
-  ENDIF()
+# either define HAVE_IB_GCC_ATOMIC_BUILTINS or not
+IF(NOT CMAKE_CROSSCOMPILING)
+  CHECK_C_SOURCE_RUNS(
+  "#include<stdint.h>
+  int main()
+  {
+    __sync_synchronize();
+    return(0);
+  }"
+  HAVE_IB_GCC_SYNC_SYNCHRONISE
+  )
+  CHECK_C_SOURCE_RUNS(
+  "#include<stdint.h>
+  int main()
+  {
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+    return(0);
+  }"
+  HAVE_IB_GCC_ATOMIC_THREAD_FENCE
+  )
+  CHECK_C_SOURCE_RUNS(
+  "#include<stdint.h>
+  int main()
+  {
+    unsigned char	a = 0;
+    unsigned char	b = 0;
+    unsigned char	c = 1;
+
+    __atomic_exchange(&a, &b,  &c, __ATOMIC_RELEASE);
+    __atomic_compare_exchange(&a, &b, &c, 0,
+			      __ATOMIC_RELEASE, __ATOMIC_ACQUIRE);
+    return(0);
+  }"
+  HAVE_IB_GCC_ATOMIC_COMPARE_EXCHANGE
+  )
+ENDIF()
+
+IF(HAVE_IB_GCC_SYNC_SYNCHRONISE)
+ ADD_DEFINITIONS(-DHAVE_IB_GCC_SYNC_SYNCHRONISE=1)
+ENDIF()
+
+IF(HAVE_IB_GCC_ATOMIC_THREAD_FENCE)
+ ADD_DEFINITIONS(-DHAVE_IB_GCC_ATOMIC_THREAD_FENCE=1)
+ENDIF()
+
+IF(HAVE_IB_GCC_ATOMIC_COMPARE_EXCHANGE)
+ ADD_DEFINITIONS(-DHAVE_IB_GCC_ATOMIC_COMPARE_EXCHANGE=1)
+ENDIF()
+
+ # either define HAVE_IB_ATOMIC_PTHREAD_T_GCC or not
+IF(NOT CMAKE_CROSSCOMPILING)
+  CHECK_C_SOURCE_RUNS(
+  "
+  #include <pthread.h>
+  #include <string.h>
+
+  int main() {
+    pthread_t       x1;
+    pthread_t       x2;
+    pthread_t       x3;
+
+    memset(&x1, 0x0, sizeof(x1));
+    memset(&x2, 0x0, sizeof(x2));
+    memset(&x3, 0x0, sizeof(x3));
+
+    __sync_bool_compare_and_swap(&x1, x2, x3);
+
+    return(0);
+  }"
+  HAVE_IB_ATOMIC_PTHREAD_T_GCC)
+ENDIF()
+IF(HAVE_IB_ATOMIC_PTHREAD_T_GCC)
+  ADD_DEFINITIONS(-DHAVE_IB_ATOMIC_PTHREAD_T_GCC=1)
+ENDIF()
 
 # Only use futexes on Linux if GCC atomics are available
 IF(NOT MSVC AND NOT CMAKE_CROSSCOMPILING)
@@ -195,20 +282,35 @@ IF(NOT MSVC AND NOT CMAKE_CROSSCOMPILING)
   }"
   HAVE_IB_LINUX_FUTEX)
 ENDIF()
-
 IF(HAVE_IB_LINUX_FUTEX)
   ADD_DEFINITIONS(-DHAVE_IB_LINUX_FUTEX=1)
 ENDIF()
 
 ENDIF(NOT MSVC)
 
+CHECK_FUNCTION_EXISTS(asprintf  HAVE_ASPRINTF)
 CHECK_FUNCTION_EXISTS(vasprintf  HAVE_VASPRINTF)
 
-CHECK_CXX_SOURCE_COMPILES("struct t1{ int a; char *b; }; struct t1 c= { .a=1, .b=0 }; main() { }" HAVE_C99_INITIALIZERS)
-IF(HAVE_C99_INITIALIZERS)
-  ADD_DEFINITIONS(-DHAVE_C99_INITIALIZERS)
+# Solaris atomics
+IF(CMAKE_SYSTEM_NAME STREQUAL "SunOS")
+  IF(NOT CMAKE_CROSSCOMPILING)
+  CHECK_C_SOURCE_COMPILES(
+  "#include <mbarrier.h>
+  int main() {
+    __machine_r_barrier();
+    __machine_w_barrier();
+    return(0);
+  }"
+  HAVE_IB_MACHINE_BARRIER_SOLARIS)
+  ENDIF()
+  IF(HAVE_IB_MACHINE_BARRIER_SOLARIS)
+    ADD_DEFINITIONS(-DHAVE_IB_MACHINE_BARRIER_SOLARIS=1)
+  ENDIF()
 ENDIF()
 
+IF(MSVC)
+  ADD_DEFINITIONS(-DHAVE_WINDOWS_MM_FENCE)
+ENDIF()
 SET(MUTEXTYPE "event" CACHE STRING "Mutex type: event, sys or futex")
 
 IF(MUTEXTYPE MATCHES "event")

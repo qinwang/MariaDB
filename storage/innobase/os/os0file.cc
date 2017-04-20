@@ -1,6 +1,6 @@
 /***********************************************************************
 
-Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2009, Percona Inc.
 Copyright (c) 2012, 2017, MariaDB Corporation.
 
@@ -96,6 +96,9 @@ static const ulint IO_LOG_SEGMENT = 1;
 
 /** Number of retries for partial I/O's */
 static const ulint NUM_RETRIES_ON_PARTIAL_IO = 10;
+
+/** Disk sector size of aligning write buffer for DIRECT_IO */
+static ulint	os_io_ptr_align = UNIV_SECTOR_SIZE;
 
 /* This specifies the file permissions InnoDB uses when it creates files in
 Unix; the value of os_innodb_umask is initialized in ha_innodb.cc to

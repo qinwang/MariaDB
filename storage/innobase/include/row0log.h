@@ -219,7 +219,7 @@ row_log_table_apply(
 	dict_table_t*		old_table,
 	struct TABLE*		table,
 	ut_stage_alter_t*	stage)
-	MY_ATTRIBUTE((warn_unused_result));
+MY_ATTRIBUTE((warn_unused_result));
 
 /******************************************************//**
 Get the latest transaction ID that has invoked row_log_online_op()

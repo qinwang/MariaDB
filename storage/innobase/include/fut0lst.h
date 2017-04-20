@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1995, 2014, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -81,6 +81,7 @@ flst_remove(
 	flst_base_node_t*	base,	/*!< in: pointer to base node of list */
 	flst_node_t*		node2,	/*!< in: node to remove */
 	mtr_t*			mtr);	/*!< in: mini-transaction handle */
+
 /** Get the length of a list.
 @param[in]	base	base node
 @return length */

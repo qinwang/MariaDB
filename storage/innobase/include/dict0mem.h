@@ -389,8 +389,7 @@ dict_mem_table_add_col(
 	const char*	name,	/*!< in: column name, or NULL */
 	ulint		mtype,	/*!< in: main datatype */
 	ulint		prtype,	/*!< in: precise type */
-	ulint		len)	/*!< in: precision */
-	MY_ATTRIBUTE((nonnull(1)));
+	ulint		len);	/*!< in: precision */
 /** Adds a virtual column definition to a table.
 @param[in,out]	table		table
 @param[in]	heap		temporary memory heap, or NULL. It is
@@ -1322,6 +1321,9 @@ struct dict_vcol_templ_t {
 
 	/** when mysql_table was cached */
 	uint64_t		mysql_table_query_id;
+
+	/** share->table_name */
+	std::string		share_name;
 
 	dict_vcol_templ_t() : vtempl(0), mysql_table_query_id(~0ULL) {}
 };

@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 2009, 2015, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2009, 2016, Oracle and/or its affiliates. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -36,6 +36,7 @@ Created Jan 06, 2010 Vasil Dimov
 #include "ut0new.h"
 #include <mysql_com.h>
 #include "btr0btr.h"
+#include "srv0srv.h"
 
 #include <algorithm>
 #include <map>
@@ -138,7 +139,7 @@ then we would store 5,7,10,11,12 in the array. */
 typedef std::vector<ib_uint64_t, ut_allocator<ib_uint64_t> >	boundaries_t;
 
 /** Allocator type used for index_map_t. */
-typedef ut_allocator<std::pair<const char*, dict_index_t*> >
+typedef ut_allocator<std::pair<const char* const, dict_index_t*> >
 	index_map_t_allocator;
 
 /** Auxiliary map used for sorting indexes by name in dict_stats_save(). */
@@ -720,16 +721,10 @@ dict_stats_copy(
 	      && (src_idx = dict_table_get_next_index(src_idx)))) {
 
 		if (dict_stats_should_ignore_index(dst_idx)) {
-			if (reset_ignored_indexes) {
-				/* Reset index statistics for all ignored indexes,
-				unless they are FT indexes (these have no statistics)*/
-				if (dst_idx->type & DICT_FTS) {
-					continue;
-				}
+			if (!(dst_idx->type & DICT_FTS)) {
 				dict_stats_empty_index(dst_idx, true);
-			} else {
-				continue;
 			}
+			continue;
 		}
 
 		ut_ad(!dict_index_is_ibuf(dst_idx));
@@ -1151,10 +1146,10 @@ dict_stats_analyze_index_level(
 		them away) which brings non-determinism. We skip only
 		leaf-level delete marks because delete marks on
 		non-leaf level do not make sense. */
-		if (level == 0 &&
+		if (level == 0 && (srv_stats_include_delete_marked ? 0:
 		    rec_get_deleted_flag(
 			    rec,
-			    page_is_comp(btr_pcur_get_page(&pcur)))) {
+			    page_is_comp(btr_pcur_get_page(&pcur))))) {
 
 			if (rec_is_last_on_page
 			    && !prev_rec_is_copied
@@ -1333,8 +1328,12 @@ enum page_scan_method_t {
 				the given page and count the number of
 				distinct ones, also ignore delete marked
 				records */
-	QUIT_ON_FIRST_NON_BORING/* quit when the first record that differs
+	QUIT_ON_FIRST_NON_BORING,/* quit when the first record that differs
 				from its right neighbor is found */
+	COUNT_ALL_NON_BORING_INCLUDE_DEL_MARKED/* scan all records on
+				the given page and count the number of
+				distinct ones, include delete marked
+				records */
 };
 /* @} */
 
@@ -1607,6 +1606,8 @@ dict_stats_analyze_index_below_cur(
 
 	offsets_rec = dict_stats_scan_page(
 		&rec, offsets1, offsets2, index, page, n_prefix,
+		srv_stats_include_delete_marked ?
+		COUNT_ALL_NON_BORING_INCLUDE_DEL_MARKED:
 		COUNT_ALL_NON_BORING_AND_SKIP_DEL_MARKED, n_diff,
 		n_external_pages);
 

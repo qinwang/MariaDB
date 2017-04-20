@@ -163,6 +163,9 @@ enum dberr_t {
 	DB_IO_NO_PUNCH_HOLE,		/*!< Punch hole not supported by
 					file system. */
 
+	DB_WRONG_FILE_NAME,		/*!< Invalid Filename */
+
+
 	/* The following are partial failure codes */
 	DB_FAIL = 1000,
 	DB_OVERFLOW,

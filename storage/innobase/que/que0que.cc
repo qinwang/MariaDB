@@ -26,6 +26,7 @@ Created 5/27/1996 Heikki Tuuri
 
 #include "ha_prototypes.h"
 
+
 #include "que0que.h"
 #include "usr0sess.h"
 #include "trx0trx.h"
@@ -1241,6 +1242,8 @@ que_eval_sql(
 	}
 
 	ut_a(trx->error_state != 0);
+
+	DBUG_RETURN(trx->error_state);
 
 	DBUG_RETURN(trx->error_state);
 }

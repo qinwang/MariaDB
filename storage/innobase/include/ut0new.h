@@ -136,8 +136,6 @@ InnoDB:
 
 #include "mysql/psi/psi_memory.h" /* PSI_memory_key, PSI_memory_info */
 
-#include "univ.i"
-
 #include "os0proc.h" /* os_mem_alloc_large() */
 #include "os0thread.h" /* os_thread_sleep() */
 #include "ut0ut.h" /* ut_strcmp_functor, ut_basename_noext() */

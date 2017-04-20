@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1996, 2016, Oracle and/or its affiliates. All rights reserved.
+Copyright (c) 1996, 2017, Oracle and/or its affiliates. All rights reserved.
 Copyright (c) 2008, Google Inc.
 Copyright (c) 2009, Percona Inc.
 Copyright (c) 2013, 2017, MariaDB Corporation.
@@ -1037,7 +1037,7 @@ srv_undo_tablespaces_init(bool create_new_db)
 
 				if (space_id == *it) {
 					trx_rseg_header_create(
-						*it, ULINT_MAX, i, &mtr);
+						*it, univ_page_size, ULINT_MAX, i, &mtr);
 				}
 			}
 
@@ -1448,6 +1448,10 @@ innobase_start_or_create_for_mysql(void)
 
 	/* Reset the start state. */
 	srv_start_state = SRV_START_STATE_NONE;
+
+	if (srv_force_recovery == SRV_FORCE_NO_LOG_REDO) {
+		srv_read_only_mode = true;
+	}
 
 	if (srv_read_only_mode) {
 		ib::info() << "Started in read only mode";

@@ -301,6 +301,7 @@ log_block_init(
 @param[in]	str		string
 @param[in]	len		string length
 @param[out]	start_lsn	start LSN of the log record
+@param[out]	start_lsn	start LSN of the log record
 @return end lsn of the log record, zero if did not succeed */
 UNIV_INLINE
 lsn_t

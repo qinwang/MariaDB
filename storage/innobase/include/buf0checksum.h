@@ -67,7 +67,6 @@ buf_calc_page_old_checksum(
 /*=======================*/
 	const byte*	page);	/*!< in: buffer page */
 
-
 /********************************************************************//**
 Return a printable string describing the checksum algorithm.
 @return algorithm name */

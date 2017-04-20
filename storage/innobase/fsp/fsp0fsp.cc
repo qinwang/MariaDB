@@ -67,7 +67,7 @@ fsp_free_extent(
 /********************************************************************//**
 Marks a page used. The page must reside within the extents of the given
 segment. */
-static MY_ATTRIBUTE((nonnull))
+static
 void
 fseg_mark_page_used(
 /*================*/
@@ -858,7 +858,7 @@ data file.
 @param[in,out]	header	tablespace header
 @param[in,out]	mtr	mini-transaction
 @return true if success */
-static UNIV_COLD MY_ATTRIBUTE((warn_unused_result))
+static UNIV_COLD
 bool
 fsp_try_extend_data_file_with_pages(
 	fil_space_t*	space,
@@ -1256,7 +1256,7 @@ fsp_alloc_free_extent(
 
 /**********************************************************************//**
 Allocates a single free page from a space. */
-static MY_ATTRIBUTE((nonnull))
+static
 void
 fsp_alloc_from_free_frag(
 /*=====================*/
@@ -2971,7 +2971,7 @@ fsp_get_available_space_in_free_extents(
 /********************************************************************//**
 Marks a page used. The page must reside within the extents of the given
 segment. */
-static MY_ATTRIBUTE((nonnull))
+static
 void
 fseg_mark_page_used(
 /*================*/
@@ -3233,7 +3233,6 @@ fseg_page_is_free(
 @param[in]	ahi		whether we may need to drop
 				the adaptive hash index
 @param[in,out]	mtr		mini-transaction */
-MY_ATTRIBUTE((nonnull))
 static
 void
 fseg_free_extent(

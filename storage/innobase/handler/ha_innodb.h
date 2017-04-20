@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 2000, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2000, 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2013, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
@@ -989,14 +989,16 @@ innodb_rec_per_key(
 @param[in,out]	s_templ		InnoDB template structure
 @param[in]	add_v		new virtual columns added along with
 				add index call
-@param[in]	locked		true if innobase_share_mutex is held */
+@param[in]	locked		true if innobase_share_mutex is held
+@param[in]	share_tbl_name	original MySQL table name */
 void
 innobase_build_v_templ(
 	const TABLE*		table,
 	const dict_table_t*	ib_table,
 	dict_vcol_templ_t*	s_templ,
 	const dict_add_v_col_t*	add_v,
-	bool			locked);
+	bool			locked,
+	const char*		share_tbl_name);
 
 /** callback used by MySQL server layer to initialized
 the table virtual columns' template

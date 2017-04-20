@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1995, 2015, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2013, 2017, MariaDB Corporation. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
@@ -479,6 +479,7 @@ buf_dblwr_init_or_load_pages(
 				write_request, path, file, page,
 				source_page_no * UNIV_PAGE_SIZE,
 				UNIV_PAGE_SIZE);
+
 			if (err != DB_SUCCESS) {
 
 				ib::error()
@@ -526,7 +527,7 @@ buf_dblwr_process(void)
 	for (recv_dblwr_t::list::iterator i = recv_dblwr.pages.begin();
 	     i != recv_dblwr.pages.end();
 	     ++i, ++page_no_dblwr) {
-		byte*	page		= *i;
+		byte*	page		= const_cast<byte *>(*i);
 		ulint	page_no		= page_get_page_no(page);
 		ulint	space_id	= page_get_space_id(page);
 
@@ -570,8 +571,8 @@ buf_dblwr_process(void)
 
 		/* Read in the actual page from the file */
 		dberr_t	err = fil_io(
-			request, true,
-			page_id, page_size,
+				request, true,
+				page_id, page_size,
 				0, page_size.physical(), read_buf, NULL);
 
 		if (err != DB_SUCCESS) {
@@ -1133,6 +1134,7 @@ try_again:
 		       univ_page_size.physical() - bpage->size.physical());
 	} else {
 		ut_a(buf_page_get_state(bpage) == BUF_BLOCK_FILE_PAGE);
+
 
 		UNIV_MEM_ASSERT_RW(frame,
 				   bpage->size.logical());

@@ -99,8 +99,8 @@ trx_undo_rec_get_pars(
 	bool*		updated_extern,	/*!< out: true if we updated an
 					externally stored fild */
 	undo_no_t*	undo_no,	/*!< out: undo log record number */
-	table_id_t*	table_id)	/*!< out: table id */
-	MY_ATTRIBUTE((nonnull));
+	table_id_t*	table_id);	/*!< out: table id */
+
 /*******************************************************************//**
 Builds a row reference from an undo log record.
 @return pointer to remaining part of undo record */
@@ -178,7 +178,7 @@ trx_undo_rec_get_partial_row(
 				only in the assertion. */
 	mem_heap_t*	heap)	/*!< in: memory heap from which the memory
 				needed is allocated */
-	MY_ATTRIBUTE((nonnull, warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 /***********************************************************************//**
 Writes information to an undo log about an insert, update, or a delete marking
 of a clustered index record. This information is used in a rollback of the
@@ -209,7 +209,7 @@ trx_undo_report_row_operation(
 					inserted undo log record,
 					0 if BTR_NO_UNDO_LOG
 					flag was specified */
-	MY_ATTRIBUTE((nonnull(3,4,10), warn_unused_result));
+	MY_ATTRIBUTE((warn_unused_result));
 
 /** status bit used for trx_undo_prev_version_build() */
 
@@ -274,6 +274,53 @@ trx_undo_parse_erase_page_end(
 	byte*	end_ptr,/*!< in: buffer end */
 	page_t*	page,	/*!< in: page or NULL */
 	mtr_t*	mtr);	/*!< in: mtr or NULL */
+
+/** Read from an undo log record a non-virtual column value.
+@param[in,out]	ptr		pointer to remaining part of the undo record
+@param[in,out]	field		stored field
+@param[in,out]	len		length of the field, or UNIV_SQL_NULL
+@param[in,out]	orig_len	original length of the locally stored part
+of an externally stored column, or 0
+@return remaining part of undo log record after reading these values */
+byte*
+trx_undo_rec_get_col_val(
+        const byte*     ptr,
+        const byte**    field,
+        ulint*          len,
+        ulint*          orig_len);
+
+/** Read virtual column value from undo log
+@param[in]	table		the table
+@param[in]	ptr		undo log pointer
+@param[in,out]	row		the dtuple to fill
+@param[in]	in_purge        called by purge thread
+@param[in]	col_map		online rebuild column map */
+void
+trx_undo_read_v_cols(
+	const dict_table_t*	table,
+	const byte*		ptr,
+	const dtuple_t*		row,
+	bool			in_purge,
+	const ulint*		col_map);
+
+/** Read virtual column index from undo log if the undo log contains such
+info, and verify the column is still indexed, and output its position
+@param[in]	table		the table
+@param[in]	ptr		undo log pointer
+@param[in]	first_v_col	if this is the first virtual column, which
+				has the version marker
+@param[in,out]	is_undo_log	his function is used to parse both undo log,
+				and online log for virtual columns. So
+				check to see if this is undo log
+@param[out]	field_no	the column number
+@return remaining part of undo log record after reading these values */
+const byte*
+trx_undo_read_v_idx(
+	const dict_table_t*	table,
+	const byte*		ptr,
+	bool			first_v_col,
+	bool*			is_undo_log,
+	ulint*			field_no);
 
 /** Read from an undo log record a non-virtual column value.
 @param[in,out]	ptr		pointer to remaining part of the undo record

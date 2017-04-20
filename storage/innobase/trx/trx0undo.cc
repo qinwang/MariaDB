@@ -962,7 +962,8 @@ trx_undo_free_page(
 	rseg->curr_size--;
 
 	if (in_history) {
-		rseg_header = trx_rsegf_get(space, rseg->page_no, mtr);
+		rseg_header = trx_rsegf_get(space, rseg->page_no,
+					    rseg->page_size, mtr);
 
 		hist_size = mtr_read_ulint(rseg_header + TRX_RSEG_HISTORY_SIZE,
 					   MLOG_4BYTES, mtr);
@@ -1183,7 +1184,7 @@ trx_undo_seg_free(
 		if (finished) {
 			/* Update the rseg header */
 			rseg_header = trx_rsegf_get(
-				rseg->space, rseg->page_no, &mtr);
+				rseg->space, rseg->page_no, rseg->page_size, &mtr);
 			trx_rsegf_set_nth_undo(rseg_header, undo->id, FIL_NULL,
 					       &mtr);
 
@@ -1335,7 +1336,7 @@ trx_undo_lists_init(
 
 	mtr_start(&mtr);
 
-	rseg_header = trx_rsegf_get_new(rseg->space, rseg->page_no, &mtr);
+	rseg_header = trx_rsegf_get_new(rseg->space, rseg->page_no, rseg->page_size, &mtr);
 
 	for (i = 0; i < TRX_RSEG_N_SLOTS; i++) {
 		ulint	page_no;
@@ -1362,7 +1363,7 @@ trx_undo_lists_init(
 			mtr_start(&mtr);
 
 			rseg_header = trx_rsegf_get(
-				rseg->space, rseg->page_no, &mtr);
+				rseg->space, rseg->page_no, rseg->page_size, &mtr);
 
 			/* Found a used slot */
 			MONITOR_INC(MONITOR_NUM_UNDO_SLOT_USED);
@@ -1504,7 +1505,7 @@ trx_undo_create(
 
 	rseg->curr_size++;
 
-	rseg_header = trx_rsegf_get(rseg->space, rseg->page_no, mtr);
+	rseg_header = trx_rsegf_get(rseg->space, rseg->page_no, rseg->page_size, mtr);
 
 	err = trx_undo_seg_create(rseg, rseg_header, type, &id,
 				  &undo_page, mtr);
@@ -1985,9 +1986,9 @@ trx_undo_truncate_tablespace(
 		trx_rseg_t*	rseg = undo_trunc->get_ith_rseg(i);
 
 		rseg->page_no = trx_rseg_header_create(
-			space_id, ULINT_MAX, rseg->id, &mtr);
+			space_id, rseg->page_size, ULINT_MAX, rseg->id, &mtr);
 
-		rseg_header = trx_rsegf_get_new(space_id, rseg->page_no, &mtr);
+		rseg_header = trx_rsegf_get_new(space_id, rseg->page_no, rseg->page_size, &mtr);
 
 		/* Before re-initialization ensure that we free the existing
 		structure. There can't be any active transactions. */

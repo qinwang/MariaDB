@@ -54,7 +54,6 @@ ut_dbg_assertion_failed(
 	      "InnoDB: corruption in the InnoDB tablespace. Please refer to\n"
 	      "InnoDB: " REFMAN "forcing-innodb-recovery.html\n"
 	      "InnoDB: about forcing recovery.\n", stderr);
-
 	fflush(stderr);
 	fflush(stdout);
 	abort();

@@ -38,6 +38,7 @@ Created 3/26/1996 Heikki Tuuri
 This function is called only when a new rollback segment is created in
 the database.
 @param[in]	space		space id
+@param[in]	page_size	page size
 @param[in]	max_size	max size in pages
 @param[in]	rseg_slot_no	rseg id == slot number in trx sys
 @param[in,out]	mtr		mini-transaction
@@ -45,6 +46,7 @@ the database.
 ulint
 trx_rseg_header_create(
 	ulint			space,
+	const page_size_t&	page_size,
 	ulint			max_size,
 	ulint			rseg_slot_no,
 	mtr_t*			mtr)
@@ -73,7 +75,7 @@ trx_rseg_header_create(
 	page_no = block->page.id.page_no();
 
 	/* Get the rollback segment file page */
-	rsegf = trx_rsegf_get_new(space, page_no, mtr);
+	rsegf = trx_rsegf_get_new(space, page_no, page_size, mtr);
 
 	/* Initialize max size field */
 	mlog_write_ulint(rsegf + TRX_RSEG_MAX_SIZE, max_size,
@@ -150,16 +152,22 @@ trx_rseg_mem_free(trx_rseg_t* rseg)
 /** Create a rollback segment object.
 @param[in]	id		rollback segment id
 @param[in]	space		space where the segment is placed
-@param[in]	page_no		page number of the segment header */
+@param[in]	page_no		page number of the segment header
+@param[in]	page_size	page size */
 static
 trx_rseg_t*
-trx_rseg_mem_create(ulint id, ulint space, ulint page_no)
+trx_rseg_mem_create(
+	ulint			id,
+	ulint			space,
+	ulint			page_no,
+	const page_size_t&	page_size)
 {
 	trx_rseg_t* rseg = static_cast<trx_rseg_t*>(
 		ut_zalloc_nokey(sizeof *rseg));
 
 	rseg->id = id;
 	rseg->space = space;
+	rseg->page_size.copy_from(page_size);
 	rseg->page_no = page_no;
 	rseg->last_page_no = FIL_NULL;
 
@@ -188,7 +196,7 @@ trx_rseg_mem_restore(trx_rseg_t* rseg, mtr_t* mtr)
 	trx_ulogf_t*	undo_log_hdr;
 	ulint		sum_of_undo_sizes;
 
-	rseg_header = trx_rsegf_get_new(rseg->space, rseg->page_no, mtr);
+	rseg_header = trx_rsegf_get_new(rseg->space, rseg->page_no, rseg->page_size, mtr);
 
 	rseg->max_size = mtr_read_ulint(
 		rseg_header + TRX_RSEG_MAX_SIZE, MLOG_4BYTES, mtr);
@@ -251,7 +259,7 @@ trx_rseg_array_init()
 			trx_rseg_t* rseg = trx_rseg_mem_create(
 				i,
 				trx_sysf_rseg_get_space(sys_header, i, &mtr),
-				page_no);
+				page_no, univ_page_size);
 			ut_ad(rseg->is_persistent());
 			ut_ad(!trx_sys->rseg_array[rseg->id]);
 			trx_sys->rseg_array[rseg->id] = rseg;
@@ -281,9 +289,11 @@ trx_rseg_create(ulint space_id)
 	ut_ad(space->purpose == FIL_TYPE_TABLESPACE);
 
 	ulint	slot_no = trx_sysf_rseg_find_free(&mtr);
+	page_size_t	page_size(space->flags);
+
 	ulint	page_no = slot_no == ULINT_UNDEFINED
 		? FIL_NULL
-		: trx_rseg_header_create(space_id, ULINT_MAX, slot_no, &mtr);
+		: trx_rseg_header_create(space_id, page_size, ULINT_MAX, slot_no, &mtr);
 
 	if (page_no != FIL_NULL) {
 		trx_sysf_t*	sys_header = trx_sysf_get(&mtr);
@@ -292,7 +302,7 @@ trx_rseg_create(ulint space_id)
 			sys_header, slot_no, &mtr);
 		ut_a(id == space_id);
 
-		rseg = trx_rseg_mem_create(slot_no, space_id, page_no);
+		rseg = trx_rseg_mem_create(slot_no, space_id, page_no, page_size);
 		ut_ad(rseg->is_persistent());
 		ut_ad(!trx_sys->rseg_array[rseg->id]);
 		trx_sys->rseg_array[rseg->id] = rseg;
@@ -313,16 +323,14 @@ trx_temp_rseg_create()
 	for (ulong i = 0; i < TRX_SYS_N_RSEGS; i++) {
 		mtr.start();
 		mtr.set_log_mode(MTR_LOG_NO_REDO);
-#ifdef UNIV_DEBUG
 		const fil_space_t*	space =
-#endif /* UNIV_DEBUG */
 			mtr_x_lock_space(SRV_TMP_SPACE_ID, &mtr);
 		ut_ad(space->purpose == FIL_TYPE_TEMPORARY);
-
+		page_size_t	page_size(space->flags);
 		ulint page_no = trx_rseg_header_create(
-			SRV_TMP_SPACE_ID, ULINT_MAX, i, &mtr);
+			SRV_TMP_SPACE_ID, page_size, ULINT_MAX, i, &mtr);
 		trx_rseg_t* rseg = trx_rseg_mem_create(
-			i, SRV_TMP_SPACE_ID, page_no);
+			i, SRV_TMP_SPACE_ID, page_no, page_size);
 		ut_ad(!rseg->is_persistent());
 		ut_ad(!trx_sys->temp_rsegs[i]);
 		trx_sys->temp_rsegs[i] = rseg;

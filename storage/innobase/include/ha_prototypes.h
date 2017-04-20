@@ -304,7 +304,6 @@ UNIV_INTERN
 const char*
 thd_innodb_tmpdir(
 	THD*	thd);
-
 /******************************************************************//**
 Returns the lock wait timeout for the current connection.
 @return the lock wait timeout, in seconds */

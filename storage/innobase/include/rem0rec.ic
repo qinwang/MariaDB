@@ -1702,6 +1702,7 @@ rec_get_converted_size(
 @param[in]	n_fields	number of complete fields to fold
 @param[in]	n_bytes		number of bytes to fold in the last field
 @param[in]	index_id	index tree ID
+@param[in]	index_id	index tree ID
 @return the folded value */
 UNIV_INLINE
 ulint

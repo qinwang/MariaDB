@@ -25,6 +25,7 @@ Created 1/8/1997 Heikki Tuuri
 
 #include "ha_prototypes.h"
 
+
 #include "row0undo.h"
 #include "fsp0fsp.h"
 #include "mach0data.h"
@@ -261,6 +262,8 @@ row_undo(
 {
 	trx_t*		trx = node->trx;
 	ut_ad(trx->in_rollback);
+	ut_ad(thr != NULL);
+	ut_ad(trx->in_rollback);
 
 	if (node->state == UNDO_NODE_FETCH_NEXT) {
 
@@ -270,6 +273,14 @@ row_undo(
 		if (!node->undo_rec) {
 			/* Rollback completed for this query thread */
 			thr->run_node = que_node_get_parent(node);
+			/* Mark any partial rollback completed, so
+			that if the transaction object is committed
+			and reused later, the roll_limit will remain
+			at 0. trx->roll_limit will be nonzero during a
+			partial rollback only. */
+			trx->roll_limit = 0;
+			ut_d(trx->in_rollback = false);
+
 			return(DB_SUCCESS);
 		}
 

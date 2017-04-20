@@ -591,7 +591,6 @@ thd_done:
 #ifdef BTR_CUR_HASH_ADAPT
 	row->trx_has_search_latch = (ibool) trx->has_search_latch;
 #endif /* BTR_CUR_HASH_ADAPT */
-
 	row->trx_is_read_only = trx->read_only;
 
 	row->trx_is_autocommit_non_locking = trx_is_autocommit_non_locking(trx);
