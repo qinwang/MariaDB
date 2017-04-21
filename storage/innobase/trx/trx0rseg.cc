@@ -282,10 +282,9 @@ trx_rseg_create(ulint space_id)
 
 	/* To obey the latching order, acquire the file space
 	x-latch before the trx_sys->mutex. */
-#ifdef UNIV_DEBUG
-	const fil_space_t*	space =
-#endif /* UNIV_DEBUG */
-		mtr_x_lock_space(space_id, &mtr);
+
+	const fil_space_t*	space = mtr_x_lock_space(space_id, &mtr);
+
 	ut_ad(space->purpose == FIL_TYPE_TABLESPACE);
 
 	ulint	slot_no = trx_sysf_rseg_find_free(&mtr);
