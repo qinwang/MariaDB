@@ -550,6 +550,7 @@ typedef struct system_variables
   ha_rows max_join_size;
   ha_rows expensive_subquery_limit;
   ulong auto_increment_increment, auto_increment_offset;
+  ulong column_compression_zlib_strategy;
   ulong lock_wait_timeout;
   ulong join_cache_level;
   ulong max_allowed_packet;
@@ -637,6 +638,7 @@ typedef struct system_variables
   my_bool sql_log_bin_off;
   my_bool binlog_annotate_row_events;
   my_bool binlog_direct_non_trans_update;
+  my_bool column_compression_zlib_wrap;
 
   plugin_ref table_plugin;
   plugin_ref tmp_table_plugin;
@@ -691,6 +693,8 @@ typedef struct system_variables
   uint idle_transaction_timeout;
   uint idle_readonly_transaction_timeout;
   uint idle_readwrite_transaction_timeout;
+  uint column_compression_threshold;
+  uint column_compression_zlib_level;
 } SV;
 
 /**
@@ -701,6 +705,8 @@ typedef struct system_variables
 
 typedef struct system_status_var
 {
+  ulong column_compressions;
+  ulong column_decompressions;
   ulong com_stat[(uint) SQLCOM_END];
   ulong com_create_tmp_table;
   ulong com_drop_tmp_table;
