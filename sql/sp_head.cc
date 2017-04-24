@@ -1768,7 +1768,7 @@ sp_head::execute_agg(THD *thd, bool merge_da_on_success)
       NULL. In this case, mysql_change_db() would generate an error.
     */
 
-    err_status|= mysql_change_db(thd, &saved_cur_db_name, TRUE);
+    err_status|= mysql_change_db(thd, (LEX_CSTRING*) &saved_cur_db_name, TRUE);
   }
   m_flags&= ~IS_INVOKED;
   DBUG_PRINT("info",
@@ -2356,7 +2356,7 @@ sp_head::execute_aggregate_function(THD *thd, Item **args, uint argcount,
   {
      thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
-     if (!(*func_ctx= sp_rcontext::create(thd, m_pcont, return_fld)))
+     if (!(*func_ctx= rcontext_create(thd, false, return_fld)))
      {
        thd->restore_active_arena(&call_arena, &backup_arena);
        err_status= TRUE;
@@ -2414,8 +2414,9 @@ sp_head::execute_aggregate_function(THD *thd, Item **args, uint argcount,
       if (arg_no)
         binlog_buf.append(',');
 
-      str_value= sp_get_item_value(thd, (*func_ctx)->get_item(arg_no),
-                                   &str_value_holder);
+      Item *item= (*func_ctx)->get_item(arg_no);
+      str_value= item->type_handler()->print_item_value(thd, item,
+                                                        &str_value_holder);
 
       if (str_value)
         binlog_buf.append(*str_value);
@@ -4821,7 +4822,7 @@ sp_instr_cfetch::execute(THD *thd, uint *nextp)
         *nextp = m_ip+1;
     }
   }
-  return res;
+  DBUG_RETURN(res);
 }
 
 void
@@ -5417,7 +5418,9 @@ bool sp_head::add_for_loop_open_cursor(THD *thd, sp_pcontext *spcont,
 
   sp_instr_cfetch *instr_cfetch=
     new (thd->mem_root) sp_instr_cfetch(instructions(),
-                                        spcont, coffset);
+                                        spcont, coffset,
+                                        m_chistics->agg_type == GROUP_AGGREGATE
+                                        ? FALSE : TRUE);
   if (instr_cfetch == NULL || add_instr(instr_cfetch))
     return true;
   instr_cfetch->add_to_varlist(index);

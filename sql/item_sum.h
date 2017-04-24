@@ -1338,6 +1338,9 @@ public:
   {
     return sp_result_field;
   }
+  Item *get_copy(THD *thd, MEM_ROOT *mem_root)
+  { return get_item_copy<Item_sum_sp>(thd, mem_root, this); }
+  enum enum_field_types field_type() const;
 };
 
 

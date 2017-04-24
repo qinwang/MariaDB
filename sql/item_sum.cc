@@ -1264,7 +1264,6 @@ Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
 {
   maybe_null= 1;
   quick_group= 0;
-  m_name->init_qname(thd);
   dummy_table= (TABLE*) thd->calloc(sizeof(TABLE)+ sizeof(TABLE_SHARE));
   dummy_table->s= (TABLE_SHARE*) (dummy_table + 1);
   init_sql_alloc(&caller_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
@@ -1277,7 +1276,6 @@ Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
 {
   maybe_null= 1;
   quick_group= 0;
-  m_name->init_qname(thd);
   dummy_table= (TABLE*) thd->calloc(sizeof(TABLE)+ sizeof(TABLE_SHARE));
   dummy_table->s= (TABLE_SHARE*) (dummy_table + 1);
   init_sql_alloc(&caller_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
@@ -1314,7 +1312,7 @@ Item_sum_sp::init_result_field(THD *thd)
   if (!(m_sp= sp_find_routine(thd, TYPE_ENUM_FUNCTION, m_name,
                                &thd->sp_func_cache, TRUE)))
   {
-    my_missing_function_error (m_name->m_name, m_name->m_qname.str);
+    my_missing_function_error (m_name->m_name, ErrConvDQName(m_name).ptr());
     context->process_error(thd);
     DBUG_RETURN(TRUE);
   }
@@ -1330,10 +1328,10 @@ Item_sum_sp::init_result_field(THD *thd)
   dummy_table->maybe_null= maybe_null;
   dummy_table->in_use= thd;
   dummy_table->copy_blobs= TRUE;
-  share->table_cache_key = empty_name;
-  share->table_name= empty_name;
+  share->table_cache_key = empty_clex_str;
+  share->table_name= empty_clex_str;
 
-  if (!(sp_result_field= m_sp->create_result_field(max_length, name,
+  if (!(sp_result_field= m_sp->create_result_field(max_length, &name,
                                                    dummy_table)))
   {
    DBUG_RETURN(TRUE);
@@ -1608,6 +1606,14 @@ Item_sum_sp::func_name() const
   }
   append_identifier(thd, &qname, m_name->m_name.str, m_name->m_name.length);
   return qname.c_ptr_safe();
+}
+
+enum enum_field_types
+Item_sum_sp::field_type() const
+{
+  DBUG_ENTER("Item_sum_sp::field_type");
+  DBUG_ASSERT(sp_result_field);
+  DBUG_RETURN(sp_result_field->type());
 }
 
 /***********************************************************************
