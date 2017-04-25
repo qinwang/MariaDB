@@ -1683,7 +1683,7 @@ bool Item_sum_count::add()
   {
     direct_reseted_field= FALSE;
     if (aggr->arg_is_null(false))
-      return 0;
+      DBUG_RETURN(0);
     count++;
   }
   DBUG_RETURN(0);
