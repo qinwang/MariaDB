@@ -6049,6 +6049,102 @@ int handler::ha_delete_row(const uchar *buf)
   return error ? error : check_wsrep_max_ws_rows();
 }
 
+int handler::ha_direct_update_rows_init(
+  uint mode,
+  KEY_MULTI_RANGE *ranges,
+  uint range_count,
+  bool sorted,
+  uchar *new_data
+) {
+  int error;
+  /*
+    Some storage engines require that the new record is in record[0]
+    (and the old record is in record[1]).
+  */
+  DBUG_ASSERT(!new_data || new_data == table->record[0]);
+
+  error=
+    direct_update_rows_init(mode, ranges, range_count, sorted, new_data);
+  return error;
+}
+
+int handler::ha_direct_update_rows(
+  KEY_MULTI_RANGE *ranges,
+  uint range_count,
+  bool sorted,
+  uchar *new_data,
+  uint *update_rows
+) {
+  int error;
+  /*
+    Some storage engines require that the new record is in record[0]
+    (and the old record is in record[1]).
+  */
+  DBUG_ASSERT(!new_data || new_data == table->record[0]);
+
+  MYSQL_UPDATE_ROW_START(table_share->db.str, table_share->table_name.str);
+  mark_trx_read_write();
+
+  error=
+    direct_update_rows(ranges, range_count, sorted, new_data, update_rows);
+  MYSQL_UPDATE_ROW_DONE(error);
+  return error;
+}
+
+int handler::ha_direct_update_row_binlog(
+  const uchar *old_data,
+  uchar *new_data
+) {
+  int error;
+  Log_func *log_func= Update_rows_log_event::binlog_row_logging_function;
+
+  /*
+    Some storage engines require that the new record is in record[0]
+    (and the old record is in record[1]).
+  */
+  DBUG_ASSERT(new_data == table->record[0]);
+
+  error= binlog_log_row(table, old_data, new_data, log_func);
+  return error;
+}
+
+int handler::ha_direct_delete_rows_init(
+  uint mode,
+  KEY_MULTI_RANGE *ranges,
+  uint range_count,
+  bool sorted
+) {
+  int error;
+  error=
+    direct_delete_rows_init(mode, ranges, range_count, sorted);
+  return error;
+}
+
+int handler::ha_direct_delete_rows(
+  KEY_MULTI_RANGE *ranges,
+  uint range_count,
+  bool sorted,
+  uint *delete_rows
+) {
+  int error;
+  MYSQL_DELETE_ROW_START(table_share->db.str, table_share->table_name.str);
+  mark_trx_read_write();
+
+  error=
+    direct_delete_rows(ranges, range_count, sorted, delete_rows);
+  MYSQL_DELETE_ROW_DONE(error);
+  return error;
+}
+
+int handler::ha_direct_delete_row_binlog(const uchar *buf)
+{
+  int error;
+  Log_func *log_func= Delete_rows_log_event::binlog_row_logging_function;
+
+  error= binlog_log_row(table, buf, 0, log_func);
+  return 0;
+}
+
 
 
 /** @brief

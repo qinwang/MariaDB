@@ -43,9 +43,11 @@
 #include <keycache.h>
 #include <mysql/psi/mysql_table.h>
 
+#define HANDLER_HAS_DIRECT_UPDATE_ROWS
 #define HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
 #define HANDLER_HAS_DIRECT_AGGREGATE
-
+#define INFO_KIND_UPDATE_FIELDS 101
+#define INFO_KIND_UPDATE_VALUES 102
 #define INFO_KIND_BULK_ACCESS_BEGIN 105
 #define INFO_KIND_BULK_ACCESS_CURRENT 106
 #define INFO_KIND_BULK_ACCESS_END 107
@@ -2914,6 +2916,76 @@ public:
   int ha_pre_write_row(uchar * buf) { return pre_write_row(buf); }
   int ha_update_row(const uchar * old_data, uchar * new_data);
   int ha_delete_row(const uchar * buf);
+  int ha_direct_update_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data
+  );
+  int ha_pre_direct_update_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data
+  ) {
+    return pre_direct_update_rows_init(mode, ranges, range_count, sorted,
+      new_data);
+  }
+  int ha_direct_update_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data,
+    uint *update_rows
+  );
+  int ha_direct_update_row_binlog(
+    const uchar *old_data,
+    uchar *new_data
+  );
+  int ha_direct_delete_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted
+  );
+  int ha_pre_direct_delete_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted
+  ) {
+    return pre_direct_delete_rows_init(mode, ranges, range_count, sorted);
+  }
+  int ha_direct_delete_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uint *delete_rows
+  );
+  int ha_pre_direct_delete_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uint *delete_rows
+  ) {
+    return pre_direct_delete_rows(ranges, range_count, sorted,
+      delete_rows);
+  }
+  int ha_pre_direct_update_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data,
+    uint *update_rows
+  ) {
+    return pre_direct_update_rows(ranges, range_count, sorted,
+      new_data, update_rows);
+  }
+  int ha_direct_delete_row_binlog(
+    const uchar *buf
+  );
   virtual void bulk_req_exec() {}
   void ha_release_auto_increment();
 
@@ -3149,17 +3221,6 @@ public:
    { return 0; }
   virtual int pre_index_last(bool use_parallel)
    { return 0; }
-  virtual int pre_index_read_last_map(const uchar *key,
-                                      key_part_map keypart_map,
-                                      bool use_parallel)
-   { return 0; }
-/*
-  virtual int pre_read_multi_range_first(KEY_MULTI_RANGE **found_range_p,
-                                         KEY_MULTI_RANGE *ranges,
-                                         uint range_count,
-                                         bool sorted, HANDLER_BUFFER *buffer,
-                                         bool use_parallel);
-*/
   virtual int pre_multi_range_read_next(bool use_parallel)
   { return 0; }
   virtual int pre_read_range_first(const key_range *start_key,
@@ -3673,6 +3734,8 @@ public:
  */
  virtual void cond_pop() { return; };
 
+ virtual int info_push(uint info_type, void *info) { return 0; };
+
  /**
     This function is used to get correlating of a parent (table/column)
     and children (table/column). When conditions are pushed down to child
@@ -4119,6 +4182,83 @@ private:
   {
     return HA_ERR_WRONG_COMMAND;
   }
+
+  virtual int direct_update_rows_init(
+    uint mode __attribute__((unused)),
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uchar *new_data __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int pre_direct_update_rows_init(
+    uint mode __attribute__((unused)),
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uchar *new_data __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int direct_update_rows(
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uchar *new_data __attribute__((unused)),
+    uint *update_rows __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int pre_direct_update_rows(
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uchar *new_data __attribute__((unused)),
+    uint *update_rows __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int direct_delete_rows_init(
+    uint mode __attribute__((unused)),
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int pre_direct_delete_rows_init(
+    uint mode __attribute__((unused)),
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int direct_delete_rows(
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uint *delete_rows __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
+  virtual int pre_direct_delete_rows(
+    KEY_MULTI_RANGE *ranges __attribute__((unused)),
+    uint range_count __attribute__((unused)),
+    bool sorted __attribute__((unused)),
+    uint *delete_rows __attribute__((unused)))
+  {
+    return HA_ERR_WRONG_COMMAND;
+  }
+
   /**
     Reset state of file to after 'open'.
     This function is called after every statement for all tables used

@@ -306,6 +306,9 @@ private:
   ha_rows   m_bulk_inserted_rows;
   /** used for prediction of start_bulk_insert rows */
   enum_monotonicity_info m_part_func_monotonicity_info;
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  part_id_range m_direct_update_part_spec;
+#endif
   bool                m_pre_calling;
   bool                m_pre_call_use_parallel;
 #ifdef HA_CAN_BULK_ACCESS
@@ -548,8 +551,45 @@ public:
 #ifdef HA_CAN_BULK_ACCESS
   virtual int pre_write_row(uchar *buf);
 #endif
+  virtual bool start_bulk_update();
+  virtual int exec_bulk_update(uint *dup_key_found);
+  virtual void end_bulk_update();
+  virtual int bulk_update_row(const uchar *old_data, uchar *new_data, uint *dup_key_found);
   virtual int update_row(const uchar * old_data, uchar * new_data);
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  virtual int direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
+    uint range_count, bool sorted, uchar *new_data);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
+    uint range_count, bool sorted, uchar *new_data);
+#endif
+  virtual int direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
+    bool sorted, uchar *new_data, uint *update_rows);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
+    bool sorted, uchar *new_data, uint *update_rows);
+#endif
+#if defined(HS_HAS_SQLCOM)
+  virtual bool check_hs_update_overlapping(key_range *key);
+#endif
+#endif
+  virtual bool start_bulk_delete();
+  virtual int end_bulk_delete();
   virtual int delete_row(const uchar * buf);
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  virtual int direct_delete_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
+    uint range_count, bool sorted);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_direct_delete_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
+    uint range_count, bool sorted);
+#endif
+  virtual int direct_delete_rows(KEY_MULTI_RANGE *ranges, uint range_count,
+    bool sorted, uint *delete_rows);
+#ifdef HA_CAN_BULK_ACCESS
+  virtual int pre_direct_delete_rows(KEY_MULTI_RANGE *ranges, uint range_count,
+    bool sorted, uint *delete_rows);
+#endif
+#endif
   virtual int delete_all_rows(void);
   virtual int truncate();
   virtual void start_bulk_insert(ha_rows rows, uint flags);
@@ -1346,6 +1386,9 @@ public:
   */
     virtual const COND *cond_push(const COND *cond);
     virtual void cond_pop();
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+    virtual int info_push(uint info_type, void *info);
+#endif
     virtual void clear_top_table_fields();
 
     private:
