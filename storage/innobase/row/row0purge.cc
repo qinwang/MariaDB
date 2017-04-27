@@ -880,6 +880,16 @@ try_again:
 		innobase_init_vc_templ(node->table);
 	}
 
+	if (!node->table->is_readable()) {
+		/* We skip purge of missing .ibd files */
+
+		dict_table_close(node->table, FALSE, FALSE);
+
+		node->table = NULL;
+
+		goto err_exit;
+	}
+
 	clust_index = dict_table_get_first_index(node->table);
 
 	if (clust_index == NULL

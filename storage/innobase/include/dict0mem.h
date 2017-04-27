@@ -1004,6 +1004,13 @@ struct dict_index_t{
 		return(UNIV_LIKELY(!uncommitted));
 	}
 
+	/* Returns true if this is a single-table tablespace
+	and the .ibd file is missing or page decryption failed
+	and/or page is corrupted.
+	@return true if table is readable
+	@retval false if table is not readable */
+	bool is_readable() const;
+
 	/** Flag an index committed or uncommitted.
 	@param[in]	committed	whether the index is committed */
 	void set_committed(bool committed)
@@ -1404,9 +1411,9 @@ struct dict_table_t {
 	unsigned				flags2:DICT_TF2_BITS;
 
 	/** TRUE if this is in a single-table tablespace and the .ibd file is
-	missing. Then we must return in ha_innodb.cc an error if the user
-	tries to query such an orphaned table. */
-	unsigned				ibd_file_missing:1;
+	missing or page in file is encrypted. Then we must return in
+	ha_innodb.cc an error if the usertries to query such an table. */
+	unsigned				file_unreadable:1;
 
 	/** TRUE if the table object has been added to the dictionary cache. */
 	unsigned				cached:1;
@@ -1727,7 +1734,19 @@ public:
 	/** Timestamp of the last modification of this table. */
 	time_t					update_time;
 
-	bool					is_encrypted;
+	/** mysql_row_templ_t for base columns used for compute the virtual
+	columns */
+	dict_vcol_templ_t*			vc_templ;
+
+	/* Returns true if this is a single-table tablespace
+	and the .ibd file is missing or page decryption failed
+	and/or page is corrupted.
+	@return true if table is readable
+	@retval false if table is not readable */
+	inline bool is_readable() const
+	{
+		return(UNIV_LIKELY(!file_unreadable));
+	}
 
 #ifdef UNIV_DEBUG
 	/** Value of 'magic_n'. */
@@ -1736,9 +1755,6 @@ public:
 	/** Magic number. */
 	ulint					magic_n;
 #endif /* UNIV_DEBUG */
-	/** mysql_row_templ_t for base columns used for compute the virtual
-	columns */
-	dict_vcol_templ_t*			vc_templ;
 };
 
 /*******************************************************************//**
@@ -1747,6 +1763,16 @@ void
 lock_table_lock_list_init(
 /*======================*/
 	table_lock_list_t*	locks);		/*!< List to initialise */
+
+/* Returns true if this is a single-table tablespace
+and the .ibd file is missing or page decryption failed
+and/or page is corrupted.
+@return true if table is readable
+@retval false if table is not readable */
+inline bool dict_index_t::is_readable() const
+{
+	return(UNIV_LIKELY(!table->file_unreadable));
+}
 
 /** A function object to add the foreign key constraint to the referenced set
 of the referenced table, if it exists in the dictionary cache. */

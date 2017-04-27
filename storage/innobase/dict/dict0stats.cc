@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 2009, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2017, MariaDB Corporation.
+Copyright (c) 2015, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -913,10 +913,11 @@ dict_stats_update_transient_for_index(
 
 		index->stat_n_leaf_pages = size;
 
-		/* We don't handle the return value since it will be false
-		only when some thread is dropping the table and we don't
-		have to empty the statistics of the to be dropped index */
-		btr_estimate_number_of_different_key_vals(index);
+		/* Do not continue if table decryption has failed or
+		table is already marked as corrupted. */
+		if (index->is_readable()) {
+			btr_estimate_number_of_different_key_vals(index);
+		}
 	}
 }
 
@@ -967,8 +968,9 @@ dict_stats_update_transient(
 			continue;
 		}
 
-		/* Do not continue if table decryption has failed. */
-		if (index->table->is_encrypted) {
+		/* Do not continue if table decryption has failed or
+		table is already marked as corrupted. */
+		if (!index->is_readable()) {
 			break;
 		}
 
@@ -2419,6 +2421,61 @@ dict_stats_save_index_stat(
 	return(ret);
 }
 
+/** Report error if statistic update for a table failed because
+.ibd file is missing, table decryption failed or table is corrupted.
+@param[in,out]	table	Table
+@param[in]	defragment	true if statistics is for defragment
+@return DB_DECRYPTION_FAILED, DB_TABLESPACE_DELETED or DB_CORRUPTION
+@retval DB_DECRYPTION_FAILED if decryption of the table failed
+@retval DB_TABLESPACE_DELETED if .ibd file is missing
+@retval DB_CORRUPTION if table is marked as corrupted */
+dberr_t
+dict_stats_report_error(
+	dict_table_t*	table,
+	bool		defragment)
+{
+	dberr_t		err;
+
+	FilSpace space(table->space);
+
+	if (space()) {
+		if (table->corrupted) {
+			ib::info()
+				<< "Cannot save"
+				<< (defragment ? " defragment" : " ")
+				<< "statistics because "
+				" table " << table->name
+				<< " in file " << space()->chain.start->name
+				<< " is corrupted.";
+			err = DB_CORRUPTION;
+		} else {
+			ib::info()
+				<< "Cannot save"
+				<< (defragment ? " defragment" : " ")
+				<< "statistics because "
+				" table " << table->name
+				<< " in file " << space()->chain.start->name
+				<< " can't be decrypted.";
+			err = DB_DECRYPTION_FAILED;
+		}
+	} else {
+		ib::info()
+			<< "Cannot save"
+			<< (defragment ? " defragment" : " ")
+			<< "statistics for "
+			" table " << table->name
+			<< " because .ibd file is missing."
+			" For help, please "
+			"refer to " REFMAN "innodb-troubleshooting.html.";
+		err = DB_TABLESPACE_DELETED;
+	}
+
+	dict_stats_empty_table(table, defragment);
+
+	return (err);
+}
+
+
 /** Save the table's statistics into the persistent statistics storage.
 @param[in]	table_orig	table whose stats to save
 @param[in]	only_for_index	if this is non-NULL, then stats for indexes
@@ -2437,6 +2494,11 @@ dict_stats_save(
 	dict_table_t*	table;
 	char		db_utf8[MAX_DB_UTF8_LEN];
 	char		table_utf8[MAX_TABLE_UTF8_LEN];
+
+	if (table_orig->is_readable()) {
+	} else {
+		return (dict_stats_report_error(table_orig));
+	}
 
 	table = dict_stats_snapshot_create(table_orig);
 
@@ -3160,15 +3222,8 @@ dict_stats_update(
 {
 	ut_ad(!mutex_own(&dict_sys->mutex));
 
-	if (table->ibd_file_missing) {
-
-		ib::warn() << "Cannot calculate statistics for table "
-			<< table->name
-			<< " because the .ibd file is missing. "
-			<< TROUBLESHOOTING_MSG;
-
-		dict_stats_empty_table(table, true);
-		return(DB_TABLESPACE_DELETED);
+	if (!table->is_readable()) {
+		return (dict_stats_report_error(table));
 	} else if (srv_force_recovery >= SRV_FORCE_NO_IBUF_MERGE) {
 		/* If we have set a high innodb_force_recovery level, do
 		not calculate statistics, as a badly corrupted index can
@@ -3860,7 +3915,7 @@ if the persistent stats do not exist. */
 dberr_t
 dict_stats_rename_index(
 /*====================*/
-	const dict_table_t*	table,		/*!< in: table whose index
+	dict_table_t*		table,		/*!< in: table whose index
 						is renamed */
 	const char*		old_index_name,	/*!< in: old index name */
 	const char*		new_index_name)	/*!< in: new index name */
@@ -3876,6 +3931,12 @@ dict_stats_rename_index(
 
 	char	dbname_utf8[MAX_DB_UTF8_LEN];
 	char	tablename_utf8[MAX_TABLE_UTF8_LEN];
+
+	if (table->is_readable()) {
+	} else {
+		return (dict_stats_report_error(table, true));
+	}
+
 
 	dict_fs2utf8(table->name.m_name, dbname_utf8, sizeof(dbname_utf8),
 		     tablename_utf8, sizeof(tablename_utf8));

@@ -143,6 +143,8 @@ enum dberr_t {
 					of missing key management plugin,
 					or missing or incorrect key or
 					incorret AES method or algorithm. */
+	DB_PAGE_CORRUPTED,		/* Page read from tablespace is
+					corrupted. */
 
 	DB_IO_ERROR = 100,		/*!< Generic IO error */
 

@@ -1381,14 +1381,13 @@ wsrep_kill_victim(
 			is in the queue*/
 		} else if (lock->trx != trx) {
 			if (wsrep_log_conflicts) {
-				mutex_enter(&trx_sys->mutex);
 				if (bf_this) {
 					ib::info() << "*** Priority TRANSACTION:";
 				} else {
 					ib::info() << "*** Victim TRANSACTION:";
 				}
 
-				trx_print_latched(stderr, trx, 3000);
+				wsrep_trx_print_locking(stderr, trx, 3000);
 
 				if (bf_other) {
 					ib::info() << "*** Priority TRANSACTION:";
@@ -1396,9 +1395,7 @@ wsrep_kill_victim(
 					ib::info() << "*** Victim TRANSACTION:";
 				}
 
-				trx_print_latched(stderr, lock->trx, 3000);
-
-				mutex_exit(&trx_sys->mutex);
+				wsrep_trx_print_locking(stderr, lock->trx, 3000);
 
 				ib::info() << "*** WAITING FOR THIS LOCK TO BE GRANTED:";
 

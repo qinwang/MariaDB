@@ -320,19 +320,8 @@ dict_stats_save_defrag_stats(
 {
 	dberr_t	ret;
 
-	if (index->table->ibd_file_missing) {
-		ut_print_timestamp(stderr);
-		fprintf(stderr,
-			" InnoDB: Cannot save defragment stats because "
-			".ibd file is missing.\n");
-		return (DB_TABLESPACE_DELETED);
-	}
-	if (dict_index_is_corrupted(index)) {
-		ut_print_timestamp(stderr);
-		fprintf(stderr,
-			" InnoDB: Cannot save defragment stats because "
-			"index is corrupted.\n");
-		return(DB_CORRUPTION);
+	if (!index->table->is_readable()) {
+		return (dict_stats_report_error(index->table, true));
 	}
 
 	if (dict_index_is_univ(index)) {

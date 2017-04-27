@@ -178,7 +178,7 @@ if the persistent stats do not exist. */
 dberr_t
 dict_stats_rename_index(
 /*====================*/
-	const dict_table_t*	table,		/*!< in: table whose index
+	dict_table_t*		table,		/*!< in: table whose index
 						is renamed */
 	const char*		old_index_name,	/*!< in: old index name */
 	const char*		new_index_name)	/*!< in: new index name */
@@ -251,6 +251,19 @@ dict_stats_save_index_stat(
 	ib_uint64_t*	sample_size,
 	const char*	stat_description,
 	trx_t*		trx);
+
+/** Report error if statistic update for a table failed because
+.ibd file is missing, table decryption failed or table is corrupted.
+@param[in,out]	table	Table
+@param[in]	defragment	true if statistics is for defragment
+@return DB_DECRYPTION_FAILED, DB_TABLESPACE_DELETED or DB_CORRUPTION
+@retval DB_DECRYPTION_FAILED if decryption of the table failed
+@retval DB_TABLESPACE_DELETED if .ibd file is missing
+@retval DB_CORRUPTION if table is marked as corrupted */
+dberr_t
+dict_stats_report_error(
+	dict_table_t*	table,
+	bool		defragment = false);
 
 #include "dict0stats.ic"
 

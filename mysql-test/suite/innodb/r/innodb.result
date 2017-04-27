@@ -1390,7 +1390,7 @@ insert into t1 values
 (248, 247), (249, 248), (250, 249), (251, 250),
 (252, 251), (253, 252), (254, 253), (255, 254);
 delete from t1 where id=0;
-Got one of the listed errors
+ERROR HY000: Got error 193 '`test`.`t1`, CONSTRAINT `t1_ibfk_1` FOREIGN KEY (`pid`) REFERENCES `t1` (`id`) ON DELETE CASCADE' from InnoDB
 delete from t1 where id=255;
 delete from t1 where id=0;
 drop table t1;

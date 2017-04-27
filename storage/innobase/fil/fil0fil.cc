@@ -306,7 +306,9 @@ fil_write(
 }
 
 /*******************************************************************//**
-Returns the table space by a given id, NULL if not found. */
+Returns the table space by a given id, NULL if not found.
+It is unsafe to dereference the returned pointer. It is fine to check
+for NULL. */
 fil_space_t*
 fil_space_get_by_id(
 /*================*/
@@ -324,8 +326,7 @@ fil_space_get_by_id(
 	return(space);
 }
 
-/*******************************************************************//**
-Returns the table space by a given name, NULL if not found. */
+/** Returns the table space by a given name, NULL if not found. */
 UNIV_INLINE
 fil_space_t*
 fil_space_get_by_name(
@@ -878,7 +879,7 @@ fil_flush_low(fil_space_t* space)
 {
 	ut_ad(mutex_own(&fil_system->mutex));
 	ut_ad(space);
-	ut_ad(!space->stop_new_ops);
+	ut_ad(!space->is_stopping());
 
 	if (fil_buffering_disabled(space)) {
 
@@ -2271,9 +2272,9 @@ for concurrency control.
 			(possibly executing TRUNCATE)
 @return	the tablespace
 @retval	NULL if missing or being deleted or truncated */
-inline
+UNIV_INTERN
 fil_space_t*
-fil_space_acquire_low(ulint id, bool silent, bool for_io = false)
+fil_space_acquire_low(ulint id, bool silent, bool for_io)
 {
 	fil_space_t*	space;
 
@@ -2295,32 +2296,6 @@ fil_space_acquire_low(ulint id, bool silent, bool for_io = false)
 	mutex_exit(&fil_system->mutex);
 
 	return(space);
-}
-
-/** Acquire a tablespace when it could be dropped concurrently.
-Used by background threads that do not necessarily hold proper locks
-for concurrency control.
-@param[in]	id	tablespace ID
-@param[in]	for_io	whether to look up the tablespace while performing I/O
-			(possibly executing TRUNCATE)
-@return	the tablespace
-@retval	NULL	if missing or being deleted or truncated */
-fil_space_t*
-fil_space_acquire(ulint id, bool for_io)
-{
-	return(fil_space_acquire_low(id, false, for_io));
-}
-
-/** Acquire a tablespace that may not exist.
-Used by background threads that do not necessarily hold proper locks
-for concurrency control.
-@param[in]	id	tablespace ID
-@return	the tablespace
-@retval	NULL if missing or being deleted */
-fil_space_t*
-fil_space_acquire_silent(ulint id)
-{
-	return(fil_space_acquire_low(id, true));
 }
 
 /** Release a tablespace acquired with fil_space_acquire().
@@ -3066,7 +3041,7 @@ checked @return whether the table is accessible */
 bool
 fil_table_accessible(const dict_table_t* table)
 {
-	if (UNIV_UNLIKELY(table->ibd_file_missing || table->corrupted)) {
+	if (UNIV_UNLIKELY(!table->is_readable())) {
 		return(false);
 	}
 
@@ -5473,6 +5448,7 @@ fil_aio_wait(
 	mutex_enter(&fil_system->mutex);
 
 	fil_node_complete_io(node, type);
+	ulint purpose = node->space->purpose;
 
 	mutex_exit(&fil_system->mutex);
 
@@ -5484,7 +5460,7 @@ fil_aio_wait(
 	deadlocks in the i/o system. We keep tablespace 0 data files always
 	open, and use a special i/o thread to serve insert buffer requests. */
 
-	switch (node->space->purpose) {
+	switch (purpose) {
 	case FIL_TYPE_TABLESPACE:
 	case FIL_TYPE_TEMPORARY:
 	case FIL_TYPE_IMPORT:
@@ -5493,7 +5469,25 @@ fil_aio_wait(
 		/* async single page writes from the dblwr buffer don't have
 		access to the page */
 		if (message != NULL) {
-			buf_page_io_complete(static_cast<buf_page_t*>(message));
+			buf_page_t *bpage = static_cast<buf_page_t*>(message);
+			const page_id_t page_id = bpage->id;
+			dberr_t err = buf_page_io_complete(bpage);
+
+			if (err != DB_SUCCESS) {
+
+				/* In crash recovery set log corruption on
+				and produce only an error to fail InnoDB startup. */
+				if (recv_recovery_is_on()) {
+					recv_sys->found_corrupt_log = true;
+				}
+
+				ib::error()
+					<< (type == IORequestRead ? "Read" : "Write")
+					<< "operation failed for " << node->name
+					<< " page " << page_id
+					<< " error= " << ut_strerr(err);
+			}
+
 		}
 		return;
 	case FIL_TYPE_LOG:
@@ -5518,7 +5512,7 @@ fil_flush(
 
 	if (fil_space_t* space = fil_space_get_by_id(space_id)) {
 		if (space->purpose != FIL_TYPE_TEMPORARY
-		    && !space->is_stopping()) {
+		    && !space->stop_new_ops) {
 			fil_flush_low(space);
 		}
 	}
@@ -6453,7 +6447,6 @@ fil_space_validate_for_mtr_commit(
 	mini-transaction, we should have !space->stop_new_ops. This is
 	guaranteed by meta-data locks or transactional locks, or
 	dict_operation_lock (X-lock in DROP, S-lock in purge).
-
 	However, a file I/O thread can invoke change buffer merge
 	while fil_check_pending_operations() is waiting for operations
 	to quiesce. This is not a problem, because
@@ -6510,7 +6503,6 @@ fil_names_dirty_and_write(
 	ut_ad(log_mutex_own());
 	ut_d(fil_space_validate_for_mtr_commit(space));
 	ut_ad(space->max_lsn == log_sys->lsn);
-
 	UT_LIST_ADD_LAST(fil_system->named_spaces, space);
 	fil_names_write(space, mtr);
 
@@ -6543,9 +6535,7 @@ fil_names_clear(
 		"increase_mtr_checkpoint_size",
 		mtr_checkpoint_size = 75 * 1024;
 		);
-
 	ut_ad(log_mutex_own());
-
 	if (log_sys->append_on_checkpoint) {
 		mtr_write_log(log_sys->append_on_checkpoint);
 		do_write = true;
@@ -6556,7 +6546,6 @@ fil_names_clear(
 	for (fil_space_t* space = UT_LIST_GET_FIRST(fil_system->named_spaces);
 	     space != NULL; ) {
 		fil_space_t*	next = UT_LIST_GET_NEXT(named_spaces, space);
-
 		ut_ad(space->max_lsn > 0);
 		if (space->max_lsn < lsn) {
 			/* The tablespace was last dirtied before the
@@ -6597,7 +6586,6 @@ fil_names_clear(
 	} else {
 		ut_ad(!mtr.has_modifications());
 	}
-
 	return(do_write);
 }
 

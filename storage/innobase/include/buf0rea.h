@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1995, 2015, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2015, MariaDB Corporation.
+Copyright (c) 2015, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -35,14 +35,19 @@ Created 11/5/1995 Heikki Tuuri
 buffer buf_pool if it is not already there. Sets the io_fix flag and sets
 an exclusive lock on the buffer frame. The flag is cleared and the x-lock
 released by the i/o-handler thread.
-@param[in]	page_id		page id
-@param[in]	page_size	page size
-@return TRUE if page has been read in, FALSE in case of failure */
-ibool
+
+@param[in]	space		space_id
+@param[in]	zip_size	compressed page size in bytes, or 0
+@param[in]	offset		page number
+@return DB_SUCCESS if page has been read and is not corrupted,
+@retval DB_PAGE_CORRUPTED if page based on checksum check is corrupted,
+@retval DB_DECRYPTION_FAILED if page post encryption checksum matches but
+after decryption normal page checksum does not match.
+@retval DB_TABLESPACE_DELETED if tablespace .ibd file is missing */
+dberr_t
 buf_read_page(
 	const page_id_t&	page_id,
-	const page_size_t&	page_size,
-	buf_page_t**		bpage);
+	const page_size_t&	page_size);
 
 /********************************************************************//**
 High-level function which reads a page asynchronously from a file to the
@@ -51,9 +56,8 @@ an exclusive lock on the buffer frame. The flag is cleared and the x-lock
 released by the i/o-handler thread.
 @param[in]	page_id		page id
 @param[in]	page_size	page size
-@param[in]	sync		true if synchronous aio is desired
-@return TRUE if page has been read in, FALSE in case of failure */
-ibool
+@param[in]	sync		true if synchronous aio is desired */
+void
 buf_read_page_background(
 	const page_id_t&	page_id,
 	const page_size_t&	page_size,

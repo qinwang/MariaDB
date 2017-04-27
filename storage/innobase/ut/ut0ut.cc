@@ -745,6 +745,8 @@ ut_strerr(
 		return("Too many words in a FTS phrase or proximity search");
 	case DB_DECRYPTION_FAILED:
 		return("Table is encrypted but decrypt failed.");
+	case DB_PAGE_CORRUPTED:
+		return("Page read from tablespace is corrupted.");
 	case DB_IO_PARTIAL_FAILED:
 		return("Partial IO failed");
 	case DB_FORCED_ABORT:

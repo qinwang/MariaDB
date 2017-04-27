@@ -726,23 +726,45 @@ MY_ATTRIBUTE((warn_unused_result));
 Used by background threads that do not necessarily hold proper locks
 for concurrency control.
 @param[in]	id	tablespace ID
+@param[in]	silent	whether to silently ignore missing tablespaces
 @param[in]	for_io	whether to look up the tablespace while performing I/O
 			(possibly executing TRUNCATE)
 @return	the tablespace
 @retval	NULL if missing or being deleted or truncated */
+UNIV_INTERN
+fil_space_t*
+fil_space_acquire_low(ulint id, bool silent, bool for_io = false)
+	MY_ATTRIBUTE((warn_unused_result));
+
+/** Acquire a tablespace when it could be dropped concurrently.
+Used by background threads that do not necessarily hold proper locks
+for concurrency control.
+@param[in]	id	tablespace ID
+@param[in]	for_io	whether to look up the tablespace while performing I/O
+			(possibly executing TRUNCATE)
+@return	the tablespace
+@retval	NULL if missing or being deleted or truncated */
+inline
 fil_space_t*
 fil_space_acquire(ulint id, bool for_io = false)
-	MY_ATTRIBUTE((warn_unused_result));
+{
+	return (fil_space_acquire_low(id, false, for_io));
+}
 
 /** Acquire a tablespace that may not exist.
 Used by background threads that do not necessarily hold proper locks
 for concurrency control.
 @param[in]	id	tablespace ID
+@param[in]	for_io	whether to look up the tablespace while performing I/O
+			(possibly executing TRUNCATE)
 @return	the tablespace
 @retval	NULL if missing or being deleted */
+inline
 fil_space_t*
-fil_space_acquire_silent(ulint id)
-	MY_ATTRIBUTE((warn_unused_result));
+fil_space_acquire_silent(ulint id, bool for_io = false)
+{
+	return (fil_space_acquire_low(id, true, for_io));
+}
 
 /** Release a tablespace acquired with fil_space_acquire().
 @param[in,out]	space	tablespace to release  */
@@ -786,11 +808,12 @@ public:
 	/** Constructor: Look up the tablespace and increment the
 	reference count if found.
 	@param[in]	space_id	tablespace ID
+	@param[in]	silent		whether not print any errors
 	@param[in]	for_io		whether to look up the tablespace
 					while performing I/O
 					(possibly executing TRUNCATE) */
-	explicit FilSpace(ulint space_id, bool for_io = false)
-		: m_space(fil_space_acquire(space_id, for_io)) {}
+	explicit FilSpace(ulint space_id, bool silent = false, bool for_io = false)
+		: m_space(fil_space_acquire_low(space_id, silent, for_io)) {}
 
 	/** Assignment operator: This assumes that fil_space_acquire()
 	has already been done for the fil_space_t. The caller must
@@ -1495,13 +1518,6 @@ fil_mtr_rename_log(
 /*******************************************************************//**
 Returns the table space by a given id, NULL if not found. */
 fil_space_t*
-fil_space_found_by_id(
-/*==================*/
-	ulint	id);	/*!< in: space id */
-
-/*******************************************************************//**
-Returns the table space by a given id, NULL if not found. */
-fil_space_t*
 fil_space_get_by_id(
 /*================*/
 	ulint	id);	/*!< in: space id */
@@ -1512,7 +1528,6 @@ by redo log.
 void
 fil_names_dirty(
 	fil_space_t*	space);
-
 /** Write MLOG_FILE_NAME records when a non-predefined persistent
 tablespace was modified for the first time since the latest
 fil_names_clear().
@@ -1522,7 +1537,6 @@ void
 fil_names_dirty_and_write(
 	fil_space_t*	space,
 	mtr_t*		mtr);
-
 /** Write MLOG_FILE_NAME records if a persistent tablespace was modified
 for the first time since the latest fil_names_clear().
 @param[in,out]	space	tablespace
@@ -1535,7 +1549,6 @@ fil_names_write_if_was_clean(
 	mtr_t*		mtr)
 {
 	ut_ad(log_mutex_own());
-
 	if (space == NULL) {
 		return(false);
 	}
@@ -1591,8 +1604,6 @@ fil_names_clear(
 #ifdef UNIV_ENABLE_UNIT_TEST_MAKE_FILEPATH
 void test_make_filepath();
 #endif /* UNIV_ENABLE_UNIT_TEST_MAKE_FILEPATH */
-
-
 /** Determine the block size of the data file.
 @param[in]	space		tablespace
 @param[in]	offset		page number

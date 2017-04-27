@@ -336,6 +336,10 @@ SysTablespace::shutdown()
 {
 	Tablespace::shutdown();
 
+	if (m_crypt_info) {
+		fil_space_destroy_crypt_data(&m_crypt_info);
+	}
+
 	m_auto_extend_last_file = 0;
 	m_last_file_size_max = 0;
 	m_created_new_raw = 0;
@@ -943,6 +947,9 @@ SysTablespace::open_or_create(
 				name(), space_id(), flags(), is_temp
 				? FIL_TYPE_TEMPORARY : FIL_TYPE_TABLESPACE, m_crypt_info,
 				false);
+
+			/* Crypt info is stored to fil_space_t */
+			m_crypt_info = NULL;
 		}
 
 		ut_a(fil_validate());

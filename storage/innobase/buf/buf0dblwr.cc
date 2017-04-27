@@ -527,20 +527,20 @@ buf_dblwr_process()
 	     ++i, ++page_no_dblwr) {
 		byte*	page		= *i;
 		ulint	space_id	= page_get_space_id(page);
-		fil_space_t*	space = fil_space_get(space_id);
+		FilSpace space(space_id, true);
 
-		if (space == NULL) {
+		if (!space()) {
 			/* Maybe we have dropped the tablespace
 			and this page once belonged to it: do nothing */
 			continue;
 		}
 
-		fil_space_open_if_needed(space);
-
 		const ulint		page_no	= page_get_page_no(page);
 		const page_id_t		page_id(space_id, page_no);
 
-		if (page_no >= space->size) {
+		fil_space_open_if_needed(const_cast<fil_space_t*>(space()));
+
+		if (page_no >= space()->size) {
 
 			/* Do not report the warning if the tablespace
 			is scheduled for truncation or was truncated
@@ -555,7 +555,7 @@ buf_dblwr_process()
 			continue;
 		}
 
-		const page_size_t	page_size(space->flags);
+		const page_size_t	page_size(space()->flags);
 		ut_ad(!buf_page_is_zeroes(page, page_size));
 
 		/* We want to ensure that for partial reads the
@@ -563,13 +563,14 @@ buf_dblwr_process()
 		memset(read_buf, 0x0, page_size.physical());
 
 		IORequest	request;
+		IORequest	write_request(IORequest::WRITE);
 
 		request.dblwr_recover();
 
 		/* Read in the actual page from the file */
 		dberr_t	err = fil_io(
-			request, true,
-			page_id, page_size,
+				request, true,
+				page_id, page_size,
 				0, page_size.physical(), read_buf, NULL);
 
 		if (err != DB_SUCCESS) {
@@ -654,8 +655,6 @@ buf_dblwr_process()
 
 		/* Write the good page from the doublewrite buffer to
 		the intended position. */
-
-		IORequest	write_request(IORequest::WRITE);
 
 		fil_io(write_request, true, page_id, page_size,
 		       0, page_size.physical(),

@@ -1126,10 +1126,9 @@ insert into t1 values
 (244, 243), (245, 244), (246, 245), (247, 246),
 (248, 247), (249, 248), (250, 249), (251, 250),
 (252, 251), (253, 252), (254, 253), (255, 254);
---error ER_GET_ERRMSG,ER_ROW_IS_REFERENCED_2
+--error ER_GET_ERRMSG
 delete from t1 where id=0;
 delete from t1 where id=255;
---error 0,ER_ROW_IS_REFERENCED_2
 delete from t1 where id=0;
 
 drop table t1;
