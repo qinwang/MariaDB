@@ -8896,25 +8896,40 @@ int ha_partition::extra(enum ha_extra_function operation)
   case HA_EXTRA_ATTACH_CHILDREN:
   {
     int result;
-    uint num_locks= 0;
+    uint num_locks;
+    ulonglong additional_table_flags;
     handler **file;
     if ((result = loop_extra(operation)))
       DBUG_RETURN(result);
 
     /* Recalculate lock count as each child may have different set of locks */
     num_locks = 0;
+#ifdef HA_CAN_BULK_ACCESS
+    additional_table_flags = (ulonglong)HA_CAN_BULK_ACCESS;
+#endif
     file = m_file;
     do
     {
       num_locks+= (*file)->lock_count();
+#ifdef HA_CAN_BULK_ACCESS
+      additional_table_flags &= ~((ulonglong)
+                                  ((*file)->ha_table_flags() ^
+                                   (ulonglong)HA_CAN_BULK_ACCESS));
+#endif
     } while (*(++file));
 
     m_num_locks= num_locks;
+#ifdef HA_CAN_BULK_ACCESS
+    cached_table_flags |= additional_table_flags;
+#endif
     break;
   }
   case HA_EXTRA_IS_ATTACHED_CHILDREN:
     DBUG_RETURN(loop_extra(operation));
   case HA_EXTRA_DETACH_CHILDREN:
+#ifdef HA_CAN_BULK_ACCESS
+    cached_table_flags &= ~((ulonglong)HA_CAN_BULK_ACCESS);
+#endif
     DBUG_RETURN(loop_extra(operation));
   case HA_EXTRA_MARK_AS_LOG_TABLE:
   /*
@@ -11021,6 +11036,7 @@ int ha_partition::direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
   }
   m_direct_update_part_spec = m_part_spec;
 
+  j = 0;
   for (i= m_part_spec.start_part; i <= m_part_spec.end_part; i++)
   {
     if (
@@ -11031,6 +11047,7 @@ int ha_partition::direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
       if ((error= file->ha_direct_update_rows_init(mode, ranges,
         range_count, sorted, new_data)))
         DBUG_RETURN(error);
+      j++;
     }
   }
 
