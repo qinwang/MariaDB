@@ -368,6 +368,8 @@ The following options may be given as the first argument:
  --log-queries-not-using-indexes 
  Log queries that are executed without benefit of any
  index to the slow log if it is open
+ --log-result-errors=# 
+ log result errors into error log file
  --log-short-format  Don't log extra information to update and slow-query
  logs.
  --log-slave-updates Tells the slave to log the updates from the slave thread
@@ -1047,6 +1049,8 @@ The following options may be given as the first argument:
  --sort-buffer-size=# 
  Each thread that needs to do a sort allocates a buffer of
  this size
+ --sp-general-log    Log queries in procedure if general_log is on
+ --sp-slow-query-log Log slow queries in procedure if slow_query_log is on
  --sql-mode=name     Sets the sql mode. Any combination of: REAL_AS_FLOAT, 
  PIPES_AS_CONCAT, ANSI_QUOTES, IGNORE_SPACE, 
  IGNORE_BAD_TABLE_OPTIONS, ONLY_FULL_GROUP_BY, 
@@ -1279,6 +1283,7 @@ log-error
 log-isam myisam.log
 log-output FILE
 log-queries-not-using-indexes FALSE
+log-result-errors 0
 log-short-format FALSE
 log-slave-updates FALSE
 log-slow-admin-statements FALSE
@@ -1459,6 +1464,8 @@ slave-type-conversions
 slow-launch-time 2
 slow-query-log FALSE
 sort-buffer-size 2097152
+sp-general-log FALSE
+sp-slow-query-log FALSE
 sql-mode NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
 stack-trace TRUE
 standards-compliant-cte TRUE
