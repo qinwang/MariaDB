@@ -5635,6 +5635,9 @@ int THD::binlog_write_table_map(TABLE *table, bool is_transactional,
 
   IO_CACHE *file=
     cache_mngr->get_binlog_cache_log(use_trans_cache(this, is_transactional));
+  binlog_cache_data *cache_data=
+    cache_mngr->get_binlog_cache_data(use_trans_cache(this, is_transactional));
+
   Log_event_writer writer(file);
   if (with_annotate && *with_annotate)
   {
@@ -5642,7 +5645,11 @@ int THD::binlog_write_table_map(TABLE *table, bool is_transactional,
     /* Annotate event should be written not more than once */
     *with_annotate= 0;
     if ((error= writer.write(&anno)))
+    {
+      if (my_errno == EFBIG)
+        cache_data->set_incident();
       DBUG_RETURN(error);
+    }
   }
   if ((error= writer.write(&the_event)))
     DBUG_RETURN(error);
