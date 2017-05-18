@@ -383,12 +383,12 @@ public:
 #ifdef WITH_WSREP
   void wsrep_reset_fragment_base(ulong size)
   {
-    if (is_trans_cache) wsrep_fragment_base = size;
+    wsrep_fragment_base = size;
   }
 
   void wsrep_reset_fragment_fill(ulong size)
   {
-    if (is_trans_cache) wsrep_fragment_fill = size;
+    wsrep_fragment_fill = size;
   }
 
   void wsrep_reset_SR_trans()
@@ -404,12 +404,12 @@ public:
 
   void wsrep_append_fill_rate(ulong size)
   {
-    if (is_trans_cache) wsrep_fragment_fill += size;
+    wsrep_fragment_fill += size;
   }
 
   void wsrep_step_fragment_base(ulong size)
   {
-    if (is_trans_cache) wsrep_fragment_base += size;
+    wsrep_fragment_base += size;
   }
   ulong wsrep_get_fragment_base()
   {
@@ -530,7 +530,7 @@ public:
       last_commit_pos_file[0]= 0;
       last_commit_pos_offset= 0;
 #ifdef WITH_WSREP
-      wsrep_reset_SR_trans();
+      trx_cache.wsrep_reset_SR_trans();
 #endif /* WITH_WSREP */
     }
   }
@@ -1723,7 +1723,8 @@ static int binlog_close_connection(handlerton *hton, THD *thd)
     (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
 #ifdef WITH_WSREP
   if (cache_mngr && !cache_mngr->trx_cache.empty()) {
-    IO_CACHE* cache= wsrep_get_trans_cache(thd);
+    //IO_CACHE* cache= wsrep_get_trans_cache(thd);
+    IO_CACHE* cache= cache_mngr->get_binlog_cache_log(true);
     uchar *buf;
     size_t len=0;
     wsrep_write_cache_buf(cache, &buf, &len);
@@ -2315,8 +2316,8 @@ static int binlog_savepoint_rollback(handlerton *hton, THD *thd, void *sv)
   /* for streaming replication, we  must replicate savepoint rollback so that 
      slaves can maintain SR transactions
    */
-  if (unlikely(thd->wsrep_is_streaming ||
-               trans_has_updated_non_trans_table(thd) ||
+  if (unlikely(thd->wsrep_is_streaming() ||
+               (trans_has_updated_non_trans_table(thd)) ||
                (thd->variables.option_bits & OPTION_KEEP_LOG)))
 #else
   if (unlikely(trans_has_updated_non_trans_table(thd) ||
@@ -10308,7 +10309,8 @@ uint wsrep_get_trans_cache_position(THD *thd)
   if (binlog_hton)
   {
     my_off_t pos = 0;
-    binlog_cache_mngr *const cache_mngr=
+    binlog_cache_mngr *const cache_mngr= (binlog_cache_mngr*)
+      thd_get_ha_data(thd, binlog_hton);
     if (cache_mngr) binlog_trans_log_savepos(thd, &pos);
     return (pos);
   }
@@ -10399,9 +10401,9 @@ int wsrep_thd_binlog_prepare(THD* thd, bool all)
 {
   /* applier and replayer can skip binlog prepare */
   if (WSREP_EMULATE_BINLOG(thd) && (thd->wsrep_exec_mode != REPL_RECV))
-    return mysql_bin_log.prepare(thd, all);
+    return binlog_hton->prepare(binlog_hton, thd, all);
   else
-    return ha_prepare_low(thd, all);
+    return ha_prepare(thd);
 }
 
 bool wsrep_stmt_rollback_is_safe(THD* thd)
@@ -10410,18 +10412,19 @@ bool wsrep_stmt_rollback_is_safe(THD* thd)
 
   DBUG_ENTER("wsrep_binlog_stmt_rollback_is_safe");
 
-  binlog_cache_mngr *cache_mngr;
+  binlog_cache_mngr *cache_mngr= 
+    (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
 
 
-  if (binlog_hton && ((cache_mngr = thd_get_cache_mngr(thd))))
+  if (binlog_hton && cache_mngr)
   {
-    binlog_trx_cache_data * trx_cache = &cache_mngr->trx_cache;
+    binlog_cache_data * trx_cache = &cache_mngr->trx_cache;
     if (thd->wsrep_fragments_sent > 0 &&
         (trx_cache->get_prev_position() == MY_OFF_T_UNDEF ||
          trx_cache->get_prev_position() < trx_cache->wsrep_get_fragment_base()))
     {
       WSREP_DEBUG("statement rollback is not safe for streaming replication"
-                  " pre-stmt_pos: %llu, frag repl pos: %lu\nThread: %lu, SQL: %s",
+                  " pre-stmt_pos: %llu, frag repl pos: %lu\nThread: %llu, SQL: %s",
                   trx_cache->get_prev_position(), trx_cache->wsrep_get_fragment_base(),
                   thd->thread_id, thd->query());
       ret = false;
@@ -10447,7 +10450,9 @@ void wsrep_register_binlog_handler(THD *thd, bool trx)
     if the binary log is set as read/write.
   */
   //binlog_cache_mngr *cache_mngr= thd_get_cache_mngr(thd);
-  binlog_cache_mngr *cache_mngr= (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_ht  if (cache_mngr->trx_cache.get_prev_position() == MY_OFF_T_UNDEF)
+  binlog_cache_mngr *cache_mngr=
+    (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
+  if (cache_mngr->trx_cache.get_prev_position() == MY_OFF_T_UNDEF)
   {
     /*
       Set an implicit savepoint in order to be able to truncate a trx-cache.

@@ -48,12 +48,6 @@
 #include <mysql_com_server.h>
 #include "session_tracker.h"
 
-#ifdef WITH_WSREP
-#include <vector>
-#include "wsrep_mysqld.h"
-#include "wsrep_binlog.h"
-#endif /* WITH_WSREP */
-
 extern "C"
 void set_thd_stage_info(void *thd,
                         const PSI_stage_info *new_stage,
@@ -67,8 +61,24 @@ void set_thd_stage_info(void *thd,
 
 #include "my_apc.h"
 #include "rpl_gtid.h"
+
+#ifdef WITH_WSREP
+#include <vector>
 #include "wsrep_mysqld.h"
+#include "wsrep_binlog.h"
+struct wsrep_thd_shadow {
+  ulonglong            options;
+  uint                 server_status;
+  enum wsrep_exec_mode wsrep_exec_mode;
+  Vio                  *vio;
+  ulong                tx_isolation;
+  char                 *db;
+  size_t               db_length;
+  my_hrtime_t          user_time;
+  longlong             row_count_func;
+};
 typedef std::vector<wsrep_trx_meta_t> wsrep_fragment_set;
+#endif /* WITH_WSREP */
 
 class Reprepare_observer;
 class Relay_log_info;
@@ -4438,6 +4448,7 @@ private:
 public:
 
   mysql_mutex_t             LOCK_wsrep_thd;
+  mysql_cond_t              COND_wsrep_thd;
   wsrep_trx_meta_t          wsrep_trx_meta;
   uint32                    wsrep_rand;
   Relay_log_info            *wsrep_rli;
@@ -4449,6 +4460,7 @@ public:
   enum enum_server_command  wsrep_retry_command;
   enum wsrep_consistency_check_mode
                             wsrep_consistency_check;
+  wsrep_stats_var*          wsrep_status_vars;
   int                       wsrep_mysql_replicated;
   const char                *wsrep_TOI_pre_query; /* a query to apply before
                                                      the actual TOI query */
@@ -5740,7 +5752,7 @@ public:
   be rolled back or that do not expect any previously metadata
   locked tables.
 */
-#define CF_IMPLICT_COMMIT_BEGIN   (1U << 6)
+#define CF_IMPLICIT_COMMIT_BEGIN   (1U << 6)
 /**
   Implicitly commit after the SQL statement.
 
@@ -5758,7 +5770,7 @@ public:
   before and after every DDL statement and any statement that
   modifies our currently non-transactional system tables.
 */
-#define CF_AUTO_COMMIT_TRANS  (CF_IMPLICT_COMMIT_BEGIN | CF_IMPLICIT_COMMIT_END)
+#define CF_AUTO_COMMIT_TRANS  (CF_IMPLICIT_COMMIT_BEGIN | CF_IMPLICIT_COMMIT_END)
 
 /**
   Diagnostic statement.

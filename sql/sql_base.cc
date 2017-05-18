@@ -879,7 +879,7 @@ void close_thread_table(THD *thd, TABLE **table_ptr)
                                              table->s->db.str,
                                              table->s->table_name.str,
                                              MDL_SHARED));
-#emdif /* WITH_WSSREP */
+#endif /* WITH_WSSREP */
   table->mdl_ticket= NULL;
 
   if (table->file)
@@ -8375,7 +8375,7 @@ bool mysql_notify_thread_having_shared_lock(THD *thd, THD *in_use,
       if (!thd_table->needs_reopen())
       {
 	signalled|= mysql_lock_abort_for_thread(thd, thd_table);
-	if (thd && WSREP(thd) && wsrep_thd_is_BF(thd, true))
+	if (thd && WSREP(thd) && wsrep_thd_is_BF((void*)thd, true))
 	{
 	  WSREP_DEBUG("remove_table_from_cache: %llu",
 		      (unsigned long long) thd->real_id);

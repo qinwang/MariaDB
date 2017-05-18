@@ -478,7 +478,7 @@ extern void mysql_bin_log_commit_pos(THD *thd, ulonglong *out_pos, const char **
 struct trx_t;
 #ifdef WITH_WSREP
 #include <wsrep_mysqld.h>
-//extern "C" int wsrep_trx_order_before(void *thd1, void *thd2);
+extern "C" int wsrep_trx_order_before(void *thd1, void *thd2);
 
 extern "C" bool wsrep_thd_is_wsrep_on(THD *thd);
 

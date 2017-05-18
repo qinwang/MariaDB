@@ -192,12 +192,15 @@ int Trans_delegate::before_prepare(THD *thd, bool all)
 {
   DBUG_ENTER("Trans_delegate::before_prepare");
   Trans_param param = { 0, 0, 0, 0, thd };
+  Trans_binlog_info *log_info;
   bool is_real_trans= (all || thd->transaction.all.ha_list == 0);
 
-  if (is_real_trans)
-    param.flags = true;
+  param.flags = is_real_trans ? TRANS_IS_REAL_TRANS : 0;
 
-  thd->get_trans_fixed_pos(&param.log_file, &param.log_pos);
+  log_info= thd->semisync_info;
+
+  param.log_file= log_info && log_info->log_file[0] ? log_info->log_file : 0;
+  param.log_pos= log_info ? log_info->log_pos : 0;
 
   DBUG_PRINT("enter", ("log_file: %s, log_pos: %llu", param.log_file, param.log_pos));
 
@@ -210,12 +213,15 @@ int Trans_delegate::before_commit(THD *thd, bool all)
 {
   DBUG_ENTER("Trans_delegate::before_commit");
   Trans_param param = { 0, 0, 0, 0, thd };
+  Trans_binlog_info *log_info;
   bool is_real_trans= (all || thd->transaction.all.ha_list == 0);
 
-  if (is_real_trans)
-    param.flags = true;
+  param.flags = is_real_trans ? TRANS_IS_REAL_TRANS : 0;
 
-  thd->get_trans_fixed_pos(&param.log_file, &param.log_pos);
+  log_info= thd->semisync_info;
+
+  param.log_file= log_info && log_info->log_file[0] ? log_info->log_file : 0;
+  param.log_pos= log_info ? log_info->log_pos : 0;
 
   DBUG_PRINT("enter", ("log_file: %s, log_pos: %llu", param.log_file, param.log_pos));
 
@@ -228,12 +234,15 @@ int Trans_delegate::before_rollback(THD *thd, bool all)
 {
   DBUG_ENTER("Trans_delegate::before_rollback");
   Trans_param param = { 0, 0, 0, 0, thd };
+  Trans_binlog_info *log_info;
   bool is_real_trans= (all || thd->transaction.all.ha_list == 0);
 
-  if (is_real_trans)
-    param.flags = true;
+  param.flags = is_real_trans ? TRANS_IS_REAL_TRANS : 0;
 
-  thd->get_trans_fixed_pos(&param.log_file, &param.log_pos);
+  log_info= thd->semisync_info;
+
+  param.log_file= log_info && log_info->log_file[0] ? log_info->log_file : 0;
+  param.log_pos= log_info ? log_info->log_pos : 0;
 
   DBUG_PRINT("enter", ("log_file: %s, log_pos: %llu", param.log_file, param.log_pos));
 
@@ -246,12 +255,15 @@ int Trans_delegate::after_row(THD *thd, bool all)
 {
   DBUG_ENTER("Trans_delegate::after_row");
   Trans_param param = { 0, 0, 0, 0, thd };
+  Trans_binlog_info *log_info;
   bool is_real_trans= (all || thd->transaction.all.ha_list == 0);
 
-  if (is_real_trans)
-    param.flags = true;
+  param.flags = is_real_trans ? TRANS_IS_REAL_TRANS : 0;
 
-  thd->get_trans_fixed_pos(&param.log_file, &param.log_pos);
+  log_info= thd->semisync_info;
+
+  param.log_file= log_info && log_info->log_file[0] ? log_info->log_file : 0;
+  param.log_pos= log_info ? log_info->log_pos : 0;
 
   DBUG_PRINT("enter", ("log_file: %s, log_pos: %llu", param.log_file, param.log_pos));
 
@@ -264,13 +276,15 @@ int Trans_delegate::after_prepare(THD *thd, bool all)
 {
   DBUG_ENTER("Trans_delegate::after_prepare");
   Trans_param param = { 0, 0, 0, 0, thd };
+  Trans_binlog_info *log_info;
   bool is_real_trans= (all || thd->transaction.all.ha_list == 0);
 
-  if (is_real_trans)
-    param.flags = true;
+  param.flags = is_real_trans ? TRANS_IS_REAL_TRANS : 0;
 
-  thd->get_trans_fixed_pos(&param.log_file, &param.log_pos);
+  log_info= thd->semisync_info;
 
+  param.log_file= log_info && log_info->log_file[0] ? log_info->log_file : 0;
+  param.log_pos= log_info ? log_info->log_pos : 0;
   DBUG_PRINT("enter", ("log_file: %s, log_pos: %llu", param.log_file, param.log_pos));
 
   int ret= 0;
@@ -338,16 +352,17 @@ int Trans_delegate::after_rollback(THD *thd, bool all)
 #ifdef WITH_WSREP
 int Trans_delegate::after_command(THD *thd, bool all)
 {
-#ifdef WITH_WSREP
   Trans_param param = { 0, 0, 0, 0, thd };
-#else
-  Trans_param param = { 0, 0, 0, 0 };
-#endif // WITH_WSREP
+  Trans_binlog_info *log_info;
   bool is_real_trans= (all || thd->transaction.all.ha_list == 0);
 
-  if (is_real_trans)
-    param.flags|= TRANS_IS_REAL_TRANS;
-  thd->get_trans_fixed_pos(&param.log_file, &param.log_pos);
+  param.flags = is_real_trans ? TRANS_IS_REAL_TRANS : 0;
+
+  log_info= thd->semisync_info;
+
+  param.log_file= log_info && log_info->log_file[0] ? log_info->log_file : 0;
+  param.log_pos= log_info ? log_info->log_pos : 0;
+  
   int ret= 0;
   FOREACH_OBSERVER(ret, after_command, thd, (&param));
   return ret;
@@ -358,10 +373,15 @@ int Trans_delegate::before_GTID_binlog(THD *thd, bool all)
 {
   Trans_param param = { 0, 0, 0, 0, thd };
   bool is_real_trans= (all || thd->transaction.all.ha_list == 0);
+  Trans_binlog_info *log_info;
 
-  if (is_real_trans)
-    param.flags|= TRANS_IS_REAL_TRANS;
-  thd->get_trans_fixed_pos(&param.log_file, &param.log_pos);
+  param.flags = is_real_trans ? TRANS_IS_REAL_TRANS : 0;
+
+  log_info= thd->semisync_info;
+
+  param.log_file= log_info && log_info->log_file[0] ? log_info->log_file : 0;
+  param.log_pos= log_info ? log_info->log_pos : 0;
+
   int ret= 0;
   FOREACH_OBSERVER(ret, before_GTID_binlog, thd, (&param));
   return ret;
