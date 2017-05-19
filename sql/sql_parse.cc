@@ -171,8 +171,8 @@ const LEX_STRING command_name[257]={
   { C_STRING_WITH_LEN("Set option") },      //27
   { C_STRING_WITH_LEN("Fetch") },           //28
   { C_STRING_WITH_LEN("Daemon") },          //29
-  { 0, 0 }, //30
-  { 0, 0 }, //31
+  { C_STRING_WITH_LEN("Unimpl get tid") },  //30
+  { C_STRING_WITH_LEN("Reset connection") },//31
   { 0, 0 }, //32
   { 0, 0 }, //33
   { 0, 0 }, //34
@@ -525,6 +525,7 @@ void init_update_queries(void)
   server_command_flags[COM_STMT_SEND_LONG_DATA]= CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_REGISTER_SLAVE]= CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_MULTI]= CF_SKIP_WSREP_CHECK | CF_NO_COM_MULTI;
+  server_command_flags[CF_NO_COM_MULTI]= CF_NO_COM_MULTI;
 
   /* Initialize the sql command flags array. */
   memset(sql_command_flags, 0, sizeof(sql_command_flags));
@@ -1094,9 +1095,10 @@ void do_handle_bootstrap(THD *thd)
   handle_bootstrap_impl(thd);
 
 end:
-  in_bootstrap= FALSE;
   delete thd;
+
   mysql_mutex_lock(&LOCK_thread_count);
+  in_bootstrap = FALSE;
   mysql_cond_broadcast(&COND_thread_count);
   mysql_mutex_unlock(&LOCK_thread_count);
 
@@ -1519,7 +1521,9 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       Aborted by background rollbacker thread. Jump straight to dispatch_end
       label where the error handling is performed.
     */
-    if (thd->wsrep_conflict_state() == ABORTED)
+    /* We let COM_QUIT and COM_STMT_CLOSE to execute even if wsrep aborted. */
+    if (thd->wsrep_conflict_state() == ABORTED &&
+        command != COM_STMT_CLOSE && command != COM_QUIT)
     {
       thd->store_globals();
       WSREP_LOG_THD(thd, "enter found BF aborted");
@@ -1647,6 +1651,14 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     break;
   }
 #endif
+  case COM_RESET_CONNECTION:
+  {
+    thd->status_var.com_other++;
+    thd->change_user();
+    thd->clear_error();                         // if errors from rollback
+    my_ok(thd, 0, 0, 0);
+    break;
+  }
   case COM_CHANGE_USER:
   {
     int auth_rc;
@@ -2324,6 +2336,7 @@ com_multi_end:
   case COM_TIME:				// Impossible from client
   case COM_DELAYED_INSERT:
   case COM_END:
+  case COM_UNIMPLEMENTED:
   default:
     my_message(ER_UNKNOWN_COM_ERROR, ER_THD(thd, ER_UNKNOWN_COM_ERROR),
                MYF(0));
@@ -2336,8 +2349,12 @@ com_multi_end:
   if (wsrep_on)
   {
     /*
-      BF aborted before sending response back to client
-     */
+      MDEV-10812
+      In the case of COM_QUIT/COM_STMT_CLOSE thread status should be disabled.
+    */
+    DBUG_ASSERT((command != COM_QUIT && command != COM_STMT_CLOSE)
+                  || thd->get_stmt_da()->is_disabled());
+    /* wsrep BF abort in query exec phase */
     mysql_mutex_lock(&thd->LOCK_wsrep_thd);
     do_end_of_statement= thd->wsrep_conflict_state() != REPLAYING &&
                          thd->wsrep_conflict_state() != RETRY_AUTOCOMMIT;
@@ -2582,12 +2599,12 @@ int prepare_schema_table(THD *thd, LEX *lex, Table_ident *table_ident,
 #endif
   case SCH_COLUMNS:
   case SCH_STATISTICS:
-  {
 #ifdef DONT_ALLOW_SHOW_COMMANDS
     my_message(ER_NOT_ALLOWED_COMMAND,
                ER_THD(thd, ER_NOT_ALLOWED_COMMAND), MYF(0));
     DBUG_RETURN(1);
 #else
+  {
     DBUG_ASSERT(table_ident);
     TABLE_LIST **query_tables_last= lex->query_tables_last;
     schema_select_lex= new (thd->mem_root) SELECT_LEX();
@@ -2954,7 +2971,7 @@ static bool do_execute_sp(THD *thd, sp_head *sp)
 int
 mysql_execute_command(THD *thd)
 {
-  int res= FALSE;
+  int res= 0;
   int  up_result= 0;
   LEX  *lex= thd->lex;
   /* first SELECT_LEX (have special meaning for many of non-SELECTcommands) */
@@ -3644,10 +3661,17 @@ mysql_execute_command(THD *thd)
 
     if (check_global_access(thd, SUPER_ACL))
       goto error;
+    /*
+      In this code it's ok to use LOCK_active_mi as we are adding new things
+      into master_info_index
+    */
     mysql_mutex_lock(&LOCK_active_mi);
-
     if (!master_info_index)
+    {
+      mysql_mutex_unlock(&LOCK_active_mi);
+      my_error(ER_SERVER_SHUTDOWN, MYF(0));
       goto error;
+    }
 
     mi= master_info_index->get_master_info(&lex_mi->connection_name,
                                            Sql_condition::WARN_LEVEL_NOTE);
@@ -3676,7 +3700,7 @@ mysql_execute_command(THD *thd)
         If new master was not added, we still need to free mi.
       */
       if (master_info_added)
-        master_info_index->remove_master_info(&lex_mi->connection_name);
+        master_info_index->remove_master_info(mi);
       else
         delete mi;
     }
@@ -3694,22 +3718,24 @@ mysql_execute_command(THD *thd)
     /* Accept one of two privileges */
     if (check_global_access(thd, SUPER_ACL | REPL_CLIENT_ACL))
       goto error;
-    mysql_mutex_lock(&LOCK_active_mi);
 
     if (lex->verbose)
+    {
+      mysql_mutex_lock(&LOCK_active_mi);
       res= show_all_master_info(thd);
+      mysql_mutex_unlock(&LOCK_active_mi);
+    }
     else
     {
       LEX_MASTER_INFO *lex_mi= &thd->lex->mi;
       Master_info *mi;
-      mi= master_info_index->get_master_info(&lex_mi->connection_name,
-                                             Sql_condition::WARN_LEVEL_ERROR);
-      if (mi != NULL)
+      if ((mi= get_master_info(&lex_mi->connection_name,
+                               Sql_condition::WARN_LEVEL_ERROR)))
       {
         res= show_master_info(thd, mi, 0);
+        mi->release();
       }
     }
-    mysql_mutex_unlock(&LOCK_active_mi);
     break;
   }
   case SQLCOM_SHOW_MASTER_STAT:
@@ -4060,22 +4086,23 @@ end_with_restore_list:
 
     load_error= rpl_load_gtid_slave_state(thd);
 
-    mysql_mutex_lock(&LOCK_active_mi);
-
-    if ((mi= (master_info_index->
-              get_master_info(&lex_mi->connection_name,
-                              Sql_condition::WARN_LEVEL_ERROR))))
+    /*
+      We don't need to ensure that only one user is using master_info
+      as start_slave is protected against simultaneous usage
+    */
+    if ((mi= get_master_info(&lex_mi->connection_name,
+                             Sql_condition::WARN_LEVEL_ERROR)))
     {
       if (load_error)
       {
         /*
-          We cannot start a slave using GTID if we cannot load the GTID position
-          from the mysql.gtid_slave_pos table. But we can allow non-GTID
-          replication (useful eg. during upgrade).
+          We cannot start a slave using GTID if we cannot load the
+          GTID position from the mysql.gtid_slave_pos table. But we
+          can allow non-GTID replication (useful eg. during upgrade).
         */
         if (mi->using_gtid != Master_info::USE_GTID_NO)
         {
-          mysql_mutex_unlock(&LOCK_active_mi);
+          mi->release();
           break;
         }
         else
@@ -4083,8 +4110,8 @@ end_with_restore_list:
       }
       if (!start_slave(thd, mi, 1 /* net report*/))
         my_ok(thd);
+      mi->release();
     }
-    mysql_mutex_unlock(&LOCK_active_mi);
     break;
   }
   case SQLCOM_SLAVE_STOP:
@@ -4114,13 +4141,17 @@ end_with_restore_list:
     }
 
     lex_mi= &thd->lex->mi;
-    mysql_mutex_lock(&LOCK_active_mi);
-    if ((mi= (master_info_index->
-              get_master_info(&lex_mi->connection_name,
-                              Sql_condition::WARN_LEVEL_ERROR))))
-      if (!stop_slave(thd, mi, 1/* net report*/))
+    if ((mi= get_master_info(&lex_mi->connection_name,
+                             Sql_condition::WARN_LEVEL_ERROR)))
+    {
+      if (stop_slave(thd, mi, 1/* net report*/))
+        res= 1;
+      mi->release();
+      if (rpl_parallel_resize_pool_if_no_slaves())
+        res= 1;
+      if (!res)
         my_ok(thd);
-    mysql_mutex_unlock(&LOCK_active_mi);
+    }
     break;
   }
   case SQLCOM_SLAVE_ALL_START:
@@ -5471,11 +5502,13 @@ end_with_restore_list:
            reload_acl_and_cache binlog interactions failed 
          */
         res= 1;
-      } 
+      }
 
       if (!res)
         my_ok(thd);
     } 
+    else
+      res= 1;                                   // reload_acl_and_cache failed
 #ifdef HAVE_REPLICATION
     if (lex->type & REFRESH_READ_LOCK)
       rpl_unpause_after_ftwrl(thd);
@@ -6068,11 +6101,8 @@ end_with_restore_list:
     }
   case SQLCOM_SHOW_CREATE_TRIGGER:
     {
-      if (lex->spname->m_name.length > NAME_LEN)
-      {
-        my_error(ER_TOO_LONG_IDENT, MYF(0), lex->spname->m_name.str);
+      if (check_ident_length(&lex->spname->m_name))
         goto error;
-      }
 
 #ifdef WITH_WSREP
       if (WSREP_CLIENT(thd) && wsrep_sync_wait(thd)) goto error;
@@ -7899,7 +7929,7 @@ static bool wsrep_mysql_parse(THD *thd, char *rawbuf, uint length,
 #endif /* WITH_WSREP */
 
 /*
-  When you modify mysql_parse(), you may need to mofify
+  When you modify mysql_parse(), you may need to modify
   mysql_test_parse_for_slave() in this same file.
 */
 
@@ -9828,48 +9858,36 @@ bool check_string_char_length(LEX_STRING *str, uint err_msg,
   return TRUE;
 }
 
-C_MODE_START
+
+bool check_ident_length(LEX_STRING *ident)
+{
+  if (check_string_char_length(ident, 0, NAME_CHAR_LEN, system_charset_info, 1))
+  {
+    my_error(ER_TOO_LONG_IDENT, MYF(0), ident->str);
+    return 1;
+  }
+  return 0;
+}
+
 
 /*
   Check if path does not contain mysql data home directory
 
   SYNOPSIS
-    test_if_data_home_dir()
-    dir                     directory
+    path_starts_from_data_home_dir()
+    dir                     directory, with all symlinks resolved
 
   RETURN VALUES
     0	ok
     1	error ;  Given path contains data directory
 */
+extern "C" {
 
-int test_if_data_home_dir(const char *dir)
+int path_starts_from_data_home_dir(const char *path)
 {
-  char path[FN_REFLEN];
-  int dir_len;
-  DBUG_ENTER("test_if_data_home_dir");
+  int dir_len= strlen(path);
+  DBUG_ENTER("path_starts_from_data_home_dir");
 
-  if (!dir)
-    DBUG_RETURN(0);
-
-  /*
-    data_file_name and index_file_name include the table name without
-    extension. Mostly this does not refer to an existing file. When
-    comparing data_file_name or index_file_name against the data
-    directory, we try to resolve all symbolic links. On some systems,
-    we use realpath(3) for the resolution. This returns ENOENT if the
-    resolved path does not refer to an existing file. my_realpath()
-    does then copy the requested path verbatim, without symlink
-    resolution. Thereafter the comparison can fail even if the
-    requested path is within the data directory. E.g. if symlinks to
-    another file system are used. To make realpath(3) return the
-    resolved path, we strip the table name and compare the directory
-    path only. If the directory doesn't exist either, table creation
-    will fail anyway.
-  */
-
-  (void) fn_format(path, dir, "", "",
-                   (MY_RETURN_REAL_PATH|MY_RESOLVE_SYMLINKS));
-  dir_len= strlen(path);
   if (mysql_unpacked_real_data_home_len<= dir_len)
   {
     if (dir_len > mysql_unpacked_real_data_home_len &&
@@ -9897,7 +9915,31 @@ int test_if_data_home_dir(const char *dir)
   DBUG_RETURN(0);
 }
 
-C_MODE_END
+}
+
+/*
+  Check if path does not contain mysql data home directory
+
+  SYNOPSIS
+    test_if_data_home_dir()
+    dir                     directory
+
+  RETURN VALUES
+    0	ok
+    1	error ;  Given path contains data directory
+*/
+
+int test_if_data_home_dir(const char *dir)
+{
+  char path[FN_REFLEN];
+  DBUG_ENTER("test_if_data_home_dir");
+
+  if (!dir)
+    DBUG_RETURN(0);
+
+  (void) fn_format(path, dir, "", "", MY_RETURN_REAL_PATH);
+  DBUG_RETURN(path_starts_from_data_home_dir(path));
+}
 
 
 int error_if_data_home_dir(const char *path, const char *what)

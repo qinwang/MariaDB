@@ -216,6 +216,7 @@ class Item_func_json_array: public Item_str_func
 {
 protected:
   String tmp_val;
+  ulong result_limit;
 public:
   Item_func_json_array(THD *thd):
     Item_str_func(thd) {}
@@ -392,7 +393,7 @@ public:
 class Item_func_json_search: public Item_json_str_multipath
 {
 protected:
-  String tmp_js;
+  String tmp_js, esc_value;
   bool mode_one;
   bool ooa_constant, ooa_parsed;
   int escape;
@@ -414,19 +415,6 @@ public:
 };
 
 
-class Item_json_typecast: public Item_str_func
-{
-public:
-  Item_json_typecast(THD *thd, Item *a): Item_str_func(thd, a) {}
-  const char *func_name() const { return "cast_as_json"; }
-  bool is_json_type() { return true; }
-  void fix_length_and_dec();
-  String *val_str(String *str);
-  Item *get_copy(THD *thd, MEM_ROOT *mem_root)
-  { return get_item_copy<Item_json_typecast>(thd, mem_root, this); }
-};
-
-
 class Item_func_json_format: public Item_str_func
 {
 public:
@@ -443,11 +431,14 @@ protected:
 public:
   Item_func_json_format(THD *thd, Item *js, formats format):
     Item_str_func(thd, js), fmt(format) {}
-  Item_func_json_format(THD *thd, Item *js, Item *tabsize):
-    Item_str_func(thd, js, tabsize), fmt(DETAILED) {}
+  Item_func_json_format(THD *thd, List<Item> &list):
+    Item_str_func(thd, list), fmt(DETAILED) {}
+
   const char *func_name() const;
   void fix_length_and_dec();
   String *val_str(String *str);
+  String *val_json(String *str);
+  bool is_json_type() { return true; }
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_json_format>(thd, mem_root, this); }
 };

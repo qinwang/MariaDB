@@ -1,6 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 2005, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -297,13 +298,13 @@ row_merge_encrypt_buf(
 					   space, ofs, 0);
 
 	if (! ((rc == MY_AES_OK) && ((ulint)dstlen == srv_sort_buf_size-ROW_MERGE_RESERVE_SIZE))) {
-		ib::error()
+		ib::fatal()
 			<< "Unable to encrypt data-block "
-			" src: %p srclen: %lu buf: %p buflen: %u."
-			<< srv_sort_buf_size << " buf: " << crypted_buf
+			" src: " << static_cast<const void*>(input_buf)
+			<< " srclen: " << srv_sort_buf_size
+			<< " buf: " << static_cast<const void*>(crypted_buf)
 			<< " buflen: " << dstlen
-			<< " return-code: " << rc << " Can't continue!";
-		ut_error;
+			<< ". return-code: " << rc << ". Can't continue!";
 	}
 }
 
@@ -339,13 +340,13 @@ row_merge_decrypt_buf(
 					   space, ofs, 0);
 
 	if (! ((rc == MY_AES_OK) && ((ulint)dstlen == srv_sort_buf_size-ROW_MERGE_RESERVE_SIZE))) {
-		ib::error()
+		ib::fatal()
 			<< "Unable to decrypt data-block "
-			<< " src: " << input_buf << " srclen: "
-			<< srv_sort_buf_size << " buf: " << crypted_buf
+			<< " src: " << static_cast<const void*>(input_buf)
+			<< " srclen: " << srv_sort_buf_size
+			<< " buf: " << static_cast<const void*>(crypted_buf)
 			<< " buflen: " << dstlen
-			<< " return-code: " << rc << " Can't continue!";
-		ut_error;
+			<< ". return-code: " << rc << ". Can't continue!";
 	}
 
 	return true;
@@ -1100,16 +1101,11 @@ row_merge_buf_write(
 		row_merge_buf_encode(&b, index, entry, n_fields);
 		ut_ad(b < &block[srv_sort_buf_size]);
 
-#ifdef UNIV_DEBUG
-		{
-			rec_printer p(entry->fields, n_fields);
-			DBUG_PRINT("ib_merge_sort",
-				("%p,fd=%d,%lu %lu: %s",
-					reinterpret_cast<const void*>(b), of->fd,
-					(ulint)of->offset, (ulint)i,
-					p.str().c_str()));
-		}
-#endif
+		DBUG_LOG("ib_merge_sort",
+			 reinterpret_cast<const void*>(b) << ','
+			 << of->fd << ',' << of->offset << ' ' <<
+			 i << ": " <<
+			 rec_printer(entry->fields, n_fields).str());
 	}
 
 	/* Write an "end-of-chunk" marker. */
@@ -1121,10 +1117,9 @@ row_merge_buf_write(
 	to avoid bogus warnings. */
 	memset(b, 0xff, &block[srv_sort_buf_size] - b);
 #endif /* UNIV_DEBUG_VALGRIND */
-	DBUG_PRINT("ib_merge_sort",
-		   ("write %p,%d,%lu EOF",
-		    reinterpret_cast<const void*>(b), of->fd,
-			   (ulint)of->offset));
+	DBUG_LOG("ib_merge_sort",
+		 "write " << reinterpret_cast<const void*>(b) << ','
+		 << of->fd << ',' << of->offset << " EOF");
 	DBUG_VOID_RETURN;
 }
 
@@ -1177,7 +1172,7 @@ row_merge_read(
 	os_offset_t	ofs = ((os_offset_t) offset) * srv_sort_buf_size;
 
 	DBUG_ENTER("row_merge_read");
-	DBUG_PRINT("ib_merge_sort", ("fd=%d ofs=" UINT64PF, fd, ofs));
+	DBUG_LOG("ib_merge_sort", "fd=" << fd << " ofs=" << ofs);
 	DBUG_EXECUTE_IF("row_merge_read_failure", DBUG_RETURN(FALSE););
 
 	IORequest	request;
@@ -1224,7 +1219,7 @@ row_merge_write(
 	void*		out_buf = (void *)buf;
 
 	DBUG_ENTER("row_merge_write");
-	DBUG_PRINT("ib_merge_sort", ("fd=%d ofs=" UINT64PF, fd, ofs));
+	DBUG_LOG("ib_merge_sort", "fd=" << fd << " ofs=" << ofs);
 	DBUG_EXECUTE_IF("row_merge_write_failure", DBUG_RETURN(FALSE););
 
 	IORequest	request(IORequest::WRITE);
@@ -1273,14 +1268,8 @@ row_merge_read_rec(
 	ulint	data_size;
 	ulint	avail_size;
 
-	ut_ad(block);
-	ut_ad(buf);
 	ut_ad(b >= &block[0]);
 	ut_ad(b < &block[srv_sort_buf_size]);
-	ut_ad(index);
-	ut_ad(foffs);
-	ut_ad(mrec);
-	ut_ad(offsets);
 
 	ut_ad(*offsets == 1 + REC_OFFS_HEADER_SIZE
 	      + dict_index_get_n_fields(index));
@@ -1296,11 +1285,10 @@ row_merge_read_rec(
 	if (UNIV_UNLIKELY(!extra_size)) {
 		/* End of list */
 		*mrec = NULL;
-		DBUG_PRINT("ib_merge_sort",
-			   ("read %p,%p,%d,%lu EOF\n",
-			    reinterpret_cast<const void*>(b),
-			    reinterpret_cast<const void*>(block),
-			    fd, ulint(*foffs)));
+		DBUG_LOG("ib_merge_sort",
+			 "read " << reinterpret_cast<const void*>(b) << ',' <<
+			 reinterpret_cast<const void*>(block) << ',' <<
+			 fd << ',' << *foffs << " EOF");
 		DBUG_RETURN(NULL);
 	}
 
@@ -1413,18 +1401,11 @@ err_exit:
 	b += extra_size + data_size - avail_size;
 
 func_exit:
-
-#ifdef UNIV_DEBUG
-	{
-		rec_printer p(*mrec, 0, offsets);
-		DBUG_PRINT("ib_merge_sort",
-			("%p,%p,fd=%d,%lu: %s",
-				reinterpret_cast<const void*>(b),
-				reinterpret_cast<const void*>(block),
-				fd, ulint(*foffs),
-				p.str().c_str()));
-	}
-#endif
+	DBUG_LOG("ib_merge_sort",
+		 reinterpret_cast<const void*>(b) << ',' <<
+		 reinterpret_cast<const void*>(block)
+		 << ",fd=" << fd << ',' << *foffs << ": "
+		 << rec_printer(*mrec, 0, offsets).str());
 	DBUG_RETURN(b);
 }
 
@@ -1455,15 +1436,9 @@ row_merge_write_rec_low(
 #endif /* DBUG_OFF */
 	DBUG_ASSERT(e == rec_offs_extra_size(offsets) + 1);
 
-#ifdef UNIV_DEBUG
-	{
-		rec_printer p(mrec, 0, offsets);
-		DBUG_PRINT("ib_merge_sort",
-			("%p,fd=%d,%lu: %s",
-				reinterpret_cast<const void*>(b), fd, ulint(foffs),
-				p.str().c_str()));
-	}
-#endif
+	DBUG_LOG("ib_merge_sort",
+		 reinterpret_cast<const void*>(b) << ",fd=" << fd << ','
+		 << foffs << ": " << rec_printer(mrec, 0, offsets).str());
 
 	if (e < 0x80) {
 		*b++ = (byte) e;
@@ -1573,11 +1548,10 @@ row_merge_write_eof(
 	ut_ad(foffs);
 
 	DBUG_ENTER("row_merge_write_eof");
-	DBUG_PRINT("ib_merge_sort",
-		   ("%p,%p,fd=%d,%lu",
-		    reinterpret_cast<const void*>(b),
-		    reinterpret_cast<const void*>(block),
-		    fd, ulint(*foffs)));
+	DBUG_LOG("ib_merge_sort",
+		 reinterpret_cast<const void*>(b) << ',' <<
+		 reinterpret_cast<const void*>(block) <<
+		 ",fd=" << fd << ',' << *foffs);
 
 	if (b == &block[0]) {
 		b+= ROW_MERGE_RESERVE_SIZE;
@@ -2937,10 +2911,9 @@ row_merge_blocks(
 	ulint*		offsets1;/* offsets of mrec1 */
 
 	DBUG_ENTER("row_merge_blocks");
-	DBUG_PRINT("ib_merge_sort",
-		   ("fd=%d,%lu+%lu to fd=%d,%lu",
-		    file->fd, ulint(*foffs0), ulint(*foffs1),
-		    of->fd, ulint(of->offset)));
+	DBUG_LOG("ib_merge_sort",
+		 "fd=" << file->fd << ',' << *foffs0 << '+' << *foffs1
+		 << " to fd=" << of->fd << ',' << of->offset);
 
 	heap = row_merge_heap_create(dup->index, &buf, &offsets0, &offsets1);
 
@@ -3050,10 +3023,9 @@ row_merge_blocks_copy(
 	ulint*		offsets1;/* dummy offsets */
 
 	DBUG_ENTER("row_merge_blocks_copy");
-	DBUG_PRINT("ib_merge_sort",
-		   ("fd=%d,%lu to fd=%d,%lu",
-		    file->fd, ulint(foffs0),
-		    of->fd, ulint(of->offset)));
+	DBUG_LOG("ib_merge_sort",
+		 "fd=" << file->fd << ',' << foffs0
+		 << " to fd=" << of->fd << ',' << of->offset);
 
 	heap = row_merge_heap_create(index, &buf, &offsets0, &offsets1);
 
@@ -4533,7 +4505,7 @@ row_merge_create_index(
 
 /*********************************************************************//**
 Check if a transaction can use an index. */
-ibool
+bool
 row_merge_is_index_usable(
 /*======================*/
 	const trx_t*		trx,	/*!< in: transaction */
@@ -4542,7 +4514,7 @@ row_merge_is_index_usable(
 	if (!dict_index_is_clust(index)
 	    && dict_index_is_online_ddl(index)) {
 		/* Indexes that are being created are not useable. */
-		return(FALSE);
+		return(false);
 	}
 
 	return(!dict_index_is_corrupted(index)
@@ -4649,7 +4621,7 @@ row_merge_build_indexes(
 	row_merge_block_t*	block;
 	ut_new_pfx_t		block_pfx;
 	ut_new_pfx_t		crypt_pfx;
-	row_merge_block_t*	crypt_block;
+	row_merge_block_t*	crypt_block = NULL;
 	ulint			i;
 	ulint			j;
 	dberr_t			error;
@@ -4690,9 +4662,15 @@ row_merge_build_indexes(
 		DBUG_RETURN(DB_OUT_OF_MEMORY);
 	}
 
-	/* Get crypt data from tablespace if present. */
-	crypt_data = fil_space_get_crypt_data(new_table->space);
-	crypt_block = NULL;
+	/* Get crypt data from tablespace if present. We should be protected
+	from concurrent DDL (e.g. drop table) by MDL-locks. */
+	FilSpace space(new_table->space);
+
+	if (const fil_space_t* fs = space()) {
+		crypt_data = fs->crypt_data;
+	} else {
+		DBUG_RETURN(DB_TABLESPACE_NOT_FOUND);
+	}
 
 	/* If tablespace is encrypted, allocate additional buffer for
 	encryption/decryption. */

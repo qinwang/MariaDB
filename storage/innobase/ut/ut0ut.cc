@@ -33,9 +33,6 @@ Created 5/11/1994 Heikki Tuuri
 #include <mysql_com.h>
 #include "os0thread.h"
 #include "ut0ut.h"
-#ifdef UNIV_NONINL
-#include "ut0ut.ic"
-#endif
 #include "trx0trx.h"
 #include <string>
 #include "log.h"
@@ -727,10 +724,6 @@ ut_strerr(
 		return("I/O error");
 	case DB_TABLE_IN_FK_CHECK:
 		return("Table is being used in foreign key check");
-	case DB_DATA_MISMATCH:
-		return("data mismatch");
-	case DB_SCHEMA_NOT_LOCKED:
-		return("schema not locked");
 	case DB_NOT_FOUND:
 		return("not found");
 	case DB_ONLINE_LOG_TOO_BIG:

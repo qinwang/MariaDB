@@ -1346,7 +1346,7 @@ static bool mysql_test_insert(Prepared_statement *stmt,
 
     if (mysql_prepare_insert(thd, table_list, table_list->table,
                              fields, values, update_fields, update_values,
-                             duplic, &unused_conds, FALSE, FALSE, FALSE))
+                             duplic, &unused_conds, FALSE))
       goto error;
 
     value_count= values->elements;
@@ -1591,7 +1591,7 @@ static int mysql_test_select(Prepared_statement *stmt,
   */
   if (unit->prepare(thd, 0, 0))
     goto error;
-  if (!lex->describe && !stmt->is_sql_prepare())
+  if (!lex->describe && !thd->lex->analyze_stmt && !stmt->is_sql_prepare())
   {
     /* Make copy of item list, as change_columns may change it */
     List<Item> fields(lex->select_lex.item_list);
@@ -2258,7 +2258,7 @@ static int mysql_test_handler_read(Prepared_statement *stmt,
   THD *thd= stmt->thd;
   LEX *lex= stmt->lex;
   SQL_HANDLER *ha_table;
-  DBUG_ENTER("mysql_test_select");
+  DBUG_ENTER("mysql_test_handler_read");
 
   lex->select_lex.context.resolve_in_select_list= TRUE;
 

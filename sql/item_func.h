@@ -643,7 +643,7 @@ public:
       Reserve max_length to fit at least one character for one digit,
       plus one character for the sign (if signed).
     */
-    set_if_bigger(char_length, 1 + (unsigned_flag ? 0 : 1));
+    set_if_bigger(char_length, 1U + (unsigned_flag ? 0 : 1));
     fix_char_length(char_length);
   }
   virtual void print(String *str, enum_query_type query_type);
@@ -1163,7 +1163,6 @@ class Item_func_min_max :public Item_hybrid_func
 {
   String tmp_value;
   int cmp_sign;
-  THD *thd;
 public:
   Item_func_min_max(THD *thd, List<Item> &list, int cmp_sign_arg):
     Item_hybrid_func(thd, list), cmp_sign(cmp_sign_arg)
@@ -2222,7 +2221,7 @@ enum Cast_target
 {
   ITEM_CAST_BINARY, ITEM_CAST_SIGNED_INT, ITEM_CAST_UNSIGNED_INT,
   ITEM_CAST_DATE, ITEM_CAST_TIME, ITEM_CAST_DATETIME, ITEM_CAST_CHAR,
-  ITEM_CAST_DECIMAL, ITEM_CAST_DOUBLE, ITEM_CAST_JSON
+  ITEM_CAST_DECIMAL, ITEM_CAST_DOUBLE
 };
 
 

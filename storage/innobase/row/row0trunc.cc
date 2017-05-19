@@ -38,6 +38,13 @@ Created 2013-04-12 Sunny Bains
 #include "os0file.h"
 #include <vector>
 
+/* FIXME: For temporary tables, use a simple approach of btr_free()
+and btr_create() of each index tree. */
+
+/* FIXME: For persistent tables, remove this code in MDEV-11655
+and use a combination of the transactional DDL log to make atomic the
+low-level operations ha_innobase::delete_table(), ha_innobase::create(). */
+
 bool	truncate_t::s_fix_up_active = false;
 truncate_t::tables_t		truncate_t::s_tables;
 truncate_t::truncated_tables_t	truncate_t::s_truncated_tables;
@@ -1224,12 +1231,6 @@ row_truncate_complete(
 {
 	bool	is_file_per_table = dict_table_is_file_per_table(table);
 
-	if (table->memcached_sync_count == DICT_TABLE_IN_DDL) {
-		/* We need to set the memcached sync back to 0, unblock
-		memcached operations. */
-		table->memcached_sync_count = 0;
-	}
-
 	row_mysql_unlock_data_dictionary(trx);
 
 	DEBUG_SYNC_C("ib_trunc_table_trunc_completing");
@@ -1564,7 +1565,7 @@ row_truncate_update_system_tables(
 			fts_update_next_doc_id(trx, table, NULL, 0);
 			fts_cache_clear(table->fts->cache);
 			fts_cache_init(table->fts->cache);
-			table->fts->fts_status &= ~TABLE_DICT_LOCKED;
+			table->fts->fts_status &= uint(~TABLE_DICT_LOCKED);
 		}
 	}
 
@@ -1828,23 +1829,6 @@ row_truncate_table_for_mysql(
 				table, trx, fsp_flags, logger, err));
 	}
 
-	/* Check if memcached DML is running on this table. if is, we don't
-	allow truncate this table. */
-	if (table->memcached_sync_count != 0) {
-		ib::error() << "Cannot truncate table "
-			<< table->name
-			<< " by DROP+CREATE because there are memcached"
-			" operations running on it.";
-		err = DB_ERROR;
-		trx_rollback_to_savepoint(trx, NULL);
-		return(row_truncate_complete(
-				table, trx, fsp_flags, logger, err));
-	} else {
-                /* We need to set this counter to -1 for blocking
-                memcached operations. */
-		table->memcached_sync_count = DICT_TABLE_IN_DDL;
-        }
-
 	/* Remove all locks except the table-level X lock. */
 	lock_remove_all_on_table(table, FALSE);
 	trx->table_id = table->id;
@@ -1853,14 +1837,11 @@ row_truncate_table_for_mysql(
 	/* Step-6: Truncate operation can be rolled back in case of error
 	till some point. Associate rollback segment to record undo log. */
 	if (!dict_table_is_temporary(table)) {
-
-		/* Temporary tables don't need undo logging for autocommit stmt.
-		On crash (i.e. mysql restart) temporary tables are anyway not
-		accessible. */
 		mutex_enter(&trx->undo_mutex);
 
+		trx_undo_t**	pundo = &trx->rsegs.m_redo.update_undo;
 		err = trx_undo_assign_undo(
-			trx, &trx->rsegs.m_redo, TRX_UNDO_UPDATE);
+			trx, trx->rsegs.m_redo.rseg, pundo, TRX_UNDO_UPDATE);
 
 		mutex_exit(&trx->undo_mutex);
 
@@ -2293,7 +2274,7 @@ truncate_t::truncate_t(
 	m_log_lsn(),
 	m_log_file_name(),
 	/* JAN: TODO: Encryption */
-	m_encryption(FIL_SPACE_ENCRYPTION_DEFAULT),
+	m_encryption(FIL_ENCRYPTION_DEFAULT),
 	m_key_id(FIL_DEFAULT_ENCRYPTION_KEY)
 {
 	if (dir_path != NULL) {
@@ -2320,7 +2301,7 @@ truncate_t::truncate_t(
 	m_log_lsn(),
 	m_log_file_name(),
 	/* JAN: TODO: Encryption */
-	m_encryption(FIL_SPACE_ENCRYPTION_DEFAULT),
+	m_encryption(FIL_ENCRYPTION_DEFAULT),
 	m_key_id(FIL_DEFAULT_ENCRYPTION_KEY)
 
 {

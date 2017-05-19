@@ -1,6 +1,6 @@
 /*
    Copyright (c) 2000, 2016, Oracle and/or its affiliates.
-   Copyright (c) 2010, 2016, MariaDB
+   Copyright (c) 2010, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -2899,7 +2899,7 @@ void calculate_interval_lengths(CHARSET_INFO *cs, TYPELIB *interval,
 
 int prepare_create_field(Column_definition *sql_field,
 			 uint *blob_columns, 
-			 longlong table_flags)
+			 ulonglong table_flags)
 {
   uint dup_val_count;
   uint decimals= sql_field->decimals;
@@ -3486,7 +3486,6 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
           sql_field->pack_length=	dup_field->pack_length;
           sql_field->key_length=	dup_field->key_length;
 	  sql_field->decimals=		dup_field->decimals;
-	  sql_field->create_length_to_internal_length();
 	  sql_field->unireg_check=	dup_field->unireg_check;
           /* 
             We're making one field from two, the result field will have
@@ -3496,6 +3495,7 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
           if (!(sql_field->flags & NOT_NULL_FLAG))
             null_fields--;
 	  sql_field->flags=		dup_field->flags;
+	  sql_field->create_length_to_internal_length();
           sql_field->interval=          dup_field->interval;
           sql_field->vcol_info=         dup_field->vcol_info;
 	  it2.remove();			// Remove first (create) definition
@@ -3621,12 +3621,8 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
       my_error(ER_TOO_MANY_KEY_PARTS,MYF(0),tmp);
       DBUG_RETURN(TRUE);
     }
-    if (check_string_char_length(&key->name, 0, NAME_CHAR_LEN,
-                                 system_charset_info, 1))
-    {
-      my_error(ER_TOO_LONG_IDENT, MYF(0), key->name.str);
+    if (check_ident_length(&key->name))
       DBUG_RETURN(TRUE);
-    }
     key_iterator2.rewind ();
     if (key->type != Key::FOREIGN_KEY)
     {
@@ -4141,7 +4137,7 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
     }
 
     if (thd->variables.sql_mode & MODE_NO_ZERO_DATE &&
-        !sql_field->default_value &&
+        !sql_field->default_value && !sql_field->vcol_info &&
         is_timestamp_type(sql_field->sql_type) &&
         (sql_field->flags & NOT_NULL_FLAG) &&
         (type == Field::NONE || type == Field::TIMESTAMP_UN_FIELD))
@@ -6620,6 +6616,9 @@ static bool fill_alter_inplace_info(THD *thd,
          (new_key->flags & HA_KEYFLAG_MASK)) ||
         (table_key->user_defined_key_parts !=
          new_key->user_defined_key_parts))
+      goto index_changed;
+
+    if (table_key->block_size != new_key->block_size)
       goto index_changed;
 
     if (engine_options_differ(table_key->option_struct, new_key->option_struct,
@@ -9882,7 +9881,7 @@ copy_data_between_tables(THD *thd, TABLE *from, TABLE *to,
     if (to->default_field)
       to->update_default_fields(0, ignore);
     if (to->vfield)
-      to->update_virtual_fields(VCOL_UPDATE_FOR_WRITE);
+      to->update_virtual_fields(to->file, VCOL_UPDATE_FOR_WRITE);
 
     /* This will set thd->is_error() if fatal failure */
     if (to->verify_constraints(ignore) == VIEW_CHECK_SKIP)

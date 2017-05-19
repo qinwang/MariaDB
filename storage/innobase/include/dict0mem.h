@@ -2,7 +2,7 @@
 
 Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2012, Facebook Inc.
-Copyright (c) 2013, 2016, MariaDB Corporation.
+Copyright (c) 2013, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -300,28 +300,28 @@ for unknown bits in order to protect backward incompatibility. */
 #define DICT_TF2_BIT_MASK		~DICT_TF2_UNUSED_BIT_MASK
 
 /** TEMPORARY; TRUE for tables from CREATE TEMPORARY TABLE. */
-#define DICT_TF2_TEMPORARY		1
+#define DICT_TF2_TEMPORARY		1U
 
 /** The table has an internal defined DOC ID column */
-#define DICT_TF2_FTS_HAS_DOC_ID		2
+#define DICT_TF2_FTS_HAS_DOC_ID		2U
 
 /** The table has an FTS index */
-#define DICT_TF2_FTS			4
+#define DICT_TF2_FTS			4U
 
 /** Need to add Doc ID column for FTS index build.
 This is a transient bit for index build */
-#define DICT_TF2_FTS_ADD_DOC_ID		8
+#define DICT_TF2_FTS_ADD_DOC_ID		8U
 
 /** This bit is used during table creation to indicate that it will
 use its own tablespace instead of the system tablespace. */
-#define DICT_TF2_USE_FILE_PER_TABLE	16
+#define DICT_TF2_USE_FILE_PER_TABLE	16U
 
 /** Set when we discard/detach the tablespace */
-#define DICT_TF2_DISCARDED		32
+#define DICT_TF2_DISCARDED		32U
 
 /** This bit is set if all aux table names (both common tables and
 index tables) of a FTS table are in HEX format. */
-#define DICT_TF2_FTS_AUX_HEX_NAME	64
+#define DICT_TF2_FTS_AUX_HEX_NAME	64U
 
 /* @} */
 
@@ -878,6 +878,7 @@ struct dict_index_t{
 				representation we add more columns */
 	unsigned	nulls_equal:1;
 				/*!< if true, SQL NULL == SQL NULL */
+#ifdef BTR_CUR_HASH_ADAPT
 #ifdef MYSQL_INDEX_DISABLE_AHI
  	unsigned	disable_ahi:1;
 				/*!< whether to disable the
@@ -885,6 +886,7 @@ struct dict_index_t{
 				Maybe this could be disabled for
 				temporary tables? */
 #endif
+#endif /* BTR_CUR_HASH_ADAPT */
 	unsigned	n_uniq:10;/*!< number of fields from the beginning
 				which are enough to determine an index
 				entry uniquely */
@@ -923,8 +925,10 @@ struct dict_index_t{
 				column in ALTER */
 	UT_LIST_NODE_T(dict_index_t)
 			indexes;/*!< list of indexes of the table */
+#ifdef BTR_CUR_ADAPT
 	btr_search_t*	search_info;
 				/*!< info used in optimistic searches */
+#endif /* BTR_CUR_ADAPT */
 	row_log_t*	online_log;
 				/*!< the log of modifications
 				during online index creation;
@@ -1253,12 +1257,12 @@ struct dict_foreign_set_free {
 /** The flags for ON_UPDATE and ON_DELETE can be ORed; the default is that
 a foreign key constraint is enforced, therefore RESTRICT just means no flag */
 /* @{ */
-#define DICT_FOREIGN_ON_DELETE_CASCADE	1	/*!< ON DELETE CASCADE */
-#define DICT_FOREIGN_ON_DELETE_SET_NULL	2	/*!< ON UPDATE SET NULL */
-#define DICT_FOREIGN_ON_UPDATE_CASCADE	4	/*!< ON DELETE CASCADE */
-#define DICT_FOREIGN_ON_UPDATE_SET_NULL	8	/*!< ON UPDATE SET NULL */
-#define DICT_FOREIGN_ON_DELETE_NO_ACTION 16	/*!< ON DELETE NO ACTION */
-#define DICT_FOREIGN_ON_UPDATE_NO_ACTION 32	/*!< ON UPDATE NO ACTION */
+#define DICT_FOREIGN_ON_DELETE_CASCADE	1U	/*!< ON DELETE CASCADE */
+#define DICT_FOREIGN_ON_DELETE_SET_NULL	2U	/*!< ON UPDATE SET NULL */
+#define DICT_FOREIGN_ON_UPDATE_CASCADE	4U	/*!< ON DELETE CASCADE */
+#define DICT_FOREIGN_ON_UPDATE_SET_NULL	8U	/*!< ON UPDATE SET NULL */
+#define DICT_FOREIGN_ON_DELETE_NO_ACTION 16U	/*!< ON DELETE NO ACTION */
+#define DICT_FOREIGN_ON_UPDATE_NO_ACTION 32U	/*!< ON UPDATE NO ACTION */
 /* @} */
 
 /** Display an identifier.
@@ -1319,13 +1323,8 @@ struct dict_vcol_templ_t {
 	/** when mysql_table was cached */
 	uint64_t		mysql_table_query_id;
 
-	dict_vcol_templ_t() : vtempl(0), mysql_table_query_id(-1) {}
+	dict_vcol_templ_t() : vtempl(0), mysql_table_query_id(~0ULL) {}
 };
-
-/* This flag is for sync SQL DDL and memcached DML.
-if table->memcached_sync_count == DICT_TABLE_IN_DDL means there's DDL running on
-the table, DML from memcached will be blocked. */
-#define DICT_TABLE_IN_DDL -1
 
 /** These are used when MySQL FRM and InnoDB data dictionary are
 in inconsistent state. */
@@ -1533,15 +1532,6 @@ struct dict_table_t {
 	/*!< set of foreign key constraints which refer to this table */
 	dict_foreign_set			referenced_set;
 
-#ifdef UNIV_DEBUG
-	/** This field is used to specify in simulations tables which are so
-	big that disk should be accessed. Disk access is simulated by putting
-	the thread to sleep for a while. NOTE that this flag is not stored to
-	the data dictionary on disk, and the database will forget about value
-	TRUE if it has to reload the table definition from disk. */
-	ibool					does_not_fit_in_memory;
-#endif /* UNIV_DEBUG */
-
 	/** TRUE if the maximum length of a single row exceeds BIG_ROW_SIZE.
 	Initialized in dict_table_add_to_cache(). */
 	unsigned				big_rows:1;
@@ -1708,12 +1698,6 @@ struct dict_table_t {
 	const trx_t*				autoinc_trx;
 
 	/* @} */
-
-	/** Count of how many handles are opened to this table from memcached.
-	DDL on the table is NOT allowed until this count goes to zero. If
-	it is -1, then there's DDL on the table, DML from memcached will be
-	blocked. */
-	lint					memcached_sync_count;
 
 	/** FTS specific state variables. */
 	fts_t*					fts;
@@ -1886,8 +1870,6 @@ dict_col_get_spatial_status(
 	return(spatial_status);
 }
 
-#ifndef UNIV_NONINL
 #include "dict0mem.ic"
-#endif
 
 #endif /* dict0mem_h */

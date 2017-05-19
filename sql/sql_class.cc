@@ -928,7 +928,6 @@ THD::THD(my_thread_id id, bool is_wsrep_applier)
 
   m_internal_handler= NULL;
   m_binlog_invoker= INVOKER_NONE;
-  arena_for_cached_items= 0;
   memset(&invoker_user, 0, sizeof(invoker_user));
   memset(&invoker_host, 0, sizeof(invoker_host));
   prepare_derived_at_open= FALSE;
@@ -2084,6 +2083,8 @@ int killed_errno(killed_state killed)
   case KILL_SERVER:
   case KILL_SERVER_HARD:
     DBUG_RETURN(ER_SERVER_SHUTDOWN);
+  case KILL_SLAVE_SAME_ID:
+    DBUG_RETURN(ER_SLAVE_SAME_ID);
   }
   DBUG_RETURN(0);                               // Keep compiler happy
 }
@@ -4503,6 +4504,28 @@ extern "C" int thd_is_connected(MYSQL_THD thd)
 }
 
 
+extern "C" double thd_rnd(MYSQL_THD thd)
+{
+  return my_rnd(&thd->rand);
+}
+
+
+/**
+  Generate string of printable random characters of requested length.
+
+  @param to[out]      Buffer for generation; must be at least length+1 bytes
+                      long; result string is always null-terminated
+  @param length[in]   How many random characters to put in buffer
+*/
+extern "C" void thd_create_random_password(MYSQL_THD thd,
+                                           char *to, size_t length)
+{
+  for (char *end= to + length; to < end; to++)
+    *to= (char) (my_rnd(&thd->rand)*94 + 33);
+  *to= '\0';
+}
+
+
 #ifdef INNODB_COMPATIBILITY_HOOKS
 
 /** open a table and add it to thd->open_tables
@@ -4576,7 +4599,10 @@ MYSQL_THD create_thd()
 
 void destroy_thd(MYSQL_THD thd)
 {
-  delete_running_thd(thd);
+  thd->add_status_to_global();
+  unlink_not_visible_thd(thd);
+  delete thd;
+  dec_thread_running();
 }
 
 void reset_thd(MYSQL_THD thd)
@@ -4627,6 +4653,15 @@ extern "C" int thd_rpl_is_parallel(const MYSQL_THD thd)
 {
   return thd->rgi_slave && thd->rgi_slave->is_parallel_exec;
 }
+
+
+/* Returns high resolution timestamp for the start
+  of the current query. */
+extern "C" unsigned long long thd_start_utime(const MYSQL_THD thd)
+{
+  return thd->start_utime;
+}
+
 
 /*
   This function can optionally be called to check if thd_rpl_deadlock_check()
@@ -6604,21 +6639,19 @@ void THD::binlog_prepare_row_images(TABLE *table)
     */
     DBUG_ASSERT(table->read_set != &table->tmp_set);
 
-    bitmap_clear_all(&table->tmp_set);
-
     switch(thd->variables.binlog_row_image)
     {
       case BINLOG_ROW_IMAGE_MINIMAL:
         /* MINIMAL: Mark only PK */
-        table->mark_columns_used_by_index_no_reset(table->s->primary_key,
-                                                   &table->tmp_set);
+        table->mark_columns_used_by_index(table->s->primary_key,
+                                          &table->tmp_set);
         break;
       case BINLOG_ROW_IMAGE_NOBLOB:
         /**
           NOBLOB: Remove unnecessary BLOB fields from read_set
                   (the ones that are not part of PK).
          */
-        bitmap_union(&table->tmp_set, table->read_set);
+        bitmap_copy(&table->tmp_set, table->read_set);
         for (Field **ptr=table->field ; *ptr ; ptr++)
         {
           Field *field= (*ptr);
@@ -7094,7 +7127,13 @@ wait_for_commit::reinit()
 
     So in this case, do a re-init of the mutex. In release builds, we want to
     avoid the overhead of a re-init though.
+
+    To ensure that no one is locking the mutex, we take a lock of it first.
+    For full explanation, see wait_for_commit::~wait_for_commit()
   */
+  mysql_mutex_lock(&LOCK_wait_commit);
+  mysql_mutex_unlock(&LOCK_wait_commit);
+
   mysql_mutex_destroy(&LOCK_wait_commit);
   mysql_mutex_init(key_LOCK_wait_commit, &LOCK_wait_commit, MY_MUTEX_INIT_FAST);
 #endif

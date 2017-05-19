@@ -292,7 +292,7 @@ t2	CREATE TABLE `t2` (
 ) ENGINE=MRG_MyISAM DEFAULT CHARSET=latin1 UNION=(`t1`)
 drop table if exists t1, t2;
 create table t1 (a int, b int, c int, d int, e int, f int, g int, h int,i int, primary key (a,b,c,d,e,f,g,i,h)) engine=MyISAM;
-insert into t1 (a) values(1);
+insert ignore into t1 (a) values(1);
 Warnings:
 Warning	1364	Field 'b' doesn't have a default value
 Warning	1364	Field 'c' doesn't have a default value
@@ -311,7 +311,7 @@ Name	Engine	Version	Row_format	Rows	Avg_row_length	Data_length	Max_data_length	I
 t1	MyISAM	10	Fixed	1	37	X	X	X	X	X	X	X	X	latin1_swedish_ci	NULL		
 drop table t1;
 create table t1 (a int not null, b int not null, c int not null, d int not null, e int not null, f int not null, g int not null, h int not null,i int not null, primary key (a,b,c,d,e,f,g,i,h)) engine=MyISAM;
-insert into t1 (a) values(1);
+insert ignore into t1 (a) values(1);
 Warnings:
 Warning	1364	Field 'b' doesn't have a default value
 Warning	1364	Field 'c' doesn't have a default value
@@ -1925,8 +1925,8 @@ ALTER TABLE ti1 FORCE;
 affected rows: 0
 info: Records: 0  Duplicates: 0  Warnings: 0
 ALTER TABLE tm1 FORCE;
-affected rows: 2
-info: Records: 2  Duplicates: 0  Warnings: 0
+affected rows: 0
+info: Records: 0  Duplicates: 0  Warnings: 0
 ALTER TABLE ti1 AUTO_INCREMENT 3;
 affected rows: 0
 info: Records: 0  Duplicates: 0  Warnings: 0
@@ -2102,6 +2102,27 @@ REFERENCES t1 (id);
 Warnings:
 Note	1061	Duplicate key name 'id1'
 DROP TABLE t2;
+DROP TABLE t1;
+#
+# MDEV-6390 CONVERT TO CHARACTER SET utf8 doesn't change DEFAULT CHARSET.
+#
+CREATE TABLE t1 (id int(11) NOT NULL, a int(11) NOT NULL, b int(11))
+ENGINE=InnoDB DEFAULT CHARSET=latin1;
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `id` int(11) NOT NULL,
+  `a` int(11) NOT NULL,
+  `b` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+ALTER TABLE t1 CONVERT TO CHARACTER SET utf8;
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `id` int(11) NOT NULL,
+  `a` int(11) NOT NULL,
+  `b` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
 DROP TABLE t1;
 #
 # Start of 10.1 tests

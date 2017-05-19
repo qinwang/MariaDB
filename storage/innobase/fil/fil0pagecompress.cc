@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (C) 2013, 2017, MariaDB Corporation. All Rights Reserved.
+Copyright (C) 2013, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -99,7 +99,7 @@ fil_compress_page(
 	byte*	lzo_mem)	/*!< in: temporal memory used by LZO */
 {
 	int err = Z_OK;
-	int comp_level = level;
+	int comp_level = int(level);
 	ulint header_len = FIL_PAGE_DATA + FIL_PAGE_COMPRESSED_SIZE;
 	ulint write_size=0;
 	/* Cache to avoid change during function execution */
@@ -309,9 +309,8 @@ fil_compress_page(
 
 		fil_decompress_page(uncomp_page, comp_page, len, NULL);
 
-		if(buf_page_is_corrupted(false, uncomp_page, page_size, false)) {
-			buf_page_print(uncomp_page, page_size, BUF_PAGE_PRINT_NO_CRASH);
-			ut_error;
+		if (buf_page_is_corrupted(false, uncomp_page, page_size, space)) {
+			buf_page_print(uncomp_page, page_size, 0);
 		}
 
 		ut_free(comp_page);
@@ -657,7 +656,5 @@ err_exit:
 		    << " compression method: "
 		    << fil_get_compression_alg_name(compression_alg) << ".";
 
-	buf_page_print(buf, page_size, BUF_PAGE_PRINT_NO_CRASH);
-
-	ut_error;
+	buf_page_print(buf, page_size, 0);
 }

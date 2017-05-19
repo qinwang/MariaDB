@@ -187,6 +187,13 @@ command. */
 #if defined HAVE_valgrind && defined HAVE_VALGRIND
 # define UNIV_DEBUG_VALGRIND
 #endif /* HAVE_VALGRIND */
+
+#ifdef DBUG_OFF
+# undef UNIV_DEBUG
+#elif !defined UNIV_DEBUG
+# define UNIV_DEBUG
+#endif
+
 #if 0
 #define UNIV_DEBUG_VALGRIND			/* Enable extra
 						Valgrind instrumentation */
@@ -198,8 +205,6 @@ command. */
 						debugging without UNIV_DEBUG */
 #define UNIV_BLOB_LIGHT_DEBUG			/* Enable off-page column
 						debugging without UNIV_DEBUG */
-#define UNIV_DEBUG				/* Enable ut_ad() assertions
-						and disable UNIV_INLINE */
 #define UNIV_DEBUG_LOCK_VALIDATE		/* Enable
 						ut_ad(lock_rec_validate_page())
 						assertions. */
@@ -275,19 +280,7 @@ rarely invoked function for size instead for speed. */
 # define UNIV_COLD /* empty */
 #endif
 
-#ifndef UNIV_MUST_NOT_INLINE
-/* Definition for inline version */
-
 #define UNIV_INLINE static inline
-
-#else /* !UNIV_MUST_NOT_INLINE */
-/* If we want to compile a noninlined version we use the following macro
-definitions: */
-
-#define UNIV_NONINL
-#define UNIV_INLINE
-
-#endif /* !UNIV_MUST_NOT_INLINE */
 
 #ifdef _WIN32
 # ifdef _WIN64
@@ -302,7 +295,7 @@ definitions: */
 
 /** The following alignment is used in memory allocations in memory heap
 management to ensure correct alignment for doubles etc. */
-#define UNIV_MEM_ALIGNMENT	8
+#define UNIV_MEM_ALIGNMENT	8U
 
 /*
 			DATABASE VERSION CONTROL
@@ -400,19 +393,19 @@ and 2 bits for flags. This limits the uncompressed page size to 16k.
 #define UNIV_PAGE_SSIZE_ORIG		(UNIV_PAGE_SIZE_SHIFT_ORIG - 9)
 
 /** Minimum page size InnoDB currently supports. */
-#define UNIV_PAGE_SIZE_MIN	(1 << UNIV_PAGE_SIZE_SHIFT_MIN)
+#define UNIV_PAGE_SIZE_MIN	(1U << UNIV_PAGE_SIZE_SHIFT_MIN)
 /** Maximum page size InnoDB currently supports. */
-#define UNIV_PAGE_SIZE_MAX	(1 << UNIV_PAGE_SIZE_SHIFT_MAX)
+#define UNIV_PAGE_SIZE_MAX	(1U << UNIV_PAGE_SIZE_SHIFT_MAX)
 /** Default page size for InnoDB tablespaces. */
-#define UNIV_PAGE_SIZE_DEF	(1 << UNIV_PAGE_SIZE_SHIFT_DEF)
+#define UNIV_PAGE_SIZE_DEF	(1U << UNIV_PAGE_SIZE_SHIFT_DEF)
 /** Original 16k page size for InnoDB tablespaces. */
-#define UNIV_PAGE_SIZE_ORIG	(1 << UNIV_PAGE_SIZE_SHIFT_ORIG)
+#define UNIV_PAGE_SIZE_ORIG	(1U << UNIV_PAGE_SIZE_SHIFT_ORIG)
 
 /** Smallest compressed page size */
-#define UNIV_ZIP_SIZE_MIN	(1 << UNIV_ZIP_SIZE_SHIFT_MIN)
+#define UNIV_ZIP_SIZE_MIN	(1U << UNIV_ZIP_SIZE_SHIFT_MIN)
 
 /** Largest compressed page size */
-#define UNIV_ZIP_SIZE_MAX	(1 << UNIV_ZIP_SIZE_SHIFT_MAX)
+#define UNIV_ZIP_SIZE_MAX	(1U << UNIV_ZIP_SIZE_SHIFT_MAX)
 
 /** Largest possible ssize for an uncompressed page.
 (The convention 'ssize' is used for 'log2 minus 9' or the number of
@@ -584,7 +577,7 @@ contains the sum of the following flag and the locally stored len. */
 /* Tell the compiler that 'expr' probably evaluates to 'constant'. */
 # define UNIV_EXPECT(expr,constant) __builtin_expect(expr, constant)
 /* Tell the compiler that a pointer is likely to be NULL */
-# define UNIV_LIKELY_NULL(ptr) __builtin_expect((ulint) ptr, 0)
+# define UNIV_LIKELY_NULL(ptr) __builtin_expect((ptr) != 0, 0)
 /* Minimize cache-miss latency by moving data at addr into a cache before
 it is read. */
 # define UNIV_PREFETCH_R(addr) __builtin_prefetch(addr, 0, 3)

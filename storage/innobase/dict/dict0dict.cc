@@ -2,7 +2,7 @@
 
 Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2012, Facebook Inc.
-Copyright (c) 2013, 2016, MariaDB Corporation.
+Copyright (c) 2013, 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -36,11 +36,6 @@ Created 1/8/1996 Heikki Tuuri
 #include "fts0fts.h"
 #include "fil0fil.h"
 #include <algorithm>
-
-#ifdef UNIV_NONINL
-#include "dict0dict.ic"
-#include "dict0priv.ic"
-#endif
 
 /** dummy index for ROW_FORMAT=REDUNDANT supremum and infimum records */
 dict_index_t*	dict_ind_redundant;
@@ -264,13 +259,11 @@ dict_get_db_name_len(
 	return(s - name);
 }
 
-/********************************************************************//**
-Reserves the dictionary system mutex for MySQL. */
+/** Reserve the dictionary system mutex. */
 void
-dict_mutex_enter_for_mysql_func(const char * file, ulint line)
-/*============================*/
+dict_mutex_enter_for_mysql_func(const char *file, unsigned line)
 {
-	mutex_enter(&dict_sys->mutex);
+	mutex_enter_loc(&dict_sys->mutex, file, line);
 }
 
 /********************************************************************//**
@@ -795,6 +788,7 @@ dict_table_autoinc_lock(
 
 /** Acquire the zip_pad_mutex latch.
 @param[in,out]	index	the index whose zip_pad_mutex to acquire.*/
+static
 void
 dict_index_zip_pad_lock(
 	dict_index_t*	index)
@@ -1316,7 +1310,7 @@ void
 dict_table_add_to_cache(
 /*====================*/
 	dict_table_t*	table,		/*!< in: table */
-	ibool		can_be_evicted,	/*!< in: TRUE if can be evicted */
+	bool		can_be_evicted,	/*!< in: whether can be evicted */
 	mem_heap_t*	heap)		/*!< in: temporary heap */
 {
 	ulint	fold;
@@ -1407,8 +1401,6 @@ dict_table_can_be_evicted(
 	ut_a(table->referenced_set.empty());
 
 	if (table->get_ref_count() == 0) {
-		dict_index_t*	index;
-
 		/* The transaction commit and rollback are called from
 		outside the handler interface. This means that there is
 		a window where the table->n_ref_count can be zero but
@@ -1418,7 +1410,8 @@ dict_table_can_be_evicted(
 			return(FALSE);
 		}
 
-		for (index = dict_table_get_first_index(table);
+#ifdef BTR_CUR_HASH_ADAPT
+		for (dict_index_t* index = dict_table_get_first_index(table);
 		     index != NULL;
 		     index = dict_table_get_next_index(index)) {
 
@@ -1440,6 +1433,7 @@ dict_table_can_be_evicted(
 				return(FALSE);
 			}
 		}
+#endif /* BTR_CUR_HASH_ADAPT */
 
 		return(TRUE);
 	}
@@ -2611,9 +2605,11 @@ dict_index_add_to_cache_w_vcol(
 	UT_LIST_ADD_LAST(table->indexes, new_index);
 	new_index->table = table;
 	new_index->table_name = table->name.m_name;
+#ifdef BTR_CUR_ADAPT
 	new_index->search_info = btr_search_info_create(new_index->heap);
+#endif /* BTR_CUR_ADAPT */
 
-	new_index->page = page_no;
+	new_index->page = unsigned(page_no);
 	rw_lock_create(index_tree_rw_lock_key, &new_index->lock,
 		       SYNC_INDEX_TREE);
 
@@ -2636,8 +2632,6 @@ dict_index_remove_from_cache_low(
 					to make room in the table LRU list */
 {
 	lint		size;
-	ulint		retries = 0;
-	btr_search_t*	info;
 
 	ut_ad(table && index);
 	ut_ad(table->magic_n == DICT_TABLE_MAGIC_N);
@@ -2652,9 +2646,11 @@ dict_index_remove_from_cache_low(
 		row_log_free(index->online_log);
 	}
 
+#ifdef BTR_CUR_HASH_ADAPT
 	/* We always create search info whether or not adaptive
 	hash index is enabled or not. */
-	info = btr_search_get_info(index);
+	btr_search_t*	info = btr_search_get_info(index);
+	ulint		retries = 0;
 	ut_ad(info);
 
 	/* We are not allowed to free the in-memory index struct
@@ -2688,10 +2684,9 @@ dict_index_remove_from_cache_low(
 
 		/* To avoid a hang here we commit suicide if the
 		ref_count doesn't drop to zero in 600 seconds. */
-		if (retries >= 60000) {
-			ut_error;
-		}
+		ut_a(retries < 60000);
 	} while (srv_shutdown_state == SRV_SHUTDOWN_NONE || !lru_evict);
+#endif /* BTR_CUR_HASH_ADAPT */
 
 	rw_lock_free(&index->lock);
 
@@ -3178,7 +3173,7 @@ dict_index_build_internal_clust(
 		can theoretically occur. Check for it. */
 		fixed_size += new_index->trx_id_offset;
 
-		new_index->trx_id_offset = fixed_size;
+		new_index->trx_id_offset = unsigned(fixed_size);
 
 		if (new_index->trx_id_offset != fixed_size) {
 			/* Overflow. Pretend that this is a
@@ -5394,23 +5389,6 @@ try_find_index:
 	goto loop;
 }
 
-/**************************************************************************
-Determines whether a string starts with the specified keyword.
-@return TRUE if str starts with keyword */
-ibool
-dict_str_starts_with_keyword(
-/*=========================*/
-	THD*		thd,		/*!< in: MySQL thread handle */
-	const char*	str,		/*!< in: string to scan for keyword */
-	const char*	keyword)	/*!< in: keyword to look for */
-{
-	CHARSET_INFO*	cs = innobase_get_charset(thd);
-	ibool		success;
-
-	dict_accept(cs, str, keyword, &success);
-	return(success);
-}
-
 /** Scans a table create SQL string and adds to the data dictionary
 the foreign key constraints declared in the string. This function
 should be called after the indexes for a table have been created.
@@ -6118,7 +6096,6 @@ dict_set_corrupted(
 		row_mysql_lock_data_dictionary(trx);
 	}
 
-	ut_ad(index);
 	ut_ad(mutex_own(&dict_sys->mutex));
 	ut_ad(!dict_table_is_comp(dict_sys->sys_tables));
 	ut_ad(!dict_table_is_comp(dict_sys->sys_indexes));
@@ -6342,11 +6319,9 @@ dict_set_merge_threshold_all_debug(
 
 #endif /* UNIV_DEBUG */
 
-/**********************************************************************//**
-Inits dict_ind_redundant. */
+/** Initialize dict_ind_redundant. */
 void
-dict_ind_init(void)
-/*===============*/
+dict_ind_init()
 {
 	dict_table_t*		table;
 
@@ -6364,16 +6339,11 @@ dict_ind_init(void)
 	dict_ind_redundant->cached = TRUE;
 }
 
-/**********************************************************************//**
-Frees dict_ind_redundant. */
-static
+/** Free dict_ind_redundant. */
 void
-dict_ind_free(void)
-/*===============*/
+dict_ind_free()
 {
-	dict_table_t*	table;
-
-	table = dict_ind_redundant->table;
+	dict_table_t*	table = dict_ind_redundant->table;
 	dict_mem_index_free(dict_ind_redundant);
 	dict_ind_redundant = NULL;
 	dict_mem_table_free(table);
@@ -6895,8 +6865,6 @@ dict_close(void)
 	/* The elements are the same instance as in dict_sys->table_hash,
 	therefore we don't delete the individual elements. */
 	hash_table_free(dict_sys->table_id_hash);
-
-	dict_ind_free();
 
 	mutex_free(&dict_sys->mutex);
 

@@ -366,6 +366,7 @@ static int skip_str_constant(json_engine_t *j)
         break;
       if (j->s.c_next == '\\')
       {
+        j->value_escaped= 1;
         if (json_handle_esc(&j->s))
           return 1;
         continue;
@@ -394,6 +395,7 @@ static int read_strn(json_engine_t *j)
 {
   j->value= j->s.c_str;
   j->value_type= JSON_VALUE_STRING;
+  j->value_escaped= 0;
 
   if (skip_str_constant(j))
     return 1;
@@ -1197,13 +1199,6 @@ int json_skip_to_level(json_engine_t *j, int level)
 
 int json_skip_key(json_engine_t *j)
 {
-  if (j->state == JST_KEY)
-  {
-    while (json_read_keyname_chr(j) == 0);
-    if (j->s.error)
-      return 1;
-  }
-
   if (json_read_value(j))
     return 1;
 
@@ -1701,8 +1696,10 @@ int json_get_path_next(json_engine_t *je, json_path_t *p)
     {
     case JST_KEY:
       p->last_step->key= je->s.c_str;
-      while (json_read_keyname_chr(je) == 0)
+      do
+      {
         p->last_step->key_end= je->s.c_str;
+      } while (json_read_keyname_chr(je) == 0);
       if (je->s.error)
         return 1;
       /* Now we have je.state == JST_VALUE, so let's handle it. */

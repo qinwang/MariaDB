@@ -1371,12 +1371,15 @@ void Field_num::prepend_zeros(String *value) const
   int diff;
   if ((diff= (int) (field_length - value->length())) > 0)
   {
-    bmove_upp((uchar*) value->ptr()+field_length,
-              (uchar*) value->ptr()+value->length(),
-	      value->length());
-    bfill((uchar*) value->ptr(),diff,'0');
-    value->length(field_length);
-    (void) value->c_ptr_quick();		// Avoid warnings in purify
+    const bool error= value->realloc(field_length);
+    if (!error)
+    {
+      bmove_upp((uchar*) value->ptr()+field_length,
+                (uchar*) value->ptr()+value->length(),
+	        value->length());
+      bfill((uchar*) value->ptr(),diff,'0');
+      value->length(field_length);
+    }
   }
 }
 
@@ -2309,9 +2312,10 @@ void Field::set_default()
 {
   if (default_value)
   {
-    table->in_use->reset_arena_for_cached_items(table->expr_arena);
+    Query_arena backup_arena;
+    table->in_use->set_n_backup_active_arena(table->expr_arena, &backup_arena);
     (void) default_value->expr->save_in_field(this, 0);
-    table->in_use->reset_arena_for_cached_items(0);
+    table->in_use->restore_active_arena(table->expr_arena, &backup_arena);
     return;
   }
   /* Copy constant value stored in s->default_values */
@@ -5260,6 +5264,7 @@ int Field_timestamp::set_time()
   Mark the field as having an explicit default value.
 
   @param value  if available, the value that the field is being set to
+  @returns whether the explicit default bit was set
 
   @note
     Fields that have an explicit default value should not be updated
@@ -5275,13 +5280,14 @@ int Field_timestamp::set_time()
       This is how MySQL has worked since it's start.
 */
 
-void Field_timestamp::set_explicit_default(Item *value)
+bool Field_timestamp::set_explicit_default(Item *value)
 {
   if (((value->type() == Item::DEFAULT_VALUE_ITEM &&
         !((Item_default_value*)value)->arg) ||
        (!maybe_null() && value->null_value)))
-    return;
+    return false;
   set_has_explicit_value();
+  return true;
 }
 
 #ifdef NOT_USED
@@ -8254,7 +8260,7 @@ void Field_blob::sort_string(uchar *to,uint length)
   uchar *blob;
   uint blob_length=get_length();
 
-  if (!blob_length)
+  if (!blob_length && field_charset->pad_char == 0)
     bzero(to,length);
   else
   {
@@ -10509,7 +10515,7 @@ Column_definition::Column_definition(THD *thd, Field *old_field,
     if (length != 4)
     {
       char buff[sizeof("YEAR()") + MY_INT64_NUM_DECIMAL_DIGITS + 1];
-      my_snprintf(buff, sizeof(buff), "YEAR(%lu)", length);
+      my_snprintf(buff, sizeof(buff), "YEAR(%llu)", length);
       push_warning_printf(thd, Sql_condition::WARN_LEVEL_NOTE,
                           ER_WARN_DEPRECATED_SYNTAX,
                           ER_THD(thd, ER_WARN_DEPRECATED_SYNTAX),
@@ -10585,7 +10591,7 @@ Column_definition::Column_definition(THD *thd, Field *old_field,
     length
 */
 
-uint32 Field_blob::char_length()
+uint32 Field_blob::char_length() const
 {
   switch (packlength)
   {
@@ -10786,12 +10792,13 @@ key_map Field::get_possible_keys()
     analyzed to check if it really should count as a value.
 */
 
-void Field::set_explicit_default(Item *value)
+bool Field::set_explicit_default(Item *value)
 {
   if (value->type() == Item::DEFAULT_VALUE_ITEM &&
       !((Item_default_value*)value)->arg)
-    return;
+    return false;
   set_has_explicit_value();
+  return true;
 }
 
 

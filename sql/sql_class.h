@@ -1,6 +1,6 @@
 /*
    Copyright (c) 2000, 2016, Oracle and/or its affiliates.
-   Copyright (c) 2009, 2016, MariaDB
+   Copyright (c) 2009, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -196,7 +196,7 @@ public:
   }
 
   inline char *str() const { return string.str; }
-  inline uint32 length() const { return string.length; }
+  inline size_t length() const { return string.length; }
   CHARSET_INFO *charset() const { return cs; }
 
   friend LEX_STRING * thd_query_string (MYSQL_THD thd);
@@ -495,16 +495,22 @@ enum killed_state
   KILL_TIMEOUT= 8,
   KILL_TIMEOUT_HARD= 9,
   /*
+    When binlog reading thread connects to the server it kills
+    all the binlog threads with the same ID.
+  */
+  KILL_SLAVE_SAME_ID= 10,
+  /*
     All of the following killed states will kill the connection
     KILL_CONNECTION must be the first of these and it must start with
     an even number (becasue of HARD bit)!
   */
-  KILL_CONNECTION= 10,
-  KILL_CONNECTION_HARD= 11,
-  KILL_SYSTEM_THREAD= 12,
-  KILL_SYSTEM_THREAD_HARD= 13,
-  KILL_SERVER= 14,
-  KILL_SERVER_HARD= 15
+  KILL_CONNECTION= 12,
+  KILL_CONNECTION_HARD= 13,
+  KILL_SYSTEM_THREAD= 14,
+  KILL_SYSTEM_THREAD_HARD= 15,
+  KILL_SERVER= 16,
+  KILL_SERVER_HARD= 17,
+
 };
 
 extern int killed_errno(killed_state killed);
@@ -652,7 +658,7 @@ typedef struct system_variables
   my_bool old_alter_table;
   my_bool old_passwords;
   my_bool big_tables;
-  my_bool only_standards_compliant_cte;
+  my_bool only_standard_compliant_cte;
   my_bool query_cache_strip_comments;
   my_bool sql_log_slow;
   my_bool sql_log_bin;
@@ -1087,7 +1093,10 @@ public:
 
 
   inline char *query() const { return query_string.str(); }
-  inline uint32 query_length() const { return query_string.length(); }
+  inline uint32 query_length() const
+  {
+    return static_cast<uint32>(query_string.length());
+  }
   CHARSET_INFO *query_charset() const { return query_string.charset(); }
   void set_query_inner(const CSET_STRING &string_arg)
   {
@@ -4017,27 +4026,7 @@ public:
     }
   }
 
-private:
-  /* 
-    This reference points to the table arena when the expression
-    for a virtual column is being evaluated
-  */ 
-  Query_arena *arena_for_cached_items;
-
 public:
-  void reset_arena_for_cached_items(Query_arena *new_arena)
-  {
-    arena_for_cached_items= new_arena;
-  }
-  Query_arena *switch_to_arena_for_cached_items(Query_arena *backup)
-  {
-    if (!arena_for_cached_items)
-      return 0;
-    set_n_backup_active_arena(arena_for_cached_items, backup);
-    return backup;
-  }
-
-
   void clear_wakeup_ready() { wakeup_ready= false; }
   /*
     Sleep waiting for others to wake us up with signal_wakeup_ready().
@@ -6021,6 +6010,22 @@ inline bool binlog_should_compress(ulong len)
   return opt_bin_log_compress &&
     len >= opt_bin_log_compress_min_len;
 }
+
+
+/**
+   Save thd sql_mode on instantiation.
+   On destruction it resets the mode to the previously stored value.
+*/
+class Sql_mode_save
+{
+ public:
+  Sql_mode_save(THD *thd) : thd(thd), old_mode(thd->variables.sql_mode) {}
+  ~Sql_mode_save() { thd->variables.sql_mode = old_mode; }
+
+ private:
+  THD *thd;
+  sql_mode_t old_mode; // SQL mode saved at construction time.
+};
 
 #endif /* MYSQL_SERVER */
 

@@ -42,10 +42,6 @@ my_bool	srv_ibuf_disable_background_merge;
 /** The start address for an insert buffer bitmap page bitmap */
 #define IBUF_BITMAP		PAGE_DATA
 
-#ifdef UNIV_NONINL
-#include "ibuf0ibuf.ic"
-#endif
-
 #include "buf0buf.h"
 #include "buf0rea.h"
 #include "fsp0fsp.h"
@@ -571,7 +567,9 @@ ibuf_init_at_db_start(void)
 	ibuf->index->n_uniq = REC_MAX_N_FIELDS;
 	rw_lock_create(index_tree_rw_lock_key, &ibuf->index->lock,
 		       SYNC_IBUF_INDEX_TREE);
+#ifdef BTR_CUR_ADAPT
 	ibuf->index->search_info = btr_search_info_create(ibuf->index->heap);
+#endif /* BTR_CUR_ADAPT */
 	ibuf->index->page = FSP_IBUF_TREE_ROOT_PAGE_NO;
 	ut_d(ibuf->index->cached = TRUE);
 	return (error);
@@ -808,7 +806,7 @@ ibuf_bitmap_get_map_page_func(
 	const page_id_t&	page_id,
 	const page_size_t&	page_size,
 	const char*		file,
-	ulint			line,
+	unsigned		line,
 	mtr_t*			mtr)
 {
 	buf_block_t*	block = NULL;
@@ -1136,7 +1134,7 @@ ibuf_page_low(
 	ibool			x_latch,
 #endif /* UNIV_DEBUG */
 	const char*		file,
-	ulint			line,
+	unsigned		line,
 	mtr_t*			mtr)
 {
 	ibool	ret;
@@ -3954,7 +3952,9 @@ ibuf_insert_to_index_page(
 	ut_ad(!dict_index_is_online_ddl(index));// this is an ibuf_dummy index
 	ut_ad(ibuf_inside(mtr));
 	ut_ad(dtuple_check_typed(entry));
+#ifdef BTR_CUR_HASH_ADAPT
 	ut_ad(!block->index);
+#endif /* BTR_CUR_HASH_ADAPT */
 	ut_ad(mtr->is_named_space(block->page.id.space()));
 
 	if (UNIV_UNLIKELY(dict_table_is_comp(index->table)
@@ -4458,7 +4458,6 @@ ibuf_merge_or_delete_for_page(
 	ulint		volume			= 0;
 #endif /* UNIV_IBUF_DEBUG */
 	page_zip_des_t*	page_zip		= NULL;
-	fil_space_t*	space			= NULL;
 	bool		corruption_noticed	= false;
 	mtr_t		mtr;
 
@@ -4489,6 +4488,8 @@ ibuf_merge_or_delete_for_page(
 		return;
 	}
 
+	fil_space_t*	space;
+
 	if (update_ibuf_bitmap) {
 
 		ut_ad(page_size != NULL);
@@ -4500,10 +4501,9 @@ ibuf_merge_or_delete_for_page(
 
 		space = fil_space_acquire(page_id.space());
 
-		if (space == NULL) {
-			/* Do not try to read the bitmap page from space;
-			just delete the ibuf records for the page */
-
+		if (UNIV_UNLIKELY(!space)) {
+			/* Do not try to read the bitmap page from the
+			non-existent tablespace, delete the ibuf records */
 			block = NULL;
 			update_ibuf_bitmap = FALSE;
 		} else {
@@ -4536,6 +4536,8 @@ ibuf_merge_or_delete_for_page(
 		       || fsp_descr_page(page_id, *page_size))) {
 
 		return;
+	} else {
+		space = NULL;
 	}
 
 	heap = mem_heap_create(512);
@@ -4566,9 +4568,6 @@ ibuf_merge_or_delete_for_page(
 				" insert buffer merge for this page. Please"
 				" run CHECK TABLE on your tables to determine"
 				" if they are corrupt after this.";
-
-			ib::error() << "Please submit a detailed bug"
-				" report to http://bugs.mysql.com";
 			ut_ad(0);
 		}
 	}
@@ -4788,15 +4787,17 @@ reset_bit:
 	}
 
 	ibuf_mtr_commit(&mtr);
+
+	if (space) {
+		fil_space_release(space);
+	}
+
 	btr_pcur_close(&pcur);
 	mem_heap_free(heap);
 
 	my_atomic_addlint(&ibuf->n_merges, 1);
 	ibuf_add_ops(ibuf->n_merged_ops, mops);
 	ibuf_add_ops(ibuf->n_discarded_ops, dops);
-	if (space != NULL) {
-		fil_space_release(space);
-	}
 
 #ifdef UNIV_IBUF_COUNT_DEBUG
 	ut_a(ibuf_count_get(page_id) == 0);

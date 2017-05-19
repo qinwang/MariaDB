@@ -118,21 +118,33 @@ log_scrub_failure(
 Lock dict mutexes */
 static
 bool
-btr_scrub_lock_dict_func(ulint space, bool lock_to_close_table,
+btr_scrub_lock_dict_func(ulint space_id, bool lock_to_close_table,
 			 const char * file, uint line)
 {
 	time_t start = time(0);
 	time_t last = start;
+
+	/* FIXME: this is not the proper way of doing things. The
+	dict_sys->mutex should not be held by any thread for longer
+	than a few microseconds. It must not be held during I/O,
+	for example. So, what is the purpose for this busy-waiting?
+	This function should be rewritten as part of MDEV-8139:
+	Fix scrubbing tests. */
 
 	while (mutex_enter_nowait(&(dict_sys->mutex))) {
 		/* if we lock to close a table, we wait forever
 		* if we don't lock to close a table, we check if space
 		* is closing, and then instead give up
 		*/
-		if (lock_to_close_table == false) {
-			if (fil_crypt_is_closing(space)) {
+		if (lock_to_close_table) {
+		} else if (fil_space_t* space = fil_space_acquire(space_id)) {
+			bool stopping = space->is_stopping();
+			fil_space_release(space);
+			if (stopping) {
 				return false;
 			}
+		} else {
+			return false;
 		}
 		os_thread_sleep(250000);
 
@@ -141,9 +153,10 @@ btr_scrub_lock_dict_func(ulint space, bool lock_to_close_table,
 		if (now >= last + 30) {
 			fprintf(stderr,
 				"WARNING: %s:%u waited %lu seconds for"
-				" dict_sys lock, space: %lu"
+				" dict_sys lock, space: " ULINTPF
 				" lock_to_close_table: %u\n",
-				file, line, now - start, space,
+				file, line, (unsigned long)(now - start),
+				space_id,
 				lock_to_close_table);
 
 			last = now;
@@ -189,16 +202,21 @@ void
 btr_scrub_table_close_for_thread(
 	btr_scrub_t *scrub_data)
 {
-	if (scrub_data->current_table == NULL)
+	if (scrub_data->current_table == NULL) {
 		return;
+	}
 
-	bool lock_for_close = true;
-	btr_scrub_lock_dict(scrub_data->space, lock_for_close);
-
-	/* perform the actual closing */
-	btr_scrub_table_close(scrub_data->current_table);
-
-	btr_scrub_unlock_dict();
+	if (fil_space_t* space = fil_space_acquire(scrub_data->space)) {
+		/* If tablespace is not marked as stopping perform
+		the actual close. */
+		if (!space->is_stopping()) {
+			mutex_enter(&dict_sys->mutex);
+			/* perform the actual closing */
+			btr_scrub_table_close(scrub_data->current_table);
+			mutex_exit(&dict_sys->mutex);
+		}
+		fil_space_release(space);
+	}
 
 	scrub_data->current_table = NULL;
 	scrub_data->current_index = NULL;
@@ -254,11 +272,10 @@ btr_page_needs_scrubbing(
 		return BTR_SCRUB_SKIP_PAGE_AND_CLOSE_TABLE;
 	}
 
-	page_t*	page = buf_block_get_frame(block);
-	uint type = fil_page_get_type(page);
+	const page_t*	page = buf_block_get_frame(block);
 
 	if (allocated == BTR_SCRUB_PAGE_ALLOCATED) {
-		if (type != FIL_PAGE_INDEX) {
+		if (fil_page_get_type(page) != FIL_PAGE_INDEX) {
 			/* this function is called from fil-crypt-threads.
 			* these threads iterate all pages of all tablespaces
 			* and don't know about fil_page_type.
@@ -275,7 +292,7 @@ btr_page_needs_scrubbing(
 			return BTR_SCRUB_SKIP_PAGE_AND_CLOSE_TABLE;
 		}
 
-		if (page_has_garbage(page) == false) {
+		if (!page_has_garbage(page)) {
 			/* no garbage (from deleted/shrunken records) */
 			return BTR_SCRUB_SKIP_PAGE_AND_CLOSE_TABLE;
 		}
@@ -283,11 +300,12 @@ btr_page_needs_scrubbing(
 	} else if (allocated == BTR_SCRUB_PAGE_FREE ||
 		   allocated == BTR_SCRUB_PAGE_ALLOCATION_UNKNOWN) {
 
-		if (! (type == FIL_PAGE_INDEX ||
-		       type == FIL_PAGE_TYPE_BLOB ||
-		       type == FIL_PAGE_TYPE_ZBLOB ||
-		       type == FIL_PAGE_TYPE_ZBLOB2)) {
-
+		switch (fil_page_get_type(page)) {
+		case FIL_PAGE_INDEX:
+		case FIL_PAGE_TYPE_ZBLOB:
+		case FIL_PAGE_TYPE_ZBLOB2:
+			break;
+		default:
 			/**
 			* If this is a dropped page, we also need to scrub
 			* BLOB pages
@@ -299,7 +317,8 @@ btr_page_needs_scrubbing(
 		}
 	}
 
-	if (btr_page_get_index_id(page) == IBUF_INDEX_ID) {
+	if (block->page.id.space() == TRX_SYS_SPACE
+	    && btr_page_get_index_id(page) == IBUF_INDEX_ID) {
 		/* skip ibuf */
 		return BTR_SCRUB_SKIP_PAGE_AND_CLOSE_TABLE;
 	}

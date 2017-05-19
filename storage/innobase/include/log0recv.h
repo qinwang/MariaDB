@@ -1,6 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1997, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -104,20 +105,12 @@ Reset the state of the recovery system variables. */
 void
 recv_sys_var_init(void);
 /*===================*/
-/*******************************************************************//**
-Empties the hash table of stored log records, applying them to appropriate
-pages. */
-dberr_t
-recv_apply_hashed_log_recs(
-/*=======================*/
-	ibool	allow_ibuf)	/*!< in: if TRUE, also ibuf operations are
-				allowed during the application; if FALSE,
-				no ibuf operations are allowed, and after
-				the application all file pages are flushed to
-				disk and invalidated in buffer pool: this
-				alternative means that no new log records
-				can be generated during the application */
-	__attribute__((warn_unused_result));
+
+/** Apply the hash table of stored log records to persistent data pages.
+@param[in]	last_batch	whether the change buffer merge will be
+				performed as part of the operation */
+void
+recv_apply_hashed_log_recs(bool last_batch);
 
 /** Block of log record data */
 struct recv_data_t{
@@ -213,12 +206,6 @@ struct recv_sys_t{
 	ibool		apply_batch_on;
 				/*!< this is TRUE when a log rec application
 				batch is running */
-	byte*		last_block;
-				/*!< possible incomplete last recovered log
-				block */
-	byte*		last_block_buf_start;
-				/*!< the nonaligned start address of the
-				preceding buffer */
 	byte*		buf;	/*!< buffer for parsing log records */
 	ulint		len;	/*!< amount of data in buf */
 	lsn_t		parse_start_lsn;
@@ -249,6 +236,8 @@ struct recv_sys_t{
 	lsn_t		mlog_checkpoint_lsn;
 				/*!< the LSN of a MLOG_CHECKPOINT
 				record, or 0 if none was parsed */
+	/** the time when progress was last reported */
+	ib_time_t	progress_time;
 	mem_heap_t*	heap;	/*!< memory heap of log records and file
 				addresses*/
 	hash_table_t*	addr_hash;/*!< hash table of file addresses of pages */
@@ -256,6 +245,20 @@ struct recv_sys_t{
 				addresses in the hash table */
 
 	recv_dblwr_t	dblwr;
+
+	/** Determine whether redo log recovery progress should be reported.
+	@param[in]	time	the current time
+	@return	whether progress should be reported
+		(the last report was at least 15 seconds ago) */
+	bool report(ib_time_t time)
+	{
+		if (time - progress_time < 15) {
+			return false;
+		}
+
+		progress_time = time;
+		return true;
+	}
 };
 
 /** The recovery system */
@@ -288,9 +291,6 @@ number (FIL_PAGE_LSN) is in the future.  Initially FALSE, and set by
 recv_recovery_from_checkpoint_start(). */
 extern bool		recv_lsn_checks_on;
 
-/** Flag indicating if recv_writer thread is active. */
-extern volatile bool	recv_writer_thread_active;
-
 /** Size of the parsing buffer; it must accommodate RECV_SCAN_SIZE many
 times! */
 #define RECV_PARSING_BUF_SIZE	(2 * 1024 * 1024)
@@ -304,14 +304,5 @@ the log and store the scanned log records in the buffer pool: we will
 use these free frames to read in pages when we start applying the
 log records to the database. */
 extern ulint	recv_n_pool_free_frames;
-
-/******************************************************//**
-Checks the 4-byte checksum to the trailer checksum field of a log
-block.  */
-bool
-log_block_checksum_is_ok(
-/*===================================*/
-	const byte*	block,	/*!< in: pointer to a log block */
-	bool            print_err); /*!< in print error ? */
 
 #endif

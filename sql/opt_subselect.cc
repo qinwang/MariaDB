@@ -12,7 +12,7 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
+   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111-1301 USA */
 
 /**
   @file
@@ -3978,7 +3978,7 @@ SJ_TMP_TABLE::create_sj_weedout_tmp_table(THD *thd)
                         &tmpname, (uint) strlen(path)+1,
                         &group_buff, (!using_unique_constraint ?
                                       uniq_tuple_length_arg : 0),
-                        &bitmaps, bitmap_buffer_size(1)*5,
+                        &bitmaps, bitmap_buffer_size(1)*6,
                         NullS))
   {
     if (temp_pool_slot != MY_BIT_NONE)

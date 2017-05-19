@@ -2,7 +2,7 @@
 #define SQL_ITEM_INCLUDED
 
 /* Copyright (c) 2000, 2015, Oracle and/or its affiliates.
-   Copyright (c) 2009, 2016, MariaDB
+   Copyright (c) 2009, 2017, MariaDB Corporation.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -97,10 +97,10 @@ enum precedence {
 typedef Bounds_checked_array<Item*> Ref_ptr_array;
 
 static inline uint32
-char_to_byte_length_safe(uint32 char_length_arg, uint32 mbmaxlen_arg)
+char_to_byte_length_safe(size_t char_length_arg, uint32 mbmaxlen_arg)
 {
-   ulonglong tmp= ((ulonglong) char_length_arg) * mbmaxlen_arg;
-   return (tmp > UINT_MAX32) ? (uint32) UINT_MAX32 : (uint32) tmp;
+  ulonglong tmp= ((ulonglong) char_length_arg) * mbmaxlen_arg;
+  return tmp > UINT_MAX32 ? UINT_MAX32 : static_cast<uint32>(tmp);
 }
 
 bool mark_unsupported_function(const char *where, void *store, uint result);
@@ -523,7 +523,7 @@ class Copy_query_with_rewrite
   bool copy_up_to(size_t bytes)
   {
     DBUG_ASSERT(bytes >= from);
-    return dst->append(src + from, bytes - from);
+    return dst->append(src + from, uint32(bytes - from));
   }
 
 public:
@@ -1095,6 +1095,8 @@ public:
     Returns the val_str() value converted to the given character set.
   */
   String *val_str(String *str, String *converter, CHARSET_INFO *to);
+
+  virtual String *val_json(String *str) { return val_str(str); }
   /*
     Return decimal representation of item with fixed point.
 
@@ -1833,7 +1835,7 @@ public:
     max_length= char_to_byte_length_safe(max_char_length_arg, cs->mbmaxlen);
     collation.collation= cs;
   }
-  void fix_char_length(uint32 max_char_length_arg)
+  void fix_char_length(size_t max_char_length_arg)
   {
     max_length= char_to_byte_length_safe(max_char_length_arg,
                                          collation.collation->mbmaxlen);
@@ -3480,7 +3482,7 @@ class Item_blob :public Item_partition_func_safe_string
 {
 public:
   Item_blob(THD *thd, const char *name_arg, uint length):
-    Item_partition_func_safe_string(thd, name_arg, length, &my_charset_bin)
+    Item_partition_func_safe_string(thd, name_arg, strlen(name_arg), &my_charset_bin)
   { max_length= length; }
   enum Type type() const { return TYPE_HOLDER; }
   enum_field_types field_type() const { return MYSQL_TYPE_BLOB; }
@@ -4928,6 +4930,11 @@ public:
   virtual double val_real() = 0;
   virtual longlong val_int() = 0;
   virtual int save_in_field(Field *field, bool no_conversions) = 0;
+  bool walk(Item_processor processor, bool walk_subquery, void *args)
+  {
+    return (item->walk(processor, walk_subquery, args)) ||
+      (this->*processor)(args);
+  }
 };
 
 /**
@@ -5185,7 +5192,7 @@ public:
     param->set_default();
     return false;
   }
-  table_map used_tables() const { return (table_map)0L; }
+  table_map used_tables() const;
   Field *get_tmp_table_field() { return 0; }
   Item *get_tmp_table_item(THD *thd) { return this; }
   Item_field *field_for_view_update() { return 0; }

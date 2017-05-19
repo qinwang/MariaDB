@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 2005, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2013, 2016, MariaDB Corporation. All Rights Reserved.
+Copyright (c) 2013, 2017, MariaDB Corporation. All Rights Reserved.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -589,7 +589,7 @@ ha_innobase::check_if_supported_inplace_alter(
 	}
 
 	update_thd();
-	trx_search_latch_release_if_reserved(m_prebuilt->trx);
+	trx_assert_no_search_latch(m_prebuilt->trx);
 
 	/* Change on engine specific table options require rebuild of the
 	table */
@@ -1898,7 +1898,7 @@ innobase_row_to_mysql(
 	}
 	if (table->vfield) {
 		my_bitmap_map*	old_vcol_set = tmp_use_all_columns(table, table->vcol_set);
-		table->update_virtual_fields(VCOL_UPDATE_FOR_READ);
+		table->update_virtual_fields(table->file, VCOL_UPDATE_FOR_READ);
 		tmp_restore_column_map(table->vcol_set, old_vcol_set);
 	}
 }
@@ -4532,9 +4532,11 @@ prepare_inplace_alter_table_dict(
 		ulint		space_id = 0;
 		ulint		z = 0;
 		ulint		key_id = FIL_DEFAULT_ENCRYPTION_KEY;
-		fil_encryption_t mode = FIL_SPACE_ENCRYPTION_DEFAULT;
+		fil_encryption_t mode = FIL_ENCRYPTION_DEFAULT;
 
-		crypt_data = fil_space_get_crypt_data(ctx->prebuilt->table->space);
+		fil_space_t* space = fil_space_acquire(ctx->prebuilt->table->space);
+		crypt_data = space->crypt_data;
+		fil_space_release(space);
 
 		if (crypt_data) {
 			key_id = crypt_data->key_id;
@@ -5019,7 +5021,7 @@ op_ok:
 				ctx->prebuilt->trx->mysql_thd)
 				? DB_SUCCESS : DB_ERROR;
 			ctx->new_table->fts->fts_status
-				&= ~TABLE_DICT_LOCKED;
+				&= ulint(~TABLE_DICT_LOCKED);
 
 			if (error != DB_SUCCESS) {
 				goto error_handling;
@@ -6569,9 +6571,10 @@ innobase_online_rebuild_log_free(
 /** For each user column, which is part of an index which is not going to be
 dropped, it checks if the column number of the column is same as col_no
 argument passed.
-@param[in]	table	table object
-@param[in]	col_no	column number of the column which is to be checked
-@param[in]	is_v	if this is a virtual column
+@param[in]	table		table
+@param[in]	col_no		column number
+@param[in]	is_v		if this is a virtual column
+@param[in]	only_committed	whether to consider only committed indexes
 @retval true column exists
 @retval false column does not exist, true if column is system column or
 it is in the index. */
@@ -6580,17 +6583,21 @@ bool
 check_col_exists_in_indexes(
 	const dict_table_t*	table,
 	ulint			col_no,
-	bool			is_v)
+	bool			is_v,
+	bool			only_committed = false)
 {
 	/* This function does not check system columns */
 	if (!is_v && dict_table_get_nth_col(table, col_no)->mtype == DATA_SYS) {
 		return(true);
 	}
 
-	for (dict_index_t* index = dict_table_get_first_index(table); index;
+	for (const dict_index_t* index = dict_table_get_first_index(table);
+	     index;
 	     index = dict_table_get_next_index(index)) {
 
-		if (index->to_be_dropped) {
+		if (only_committed
+		    ? !index->is_committed()
+		    : index->to_be_dropped) {
 			continue;
 		}
 
@@ -6769,14 +6776,24 @@ func_exit:
 	we do this by checking every existing column, if any current
 	index would index them */
 	for (ulint i = 0; i < dict_table_get_n_cols(prebuilt->table); i++) {
-		if (!check_col_exists_in_indexes(prebuilt->table, i, false)) {
-			prebuilt->table->cols[i].ord_part = 0;
+		dict_col_t& col = prebuilt->table->cols[i];
+		if (!col.ord_part) {
+			continue;
+		}
+		if (!check_col_exists_in_indexes(prebuilt->table, i, false,
+						 true)) {
+			col.ord_part = 0;
 		}
 	}
 
 	for (ulint i = 0; i < dict_table_get_n_v_cols(prebuilt->table); i++) {
-		if (!check_col_exists_in_indexes(prebuilt->table, i, true)) {
-			prebuilt->table->v_cols[i].m_col.ord_part = 0;
+		dict_col_t& col = prebuilt->table->v_cols[i].m_col;
+		if (!col.ord_part) {
+			continue;
+		}
+		if (!check_col_exists_in_indexes(prebuilt->table, i, true,
+						 true)) {
+			col.ord_part = 0;
 		}
 	}
 
@@ -7776,25 +7793,10 @@ commit_try_rebuild(
 		user_table, rebuilt_table, ctx->tmp_name, trx);
 
 	/* We must be still holding a table handle. */
-	DBUG_ASSERT(user_table->get_ref_count() >= 1);
+	DBUG_ASSERT(user_table->get_ref_count() == 1);
 
 	DBUG_EXECUTE_IF("ib_ddl_crash_after_rename", DBUG_SUICIDE(););
 	DBUG_EXECUTE_IF("ib_rebuild_cannot_rename", error = DB_ERROR;);
-
-	if (user_table->get_ref_count() > 1) {
-		/* This should only occur when an innodb_memcached
-		connection with innodb_api_enable_mdl=off was started
-		before commit_inplace_alter_table() locked the data
-		dictionary. We must roll back the ALTER TABLE, because
-		we cannot drop a table while it is being used. */
-
-		/* Normally, n_ref_count must be 1, because purge
-		cannot be executing on this very table as we are
-		holding dict_operation_lock X-latch. */
-		my_printf_error(ER_ILLEGAL_HA, "Cannot complete the operation "
-			"because table is referenced by another connection.", MYF(0));
-		DBUG_RETURN(true);
-	}
 
 	switch (error) {
 	case DB_SUCCESS:
@@ -8608,7 +8610,7 @@ ha_innobase::commit_inplace_alter_table(
 			trx_rollback_for_mysql(trx);
 		} else {
 			ut_ad(trx_state_eq(trx, TRX_STATE_ACTIVE));
-			ut_ad(trx_is_rseg_updated(trx));
+			ut_ad(trx->has_logged());
 
 			if (mtr.get_log()->size() > 0) {
 				ut_ad(*mtr.get_log()->front()->begin()
@@ -8799,22 +8801,15 @@ foreign_fail:
 	}
 
 	if (ctx0->num_to_drop_vcol || ctx0->num_to_add_vcol) {
-
-		if (ctx0->old_table->get_ref_count() > 1) {
-
-			row_mysql_unlock_data_dictionary(trx);
-			trx_free_for_mysql(trx);
-			my_printf_error(ER_ILLEGAL_HA, "Cannot complete the operation "
-				"because table is referenced by another connection.", MYF(0));
-			DBUG_RETURN(true);
-		}
+		DBUG_ASSERT(ctx0->old_table->get_ref_count() == 1);
 
 		trx_commit_for_mysql(m_prebuilt->trx);
-
+#ifdef BTR_CUR_HASH_ADAPT
 		if (btr_search_enabled) {
 			btr_search_disable(false);
 			btr_search_enable();
 		}
+#endif /* BTR_CUR_HASH_ADAPT */
 
 		char	tb_name[FN_REFLEN];
 		ut_strcpy(tb_name, m_prebuilt->table->name.m_name);
