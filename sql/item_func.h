@@ -2159,6 +2159,7 @@ public:
   {
     return TRUE;
   }
+  table_map not_null_tables() const { return 0; }
 };
 
 
