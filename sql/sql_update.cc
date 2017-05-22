@@ -539,12 +539,7 @@ int mysql_update(THD *thd,
   DBUG_PRINT("info", ("binlog_is_row = %s", binlog_is_row ? "TRUE" : "FALSE"));
   if (!has_triggers && !binlog_is_row)
   {
-    if (
-#ifdef OPTIMIZER_SWITCH_ENGINE_CONDITION_PUSHDOWN
-      (thd->variables.optimizer_switch &
-       OPTIMIZER_SWITCH_ENGINE_CONDITION_PUSHDOWN) &&
-#endif
-      select && select->cond &&
+    if (select && select->cond &&
       (select->cond->used_tables() & table->map) &&
       !table->file->pushed_cond)
     {

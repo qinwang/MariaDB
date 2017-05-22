@@ -6122,8 +6122,10 @@ int ha_partition::common_index_read(uchar *buf, bool have_start_key)
   bool reverse_order= FALSE;
   DBUG_ENTER("ha_partition::common_index_read");
 
+/*
   DBUG_PRINT("info", ("m_ordered %u m_ordered_scan_ong %u",
                       m_ordered, m_ordered_scan_ongoing));
+*/
 
   if (have_start_key)
   {
@@ -8904,18 +8906,22 @@ int ha_partition::extra(enum ha_extra_function operation)
 
     /* Recalculate lock count as each child may have different set of locks */
     num_locks = 0;
+    additional_table_flags = (HA_HAS_RECORDS
 #ifdef HA_CAN_BULK_ACCESS
-    additional_table_flags = (ulonglong)HA_CAN_BULK_ACCESS;
+                              | HA_CAN_BULK_ACCESS
 #endif
+    );
     file = m_file;
     do
     {
       num_locks+= (*file)->lock_count();
-#ifdef HA_CAN_BULK_ACCESS
       additional_table_flags &= ~((ulonglong)
-                                  ((*file)->ha_table_flags() ^
-                                   (ulonglong)HA_CAN_BULK_ACCESS));
+        ((*file)->ha_table_flags() ^
+         (HA_HAS_RECORDS
+#ifdef HA_CAN_BULK_ACCESS
+          | HA_CAN_BULK_ACCESS
 #endif
+          )));
     } while (*(++file));
 
     m_num_locks= num_locks;
@@ -8927,9 +8933,12 @@ int ha_partition::extra(enum ha_extra_function operation)
   case HA_EXTRA_IS_ATTACHED_CHILDREN:
     DBUG_RETURN(loop_extra(operation));
   case HA_EXTRA_DETACH_CHILDREN:
+    cached_table_flags &= ~((ulonglong)
+      (HA_HAS_RECORDS
 #ifdef HA_CAN_BULK_ACCESS
-    cached_table_flags &= ~((ulonglong)HA_CAN_BULK_ACCESS);
+        | HA_CAN_BULK_ACCESS
 #endif
+        ));
     DBUG_RETURN(loop_extra(operation));
   case HA_EXTRA_MARK_AS_LOG_TABLE:
   /*
@@ -11017,15 +11026,17 @@ int ha_partition::direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
 
   if (
     bitmap_is_overlapping(&m_part_info->full_part_field_set,
-                          table->write_set)
+      table->write_set)
 #if defined(HS_HAS_SQLCOM)
     && (
       thd_sql_command(ha_thd()) != SQLCOM_HS_UPDATE ||
       check_hs_update_overlapping(&ranges->start_key)
-    )
+      )
 #endif
-  )
+    ) {
+    DBUG_PRINT("info", ("partition FALSE by updating part_key"));
     DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+  }
 
   if (ranges && ranges->start_key.key)
     get_partition_set(table, table->record[1], active_index,
@@ -11046,7 +11057,10 @@ int ha_partition::direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
       file = m_file[i];
       if ((error= file->ha_direct_update_rows_init(mode, ranges,
         range_count, sorted, new_data)))
+      {
+        DBUG_PRINT("info", ("partition FALSE by storage engine"));
         DBUG_RETURN(error);
+      }
       j++;
     }
   }
@@ -11057,9 +11071,19 @@ int ha_partition::direct_update_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
     while (table_list->parent_l)
       table_list = table_list->parent_l;
     st_select_lex *select_lex= table_list->select_lex;
+    DBUG_PRINT("info", ("partition select_lex=%p", select_lex));
     if (select_lex && select_lex->explicit_limit)
+    {
+      DBUG_PRINT("info", ("partition explicit_limit=TRUE"));
+      DBUG_PRINT("info", ("partition offset_limit=%p",
+        select_lex->offset_limit));
+      DBUG_PRINT("info", ("partition select_limit=%p",
+        select_lex->select_limit));
+      DBUG_PRINT("info", ("partition FALSE by select_lex"));
       DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+    }
   }
+  DBUG_PRINT("info", ("partition OK"));
   DBUG_RETURN(0);
 }
 
@@ -11143,24 +11167,41 @@ int ha_partition::direct_update_rows(KEY_MULTI_RANGE *ranges, uint range_count,
   bool sorted, uchar *new_data, uint *update_rows)
 {
   int error;
+  bool rnd_seq= FALSE;
   uint m_update_rows, i;
   handler *file;
   DBUG_ENTER("ha_partition::direct_update_rows");
 
+  if (inited == RND && m_scan_value == 1)
+  {
+    rnd_seq= TRUE;
+    m_scan_value= 2;
+  }
   *update_rows= 0;
   m_part_spec = m_direct_update_part_spec;
   for (i= m_part_spec.start_part; i <= m_part_spec.end_part; i++)
   {
+    file = m_file[i];
     if (
       bitmap_is_set(&(m_part_info->read_partitions), i) &&
       bitmap_is_set(&(m_part_info->lock_partitions), i)
     ) {
-      file = m_file[i];
+      if (rnd_seq && file->inited == NONE)
+      {
+        if ((error = file->ha_rnd_init(TRUE)))
+          DBUG_RETURN(error);
+      }
       if ((error= (file)->ha_direct_update_rows(ranges, range_count,
         sorted, new_data, &m_update_rows)))
+      {
+        if (rnd_seq)
+          file->ha_rnd_end();
         DBUG_RETURN(error);
+      }
       *update_rows += m_update_rows;
     }
+    if (rnd_seq && (error = file->ha_index_or_rnd_end()))
+      DBUG_RETURN(error);
   }
   DBUG_RETURN(0);
 }
@@ -11311,7 +11352,10 @@ int ha_partition::direct_delete_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
       file = m_file[i];
       if ((error= file->ha_direct_delete_rows_init(mode, ranges,
         range_count, sorted)))
+      {
+        DBUG_PRINT("info", ("partition FALSE by storage engine"));
         DBUG_RETURN(error);
+      }
       j++;
     }
   }
@@ -11322,9 +11366,19 @@ int ha_partition::direct_delete_rows_init(uint mode, KEY_MULTI_RANGE *ranges,
     while (table_list->parent_l)
       table_list = table_list->parent_l;
     st_select_lex *select_lex= table_list->select_lex;
+    DBUG_PRINT("info", ("partition select_lex=%p", select_lex));
     if (select_lex && select_lex->explicit_limit)
+    {
+      DBUG_PRINT("info", ("partition explicit_limit=TRUE"));
+      DBUG_PRINT("info", ("partition offset_limit=%p",
+        select_lex->offset_limit));
+      DBUG_PRINT("info", ("partition select_limit=%p",
+        select_lex->select_limit));
+      DBUG_PRINT("info", ("partition FALSE by select_lex"));
       DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+    }
   }
+  DBUG_PRINT("info", ("partition OK"));
   DBUG_RETURN(0);
 }
 
@@ -11394,24 +11448,41 @@ int ha_partition::direct_delete_rows(KEY_MULTI_RANGE *ranges, uint range_count,
   bool sorted, uint *delete_rows)
 {
   int error;
+  bool rnd_seq= FALSE;
   uint m_delete_rows, i;
   handler *file;
   DBUG_ENTER("ha_partition::direct_delete_rows");
 
+  if (inited == RND && m_scan_value == 1)
+  {
+    rnd_seq= TRUE;
+    m_scan_value= 2;
+  }
   *delete_rows= 0;
   m_part_spec = m_direct_update_part_spec;
   for (i= m_part_spec.start_part; i <= m_part_spec.end_part; i++)
   {
+    file = m_file[i];
     if (
       bitmap_is_set(&(m_part_info->read_partitions), i) &&
       bitmap_is_set(&(m_part_info->lock_partitions), i)
     ) {
-      file = m_file[i];
+      if (rnd_seq && file->inited == NONE)
+      {
+        if ((error = file->ha_rnd_init(TRUE)))
+          DBUG_RETURN(error);
+      }
       if ((error= file->ha_direct_delete_rows(ranges, range_count,
         sorted, &m_delete_rows)))
+      {
+        if (rnd_seq)
+          file->ha_rnd_end();
         DBUG_RETURN(error);
+      }
       *delete_rows += m_delete_rows;
     }
+    if (rnd_seq && (error = file->ha_index_or_rnd_end()))
+      DBUG_RETURN(error);
   }
   DBUG_RETURN(0);
 }
