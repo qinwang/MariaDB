@@ -1,0 +1,57 @@
+include/master-slave.inc
+[connection master]
+connection master;
+create table t1(a int primary key);
+connection slave;
+SET GLOBAL debug_dbug="+d,should_sleep_for_mdev7409";
+select * from t1;
+a
+connection master;
+insert into t1(a) values(1);
+#monitoring write rows
+connection slave;
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+#Write_row:- Writing row on table t1
+SET DEBUG_SYNC = 'now SIGNAL done';
+#monitoring update rows
+connection master;
+update t1 set a = a + 4194304 ;
+connection slave;
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+#Update_row:- finding row() that need to be updated from table t1
+SET DEBUG_SYNC = 'now SIGNAL done';
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+#Update_row:- unpacking row for table t1
+SET DEBUG_SYNC = 'now SIGNAL done';
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+#Update Row:- Updating row for table t1.
+SET DEBUG_SYNC = 'now SIGNAL done';
+#monitoring delete rows
+connection master;
+delete from t1 where a>1;
+connection slave;
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+#Delete_row:- finding row that need to be deleted from table t1
+SET DEBUG_SYNC = 'now SIGNAL done';
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+#Delete_row:- deleting row from table t1
+SET DEBUG_SYNC = 'now SIGNAL done';
+connection master;
+drop table t1;
+connection slave;
+SET GLOBAL debug_dbug="";
+SET DEBUG_SYNC= 'RESET';
+include/rpl_end.inc
+connection server_2;
+connection server_2;
+connection server_2;
+connection server_2;
+connection server_1;
+connection server_1;
+connection server_1;
+connection server_2;
+connection server_1;
+connection server_2;
+connection server_2;
+connection server_1;
+connection server_1;

@@ -1,0 +1,69 @@
+--source include/have_innodb.inc
+--source include/have_binlog_format_row.inc
+--source include/have_debug.inc
+--source include/have_debug_sync.inc
+--source include/master-slave.inc
+--enable_connect_log
+
+--connection master
+create table t1(a int primary key);
+--save_master_pos
+
+--connection slave
+--sync_with_master
+SET GLOBAL debug_dbug="+d,should_sleep_for_mdev7409";
+select * from t1;
+
+--connection master
+insert into t1(a) values(1);
+--save_master_pos
+
+--echo #monitoring write rows
+--connection slave
+
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+--echo #Write_row:- Writing row on table t1
+SET DEBUG_SYNC = 'now SIGNAL done';
+--sync_with_master
+
+--echo #monitoring update rows
+--connection master
+update t1 set a = a + 4194304 ;
+
+--connection slave
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+--echo #Update_row:- finding row() that need to be updated from table t1
+SET DEBUG_SYNC = 'now SIGNAL done';
+
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+--echo #Update_row:- unpacking row for table t1
+SET DEBUG_SYNC = 'now SIGNAL done';
+
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+--echo #Update Row:- Updating row for table t1.
+SET DEBUG_SYNC = 'now SIGNAL done';
+
+--sync_with_master
+
+--echo #monitoring delete rows
+--connection master
+delete from t1 where a>1;
+
+--connection slave
+
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+--echo #Delete_row:- finding row that need to be deleted from table t1
+SET DEBUG_SYNC = 'now SIGNAL done';
+
+SET DEBUG_SYNC='now WAIT_FOR thd_info_set';
+--echo #Delete_row:- deleting row from table t1
+SET DEBUG_SYNC = 'now SIGNAL done';
+--sync_with_master
+
+#CleanUp
+--connection master
+drop table t1;
+--connection slave
+SET GLOBAL debug_dbug="";
+SET DEBUG_SYNC= 'RESET';
+--source include/rpl_end.inc
