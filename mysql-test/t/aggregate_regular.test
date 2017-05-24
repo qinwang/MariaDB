@@ -23,20 +23,13 @@ begin
   end loop;
 end|
 
-create aggregate function agg_test5(x double) returns double
-begin
-  declare z double default 0;
-  declare continue handler for not found return z;
-  return -1;
-end|
-
 create aggregate function agg_test(x INT) returns CHAR(10)
  begin
    declare mini INT default 0;
    declare continue handler for not found return mini;
    loop
        fetch group next row;
-	   set mini= mini + x;
+       set mini= mini + x;
    end loop;
 end|
 
@@ -90,9 +83,9 @@ select agg_sum(sal) from t1 where id>= 1 group by counter;
 select agg_test2(sal) from t1;
 
 # incorrect column type
---disable_warnings
---sorted_result
-select agg_test(val) from t1;
+#--disable_warnings
+#--sorted_result
+#select agg_test(val) from t1;
 
 #subquery
 --sorted_result
@@ -117,7 +110,6 @@ select agg_sum((select val from t2 where 0 > 1))  from t1;
 select agg_sum((select val from t2 where id= 1))  from t1;
 
 select agg_test4(sal) from t1;
-select agg_test5(sal) from t1;
 
 SELECT agg_sum(sal)*agg_sum(sal) FROM t1;
 
@@ -145,4 +137,3 @@ drop function agg_test2;
 drop function increm;
 drop function agg_test3;
 drop function agg_test4;
-drop function agg_test5;

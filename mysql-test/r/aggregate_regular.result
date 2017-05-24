@@ -19,12 +19,6 @@ fetch group next row;
 set z= z+x;
 end loop;
 end|
-create aggregate function agg_test5(x double) returns double
-begin
-declare z double default 0;
-declare continue handler for not found return z;
-return -1;
-end|
 create aggregate function agg_test(x INT) returns CHAR(10)
 begin
 declare mini INT default 0;
@@ -79,9 +73,6 @@ agg_sum(sal)
 select agg_test2(sal) from t1;
 agg_test2(sal)
 1000
-select agg_test(val) from t1;
-agg_test(val)
-0
 select val, id, c from (select agg_sum(sal) as c from t2) as t1, t2;
 val	id	c
 10	2	17000
@@ -107,9 +98,6 @@ agg_sum((select val from t2 where id= 1))
 select agg_test4(sal) from t1;
 agg_test4(sal)
 0
-select agg_test5(sal) from t1;
-agg_test5(sal)
--1
 SELECT agg_sum(sal)*agg_sum(sal) FROM t1;
 agg_sum(sal)*agg_sum(sal)
 25000000
@@ -174,4 +162,3 @@ drop function agg_test2;
 drop function increm;
 drop function agg_test3;
 drop function agg_test4;
-drop function agg_test5;

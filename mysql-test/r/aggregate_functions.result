@@ -20,7 +20,7 @@ INSERT INTO t1 (sal, id, val, counter) VALUES (7000, 7, 12, 0);
 INSERT INTO t1 (sal, id, val, counter) VALUES (4000, 6, 14, 1);
 INSERT INTO t1 (sal, id, val, counter) VALUES (8000, 5, 19, 3);
 INSERT INTO t1 (sal, id, val, counter) VALUES (9000, 4, 11, 4);
-INSERT INTO t1 (sal, id, val, counter) VALUES (1000, 3, 10, 2);
+INSERT INTO t1 (sal, id, val, counter) VALUES (1000, 3, 11, 2);
 select agg_and(sal) from t1 where id>= 1;
 agg_and(sal)
 768
@@ -167,8 +167,8 @@ counter	agg_sum(sal)
 9	6000
 select val, agg_sum(sal) from t1 where id>= 1 group by val;
 val	agg_sum(sal)
-10	4000
-11	12000
+10	3000
+11	13000
 12	7000
 13	5000
 14	4000
@@ -209,7 +209,7 @@ val	counter	id	agg_sum(sal)	sum(distinct sal)	agg_min(sal)	agg_max(sal)	agg_avg(
 14	1	6	4000	4000	4000	4000	4000
 18	1	2	6000	6000	6000	6000	6000
 10	2	2	1000	1000	1000	1000	1000
-10	2	3	1000	1000	1000	1000	1000
+11	2	3	1000	1000	1000	1000	1000
 15	3	3	5000	5000	5000	5000	5000
 19	3	5	8000	8000	8000	8000	8000
 11	4	4	12000	12000	3000	9000	6000

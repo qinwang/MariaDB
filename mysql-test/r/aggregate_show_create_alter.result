@@ -16,7 +16,7 @@ ERROR HY000: Failed to load routine test.increm. The table mysql.proc is missing
 alter function increm aggregate group;
 show create function increm;
 Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
-increm	NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION	CREATE DEFINER=`root`@`localhost` AGGREGATE FUNCTION `increm`(x INT) RETURNS int(11)
+increm	STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION	CREATE DEFINER=`root`@`localhost` AGGREGATE FUNCTION `increm`(x INT) RETURNS int(11)
 begin
 declare continue handler for not found return x;
 loop
@@ -34,7 +34,7 @@ ERROR HY000: Failed to load routine test.increm. The table mysql.proc is missing
 alter function increm aggregate group comment 'aggregate';
 show create function increm;
 Function	sql_mode	Create Function	character_set_client	collation_connection	Database Collation
-increm	NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION	CREATE DEFINER=`root`@`localhost` AGGREGATE FUNCTION `increm`(x INT) RETURNS int(11)
+increm	STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION	CREATE DEFINER=`root`@`localhost` AGGREGATE FUNCTION `increm`(x INT) RETURNS int(11)
     COMMENT 'aggregate'
 begin
 declare continue handler for not found return x;
