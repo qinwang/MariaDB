@@ -1427,7 +1427,7 @@ sp_head::execute_agg(THD *thd, bool merge_da_on_success)
   bool cur_db_changed= FALSE;
   sp_rcontext *ctx= thd->spcont;
   uint ip;
-  if(m_chistics->agg_type == GROUP_AGGREGATE)
+  if (m_chistics->agg_type == GROUP_AGGREGATE)
     ip= thd->spcont->instr_ptr;
   else
     ip=0;
@@ -1635,7 +1635,7 @@ sp_head::execute_agg(THD *thd, bool merge_da_on_success)
 
     err_status= i->execute(thd, &ip);
 
-    if(m_chistics->agg_type == NOT_AGGREGATE)
+    if (m_chistics->agg_type == NOT_AGGREGATE)
       thd->spcont->pause_state= FALSE;
 
     thd->m_digest= parent_digest;
@@ -1687,11 +1687,11 @@ sp_head::execute_agg(THD *thd, bool merge_da_on_success)
 
   thd->restore_active_arena(&execute_arena, &backup_arena);
 
-  if(err_status || thd->killed || thd->is_fatal_error || thd->spcont->quit_func)
+  if (err_status || thd->killed || thd->is_fatal_error || thd->spcont->quit_func)
       thd->spcont->pop_all_cursors(); // To avoid memory leaks after an error*/
 
   /* Restore all saved */
-  if(m_chistics->agg_type == GROUP_AGGREGATE)
+  if (m_chistics->agg_type == GROUP_AGGREGATE)
     thd->spcont->instr_ptr= ip;
   thd->server_status= (thd->server_status & ~status_backup_mask) | old_server_status;
   old_packet.swap(thd->packet);
@@ -2218,7 +2218,7 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
   */
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
-  err_status= execute_agg(thd, TRUE);
+  err_status= execute(thd, TRUE);
 
   thd->restore_active_arena(&call_arena, &backup_arena);
 
@@ -2352,34 +2352,32 @@ sp_head::execute_aggregate_function(THD *thd, Item **args, uint argcount,
     lot of them will hog memory. The arena only needs to be created if
     the runtime context is not created.
   */
-  if(!(*func_ctx))
+  if (!(*func_ctx))
   {
-     thd->set_n_backup_active_arena(&call_arena, &backup_arena);
+    thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
-     if (!(*func_ctx= rcontext_create(thd, false, return_fld)))
-     {
-       thd->restore_active_arena(&call_arena, &backup_arena);
-       err_status= TRUE;
-       goto err_with_cleanup;
-     }
-     /*
+    if (!(*func_ctx= rcontext_create(thd, false, return_fld)))
+    {
+      thd->restore_active_arena(&call_arena, &backup_arena);
+      err_status= TRUE;
+      goto err_with_cleanup;
+    }
+    /*
     We have to switch temporarily back to callers arena/memroot.
     Function arguments belong to the caller and so the may reference
     memory which they will allocate during calculation long after
     this function call will be finished (e.g. in Item::cleanup()).
-  */
-  thd->restore_active_arena(&call_arena, &backup_arena);
-  argument_sent= FALSE;
+    */
+    thd->restore_active_arena(&call_arena, &backup_arena);
+    argument_sent= FALSE;
   }
-  else
+
+  for (arg_no= 0; arg_no < argcount; arg_no++)
   {
-    for (arg_no= 0; arg_no < argcount; arg_no++)
-    {
-        // Arguments must be fixed in Item_sum_sp::fix_fields
-        DBUG_ASSERT(args[arg_no]->fixed);
-        if ((err_status= (*func_ctx)->set_variable(thd, arg_no, &(args[arg_no]))))
-          goto err_with_cleanup;
-    }
+    // Arguments must be fixed in Item_sum_sp::fix_fields
+    DBUG_ASSERT(args[arg_no]->fixed);
+    if ((err_status= (*func_ctx)->set_variable(thd, arg_no, &(args[arg_no]))))
+      goto err_with_cleanup;
   }
 
 #ifndef DBUG_OFF
@@ -2469,19 +2467,10 @@ sp_head::execute_aggregate_function(THD *thd, Item **args, uint argcount,
   */
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
   err_status= execute_agg(thd, TRUE);
-  if(!err_status)
+  if (!err_status)
   {
-    if(!argument_sent && thd->spcont->pause_state)
-    {
-      for (arg_no= 0; arg_no < argcount; arg_no++)
-      {
-        // Arguments must be fixed in Item_sum_sp::fix_fields
-         DBUG_ASSERT(args[arg_no]->fixed);
-         if ((err_status= thd->spcont->set_variable(thd, arg_no, &(args[arg_no]))))
-          goto err_with_cleanup;
-      }
+    if (!argument_sent && thd->spcont->pause_state)
       err_status= execute_agg(thd, TRUE);
-    }
   }
 
   thd->restore_active_arena(&call_arena, &backup_arena);
@@ -4795,7 +4784,7 @@ sp_instr_cfetch::execute(THD *thd, uint *nextp)
 {
   DBUG_ENTER("sp_instr_cfetch::execute");
   int res= 0;
-  if(normal_cursor_fetch)
+  if (normal_cursor_fetch)
   {
     sp_cursor *c= thd->spcont->get_cursor(m_cursor);
     Query_arena backup_arena;
@@ -4804,14 +4793,14 @@ sp_instr_cfetch::execute(THD *thd, uint *nextp)
   }
   else
   {
-    if(!thd->spcont->pause_state)
+    if (!thd->spcont->pause_state)
     {
       thd->spcont->pause_state= TRUE;
     }
     else
     {
       thd->spcont->pause_state= FALSE;
-      if(thd->server_status == SERVER_STATUS_LAST_ROW_SENT)
+      if (thd->server_status == SERVER_STATUS_LAST_ROW_SENT)
       {
         my_message(ER_SP_FETCH_NO_DATA,
           ER_THD(thd, ER_SP_FETCH_NO_DATA), MYF(0));

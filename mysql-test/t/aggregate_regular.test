@@ -83,9 +83,8 @@ select agg_sum(sal) from t1 where id>= 1 group by counter;
 select agg_test2(sal) from t1;
 
 # incorrect column type
-#--disable_warnings
-#--sorted_result
-#select agg_test(val) from t1;
+--error ER_TRUNCATED_WRONG_VALUE_FOR_FIELD
+select agg_test(val) from t1;
 
 #subquery
 --sorted_result

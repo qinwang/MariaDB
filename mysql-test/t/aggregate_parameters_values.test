@@ -4,7 +4,6 @@ delimiter |;
 create aggregate function agg_min(x INT) returns int
 begin
   declare continue handler for not found return 0;
-  insert into t2 (sal) values (x);
   loop
   fetch group next row;
   insert into t2 (sal) values (x);

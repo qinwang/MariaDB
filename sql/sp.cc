@@ -523,7 +523,7 @@ db_get_aggregate_value(THD *thd, stored_procedure_type type, sp_name *name, st_s
   DBUG_PRINT("enter", ("type: %d name: %.*s",
            type, (int) name->m_name.length, name->m_name.str));
 
-  if(sp= sp_cache_lookup(&thd->sp_func_cache,name))
+  if (sp= sp_cache_lookup(&thd->sp_func_cache,name))
   {
     chistics->agg_type= sp->m_chistics->agg_type;
     DBUG_RETURN(FALSE);
@@ -1238,7 +1238,7 @@ sp_create_routine(THD *thd, stored_procedure_type type, sp_head *sp)
       table->field[MYSQL_PROC_FIELD_NAME]->
         store(sp->m_name.str, sp->m_name.length, system_charset_info);
 
-    if(sp->m_chistics->agg_type != DEFAULT_AGGREGATE)
+    if (sp->m_chistics->agg_type != DEFAULT_AGGREGATE)
     store_failed= store_failed ||
       table->field[MYSQL_PROC_FIELD_AGGREGATE]->
         store((longlong)sp->m_chistics->agg_type,TRUE);
@@ -1549,9 +1549,9 @@ sp_update_routine(THD *thd, stored_procedure_type type, const sp_name *name,
       table->field[MYSQL_PROC_FIELD_COMMENT]->store(chistics->comment.str,
 						    chistics->comment.length,
 						    system_charset_info);
-    if(chistics->agg_type != DEFAULT_AGGREGATE)
-    table->field[MYSQL_PROC_FIELD_AGGREGATE]->
-        store((longlong)chistics->agg_type, TRUE);
+    if (chistics->agg_type != DEFAULT_AGGREGATE)
+      table->field[MYSQL_PROC_FIELD_AGGREGATE]->
+                store((longlong)chistics->agg_type, TRUE);
     if ((ret= table->file->ha_update_row(table->record[1],table->record[0])) &&
         ret != HA_ERR_RECORD_IS_THE_SAME)
       ret= SP_WRITE_ROW_FAILED;
@@ -2309,11 +2309,10 @@ show_create_sp(THD *thd, String *buf,
 {
   sql_mode_t old_sql_mode= thd->variables.sql_mode;
   ulong agglen= (chistics->agg_type == GROUP_AGGREGATE)? 10 : 0;
-
   /* Make some room to begin with */
   if (buf->alloc(100 + dblen + 1 + namelen + paramslen + returnslen + bodylen +
-		 chistics->comment.length + 10 /* length of " DEFINER= "*/ + agglen +
-                      USER_HOST_BUFF_SIZE))
+	    chistics->comment.length + 10 /* length of " DEFINER= "*/ + agglen +
+      USER_HOST_BUFF_SIZE))
     return FALSE;
 
   thd->variables.sql_mode= sql_mode;

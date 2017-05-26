@@ -1158,6 +1158,7 @@ Item_sum_hybrid::fix_fields(THD *thd, Item **ref)
   return FALSE;
 }
 
+
 void Item_sum_hybrid::fix_length_and_dec()
 {
   DBUG_ASSERT(args[0]->field_type() == args[0]->real_item()->field_type());
@@ -1302,7 +1303,6 @@ Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
 bool
 Item_sum_sp::init_result_field(THD *thd)
 {
-  LEX_STRING empty_name= { C_STRING_WITH_LEN("") };
   TABLE_SHARE *share;
   DBUG_ENTER("Item_sum_sp::init_result_field");
 
@@ -1363,7 +1363,7 @@ Item_sum_sp::fix_fields(THD *thd, Item **ref)
 
   res= init_result_field(thd);
 
-  if(res)
+  if (res)
     return res;
 
   for (uint i=0 ; i < arg_count ; i++)
@@ -1426,7 +1426,6 @@ bool
 Item_sum_sp::execute()
 {
   THD *thd= current_thd;
-
   bool res;
   uint old_server_status= thd->server_status;
 
@@ -1446,9 +1445,7 @@ Item_sum_sp::execute()
   }
 
   /* Check that the field (the value) is not NULL. */
-
   null_value= sp_result_field->is_null();
-
   return null_value;
 }
 
@@ -1538,7 +1535,7 @@ Item_sum_sp::add()
 void
 Item_sum_sp::clear()
 {
-  if(func_ctx)
+  if (func_ctx)
      delete func_ctx;
   func_ctx= NULL;
   free_root(&caller_mem_root, MYF(0));

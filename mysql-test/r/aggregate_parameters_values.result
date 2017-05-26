@@ -2,7 +2,6 @@ create table t2 (sal int(10));
 create aggregate function agg_min(x INT) returns int
 begin
 declare continue handler for not found return 0;
-insert into t2 (sal) values (x);
 loop
 fetch group next row;
 insert into t2 (sal) values (x);
@@ -17,7 +16,6 @@ agg_min(sal)
 0
 select * from t2;
 sal
-NULL
 5000
 2000
 1000
