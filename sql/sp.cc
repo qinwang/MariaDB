@@ -509,45 +509,47 @@ db_find_routine_aux(THD *thd, stored_procedure_type type, const sp_name *name,
 }
 
 bool
-db_get_aggregate_value(THD *thd, stored_procedure_type type, sp_name *name, st_sp_chistics *chistics)
+db_get_aggregate_value(THD *thd, stored_procedure_type type, const sp_name *name,
+                       st_sp_chistics *chistics)
 {
   TABLE *table;
-  bool ret= false;
+  int ret;
   char *ptr;
   bool saved_time_zone_used= thd->time_zone_used;
-  ulonglong saved_mode= thd->variables.sql_mode;
+  sql_mode_t saved_mode= thd->variables.sql_mode;
   Open_tables_backup open_tables_state_backup;
   sp_head *sp;
 
-  DBUG_ENTER("db_get_aggregate_value");
+  DBUG_ENTER("db_find_routine");
   DBUG_PRINT("enter", ("type: %d name: %.*s",
            type, (int) name->m_name.length, name->m_name.str));
 
-  if (sp= sp_cache_lookup(&thd->sp_func_cache,name))
+  if ((sp= sp_cache_lookup(&thd->sp_func_cache,name)))
   {
     chistics->agg_type= sp->m_chistics->agg_type;
-    DBUG_RETURN(FALSE);
+    DBUG_RETURN(SP_OK);
   }
-                                     // In case of errors
-  if (!(table= open_proc_table_for_read(thd, &open_tables_state_backup)))
-    DBUG_RETURN(true);
 
-  if (db_find_routine_aux(thd, type, name, table) != SP_OK)
-  {
-    ret= true;
+                                      // In case of errors
+  if (!(table= open_proc_table_for_read(thd, &open_tables_state_backup)))
+    DBUG_RETURN(SP_OPEN_TABLE_FAILED);
+
+  /* Reset sql_mode during data dictionary operations. */
+  thd->variables.sql_mode= 0;
+
+  if ((ret= db_find_routine_aux(thd, type, name, table)) != SP_OK)
     goto done;
-  }
 
   if (table->s->fields < MYSQL_PROC_FIELD_COUNT)
   {
-    ret= true;
+    ret= SP_GET_FIELD_FAILED;
     goto done;
   }
 
   if ((ptr= get_field(thd->mem_root,
           table->field[MYSQL_PROC_FIELD_AGGREGATE])) == NULL)
   {
-    ret= true;
+    ret= SP_GET_FIELD_FAILED;
     goto done;
   }
   switch (ptr[0]) {
@@ -564,6 +566,9 @@ db_get_aggregate_value(THD *thd, stored_procedure_type type, sp_name *name, st_s
     chistics->agg_type= DEFAULT_AGGREGATE;
   }
 
+  close_system_tables(thd, &open_tables_state_backup);
+  table= 0;
+
  done:
   /*
     Restore the time zone flag as the timezone usage in proc table
@@ -574,6 +579,7 @@ db_get_aggregate_value(THD *thd, stored_procedure_type type, sp_name *name, st_s
     close_system_tables(thd, &open_tables_state_backup);
   thd->variables.sql_mode= saved_mode;
   DBUG_RETURN(ret);
+
 }
 
 
