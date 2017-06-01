@@ -6062,7 +6062,6 @@ int handler::ha_direct_update_rows_init(
     (and the old record is in record[1]).
   */
   DBUG_ASSERT(!new_data || new_data == table->record[0]);
-  DBUG_ASSERT(inited != NONE);
 
   error=
     direct_update_rows_init(mode, ranges, range_count, sorted, new_data);
@@ -6082,6 +6081,7 @@ int handler::ha_direct_update_rows(
     (and the old record is in record[1]).
   */
   DBUG_ASSERT(!new_data || new_data == table->record[0]);
+  DBUG_ASSERT(inited != NONE);
 
   MYSQL_UPDATE_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
