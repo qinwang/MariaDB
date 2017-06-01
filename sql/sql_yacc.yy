@@ -870,7 +870,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
    Comments for TOKENS.
    For each token, please include in the same line a comment that contains
    the following tags:
-   SQL-2011-N : Non Reserved keywird as per SQL-2011
+   SQL-2011-N : Non Reserved keyword as per SQL-2011
    SQL-2003-R : Reserved keyword as per SQL-2003
    SQL-2003-N : Non Reserved keyword as per SQL-2003
    SQL-1999-R : Reserved keyword as per SQL-1999
@@ -880,8 +880,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
    INTERNAL   : Not a real token, lex optimization
    OPERATOR   : SQL operator
    FUTURE-USE : Reserved for future use
-   32N2439    : Reserver keywords per ISO/IEC PDTR 19075-2,
-                http://jtc1sc32.org/doc/N2401-2450/32N2439-text_for_ballot-PDTR_19075-2.pdf
+   SQL-2016-R : Reserved keywords as per SQL-2016
                 System Versioned Tables
 
    This makes the code grep-able, and helps maintenance.
@@ -1326,7 +1325,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  PARTITIONING_SYM
 %token  PASSWORD_SYM
 %token  PERCENT_RANK_SYM
-%token  PERIOD_SYM                    /* 32N2439 */
+%token  PERIOD_SYM                    /* SQL-2016-R */
 %token  PERSISTENT_SYM
 %token  PHASE_SYM
 %token  PLUGINS_SYM
@@ -1492,8 +1491,8 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  SWAPS_SYM
 %token  SWITCHES_SYM
 %token  SYSDATE
-%token  SYSTEM                        /* 32N2439 */
-%token  SYSTEM_TIME_SYM               /* 32N2439 */
+%token  SYSTEM                        /* SQL-2016-R */
+%token  SYSTEM_TIME_SYM               /* SQL-2016-R */
 %token  TABLES
 %token  TABLESPACE
 %token  TABLE_REF_PRIORITY
@@ -1562,7 +1561,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  VARIANCE_SYM
 %token  VARYING                       /* SQL-2003-R */
 %token  VAR_SAMP_SYM
-%token  VERSIONING_SYM                /* 32N2439 */
+%token  VERSIONING_SYM                /* SQL-2016-R */
 %token  VIA_SYM
 %token  VIEW_SYM                      /* SQL-2003-N */
 %token  VIRTUAL_SYM
