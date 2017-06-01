@@ -7157,10 +7157,8 @@ bool ha_partition::check_parallel_search()
             if (order_field && order_field->table == table_list->table)
             {
               Field *part_field = m_part_info->full_part_field_array[0];
-#ifdef HANDLER_HAS_TOP_TABLE_FIELDS
               if (set_top_table_fields)
                 order_field = top_table_field[order_field->field_index];
-#endif
               DBUG_PRINT("info",("partition order_field=%p", order_field));
               DBUG_PRINT("info",("partition part_field=%p", part_field));
               if (part_field == order_field)
@@ -7201,10 +7199,8 @@ bool ha_partition::check_parallel_search()
             if (group_field && group_field->table == table_list->table)
             {
               Field *part_field = m_part_info->full_part_field_array[0];
-#ifdef HANDLER_HAS_TOP_TABLE_FIELDS
               if (set_top_table_fields)
                 group_field = top_table_field[group_field->field_index];
-#endif
               DBUG_PRINT("info",("partition group_field=%p", group_field));
               DBUG_PRINT("info",("partition part_field=%p", part_field));
               if (part_field == group_field)
@@ -11631,15 +11627,51 @@ void ha_partition::bulk_req_exec()
   DBUG_VOID_RETURN;
 }
 
+
+int ha_partition::set_top_table_and_fields(
+  TABLE *top_table,
+  Field **top_table_field,
+  uint top_table_fields
+) {
+  int error;
+  handler **file, **file_err;
+  DBUG_ENTER("ha_partition::set_top_table_and_fields");
+  if (!set_top_table_fields)
+  {
+    for (file= m_file; *file; file++)
+    {
+      if ((error = (*file)->set_top_table_and_fields(top_table, top_table_field, top_table_fields)))
+      {
+        goto err;
+      }
+    }
+    this->top_table = top_table;
+    this->top_table_field = top_table_field;
+    this->top_table_fields = top_table_fields;
+    set_top_table_fields = TRUE;
+  }
+  DBUG_RETURN(0);
+
+err:
+  for (file_err= m_file; file_err < file; file_err++)
+    (*file_err)->clear_top_table_fields();
+  DBUG_RETURN(error);
+}
+
 void ha_partition::clear_top_table_fields()
 {
   handler **file;
+  DBUG_ENTER("ha_partition::clear_top_table_fields");
   if (set_top_table_fields)
   {
     set_top_table_fields = FALSE;
+    top_table = NULL;
+    top_table_field = NULL;
+    top_table_fields = 0;
     for (file= m_file; *file; file++)
       (*file)->clear_top_table_fields();
   }
+  DBUG_VOID_RETURN;
 }
 
 

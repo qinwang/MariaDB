@@ -1406,9 +1406,10 @@ handlerton *ha_default_tmp_handlerton(THD *thd);
 #define HTON_TEMPORARY_NOT_SUPPORTED (1 << 6) //Having temporary tables not supported
 #define HTON_SUPPORT_LOG_TABLES      (1 << 7) //Engine supports log tables
 #define HTON_NO_PARTITION            (1 << 8) //Not partition of these tables
-#define HTON_CAN_MULTISTEP_MERGE     (1 << 9) //You can merge mearged tables
+#define HTON_CAN_MERGE               (1 << 9) //Merge type table
+#define HTON_CAN_MULTISTEP_MERGE     (1 <<10) //You can merge mearged tables
 // Engine needs to access the main connect string in partitions
-#define HTON_CAN_READ_CONNECT_STRING_IN_PARTITION (1 << 10)
+#define HTON_CAN_READ_CONNECT_STRING_IN_PARTITION (1 << 11)
 
 /*
   This flag should be set when deciding that the engine does not allow
@@ -1423,11 +1424,11 @@ handlerton *ha_default_tmp_handlerton(THD *thd);
   It's valuable for instance for virtual tables, eg: Performance
   Schema which have no meaning for replication.
 */
-#define HTON_NO_BINLOG_ROW_OPT       (1 << 9)
-#define HTON_SUPPORTS_EXTENDED_KEYS  (1 <<10) //supports extended keys
+#define HTON_NO_BINLOG_ROW_OPT       (1 <<12)
+#define HTON_SUPPORTS_EXTENDED_KEYS  (1 <<13) //supports extended keys
 
 // MySQL compatibility. Unused.
-#define HTON_SUPPORTS_FOREIGN_KEYS   (1 << 0) //Foreign key constraint supported.
+#define HTON_SUPPORTS_FOREIGN_KEYS   (1 <<14) //Foreign key constraint supported.
 
 class Ha_trx_info;
 

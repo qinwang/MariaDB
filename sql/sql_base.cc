@@ -974,7 +974,7 @@ TABLE_LIST* find_dup_table(THD *thd, TABLE_LIST *table, TABLE_LIST *table_list,
   if (table->table)
   {
     /* All MyISAMMRG children are plain MyISAM tables. */
-    DBUG_ASSERT(table->table->file->ht->db_type != DB_TYPE_MRG_MYISAM);
+    DBUG_ASSERT(!(table->table->file->ht->flags & HTON_CAN_MERGE));
 
     table= table->find_underlying_table(table->table);
     /*
@@ -1080,7 +1080,10 @@ unique_table(THD *thd, TABLE_LIST *table, TABLE_LIST *table_list,
   table= table->find_table_for_update();
 
   if (table->table &&
-      table->table->file->ha_table_flags() & HA_CAN_MULTISTEP_MERGE)
+    (
+     (table->table->file->ht->flags & HTON_CAN_MERGE) ||
+     (table->table->file->ha_table_flags() & HA_CAN_MULTISTEP_MERGE)
+    ))
   {
     TABLE_LIST *child;
     dup= NULL;
@@ -1089,7 +1092,10 @@ unique_table(THD *thd, TABLE_LIST *table, TABLE_LIST *table_list,
          child= child->next_global)
     {
       if (child->table &&
-          child->table->file->ha_table_flags() & HA_CAN_MULTISTEP_MERGE)
+        (
+         (child->table->file->ht->flags & HTON_CAN_MERGE) ||
+         (child->table->file->ha_table_flags() & HA_CAN_MULTISTEP_MERGE)
+        ))
         continue;
 
       /*
@@ -4059,8 +4065,10 @@ restart:
       continue;
 
     /* Schema tables may not have a TABLE object here. */
-    if (tbl->file->ha_table_flags() & HA_CAN_MULTISTEP_MERGE)
-    {
+    if (
+      (tbl->file->ht->flags & HTON_CAN_MERGE) ||
+      (tbl->file->ha_table_flags() & HA_CAN_MULTISTEP_MERGE)
+    ) {
       /* MERGE tables need to access parent and child TABLE_LISTs. */
       DBUG_ASSERT(tbl->pos_in_table_list == tables);
       if (tbl->file->extra(HA_EXTRA_ATTACH_CHILDREN))
@@ -4604,8 +4612,10 @@ TABLE *open_ltable(THD *thd, TABLE_LIST *table_list, thr_lock_type lock_type,
     */
     DBUG_ASSERT(table_list->table);
     table= table_list->table;
-    if (table->file->ha_table_flags() & HA_CAN_MULTISTEP_MERGE)
-    {
+    if (
+      (table->file->ht->flags & HTON_CAN_MERGE) ||
+      (table->file->ha_table_flags() & HA_CAN_MULTISTEP_MERGE)
+    ) {
       /* A MERGE table must not come here. */
       /* purecov: begin tested */
       my_error(ER_WRONG_OBJECT, MYF(0), table->s->db.str,

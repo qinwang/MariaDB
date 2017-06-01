@@ -1389,6 +1389,9 @@ public:
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
     virtual int info_push(uint info_type, void *info);
 #endif
+    virtual int set_top_table_and_fields(TABLE *top_table,
+                                         Field **top_table_field,
+                                         uint top_table_fields);
     virtual void clear_top_table_fields();
 
     private:
