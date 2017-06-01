@@ -864,7 +864,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
   Currently there are 103 shift/reduce conflicts.
   We should not introduce new conflicts any more.
 */
-%expect 103
+%expect 105
 
 /*
    Comments for TOKENS.
@@ -15087,6 +15087,7 @@ keyword_sp:
         | PARTITIONING_SYM         {}
         | PARTITIONS_SYM           {}
         | PASSWORD_SYM             {}
+        | PERIOD_SYM               {}
         | PERSISTENT_SYM           {}
         | PHASE_SYM                {}
         | PLUGIN_SYM               {}
@@ -15170,6 +15171,8 @@ keyword_sp:
         | SUSPEND_SYM              {}
         | SWAPS_SYM                {}
         | SWITCHES_SYM             {}
+        | SYSTEM                   {}
+        | SYSTEM_TIME_SYM          {}
         | TABLE_NAME_SYM           {}
         | TABLES                   {}
         | TABLE_CHECKSUM_SYM       {}
@@ -15199,6 +15202,7 @@ keyword_sp:
         | USE_FRM                  {}
         | VARCHAR2                 {}
         | VARIABLES                {}
+        | VERSIONING_SYM           {}
         | VIEW_SYM                 {}
         | VIRTUAL_SYM              {}
         | VALUE_SYM                {}
@@ -15206,6 +15210,7 @@ keyword_sp:
         | WAIT_SYM                 {}
         | WEEK_SYM                 {}
         | WEIGHT_STRING_SYM        {}
+        | WITHOUT                  {}
         | WORK_SYM                 {}
         | X509_SYM                 {}
         | XML_SYM                  {}
