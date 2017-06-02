@@ -888,7 +888,8 @@ int vers_setup_select(THD *thd, TABLE_LIST *tables, COND **where_expr,
           {
             MYSQL_TIME max_time;
             thd->variables.time_zone->gmt_sec_to_TIME(&max_time, TIMESTAMP_MAX_VALUE);
-            curr= newx Item_datetime_literal(thd, &max_time);
+            max_time.second_part= TIME_MAX_SECOND_PART;
+            curr= newx Item_datetime_literal(thd, &max_time, TIME_SECOND_PART_DIGITS);
             cond1= newx Item_func_eq(thd, row_end, curr);
           }
           else
