@@ -1189,6 +1189,15 @@ The following options may be given as the first argument:
  CLIENT_STATISTICS, INDEX_STATISTICS and TABLE_STATISTICS
  tables in the INFORMATION_SCHEMA
  -v, --verbose       Used with --help option for detailed help.
+ --vers-current-time=name 
+ Default AS OF value for versioned tables
+ --vers-force        Force system versioning for all created tables
+ --vers-hide[=name]  Hide system versioning from being displayed in table
+ info. AUTO: hide implicit system fields only in
+ non-versioned and AS OF queries; IMPLICIT: hide implicit
+ system fields in all queries; FULL: hide any system
+ fields in all queries and hide versioning info in SHOW
+ commands; NEVER: don't hide system fields
  -V, --version[=name] 
  Output version information and exit.
  --wait-timeout=#    The number of seconds the server waits for activity on a
@@ -1520,6 +1529,9 @@ updatable-views-with-limit YES
 use-stat-tables NEVER
 userstat FALSE
 verbose TRUE
+vers-current-time now
+vers-force FALSE
+vers-hide AUTO
 wait-timeout 28800
 
 To see what values a running MySQL server is using, type
