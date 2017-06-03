@@ -1407,7 +1407,7 @@ dberr_t
 row_insert_for_mysql(
 	const byte*	mysql_rec,
 	row_prebuilt_t*	prebuilt,
-	ins_mode_t	ins_mode)
+	bool		historical)
 {
 	trx_savept_t	savept;
 	que_thr_t*	thr;
@@ -1487,15 +1487,14 @@ row_insert_for_mysql(
 	row_mysql_convert_row_to_innobase(node->row, prebuilt, mysql_rec,
 					  &blob_heap);
 
-	if (ins_mode != ROW_INS_NORMAL)
-	{
+	if (DICT_TF2_FLAG_IS_SET(node->table, DICT_TF2_VERSIONED)) {
 		ut_ad(table->vers_row_start != table->vers_row_end);
 		/* Return back modified fields into mysql_rec, so that
 		   upper logic may benefit from it (f.ex. 'on duplicate key'). */
 		const mysql_row_templ_t* t = &prebuilt->mysql_template[table->vers_row_end];
 		ut_ad(t->mysql_col_len == 8);
 
-		if (ins_mode == ROW_INS_HISTORICAL) {
+		if (historical) {
 			set_tuple_col_8(node->row, table->vers_row_end, trx->id, node->entry_sys_heap);
 		}
 		else /* ROW_INS_VERSIONED */ {
@@ -1860,7 +1859,7 @@ dberr_t
 row_update_for_mysql_using_upd_graph(
 	const byte*	mysql_rec,
 	row_prebuilt_t*	prebuilt,
-	bool		vers_set_fields)
+	bool		delete_history_row)
 {
 	trx_savept_t	savept;
 	dberr_t		err;
@@ -1993,7 +1992,8 @@ row_update_for_mysql_using_upd_graph(
 	thr->fk_cascade_depth = 0;
 
 run_again:
-	if (vers_set_fields)
+	if (DICT_TF2_FLAG_IS_SET(node->table, DICT_TF2_VERSIONED) &&
+		(node->is_delete || node->versioned) && !delete_history_row)
 	{
 		/* System Versioning: modify update vector to set
 		   sys_trx_start (or sys_trx_end in case of DELETE)
@@ -2129,8 +2129,6 @@ run_again:
 		cascade_upd_nodes->pop_front();
 		thr->fk_cascade_depth++;
 		prebuilt->m_mysql_table = NULL;
-		vers_set_fields = DICT_TF2_FLAG_IS_SET(node->table, DICT_TF2_VERSIONED)
-			&& (node->is_delete || node->versioned);
 
 		goto run_again;
 	}
@@ -2260,11 +2258,11 @@ dberr_t
 row_update_for_mysql(
 	const byte*		mysql_rec,
 	row_prebuilt_t*		prebuilt,
-	bool			vers_set_fields)
+	bool			delete_history_row)
 {
 	ut_a(prebuilt->template_type == ROW_MYSQL_WHOLE_ROW);
 	return (row_update_for_mysql_using_upd_graph(
-		mysql_rec, prebuilt, vers_set_fields));
+		mysql_rec, prebuilt, delete_history_row));
 }
 
 /** This can only be used when srv_locks_unsafe_for_binlog is TRUE or this
