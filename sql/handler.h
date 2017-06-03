@@ -45,6 +45,7 @@
 
 #define HANDLER_HAS_DIRECT_UPDATE_ROWS
 #define HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
+#define HANDLER_HAS_CAN_USE_FOR_AUTO_INC_INIT
 #define HANDLER_HAS_DIRECT_AGGREGATE
 #define INFO_KIND_UPDATE_FIELDS 101
 #define INFO_KIND_UPDATE_VALUES 102
@@ -279,8 +280,10 @@ enum enum_alter_inplace_result {
 #define HA_BINLOG_FLAGS (HA_BINLOG_ROW_CAPABLE | HA_BINLOG_STMT_CAPABLE)
 
 /* The following is for partition handler */
-#define HA_CAN_MULTISTEP_MERGE (1LL << 47)
-#define HA_CAN_BULK_ACCESS     (1LL << 49)
+#define HA_CAN_MULTISTEP_MERGE          (1LL << 47)
+#define HA_CAN_BULK_ACCESS              (1LL << 49)
+#define HA_CAN_FORCE_BULK_UPDATE        (1LL << 50)
+#define HA_CAN_FORCE_BULK_DELETE        (1LL << 51)
 
 /* bits in index_flags(index_number) for what you can do with index */
 #define HA_READ_NEXT            1       /* TODO really use this flag */
@@ -3424,6 +3427,7 @@ public:
   virtual void unlock_row() {}
   virtual int start_stmt(THD *thd, thr_lock_type lock_type) {return 0;}
   virtual bool need_info_for_auto_inc() { return 0; }
+  virtual bool can_use_for_auto_inc_init() { return 1; }
   virtual void get_auto_increment(ulonglong offset, ulonglong increment,
                                   ulonglong nb_desired_values,
                                   ulonglong *first_value,

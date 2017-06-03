@@ -255,6 +255,9 @@ ha_partition::ha_partition(handlerton *hton, TABLE_SHARE *share)
   , bulk_access_info_current(NULL)
   , bulk_access_info_exec_tgt(NULL)
 #endif
+#ifdef HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
+  , m_need_info_for_auto_inc(FALSE)
+#endif
 {
   DBUG_ENTER("ha_partition::ha_partition(table)");
   init_alloc_root(&m_mem_root, 512, 512, MYF(0));
@@ -285,6 +288,9 @@ ha_partition::ha_partition(handlerton *hton, partition_info *part_info)
   , bulk_access_info_first(NULL)
   , bulk_access_info_current(NULL)
   , bulk_access_info_exec_tgt(NULL)
+#endif
+#ifdef HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
+  , m_need_info_for_auto_inc(FALSE)
 #endif
 {
   DBUG_ENTER("ha_partition::ha_partition(part_info)");
@@ -323,6 +329,9 @@ ha_partition::ha_partition(handlerton *hton, TABLE_SHARE *share,
   , bulk_access_info_first(NULL)
   , bulk_access_info_current(NULL)
   , bulk_access_info_exec_tgt(NULL)
+#endif
+#ifdef HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
+  , m_need_info_for_auto_inc(FALSE)
 #endif
 {
   DBUG_ENTER("ha_partition::ha_partition(clone)");
@@ -8251,7 +8260,8 @@ int ha_partition::info(uint flag)
         {
           set_if_bigger(part_share->next_auto_inc_val,
                         auto_increment_value);
-          part_share->auto_inc_initialized= true;
+          if (can_use_for_auto_inc_init())
+            part_share->auto_inc_initialized= true;
           DBUG_PRINT("info", ("initializing next_auto_inc_val to %lu",
                        (ulong) part_share->next_auto_inc_val));
         }
@@ -10284,6 +10294,24 @@ bool ha_partition::need_info_for_auto_inc()
   } while (*(++file));
   m_need_info_for_auto_inc= FALSE;
   DBUG_RETURN(FALSE);
+}
+#endif
+
+
+#ifdef HANDLER_HAS_CAN_USE_FOR_AUTO_INC_INIT
+bool ha_partition::can_use_for_auto_inc_init()
+{
+  handler **file= m_file;
+  DBUG_ENTER("ha_partition::can_use_for_auto_inc_init");
+
+  do
+  {
+    if (!(*file)->can_use_for_auto_inc_init())
+    {
+      DBUG_RETURN(FALSE);
+    }
+  } while (*(++file));
+  DBUG_RETURN(TRUE);
 }
 #endif
 

@@ -1224,6 +1224,9 @@ public:
   bool m_need_info_for_auto_inc;
   virtual bool need_info_for_auto_inc();
 #endif
+#ifdef HANDLER_HAS_CAN_USE_FOR_AUTO_INC_INIT
+  virtual bool can_use_for_auto_inc_init();
+#endif
   virtual void get_auto_increment(ulonglong offset, ulonglong increment,
                                   ulonglong nb_desired_values,
                                   ulonglong *first_value,

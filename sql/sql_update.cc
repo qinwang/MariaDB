@@ -746,10 +746,11 @@ int mysql_update(THD *thd,
     found = update_rows;
     if (!error)
       error = -1;
-  }
-  else {
-    if (table->prepare_triggers_for_update_stmt_or_event())
-    {
+  } else {
+    if (
+      !(table->file->ha_table_flags() & HA_CAN_FORCE_BULK_UPDATE) &&
+      table->prepare_triggers_for_update_stmt_or_event()
+    ) {
       will_batch= FALSE;
     }
     else
