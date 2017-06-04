@@ -194,6 +194,7 @@ enum enum_indicator_type
                                                 system versioning when table
                                                 itself supports it*/
 #define HIDDEN_FLAG (1 << 31) /* hide from SELECT * */
+#define HIDDEN_SYM  remove ^^^ when merging MDEV-10177
 
 #define REFRESH_GRANT           (1ULL << 0)  /* Refresh grant tables */
 #define REFRESH_LOG             (1ULL << 1)  /* Start on new log file */
