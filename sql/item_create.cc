@@ -6679,6 +6679,8 @@ Create_func_year_week::create_native(THD *thd, LEX_STRING name,
 
 
 /* System Versioning: VTQ_TRX_ID(), VTQ_COMMIT_ID(), VTQ_BEGIN_TS(), VTQ_COMMIT_TS(), VTQ_ISO_LEVEL() */
+// XXX 1. What do they all do?
+// 2. WTF is VTQ? No TLA in the SQL, plz
 template <vtq_field_t VTQ_FIELD>
 class Create_func_vtq : public Create_native_func
 {
@@ -6720,6 +6722,8 @@ Create_func_vtq<VTQ_FIELD>::create_native(THD *thd, LEX_STRING name,
     case VTQ_COMMIT_ID:
     case VTQ_ISO_LEVEL:
       func= new (thd->mem_root) Item_func_vtq_id(thd, param_1, VTQ_FIELD);
+// XXX Sorry, I don't understand. Why did you template that instead of creating separate classes
+// all inheriting from the appropriate parent (Create_func_arg1 or Create_func_arg2).
       break;
     default:
       DBUG_ASSERT(0);
@@ -6770,6 +6774,7 @@ public:
       Item *param_1= item_list->pop();
       Item *param_2= item_list->pop();
       func= new (thd->mem_root) Item_func_vtq_trx_seesX(thd, param_1, param_2);
+// XXX same here, inherit from Create_func_arg2, no need for a manual check.
       break;
     }
     default:

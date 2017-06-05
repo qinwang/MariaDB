@@ -1280,6 +1280,15 @@ public:
   virtual bool versioned() const
   {
     return m_innodb;
+    // XXX no, no, no. No engine-specific checks please (I didn't actually
+    // know partitioning does that wtf).
+    // do it like
+    //
+    //   return partition_ht()->flags & HTON_SUPPORTS_SYS_VERSIONING;
+    //
+    // and change the name from "versioned" to something that implies
+    // that the engine supports versioning internally. MyISAM tables can be
+    // versioned too, so "versioned" doesn't equal to "supports sys versioning"
   }
 
   virtual ha_rows part_recs_slow(void *_part_elem)
@@ -1299,12 +1308,18 @@ public:
       part_recs+= file->stats.records;
     }
     return part_recs;
+    // XXX I don't like that the handler has part_recs_slow() method, the
+    // base handler class should be as engine-independent as possible.
+    // second, don't abbrev. part_records_slow() or records_in_part() would
+    // be better names
   }
 
   virtual handler* part_handler(uint32 part_id)
   {
     DBUG_ASSERT(part_id < m_tot_parts);
     return m_file[part_id];
+    // XXX same thing, do not add (more) partitioning-specific methods to the
+    // base handler class.
   }
 
   friend int cmp_key_rowid_part_id(void *ptr, uchar *ref1, uchar *ref2);

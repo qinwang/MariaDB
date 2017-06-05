@@ -1393,6 +1393,16 @@ struct handlerton
    bool (*vers_query_trx_id)(THD* thd, void *out, ulonglong trx_id, vtq_field_t field);
    bool (*vers_query_commit_ts)(THD* thd, void *out, const MYSQL_TIME &commit_ts, vtq_field_t field, bool backwards);
    bool (*vers_trx_sees)(THD *thd, bool &result, ulonglong trx_id1, ulonglong trx_id0, ulonglong commit_id1, uchar iso_level1, ulonglong commit_id0);
+   // XXX 1. Comments!!!
+   // unlike other comments, this, here, is the actual *API documentation*.
+   // So, please, document the new API for future storage engine writers.
+   // 2. please stick to lines that fit on 80-col screen
+   // 3. As far as I understand, this API makes a bunch of assumptions. That
+   // the engine uses transaction ids, that they are ulonglong numbers. Is it
+   // really needed to assume that?  You could've passed an Item or
+   // st_mysql_value or something.
+   // 4. why 'void *out' but 'const MYSQL_TIME &commit_ts' ?
+   // 5. more comments later, when I understand what these methods do
 };
 
 
@@ -1441,6 +1451,8 @@ handlerton *ha_default_tmp_handlerton(THD *thd);
 #define HTON_NO_BINLOG_ROW_OPT       (1 << 9)
 #define HTON_SUPPORTS_EXTENDED_KEYS  (1 <<10) //supports extended keys
 #define HTON_SUPPORTS_SYS_VERSIONING (1 << 11) //Engine supports System Versioning
+// XXX not just "supports". Supports internally. May be
+// HTON_NATIVE_SYS_VERSIONING ?
 
 // MySQL compatibility. Unused.
 #define HTON_SUPPORTS_FOREIGN_KEYS   (1 << 0) //Foreign key constraint supported.
@@ -1687,6 +1699,13 @@ struct Vers_parse_info
       end(NULL) {}
     String *start;
     String *end;
+// XXX why are you using String here? It can a lot of complexity
+// that allows strings to grow, shrink, automatically reallocate,
+// etc. For constant string with a fixed known character set
+// you could use a much simpler LEX_STRING or LEX_CSTRING.
+// that's just a pointer and a length.
+//
+// And why not to store pointers to Create_field, why names?
   };
 
   start_end_t period_for_system_time;

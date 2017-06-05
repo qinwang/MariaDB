@@ -38,6 +38,7 @@ x
 2
 connection master;
 create or replace table t1 (x int primary key) engine = innodb;
+# XXX do these tests also with MyISAM
 connection slave;
 alter table t1 with system versioning;
 connection master;

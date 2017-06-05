@@ -133,6 +133,8 @@ create or replace table t1 (
   A1 int with system versioning,
   B int
 );
+--echo # XXX I don't think this should work. I'd say one must specify versioning
+--echo # on the table level for versioning to work at all.
 --replace_result InnoDB INNODB_OR_MYISAM MyISAM INNODB_OR_MYISAM "bigint(20) unsigned" SYS_TRX_TYPE timestamp(6) SYS_TRX_TYPE
 show create table t1;
 
@@ -148,6 +150,7 @@ create or replace table t1 (
   A3 int,
   B int without system versioning
 );
+--echo # XXX on the other hand, this should probably be just fine
 
 create or replace table t1 (
   A4 int,
@@ -244,9 +247,11 @@ eval create or replace table t2 (
 create or replace table t3 select * from t2;
 --replace_result InnoDB INNODB_OR_MYISAM MyISAM INNODB_OR_MYISAM "bigint(20) unsigned" SYS_TRX_TYPE timestamp(6) SYS_TRX_TYPE
 show create table t3;
+--echo # XXX why is t3 versioned? what does the standard say about it?
 
 --error ER_VERS_WRONG_PARAMS
 create or replace table t3 select x, y, t1.sys_trx_start, t2.en from t1, t2;
+--echo # XXX similarly, this should not be an error, if t3 isn't versioned
 
 insert into t2 values (1), (2);
 delete from t2 where y = 2;

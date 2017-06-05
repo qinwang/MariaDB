@@ -3029,6 +3029,9 @@ int handler::update_auto_increment()
     DBUG_ASSERT(end);
     bitmap_set_bit(table->read_set, end->field_index);
     if (!end->is_max())
+// XXX this needs a comment about "ALTER TABLE ... ADD COLUMN AUTO_INCREMENT".
+// it's totally not obvious how one can end up in update_auto_increment()
+// for a historical row.
     {
       uchar *ptr= table->next_number_field->ptr;
       switch (table->next_number_field->pack_length())
@@ -3046,6 +3049,10 @@ int handler::update_auto_increment()
         *ptr= vers_auto_decrement--;
         break;
       default:
+// XXX WHAAT? So, when one adds an auto-inc column and you populate it with
+// auto-decrement? That's very weird. Generally, I don't think that
+// alter table add column should preserve the history at all. unless, may be
+// the column is nullable
         DBUG_ASSERT(false);
       }
       DBUG_RETURN(0);
@@ -6036,6 +6043,12 @@ int handler::ha_update_row(const uchar *old_data, uchar *new_data)
   // it is important to keep 'old_data' intact for versioning to work correctly on slave side
   if (table->file->check_table_binlog_row_based(1) && table->versioned())
     memcpy(table->record[2], table->record[1], table->s->reclength);
+  // XXX uhm... I wonder if there's a nicer solution to this.
+  // this is purely for innodb updating the old_data before inserting
+  // it as a historical row version, right?
+  // why would innodb do it, it doesn't use server record format, why would
+  // it need to update it? it could update its own record image instead.
+  // (this is why you removed binlog_log_row_internal)
   MYSQL_UPDATE_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
   increment_statistics(&SSV::ha_update_count);
@@ -6657,6 +6670,9 @@ bool Vers_parse_info::fix_implicit(THD *thd, Alter_info *alter_info,
 
   static const char * sys_trx_start= "sys_trx_start";
   static const char * sys_trx_end= "sys_trx_end";
+// XXX column names must be generated not to conflict with any
+// existing columns. Consider
+// CREATE TABLE t1 (sys_trx_start TEXT) WITH SYSTEM VERSIONING;
 
   return vers_create_sys_field(thd, sys_trx_start, alter_info,
                               &generated_as_row.start, VERS_SYS_START_FLAG,
@@ -6694,6 +6710,7 @@ bool Vers_parse_info::check_and_fix_implicit(
 
   // CREATE ... SELECT: if at least one table in SELECT is versioned,
   // then created table will be versioned.
+// XXX this is questionable. Why? Does the standard dictate it?
   if (thd->variables.vers_force || vers_tables > 0)
   {
     declared_with_system_versioning= true;
@@ -6707,6 +6724,8 @@ bool Vers_parse_info::check_and_fix_implicit(
   {
     my_error(ER_VERS_WRONG_PARAMS, MYF(0), table_name,
              "'WITHOUT SYSTEM VERSIONING' is not allowed");
+// XXX if you automatically enable versioning in CREATE ...SELECT
+// then WITHOUT SYSTEM VERSIONING totally makes sense.
     return true;
   }
 
@@ -6846,6 +6865,10 @@ bool Vers_parse_info::check_and_fix_alter(THD *thd, Alter_info *alter_info,
 
     if (add_field_to_drop_list(thd, alter_info, share->vers_start_field()) ||
         add_field_to_drop_list(thd, alter_info, share->vers_end_field()))
+// XXX I wonder whether timestamp fields should be auto-dropped here.  perhaps
+// an error would be more appropriate? hidden fields should be dropped
+// silently, of course, but if a user has created them explicitly, I'd think,
+// he might want to drop them explicitly too.
       return true;
 
     alter_info->flags|= Alter_info::ALTER_DROP_COLUMN;
@@ -6896,6 +6919,7 @@ bool Vers_parse_info::check_and_fix_alter(THD *thd, Alter_info *alter_info,
           {
             my_error(ER_VERS_WRONG_PARAMS, MYF(0), table_name,
                      "Can not put new field after system versioning field");
+// XXX that's a weird and inconsistent limitation. what's the point?
             return true;
           }
 
@@ -6916,6 +6940,8 @@ bool Vers_parse_info::check_and_fix_alter(THD *thd, Alter_info *alter_info,
         {
           my_error(ER_VERS_WRONG_PARAMS, MYF(0), table_name,
                    "Can not drop system versioning field");
+// XXX should be "dropped", that is, made hidden. And PERIOD too
+// (otherwise it'll refer to a "non-existent" field
           return true;
         }
       }
@@ -6963,6 +6989,35 @@ bool Vers_parse_info::check_with_conditions(const char *table_name) const
   {
     my_error(ER_VERS_WRONG_PARAMS, MYF(0), table_name,
              "'GENERATED AS ROW START' column missing");
+// XXX there're a problem with that. One generally should
+// not use complete english phrases as error message
+// parameters, because they're impossible to translate. For example,
+// This your error could look like
+// 
+//  ERROR HY000: Неправильные параметры для `t1`: 'GENERATED AS ROW START' column missing
+//
+// not exactly what a user has expected when he requested --language=russian
+// On the other hand, it'd be bad to reserve a new ER_xxx for every slightly
+// different error situation.
+// 
+// But here you can perfectly use ER_BAD_FIELD_ERROR:
+//
+//   create or replace table t1 (
+//     x6 int unsigned,
+//     period for system_time (Sys_start, Sys_end)
+//   ) with system versioning;
+//   ERROR 1054 (42S22): Unknown column 'Sys_start' in 'PERIOD'
+//
+// it'll be quite consistent with existing behavior:
+//
+//   create or replace table t1 (a int, check (a>b));
+//   ERROR 1054 (42S22): Unknown column 'b' in 'CHECK'
+// 
+// The same logic applies to all your other error messages:
+// * avoid using English phrases
+// * try to reuse an existing error that's used in a similar situation
+//   (not always possible, I know)
+//
     return true;
   }
 

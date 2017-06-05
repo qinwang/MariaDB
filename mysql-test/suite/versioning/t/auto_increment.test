@@ -62,6 +62,7 @@ delimiter ;~~
 call test_01('timestamp(6)', 'myisam', 'sys_end');
 call test_01('bigint unsigned', 'innodb', 'vtq_commit_ts(sys_end)');
 call verify_vtq;
+--echo # XXX I don't understand, sorry. What do these tests actually test?
 
 drop procedure test_01;
 

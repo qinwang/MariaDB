@@ -178,6 +178,7 @@ No	A	B	C	D
 9	1	1	1	1
 10	1	1	1	1
 11	1	1	1	1
+# XXX I don't understand, sorry. What do these tests actually test?
 drop procedure test_01;
 drop procedure verify_vtq;
 drop procedure innodb_verify_vtq;

@@ -109,6 +109,13 @@ begin
   drop table t2;
 end~~
 delimiter ;~~
+--echo # XXX I don't think "query for" standard extension is needed much.
+--echo # the effect is the same as with
+--echo #   SET STATEMENT vers_current_time=@t0 SELECT ...
+--echo # or with
+--echo #   SELECT * FROM (SELECT...) AS t FOR SYSTEM_TIME ...
+--echo # so I'd rather stay with combination of existing features, instead of
+--echo # inventing a new one that duplicates them
 
 call test_01();
 call test_02();
@@ -124,6 +131,8 @@ create or replace table t1 (x int);
 insert into t1 values (1);
 --error ER_VERSIONING_REQUIRED
 select * from t1 for system_time all;
+--echo # XXX it's a standard error, there's probably a standard SQLSTATE for it
+--echo # and more or less standard wording
 
 create or replace table t1 (x int) with system versioning;
 insert into t1 values (1);

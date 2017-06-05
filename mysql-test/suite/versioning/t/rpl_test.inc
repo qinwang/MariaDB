@@ -32,6 +32,7 @@ select * from t1 for system_time all;
 # check unversioned -> versioned replication
 connection master;
 create or replace table t1 (x int primary key) engine = innodb;
+--echo # XXX do these tests also with MyISAM
 sync_slave_with_master;
 alter table t1 with system versioning;
 

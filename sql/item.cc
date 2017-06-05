@@ -2766,6 +2766,9 @@ void Item_field::set_field(Field *field_par)
       field->table->pos_in_table_list->vers_conditions.type != FOR_SYSTEM_TIME_UNSPECIFIED) ||
       (context->select_lex &&
       context->select_lex->vers_conditions.type != FOR_SYSTEM_TIME_UNSPECIFIED)))
+// XXX this looks a bit complex. Why don't you set table_list->vers_conditions
+// from select_lex->vers_conditions early on? Then you won't need to check
+// select_lex->vers_conditions anymore.
   {
     field->force_null= true;
     push_warning_printf(

@@ -384,11 +384,20 @@ static Sys_var_charptr Sys_basedir(
 
 static Sys_var_vers_asof Sys_vers_current_time(
        "vers_current_time", "Default AS OF value for versioned tables",
+// XXX rather questionable name. it only affects AS OF queries, so
+// "as_of_timestamp" would make more sense. Also
+// "ALL" is useless, it contradicts the original idea of "use exising
+// applications without modifications". And if you use 0 instead of "NOW",
+// there will be no need for a special class Sys_var_vers_asof.
+// Did you read a comment at the beginning of the file? :)
        SESSION_VAR(vers_current_time), CMD_LINE(REQUIRED_ARG, OPT_VERS_CURRENT_TIME),
+// XXX and I wouldn't create a command line option for it. it'll only make
+// --help output longer
        IN_FS_CHARSET, DEFAULT("now"));
 
 static Sys_var_mybool Sys_vers_force(
        "vers_force", "Force system versioning for all created tables",
+// XXX why?
        SESSION_VAR(vers_force), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
 static const char *vers_hide_keywords[]= {"AUTO", "IMPLICIT", "FULL", "NEVER", NullS};
@@ -399,6 +408,7 @@ static Sys_var_enum Sys_vers_hide(
        "FULL: hide any system fields in all queries and hide versioning info in SHOW commands; "
        "NEVER: don't hide system fields",
        SESSION_VAR(vers_hide), CMD_LINE(OPT_ARG), vers_hide_keywords, DEFAULT(VERS_HIDE_AUTO));
+// XXX why?
 
 static Sys_var_ulonglong Sys_binlog_cache_size(
        "binlog_cache_size", "The size of the transactional cache for "

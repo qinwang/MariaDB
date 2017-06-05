@@ -5,6 +5,7 @@
 create table t (a int) with system versioning engine=innodb;
 --error ER_VERS_NOT_ALLOWED
 truncate t for system_time all;
+--echo # XXX why not?
 drop table t;
 
 -- source include/rpl_end.inc

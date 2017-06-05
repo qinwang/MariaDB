@@ -17,6 +17,8 @@ set @tmp= "with ancestors as (select * from emp) select * from ancestors";
 prepare stmt from @tmp; execute stmt; drop prepare stmt;
 
 with ancestors as (select * from emp for system_time all) select * from ancestors for system_time all;
+--echo # XXX I'm pretty sure that the standard disallows "for system time" for derived tables,
+--echo # it must be used only in the WITH clause, not at the very end.
 set @tmp= "with ancestors as (select * from emp for system_time all) select * from ancestors for system_time all";
 prepare stmt from @tmp; execute stmt; drop prepare stmt;
 

@@ -2,6 +2,7 @@ create table t(
 a int,
 b int without system versioning
 ) with system versioning;
+# XXX try the same, but with b being NOT NULL
 insert into t values(1, 2);
 insert into t values(3, 4);
 select * from t;
@@ -30,6 +31,9 @@ count(*)
 2
 Warnings:
 Warning	4075	Attempt to read unversioned field `b` in historical query
+# XXX eh? what kind of syntax is that? where did you see that for
+# system_time goes after group by? as far as I can see it always
+# goes after *table name*
 select * from t for system_time as of timestamp now(6) order by b asc;
 a	b
 1	NULL
@@ -58,6 +62,7 @@ select a from t where b=NULL query for system_time as of timestamp now(6);
 a
 Warnings:
 Warning	4075	Attempt to read unversioned field `b` in historical query
+# XXX how about "where b IS NULL" ?
 select count(*), b from t group by b having b=NULL query for system_time as of timestamp now(6);
 count(*)	b
 Warnings:

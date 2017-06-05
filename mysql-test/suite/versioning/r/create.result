@@ -176,6 +176,8 @@ create or replace table t1 (
 A1 int with system versioning,
 B int
 );
+# XXX I don't think this should work. I'd say one must specify versioning
+# on the table level for versioning to work at all.
 show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
@@ -203,6 +205,7 @@ A3 int,
 B int without system versioning
 );
 ERROR HY000: Wrong parameters for `t1`: 'WITH SYSTEM VERSIONING' missing
+# XXX on the other hand, this should probably be just fine
 create or replace table t1 (
 A4 int,
 B int without system versioning
@@ -315,8 +318,10 @@ t3	CREATE TABLE `t3` (
   `en` SYS_TRX_TYPE GENERATED ALWAYS AS ROW END,
   PERIOD FOR SYSTEM_TIME (`st`, `en`)
 ) ENGINE=INNODB_OR_MYISAM DEFAULT CHARSET=latin1 WITH SYSTEM VERSIONING
+# XXX why is t3 versioned? what does the standard say about it?
 create or replace table t3 select x, y, t1.sys_trx_start, t2.en from t1, t2;
 ERROR HY000: Wrong parameters for `t3`: system fields selected from different tables
+# XXX similarly, this should not be an error, if t3 isn't versioned
 insert into t2 values (1), (2);
 delete from t2 where y = 2;
 create or replace table t3 select * from t2 for system_time all;

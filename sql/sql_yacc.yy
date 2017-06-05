@@ -8844,6 +8844,7 @@ for_system_time_expr:
           }
         | ALL
           {
+// XXX what's the point of this extension?
             Lex->vers_conditions.init(FOR_SYSTEM_TIME_ALL, UNIT_TIMESTAMP);
           }
         | FROM trans_or_timestamp simple_expr

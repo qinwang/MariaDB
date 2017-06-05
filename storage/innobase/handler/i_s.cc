@@ -9729,6 +9729,8 @@ i_s_dict_fill_vtq(
 	switch (vtq.iso_level) {
 	case TRX_ISO_REPEATABLE_READ:
 		iso_level = "RR";
+// XXX no, please, don't abbrev. Use
+// iso_level=tx_isolation_names[vtq.iso_level];
 		break;
 	case TRX_ISO_READ_COMMITTED:
 		iso_level = "RC";
@@ -9867,6 +9869,7 @@ UNIV_INTERN struct st_maria_plugin	i_s_innodb_vtq =
 	/* plugin name */
 	/* const char* */
 	STRUCT_FLD(name, "INNODB_VTQ"),
+// XXX WTF is VTQ? No TLA in the SQL, plz
 
 	/* plugin author (for SHOW PLUGINS) */
 	/* const char* */

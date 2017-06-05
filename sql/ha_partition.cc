@@ -2029,6 +2029,7 @@ int ha_partition::copy_partitions(ulonglong * const copied,
         /* Copy record to new handler */
         (*copied)++;
         if (new_file->ha_external_lock(thd, F_UNLCK) || new_file->ha_external_lock(thd, F_WRLCK))
+        // XXX this looks very fishy. Why are you doing it?
           goto error;
         tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
         result= new_file->ha_write_row(m_rec0);

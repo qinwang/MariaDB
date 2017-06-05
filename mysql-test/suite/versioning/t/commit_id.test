@@ -8,6 +8,8 @@ engine innodb;
 
 # VTQ_ISO_LEVEL #
 
+--echo # XXX show that there are no matching RU/RC/S/RR rows before the test
+--echo # or use count(*) to show that their number was increased
 set transaction isolation level read uncommitted;
 insert into t1 values ();
 select iso_level = 'RU' from information_schema.innodb_vtq limit 1;

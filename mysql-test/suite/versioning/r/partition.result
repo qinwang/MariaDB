@@ -67,6 +67,7 @@ with system versioning
 partition by system_time (
 partition p0 versioning,
 partition pn as of now);
+# XXX this looks fine, although a bit unconventional. but see below
 alter table t1 add partition (
 partition p1 as of now);
 ERROR HY000: Wrong parameters for `BY SYSTEM_TIME`: AS OF NOW partition can not be added
@@ -113,6 +114,20 @@ partition by system_time limit 1 (
 partition p0 versioning,
 partition p1 versioning,
 partition pn as of now);
+# XXX this is where it gets weird. partitioning conditions
+# are normally specified per partition, not in the "by system
+# time limit 1"
+# There's an exception though.
+# When partitioning by HASH or by KEY one does not specifies
+# conditions per parititon explicitly. I think we should use
+# the same pattern. Like
+# 
+#    partition by hash(a) partitions 2;
+#
+# and
+#
+#    partition by hash(a) (partition p0, partition p1);
+#
 insert into t1 values (1), (2);
 select * from t1 partition (pn);
 x

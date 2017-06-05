@@ -705,7 +705,8 @@ public:
 
   bool force_null;
 // XXX this should be in the Item_field, I suppose. The field itself isn't
-// forced to be NULL, only the Item is.
+// forced to be NULL, only the Item is. Another option could be to
+// replace Item_field with Item_null. (see thd->change_item_tree)
 // Having force_null here also poses additional questions about how it
 // works with the null bitmap and not nullable fields (btw, it doesn't).
 

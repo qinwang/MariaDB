@@ -71,6 +71,7 @@ VTQ_common<Item_func_X>::init_hton()
     else if (innodb_plugin)
     {
       hton= plugin_hton(plugin_int_to_ref(innodb_plugin));
+// XXX no, please. no hard-coding of innodb anywhere in the server!
       DBUG_ASSERT(hton);
     }
     if (hton && !(hton->flags & HTON_SUPPORTS_SYS_VERSIONING))
@@ -164,6 +165,7 @@ longlong
 Item_func_vtq_id::get_by_commit_ts(MYSQL_TIME &commit_ts, bool backwards)
 {
   THD *thd= current_thd; // can it differ from constructor's?
+// XXX yes! And I'm not sure that
   DBUG_ASSERT(thd);
 
   DBUG_ASSERT(hton->vers_query_commit_ts);

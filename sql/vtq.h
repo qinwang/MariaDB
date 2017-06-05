@@ -15,6 +15,8 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA */
 
+// XXX would be good to have a comment, explaining what is vtq
+
 enum vtq_field_t
 {
   VTQ_ALL = 0,

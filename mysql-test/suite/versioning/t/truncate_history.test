@@ -99,6 +99,7 @@ select * from t for system_time all;
 truncate t for system_time before timestamp @ts1;
 select * from t for system_time all;
 truncate t for system_time before timestamp now(6);
+--echo # XXX may be s/before/as of/ ? to use the same syntax everywhere?
 select * from t for system_time all;
 
 create or replace table t (a int) with system versioning engine=innodb;

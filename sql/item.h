@@ -482,6 +482,8 @@ public:
 
 /* System versioning */
 class Vers_extended_item
+// XXX what's the point? why didn't you put your vtq_cached_result()
+// directly in Item?
 {
 public:
   virtual vtq_record_t* vtq_cached_result()
@@ -3871,6 +3873,8 @@ public:
   }
   bool set_lower(MYSQL_TIME *ltime);
   bool set_higher(MYSQL_TIME *ltime);
+  // XXX I don't quite understand what these three new methods are for,
+  // will get back to them later
 };
 
 
@@ -5895,6 +5899,25 @@ public:
   Item* get_copy(THD *thd, MEM_ROOT *mem_root) { return 0; }
 
   uint flags;
+// XXX this fix for #74 doesn't work. Try this:
+//
+//     create table emp ( emp_id int, name varchar(127), mgr int) with system versioning;
+//     insert emp values (1, 'bill', 0), (2, 'bill', 1), (3, 'kate', 1);
+//     create table addr ( emp_id int, address varchar(100)) with system versioning;
+//     insert addr values (1, 'Moscow'), (2, 'New York'), (3, 'London');
+//     set @ts=now(6);
+//     delete from emp;
+//     delete from addr;
+//     insert emp values (4, 'john', 1);
+//     insert addr values (4, 'Paris');
+//     with ancestors as (select * from emp natural join addr) select * from ancestors;
+//     with ancestors as (select * from emp natural join addr) select * from ancestors for system_time all;
+//     with ancestors as (select * from emp for system_time all natural join addr for system_time all) select * from ancestors;
+//     select * from emp for system_time all natural join addr for system_time all;
+//
+// And when you make it to work, try to create addr in InnoDB (but emp in MyISAM).
+// The point - don't make versioned temporary tables, just don't copy
+// versioning information into a temporary table in the first place.
 };
 
 

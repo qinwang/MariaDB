@@ -129,6 +129,7 @@ a
 22
 2
 truncate t for system_time before timestamp now(6);
+# XXX may be s/before/as of/ ? to use the same syntax everywhere?
 select * from t for system_time all;
 a
 11
