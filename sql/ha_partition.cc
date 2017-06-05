@@ -104,6 +104,21 @@ static const char *ha_partition_ext[]=
 };
 
 
+/*
+  FALSE: do not skip
+  TRUE:  skip sorting
+ */
+static MYSQL_THDVAR_BOOL(
+  skip_pk_sort_for_non_clustered_pk_table, /* name */
+  PLUGIN_VAR_OPCMDARG, /* opt */
+  "Skip primary key sorting if engine doesn't have clustered index",
+    /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  FALSE /* def */
+);
+
+
 #ifdef HAVE_PSI_INTERFACE
 PSI_mutex_key key_partition_auto_inc_mutex;
 
@@ -5863,19 +5878,21 @@ error:
 int ha_partition::index_end()
 {
   int error= 0;
-  uint i;
+  handler **file;
   DBUG_ENTER("ha_partition::index_end");
 
   active_index= MAX_KEY;
   m_part_spec.start_part= NO_CURRENT_PART_ID;
-  for (i= bitmap_get_first_set(&m_part_info->read_partitions);
-       i < m_tot_parts;
-       i= bitmap_get_next_set(&m_part_info->read_partitions, i))
+  file= m_file;
+  do
   {
-    int tmp;
-    if ((tmp= m_file[i]->ha_index_end()))
-      error= tmp;
-  }
+    if ((*file)->inited == INDEX)
+    {
+      int tmp;
+      if ((tmp= (*file)->ha_index_end()))
+        error= tmp;
+      }
+  } while (*(++file));
   destroy_record_priority_queue();
   DBUG_RETURN(error);
 }
@@ -6086,8 +6103,10 @@ extern "C" int cmp_key_rowid_part_id(void *ptr, uchar *ref1, uchar *ref2)
   {
     return res;
   }
-  if ((res= file->m_file[0]->cmp_ref(ref1 + PARTITION_BYTES_IN_POS + file->m_rec_length,
-                                     ref2 + PARTITION_BYTES_IN_POS + file->m_rec_length)))
+  if (
+    !THDVAR(current_thd, skip_pk_sort_for_non_clustered_pk_table) &&
+    (res= file->m_file[0]->cmp_ref(ref1 + PARTITION_BYTES_IN_POS + file->m_rec_length,
+                                   ref2 + PARTITION_BYTES_IN_POS + file->m_rec_length)))
   {
     return res;
   }
@@ -7526,8 +7545,11 @@ int ha_partition::handle_ordered_index_scan(uchar *buf, bool reverse_order)
   int saved_error= HA_ERR_END_OF_FILE;
   DBUG_ENTER("ha_partition::handle_ordered_index_scan");
 
-  if (!m_using_extended_keys &&
-      (error= loop_extra(HA_EXTRA_STARTING_ORDERED_INDEX_SCAN)))
+  if (
+    !m_using_extended_keys &&
+    !THDVAR(current_thd, skip_pk_sort_for_non_clustered_pk_table) &&
+    (error = loop_extra(HA_EXTRA_STARTING_ORDERED_INDEX_SCAN))
+  )
     DBUG_RETURN(error);
 
   if (!bulk_access_executing)
@@ -11742,6 +11764,11 @@ void ha_partition::delete_bulk_access_info(
 struct st_mysql_storage_engine partition_storage_engine=
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
+static struct st_mysql_sys_var* partition_system_variables[] ={
+  MYSQL_SYSVAR(skip_pk_sort_for_non_clustered_pk_table),
+  NULL
+};
+
 maria_declare_plugin(partition)
 {
   MYSQL_STORAGE_ENGINE_PLUGIN,
@@ -11754,7 +11781,7 @@ maria_declare_plugin(partition)
   NULL, /* Plugin Deinit */
   0x0100, /* 1.0 */
   NULL,                       /* status variables                */
-  NULL,                       /* system variables                */
+  partition_system_variables, /* system variables                */
   "1.0",                      /* string version                  */
   MariaDB_PLUGIN_MATURITY_STABLE /* maturity                     */
 }
