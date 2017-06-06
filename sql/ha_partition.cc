@@ -7785,6 +7785,31 @@ void ha_partition::return_record_by_parent()
 }
 
 
+Field **ha_partition::get_full_part_fields()
+{
+  DBUG_ENTER("ha_partition::get_full_part_fields");
+  DBUG_RETURN(m_part_info->full_part_field_array);
+}
+
+
+int ha_partition::choose_partition_from_column_value(uchar *buf)
+{
+  int error;
+  uint32 part_id;
+  DBUG_ENTER("ha_partition::choose_partition_from_column_value");
+  DBUG_PRINT("info", ("partition buf=%p", buf));
+  DBUG_PRINT("info", ("partition m_rec0=%p", m_rec0));
+
+  if ((error = get_part_for_delete(buf, m_rec0, m_part_info, &part_id)))
+    DBUG_RETURN(error);
+
+  DBUG_PRINT("info", ("partition choose patition=%u", part_id));
+  bitmap_clear_all(&(m_part_info->read_partitions));
+  bitmap_set_bit(&(m_part_info->read_partitions), part_id);
+  DBUG_RETURN(0);
+}
+
+
 /**
   Add index_next/prev from partitions without exact match.
 
@@ -8233,7 +8258,11 @@ int ha_partition::info(uint flag)
     bool auto_inc_is_first_in_idx= (table_share->next_number_keypart == 0);
     DBUG_PRINT("info", ("HA_STATUS_AUTO"));
     if (!table->found_next_number_field)
+    {
+      DBUG_PRINT("info", ("HA_STATUS_AUTO 1 stats.auto_increment_value=%llu",
+        stats.auto_increment_value));
       stats.auto_increment_value= 0;
+    }
     else if (
 #ifdef HANDLER_HAS_NEED_INFO_FOR_AUTO_INC
       !m_need_info_for_auto_inc &&
@@ -8242,6 +8271,8 @@ int ha_partition::info(uint flag)
     ) {
       lock_auto_increment();
       stats.auto_increment_value= part_share->next_auto_inc_val;
+      DBUG_PRINT("info", ("HA_STATUS_AUTO 2 stats.auto_increment_value=%llu",
+        stats.auto_increment_value));
       unlock_auto_increment();
     }
     else
@@ -8253,8 +8284,11 @@ int ha_partition::info(uint flag)
         !m_need_info_for_auto_inc &&
 #endif
         part_share->auto_inc_initialized
-      )
+      ) {
         stats.auto_increment_value= part_share->next_auto_inc_val;
+        DBUG_PRINT("info", ("HA_STATUS_AUTO 3 stats.auto_increment_value=%llu",
+          stats.auto_increment_value));
+      }
       else
       {
         /*
@@ -8278,6 +8312,8 @@ int ha_partition::info(uint flag)
 
         DBUG_ASSERT(auto_increment_value);
         stats.auto_increment_value= auto_increment_value;
+        DBUG_PRINT("info", ("HA_STATUS_AUTO 4 stats.auto_increment_value=%llu",
+          stats.auto_increment_value));
         if (auto_inc_is_first_in_idx)
         {
           set_if_bigger(part_share->next_auto_inc_val,
@@ -8958,6 +8994,9 @@ int ha_partition::extra(enum ha_extra_function operation)
 #endif
     break;
   }
+  case HA_EXTRA_INIT_AFTER_ATTACH_CHILDREN:
+    m_rec0 = table->record[0];
+    DBUG_RETURN(loop_extra(operation));
   case HA_EXTRA_IS_ATTACHED_CHILDREN:
     DBUG_RETURN(loop_extra(operation));
   case HA_EXTRA_DETACH_CHILDREN:
@@ -8967,6 +9006,7 @@ int ha_partition::extra(enum ha_extra_function operation)
         | HA_CAN_BULK_ACCESS
 #endif
         ));
+    m_rec0 = table->record[0];
     DBUG_RETURN(loop_extra(operation));
   case HA_EXTRA_MARK_AS_LOG_TABLE:
   /*
