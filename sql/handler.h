@@ -3346,7 +3346,9 @@ public:
   int compare_key(key_range *range);
   int compare_key2(key_range *range);
   virtual int ft_init() { return HA_ERR_WRONG_COMMAND; }
-  void ft_end() { ft_handler=NULL; }
+  virtual int pre_ft_init() { return HA_ERR_WRONG_COMMAND; }
+  virtual void ft_end() { ft_handler=NULL; }
+  virtual int pre_ft_end() { return 0; }
   virtual FT_INFO *ft_init_ext(uint flags, uint inx,String *key)
     { return NULL; }
 private:

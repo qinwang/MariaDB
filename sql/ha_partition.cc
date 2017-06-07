@@ -275,6 +275,8 @@ ha_partition::ha_partition(handlerton *hton, TABLE_SHARE *share)
 #endif
 {
   DBUG_ENTER("ha_partition::ha_partition(table)");
+  ft_first = NULL;
+  ft_current = NULL;
   init_alloc_root(&m_mem_root, 512, 512, MYF(0));
   init_handler_variables();
   DBUG_VOID_RETURN;
@@ -310,6 +312,8 @@ ha_partition::ha_partition(handlerton *hton, partition_info *part_info)
 {
   DBUG_ENTER("ha_partition::ha_partition(part_info)");
   DBUG_ASSERT(part_info);
+  ft_first = NULL;
+  ft_current = NULL;
   init_alloc_root(&m_mem_root, 512, 512, MYF(0));
   init_handler_variables();
   m_part_info= part_info;
@@ -5987,18 +5991,6 @@ int ha_partition::pre_read_range_first(const key_range *start_key,
 }
 
 
-int ha_partition::pre_ft_read(bool use_parallel)
-{
-  int error;
-  DBUG_ENTER("ha_partition::pre_ft_read");
-  m_pre_calling= TRUE;
-  m_pre_call_use_parallel= use_parallel;
-  error = ft_read(table->record[0]);
-  m_pre_calling= FALSE;
-  DBUG_RETURN(error);
-}
-
-
 int ha_partition::pre_rnd_next(bool use_parallel)
 {
   int error;
@@ -6522,6 +6514,488 @@ int ha_partition::read_range_next()
     DBUG_RETURN(handle_ordered_next(table->record[0], eq_range));
   }
   DBUG_RETURN(handle_unordered_next(table->record[0], eq_range));
+}
+
+
+float partition_ft_find_relevance(FT_INFO *handler, uchar *record, uint length)
+{
+  st_partition_ft_info *info = (st_partition_ft_info *)handler;
+  return info->file->ft_find_relevance(handler, record, length);
+}
+
+
+float ha_partition::ft_find_relevance(
+  FT_INFO *handler, uchar *record, uint length)
+{
+  st_partition_ft_info *info = (st_partition_ft_info *)handler;
+  FT_INFO *m_handler= info->part_ft_info[m_last_part];
+  DBUG_ENTER("ha_partition::ft_find_relevance");
+  if (
+    m_handler &&
+    m_handler->please &&
+    m_handler->please->find_relevance
+  ) {
+    DBUG_RETURN(m_handler->please->find_relevance(
+      m_handler, record, length));
+  }
+  DBUG_RETURN((float)-1.0);
+}
+
+
+float partition_ft_get_relevance(FT_INFO *handler)
+{
+  st_partition_ft_info *info = (st_partition_ft_info *)handler;
+  return info->file->ft_get_relevance(handler);
+}
+
+
+float ha_partition::ft_get_relevance(FT_INFO *handler)
+{
+  st_partition_ft_info *info = (st_partition_ft_info *)handler;
+  FT_INFO *m_handler= info->part_ft_info[m_last_part];
+  DBUG_ENTER("ha_partition::ft_get_relevance");
+  if (
+    m_handler &&
+    m_handler->please &&
+    m_handler->please->get_relevance
+  ) {
+    DBUG_RETURN(m_handler->please->get_relevance(m_handler));
+  }
+  DBUG_RETURN((float)-1.0);
+}
+
+
+void partition_ft_close_search(FT_INFO *handler)
+{
+  st_partition_ft_info *info = (st_partition_ft_info *)handler;
+  info->file->ft_close_search(handler);
+}
+
+
+void ha_partition::ft_close_search(FT_INFO *handler)
+{
+  uint i;
+  st_partition_ft_info *info = (st_partition_ft_info *)handler;
+  DBUG_ENTER("ha_partition::ft_close_search");
+  for (i= 0; i < m_tot_parts; i++)
+  {
+    FT_INFO *m_handler= info->part_ft_info[i];
+    if (
+      m_handler &&
+      m_handler->please &&
+      m_handler->please->close_search
+    )
+      m_handler->please->close_search(m_handler);
+  }
+  DBUG_VOID_RETURN;
+}
+
+
+_ft_vft partition_ft_vft = {
+  NULL, // partition_ft_read_next
+  partition_ft_find_relevance,
+  partition_ft_close_search,
+  partition_ft_get_relevance,
+  NULL // partition_ft_reinit_search
+};
+
+
+int ha_partition::ft_init()
+{
+  int error;
+  uint i= 0;
+  uint32 part_id;
+  DBUG_ENTER("ha_partition::ft_init");
+  DBUG_PRINT("info", ("partition this=%p", this));
+  /*
+    For operations that may need to change data, we may need to extend
+    read_set.
+  */
+  if (m_lock_type == F_WRLCK)
+  {
+    /*
+      If write_set contains any of the fields used in partition and
+      subpartition expression, we need to set all bits in read_set because
+      the row may need to be inserted in a different [sub]partition. In
+      other words update_row() can be converted into write_row(), which
+      requires a complete record.
+    */
+    if (bitmap_is_overlapping(&m_part_info->full_part_field_set,
+                              table->write_set))
+      bitmap_set_all(table->read_set);
+    else
+    {
+      /*
+        Some handlers only read fields as specified by the bitmap for the
+        read set. For partitioned handlers we always require that the
+        fields of the partition functions are read such that we can
+        calculate the partition id to place updated and deleted records.
+      */
+      bitmap_union(table->read_set, &m_part_info->full_part_field_set);
+    }
+  }
+
+  /* Now we see what the index of our first important partition is */
+  DBUG_PRINT("info", ("m_part_info->read_partitions: 0x%lx",
+                      (long)m_part_info->read_partitions.bitmap));
+  part_id= bitmap_get_first_set(&(m_part_info->read_partitions));
+  DBUG_PRINT("info", ("m_part_spec.start_part %d", part_id));
+
+  if (MY_BIT_NONE == part_id)
+  {
+    error= 0;
+    goto err1;
+  }
+
+  DBUG_PRINT("info", ("ft_init on partition %d", part_id));
+  /*
+    ft_end() is needed for partitioning to reset internal data if scan
+    is already in use
+  */
+  ft_end();
+  late_extra_cache(part_id);
+  m_index_scan_type = partition_ft_read;
+  for (i= part_id; i < m_tot_parts; i++)
+  {
+    if (bitmap_is_set(&(m_part_info->read_partitions), i))
+    {
+      if ((error= m_file[i]->ft_init()))
+        goto err2;
+    }
+  }
+  m_scan_value= 1;
+  m_part_spec.start_part= part_id;
+  m_part_spec.end_part= m_tot_parts - 1;
+  m_ft_init_and_first = TRUE;
+  DBUG_PRINT("info", ("m_scan_value=%d", m_scan_value));
+  DBUG_RETURN(0);
+
+err2:
+  late_extra_no_cache(part_id);
+  while ((int)--i >= (int)part_id)
+  {
+    if (bitmap_is_set(&(m_part_info->read_partitions), i))
+      m_file[i]->ft_end();
+  }
+err1:
+  m_scan_value= 2;
+  m_part_spec.start_part= NO_CURRENT_PART_ID;
+  DBUG_RETURN(error);
+}
+
+
+#ifdef HA_CAN_BULK_ACCESS
+int ha_partition::pre_ft_init()
+{
+  int error;
+  uint i= 0;
+  uint32 part_id;
+  DBUG_ENTER("ha_partition::pre_ft_init");
+  DBUG_PRINT("info", ("partition this=%p", this));
+  /*
+    For operations that may need to change data, we may need to extend
+    read_set.
+  */
+  if (m_lock_type == F_WRLCK)
+  {
+    /*
+      If write_set contains any of the fields used in partition and
+      subpartition expression, we need to set all bits in read_set because
+      the row may need to be inserted in a different [sub]partition. In
+      other words update_row() can be converted into write_row(), which
+      requires a complete record.
+    */
+    if (bitmap_is_overlapping(&m_part_info->full_part_field_set,
+                              table->write_set))
+      bitmap_set_all(table->read_set);
+    else
+    {
+      /*
+        Some handlers only read fields as specified by the bitmap for the
+        read set. For partitioned handlers we always require that the
+        fields of the partition functions are read such that we can
+        calculate the partition id to place updated and deleted records.
+      */
+      bitmap_union(table->read_set, &m_part_info->full_part_field_set);
+    }
+  }
+
+  /* Now we see what the index of our first important partition is */
+  DBUG_PRINT("info", ("m_part_info->read_partitions: 0x%lx",
+                      (long)m_part_info->read_partitions.bitmap));
+  part_id= bitmap_get_first_set(&(m_part_info->read_partitions));
+  DBUG_PRINT("info", ("m_part_spec.start_part %d", part_id));
+
+  if (MY_BIT_NONE == part_id)
+  {
+    error= 0;
+    goto err1;
+  }
+
+  DBUG_PRINT("info", ("ft_init on partition %d", part_id));
+  /*
+    ft_end() is needed for partitioning to reset internal data if scan
+    is already in use
+  */
+  if ((error= pre_ft_end()))
+    goto err1;
+  late_extra_cache(part_id);
+  m_index_scan_type = partition_ft_read;
+  for (i= part_id; i < m_tot_parts; i++)
+  {
+    if (bitmap_is_set(&(m_part_info->read_partitions), i))
+    {
+      if ((error= m_file[i]->pre_ft_init()))
+        goto err2;
+      bitmap_set_bit(&bulk_access_exec_bitmap, i);
+    }
+  }
+  m_scan_value= 1;
+  m_part_spec.start_part= part_id;
+  m_part_spec.end_part= m_tot_parts - 1;
+  m_ft_init_and_first = TRUE;
+  DBUG_PRINT("info", ("m_scan_value=%d", m_scan_value));
+  DBUG_RETURN(0);
+
+err2:
+  late_extra_no_cache(part_id);
+  while ((int)--i >= (int)part_id)
+  {
+    if (bitmap_is_set(&(m_part_info->read_partitions), i))
+      m_file[i]->pre_ft_end();
+  }
+err1:
+  m_scan_value= 2;
+  m_part_spec.start_part= NO_CURRENT_PART_ID;
+  DBUG_RETURN(error);
+}
+#endif
+
+
+void ha_partition::ft_end()
+{
+  handler **file;
+  DBUG_ENTER("ha_partition::ft_end");
+  DBUG_PRINT("info", ("partition this=%p", this));
+  switch (m_scan_value) {
+  case 2:                                       // Error
+    break;
+  case 1:
+    if (NO_CURRENT_PART_ID != m_part_spec.start_part)         // Table scan
+    {
+      late_extra_no_cache(m_part_spec.start_part);
+    }
+    file= m_file;
+    do
+    {
+      if (bitmap_is_set(&(m_part_info->read_partitions), (file - m_file)))
+        (*file)->ft_end();
+    } while (*(++file));
+    break;
+  }
+  m_scan_value= 2;
+  m_part_spec.start_part= NO_CURRENT_PART_ID;
+  DBUG_VOID_RETURN;
+}
+
+
+#ifdef HA_CAN_BULK_ACCESS
+int ha_partition::pre_ft_end()
+{
+  int error = 0, tmp_error;
+  handler **file;
+  DBUG_ENTER("ha_partition::pre_ft_end");
+  DBUG_PRINT("info", ("partition this=%p", this));
+  switch (m_scan_value) {
+  case 2:                                       // Error
+    break;
+  case 1:
+    if (NO_CURRENT_PART_ID != m_part_spec.start_part)         // Table scan
+    {
+      late_extra_no_cache(m_part_spec.start_part);
+    }
+    file= m_file;
+    do
+    {
+      if (bitmap_is_set(&(m_part_info->read_partitions), (file - m_file)))
+      {
+        if ((tmp_error = (*file)->pre_ft_end()))
+          error = tmp_error;
+      }
+    } while (*(++file));
+    break;
+  }
+  m_scan_value= 2;
+  m_part_spec.start_part= NO_CURRENT_PART_ID;
+  DBUG_RETURN(error);
+}
+#endif
+
+
+FT_INFO *ha_partition::ft_init_ext(
+  uint flags,
+  uint inx,
+  String *key
+) {
+  FT_INFO *ft_handler;
+  handler **file;
+  st_partition_ft_info *ft_target;
+  FT_INFO **tmp_ft_info;
+  DBUG_ENTER("ha_partition::ft_init_ext");
+  if (ft_current)
+  {
+    ft_target = ft_current->next;
+    if (!ft_target)
+    {
+      if (!(ft_target = (st_partition_ft_info *)
+        my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
+          &ft_target, sizeof(st_partition_ft_info),
+          &tmp_ft_info, sizeof(FT_INFO *) * m_tot_parts,
+          NullS))
+      ) {
+        my_error(ER_OUT_OF_RESOURCES, MYF(ME_FATALERROR));
+        DBUG_RETURN(NULL);
+      }
+      ft_target->part_ft_info = tmp_ft_info;
+      ft_current->next = ft_target;
+    }
+  } else {
+    ft_target = ft_first;
+    if (!ft_target)
+    {
+      if (!(ft_target = (st_partition_ft_info *)
+        my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
+          &ft_target, sizeof(st_partition_ft_info),
+          &tmp_ft_info, sizeof(FT_INFO *) * m_tot_parts,
+          NullS))
+      ) {
+        my_error(ER_OUT_OF_RESOURCES, MYF(ME_FATALERROR));
+        DBUG_RETURN(NULL);
+      }
+      ft_target->part_ft_info = tmp_ft_info;
+      ft_first = ft_target;
+    }
+  }
+  ft_current = ft_target;
+  file= m_file;
+  do
+  {
+    if (bitmap_is_set(&(m_part_info->read_partitions), (file - m_file)))
+    {
+      if ((ft_handler= (*file)->ft_init_ext(flags, inx, key)))
+        (*file)->ft_handler= ft_handler;
+      else
+        (*file)->ft_handler= NULL;
+      ft_target->part_ft_info[file - m_file]= ft_handler;
+    }
+    else {
+      (*file)->ft_handler= NULL;
+      ft_target->part_ft_info[file - m_file]= NULL;
+    }
+  } while (*(++file));
+  ft_target->please= &partition_ft_vft;
+  ft_target->file= this;
+  DBUG_RETURN((FT_INFO*)ft_target);
+}
+
+
+int ha_partition::pre_ft_read(
+  bool use_parallel
+) {
+  int error;
+  DBUG_ENTER("ha_partition::pre_ft_read");
+  DBUG_PRINT("info", ("partition this=%p", this));
+  m_pre_calling= TRUE;
+  m_pre_call_use_parallel= use_parallel;
+  error = ft_read(table->record[0]);
+  m_pre_calling= FALSE;
+  DBUG_RETURN(error);
+}
+
+
+int ha_partition::ft_read(
+  uchar *buf
+) {
+  handler *file;
+  int result= HA_ERR_END_OF_FILE, error;
+  uint part_id= m_part_spec.start_part;
+  DBUG_ENTER("ha_partition::ft_read");
+  DBUG_PRINT("info", ("partition this=%p", this));
+  DBUG_PRINT("info", ("part_id=%u", part_id));
+
+  if (NO_CURRENT_PART_ID == part_id)
+  {
+    /*
+      The original set of partitions to scan was empty and thus we report
+      the result here.
+    */
+    DBUG_PRINT("info", ("NO_CURRENT_PART_ID"));
+    goto end;
+  }
+
+  DBUG_ASSERT(m_scan_value == 1);
+
+  if (m_ft_init_and_first)
+  {
+    m_ft_init_and_first = FALSE;
+    if (!bulk_access_executing)
+    {
+      if (check_parallel_search())
+        error= handle_pre_scan(FALSE, TRUE);
+      else
+        error = handle_pre_scan(FALSE, FALSE);
+      if (m_pre_calling || error)
+        DBUG_RETURN(error);
+    }
+  }
+
+  file= m_file[part_id];
+
+  while (TRUE)
+  {
+    result= file->ft_read(buf);
+    if (!result)
+    {
+      m_last_part= part_id;
+      m_part_spec.start_part= part_id;
+      table->status= 0;
+      DBUG_RETURN(0);
+    }
+
+    /*
+      if we get here, then the current partition ft_next returned failure
+    */
+    if (result == HA_ERR_RECORD_DELETED)
+      continue;                               // Probably MyISAM
+
+    if (result != HA_ERR_END_OF_FILE)
+      goto end_dont_reset_start_part;         // Return error
+
+    /* End current partition */
+    late_extra_no_cache(part_id);
+    DBUG_PRINT("info", ("ft_end on partition %d", part_id));
+
+    /* Shift to next partition */
+    while (++part_id < m_tot_parts &&
+           !bitmap_is_set(&(m_part_info->read_partitions), part_id))
+      ;
+    if (part_id >= m_tot_parts)
+    {
+      result= HA_ERR_END_OF_FILE;
+      break;
+    }
+    m_last_part= part_id;
+    m_part_spec.start_part= part_id;
+    file= m_file[part_id];
+    DBUG_PRINT("info", ("ft_init on partition %d", part_id));
+    late_extra_cache(part_id);
+  }
+
+end:
+  m_part_spec.start_part= NO_CURRENT_PART_ID;
+end_dont_reset_start_part:
+  table->status= STATUS_NOT_FOUND;
+  DBUG_RETURN(result);
 }
 
 
@@ -7086,7 +7560,9 @@ int ha_partition::partition_scan_set_up(uchar * buf, bool idx_read_flag)
   DBUG_ENTER("ha_partition::partition_scan_set_up");
 
   if (idx_read_flag)
-    get_partition_set(table,buf,active_index,&m_start_key,&m_part_spec);
+  {
+    get_partition_set(table, buf, active_index, &m_start_key, &m_part_spec);
+  }
   else
   {
     m_part_spec.start_part= 0;
@@ -9056,6 +9532,7 @@ int ha_partition::reset(void)
       result= tmp;
   }
   bitmap_clear_all(&m_partitions_to_reset);
+  ft_current = NULL;
 #ifdef HA_CAN_BULK_ACCESS
   if (bulk_access_info_first)
   {
