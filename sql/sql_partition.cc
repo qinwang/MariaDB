@@ -3460,7 +3460,9 @@ int vers_get_partition_id(partition_info *part_info,
       {
         table->s->busy_rotation= true;
         mysql_mutex_unlock(&table->s->LOCK_rotation);
-        if (part_info->vers_limit_exceed() || part_info->vers_interval_exceed(sys_trx_end->get_timestamp()))
+        ulong sec_part;
+        if (part_info->vers_limit_exceed() ||
+            part_info->vers_interval_exceed(sys_trx_end->get_timestamp(&sec_part)))
         {
           part_info->vers_part_rotate(thd);
         }
