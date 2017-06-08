@@ -2112,7 +2112,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
     }
     else
     {
-      if (flags & NOT_NULL_FLAG)
+      if (flags & NOT_NULL_FLAG && !field->vers_sys_field())
         packet->append(STRING_WITH_LEN(" NOT NULL"));
       else if (field->type() == MYSQL_TYPE_TIMESTAMP && !field->vers_sys_field())
       {
