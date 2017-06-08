@@ -408,8 +408,10 @@ public:
 
   partition_element *vers_hist_part()
   {
-    DBUG_ASSERT(table && table->s);
-    DBUG_ASSERT(vers_info && vers_info->initialized());
+    DBUG_ASSERT(table);
+    DBUG_ASSERT(table->s);
+    DBUG_ASSERT(vers_info);
+    DBUG_ASSERT(vers_info->initialized());
     DBUG_ASSERT(table->s->hist_part_id != UINT32_MAX);
     if (table->s->hist_part_id == vers_info->hist_part->id)
       return vers_info->hist_part;
@@ -455,7 +457,9 @@ public:
   }
   Vers_field_stats& vers_stat_trx(stat_trx_field fld, uint32 part_element_id)
   {
-    DBUG_ASSERT(table && table->s && table->s->stat_trx);
+    DBUG_ASSERT(table);
+    DBUG_ASSERT(table->s);
+    DBUG_ASSERT(table->s->stat_trx);
     Vers_field_stats* res= table->s->stat_trx[part_element_id * num_columns + fld];
     DBUG_ASSERT(res);
     return *res;
@@ -488,9 +492,12 @@ public:
   }
   void vers_update_stats(THD *thd, partition_element *el)
   {
-    DBUG_ASSERT(vers_info && vers_info->initialized());
-    DBUG_ASSERT(table && table->s);
-    DBUG_ASSERT(el && el->type == partition_element::VERSIONING);
+    DBUG_ASSERT(vers_info);
+    DBUG_ASSERT(vers_info->initialized());
+    DBUG_ASSERT(table);
+    DBUG_ASSERT(table->s);
+    DBUG_ASSERT(el);
+    DBUG_ASSERT(el->type == partition_element::VERSIONING);
     mysql_rwlock_wrlock(&table->s->LOCK_stat_serial);
     el->empty= false;
     bool updated=
@@ -507,14 +514,17 @@ public:
   }
   void vers_update_stats(THD *thd, uint part_id)
   {
-    DBUG_ASSERT(vers_info && vers_info->initialized());
+    DBUG_ASSERT(vers_info);
+    DBUG_ASSERT(vers_info->initialized());
     if (part_id < vers_info->now_part->id)
       vers_update_stats(thd, get_partition(part_id));
   }
   void vers_update_range_constants(THD *thd)
   {
-    DBUG_ASSERT(vers_info && vers_info->initialized());
-    DBUG_ASSERT(table && table->s);
+    DBUG_ASSERT(vers_info);
+    DBUG_ASSERT(vers_info->initialized());
+    DBUG_ASSERT(table);
+    DBUG_ASSERT(table->s);
 
     mysql_rwlock_rdlock(&table->s->LOCK_stat_serial);
     if (vers_info->stat_serial == table->s->stat_serial)

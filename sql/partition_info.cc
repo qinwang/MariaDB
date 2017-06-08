@@ -150,7 +150,9 @@ bool partition_info::add_named_partition(const char *part_name,
   PART_NAME_DEF *part_def;
   Partition_share *part_share;
   DBUG_ENTER("partition_info::add_named_partition");
-  DBUG_ASSERT(table && table->s && table->s->ha_share);
+  DBUG_ASSERT(table);
+  DBUG_ASSERT(table->s);
+  DBUG_ASSERT(table->s->ha_share);
   part_share= static_cast<Partition_share*>((table->s->ha_share));
   DBUG_ASSERT(part_share->partition_name_hash_initialized);
   part_name_hash= &part_share->partition_name_hash;
@@ -855,8 +857,10 @@ bool partition_info::vers_set_limit(ulonglong limit)
 partition_element*
 partition_info::vers_part_rotate(THD * thd)
 {
-  DBUG_ASSERT(table && table->s);
-  DBUG_ASSERT(vers_info && vers_info->initialized());
+  DBUG_ASSERT(table);
+  DBUG_ASSERT(table->s);
+  DBUG_ASSERT(vers_info);
+  DBUG_ASSERT(vers_info->initialized());
 
   if (table->s->hist_part_id >= vers_info->now_part->id - 1)
   {
@@ -930,7 +934,8 @@ bool partition_info::vers_setup_1(THD * thd, uint32 added)
       }
       if (el->id == UINT32_MAX || el->type == partition_element::AS_OF_NOW)
       {
-        DBUG_ASSERT(table && table->s);
+        DBUG_ASSERT(table);
+        DBUG_ASSERT(table->s);
         Vers_field_stats *stat_trx_end= new (&table->s->mem_root)
           Vers_field_stats(table->s->vers_end_field()->field_name, table->s);
         table->s->stat_trx[id * num_columns + STAT_TRX_END]= stat_trx_end;
@@ -1033,7 +1038,9 @@ void partition_info::vers_update_col_vals(THD *thd, partition_element *el0, part
 {
   MYSQL_TIME t;
   memset(&t, 0, sizeof(t));
-  DBUG_ASSERT(table && table->s && table->s->stat_trx);
+  DBUG_ASSERT(table);
+  DBUG_ASSERT(table->s);
+  DBUG_ASSERT(table->s->stat_trx);
   DBUG_ASSERT(!el0 || el1->id == el0->id + 1);
   const uint idx= el1->id * num_columns;
   my_time_t ts;
@@ -1071,8 +1078,10 @@ void partition_info::vers_update_col_vals(THD *thd, partition_element *el0, part
 bool partition_info::vers_setup_2(THD * thd, bool is_create_table_ind)
 {
   DBUG_ASSERT(part_type == VERSIONING_PARTITION);
-  DBUG_ASSERT(vers_info && vers_info->initialized(false));
-  DBUG_ASSERT(table && table->s);
+  DBUG_ASSERT(vers_info);
+  DBUG_ASSERT(vers_info->initialized(false));
+  DBUG_ASSERT(table);
+  DBUG_ASSERT(table->s);
   if (!table->versioned_by_sql())
   {
     my_error(ER_VERS_WRONG_PARAMS, MYF(0), table->s->table_name.str, "selected engine is not supported in `BY SYSTEM_TIME` partitioning");
@@ -1871,7 +1880,8 @@ bool partition_info::check_partition_info(THD *thd, handlerton **eng_type,
       table_engine_set= TRUE;
       DBUG_PRINT("info", ("No create, table_engine = %s",
                           ha_resolve_storage_engine_name(table_engine)));
-      DBUG_ASSERT(table_engine && table_engine != partition_hton);
+      DBUG_ASSERT(table_engine);
+      DBUG_ASSERT(table_engine != partition_hton);
     }
   }
 
@@ -2012,8 +2022,8 @@ bool partition_info::check_partition_info(THD *thd, handlerton **eng_type,
     goto end;
   }
 
-  DBUG_ASSERT(table_engine != partition_hton &&
-              default_engine_type == table_engine);
+  DBUG_ASSERT(table_engine != partition_hton);
+  DBUG_ASSERT(default_engine_type == table_engine);
   if (eng_type)
     *eng_type= table_engine;
 
@@ -3049,7 +3059,8 @@ bool partition_info::has_same_partitioning(partition_info *new_part_info)
 {
   DBUG_ENTER("partition_info::has_same_partitioning");
 
-  DBUG_ASSERT(part_field_array && part_field_array[0]);
+  DBUG_ASSERT(part_field_array);
+  DBUG_ASSERT(part_field_array[0]);
 
   /*
     Only consider pre 5.5.3 .frm's to have same partitioning as

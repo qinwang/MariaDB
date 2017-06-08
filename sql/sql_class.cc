@@ -708,7 +708,8 @@ extern "C" void thd_kill_timeout(THD* thd)
 
 Time_zone * thd_get_timezone(THD * thd)
 {
-	DBUG_ASSERT(thd && thd->variables.time_zone);
+        DBUG_ASSERT(thd);
+        DBUG_ASSERT(thd->variables.time_zone);
 	return thd->variables.time_zone;
 }
 
@@ -1597,7 +1598,8 @@ THD::~THD()
   THD_CHECK_SENTRY(this);
   DBUG_ENTER("~THD()");
   /* Check that we have already called thd->unlink() */
-  DBUG_ASSERT(prev == 0 && next == 0);
+  DBUG_ASSERT(prev == 0);
+  DBUG_ASSERT(next == 0);
   /* This takes a long time so we should not do this under LOCK_thread_count */
   mysql_mutex_assert_not_owner(&LOCK_thread_count);
 
@@ -2401,7 +2403,8 @@ void THD::add_changed_table(TABLE *table)
 {
   DBUG_ENTER("THD::add_changed_table(table)");
 
-  DBUG_ASSERT(in_multi_stmt_transaction_mode() && table->file->has_transactions());
+  DBUG_ASSERT(in_multi_stmt_transaction_mode());
+  DBUG_ASSERT(table->file->has_transactions());
   add_changed_table(table->s->table_cache_key.str,
                     (long) table->s->table_cache_key.length);
   DBUG_VOID_RETURN;
@@ -4218,7 +4221,8 @@ change_security_context(THD *thd,
 
   DBUG_ENTER("Security_context::change_security_context");
 
-  DBUG_ASSERT(definer_user->str && definer_host->str);
+  DBUG_ASSERT(definer_user->str);
+  DBUG_ASSERT(definer_host->str);
 
   *backup= NULL;
   needs_change= (strcmp(definer_user->str, thd->security_ctx->priv_user) ||
@@ -4285,12 +4289,12 @@ void THD::restore_backup_open_tables_state(Open_tables_backup *backup)
     Before we will throw away current open tables state we want
     to be sure that it was properly cleaned up.
   */
-  DBUG_ASSERT(open_tables == 0 &&
-              temporary_tables == 0 &&
-              derived_tables == 0 &&
-              lock == 0 &&
-              locked_tables_mode == LTM_NONE &&
-              m_reprepare_observer == NULL);
+  DBUG_ASSERT(open_tables == 0);
+  DBUG_ASSERT(temporary_tables == 0);
+  DBUG_ASSERT(derived_tables == 0);
+  DBUG_ASSERT(lock == 0);
+  DBUG_ASSERT(locked_tables_mode == LTM_NONE);
+  DBUG_ASSERT(m_reprepare_observer == NULL);
 
   set_open_tables_state(backup);
   DBUG_VOID_RETURN;
@@ -6423,8 +6427,8 @@ int THD::binlog_write_row(TABLE* table, bool is_trans,
                           uchar const *record)
 {
 
-  DBUG_ASSERT(is_current_stmt_binlog_format_row() &&
-           ((WSREP(this) && wsrep_emulate_bin_log) || mysql_bin_log.is_open()));
+  DBUG_ASSERT(is_current_stmt_binlog_format_row());
+  DBUG_ASSERT(((WSREP(this) && wsrep_emulate_bin_log) || mysql_bin_log.is_open()));
   /*
     Pack records into format for transfer. We are allocating more
     memory than needed, but that doesn't matter.
@@ -6463,8 +6467,8 @@ int THD::binlog_update_row(TABLE* table, bool is_trans,
                            const uchar *before_record,
                            const uchar *after_record)
 {
-  DBUG_ASSERT(is_current_stmt_binlog_format_row() &&
-            ((WSREP(this) && wsrep_emulate_bin_log) || mysql_bin_log.is_open()));
+  DBUG_ASSERT(is_current_stmt_binlog_format_row());
+  DBUG_ASSERT((WSREP(this) && wsrep_emulate_bin_log) || mysql_bin_log.is_open());
 
   size_t const before_maxlen = max_row_length(table, before_record);
   size_t const after_maxlen  = max_row_length(table, after_record);
@@ -6521,8 +6525,8 @@ int THD::binlog_update_row(TABLE* table, bool is_trans,
 int THD::binlog_delete_row(TABLE* table, bool is_trans, 
                            uchar const *record)
 {
-  DBUG_ASSERT(is_current_stmt_binlog_format_row() &&
-            ((WSREP(this) && wsrep_emulate_bin_log) || mysql_bin_log.is_open()));
+  DBUG_ASSERT(is_current_stmt_binlog_format_row());
+  DBUG_ASSERT((WSREP(this) && wsrep_emulate_bin_log) || mysql_bin_log.is_open());
   /**
     Save a reference to the original read bitmaps
     We will need this to restore the bitmaps at the end as
@@ -6711,7 +6715,8 @@ show_query_type(THD::enum_binlog_query_type qtype)
     return "STMT";
   case THD::QUERY_TYPE_COUNT:
   default:
-    DBUG_ASSERT(0 <= qtype && qtype < THD::QUERY_TYPE_COUNT);
+    DBUG_ASSERT(0 <= qtype);
+    DBUG_ASSERT(qtype < THD::QUERY_TYPE_COUNT);
   }
   static char buf[64];
   sprintf(buf, "UNKNOWN#%d", qtype);

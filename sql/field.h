@@ -704,6 +704,10 @@ public:
   key_map	key_start, part_of_key, part_of_key_not_clustered;
 
   bool force_null;
+// XXX this should be in the Item_field, I suppose. The field itself isn't
+// forced to be NULL, only the Item is.
+// Having force_null here also poses additional questions about how it
+// works with the null bitmap and not nullable fields (btw, it doesn't).
 
   /*
     Bitmap of indexes that have records ordered by col1, ... this_field, ...

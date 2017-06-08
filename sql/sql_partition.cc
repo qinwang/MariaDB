@@ -3427,8 +3427,10 @@ int vers_get_partition_id(partition_info *part_info,
   DBUG_ASSERT(sys_trx_end);
   DBUG_ASSERT(part_info->table);
   Vers_part_info *vers_info= part_info->vers_info;
-  DBUG_ASSERT(vers_info && vers_info->initialized());
-  DBUG_ASSERT(sys_trx_end->table == part_info->table && part_info->table->versioned());
+  DBUG_ASSERT(vers_info);
+  DBUG_ASSERT(vers_info->initialized());
+  DBUG_ASSERT(sys_trx_end->table == part_info->table);
+  DBUG_ASSERT(part_info->table->versioned());
   DBUG_ASSERT(part_info->table->vers_end_field() == sys_trx_end);
 
   // new rows have NULL in sys_trx_end
@@ -4046,8 +4048,11 @@ bool verify_data_with_partition(TABLE *table, TABLE *part_table,
   uchar *old_rec;
   partition_info *part_info;
   DBUG_ENTER("verify_data_with_partition");
-  DBUG_ASSERT(table && table->file && part_table && part_table->part_info &&
-              part_table->file);
+  DBUG_ASSERT(table);
+  DBUG_ASSERT(table->file);
+  DBUG_ASSERT(part_table);
+  DBUG_ASSERT(part_table->part_info);
+  DBUG_ASSERT(part_table->file);
 
   /*
     Verify all table rows.
@@ -4653,7 +4658,8 @@ static bool check_native_partitioned(HA_CREATE_INFO *create_info,bool *ret_val,
     if (thd->lex->sql_command != SQLCOM_CREATE_TABLE)
     {
       table_engine_set= TRUE;
-      DBUG_ASSERT(engine_type && engine_type != partition_hton);
+      DBUG_ASSERT(engine_type);
+      DBUG_ASSERT(engine_type != partition_hton);
     }
   }
   DBUG_PRINT("info", ("engine_type = %s, table_engine_set = %u",
@@ -4766,8 +4772,8 @@ bool compare_partition_options(HA_CREATE_INFO *table_create_info,
   const char *option_diffs[MAX_COMPARE_PARTITION_OPTION_ERRORS + 1];
   int i, errors= 0;
   DBUG_ENTER("compare_partition_options");
-  DBUG_ASSERT(!part_elem->tablespace_name &&
-              !table_create_info->tablespace);
+  DBUG_ASSERT(!part_elem->tablespace_name);
+  DBUG_ASSERT(!table_create_info->tablespace);
 
   /*
     Note that there are not yet any engine supporting tablespace together
@@ -5298,7 +5304,8 @@ that are reorganised.
           {
             if (el->type == partition_element::AS_OF_NOW)
             {
-              DBUG_ASSERT(tab_part_info->vers_info && el == tab_part_info->vers_info->now_part);
+              DBUG_ASSERT(tab_part_info->vers_info);
+              DBUG_ASSERT(el == tab_part_info->vers_info->now_part);
               it.remove();
               now_part= el;
             }
@@ -5908,8 +5915,8 @@ the generated partition syntax in a correct manner.
         else
           part_info->default_engine_type= create_info->db_type;
       }
-      DBUG_ASSERT(part_info->default_engine_type &&
-                  part_info->default_engine_type != partition_hton);
+      DBUG_ASSERT(part_info->default_engine_type);
+      DBUG_ASSERT(part_info->default_engine_type != partition_hton);
       if (check_native_partitioned(create_info, &is_native_partitioned,
                                    part_info, thd))
       {

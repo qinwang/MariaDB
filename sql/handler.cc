@@ -4619,7 +4619,8 @@ void handler::update_global_table_stats()
   if (rows_read + rows_changed == 0)
     return;                                     // Nothing to update.
 
-  DBUG_ASSERT(table->s && table->s->table_cache_key.str);
+  DBUG_ASSERT(table->s);
+  DBUG_ASSERT(table->s->table_cache_key.str);
 
   mysql_mutex_lock(&LOCK_global_table_stats);
   /* Gets the global table stats, creating one if necessary. */
@@ -6134,7 +6135,8 @@ void handler::use_hidden_primary_key()
 Handler_share *handler::get_ha_share_ptr()
 {
   DBUG_ENTER("handler::get_ha_share_ptr");
-  DBUG_ASSERT(ha_share && table_share);
+  DBUG_ASSERT(ha_share);
+  DBUG_ASSERT(table_share);
 
 #ifndef DBUG_OFF
   if (table_share->tmp_table == NO_TMP_TABLE)
@@ -6862,10 +6864,12 @@ bool Vers_parse_info::check_and_fix_alter(THD *thd, Alter_info *alter_info,
     // copy info from existing table
     create_info->options|= HA_VERSIONED_TABLE;
 
-    DBUG_ASSERT(share->vers_start_field() && share->vers_end_field());
+    DBUG_ASSERT(share->vers_start_field());
+    DBUG_ASSERT(share->vers_end_field());
     const char *start= share->vers_start_field()->field_name;
     const char *end= share->vers_end_field()->field_name;
-    DBUG_ASSERT(start && end);
+    DBUG_ASSERT(start);
+    DBUG_ASSERT(end);
 
     if (create_string(thd->mem_root, &generated_as_row.start, start) ||
         create_string(thd->mem_root, &generated_as_row.end, end) ||

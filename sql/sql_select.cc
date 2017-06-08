@@ -855,7 +855,8 @@ int vers_setup_select(THD *thd, TABLE_LIST *tables, COND **where_expr,
       else if (vers_simple_select && vers_conditions.unit == UNIT_TIMESTAMP
           && vers_conditions.type != FOR_SYSTEM_TIME_UNSPECIFIED)
       {
-        DBUG_ASSERT(table->table->s && table->table->s->db_plugin);
+        DBUG_ASSERT(table->table->s);
+        DBUG_ASSERT(table->table->s->db_plugin);
         handlerton *hton= plugin_hton(table->table->s->db_plugin);
         DBUG_ASSERT(hton);
         row_start= newx Item_func_vtq_ts(
@@ -926,7 +927,8 @@ int vers_setup_select(THD *thd, TABLE_LIST *tables, COND **where_expr,
       }
       else
       {
-        DBUG_ASSERT(table->table->s && table->table->s->db_plugin);
+        DBUG_ASSERT(table->table->s);
+        DBUG_ASSERT(table->table->s->db_plugin);
         handlerton *hton= plugin_hton(table->table->s->db_plugin);
         DBUG_ASSERT(hton);
 
@@ -16518,7 +16520,8 @@ setup_tmp_table_column_bitmaps(TABLE *table, uchar *bitmaps, uint field_count)
 {
   uint bitmap_size= bitmap_buffer_size(field_count);
 
-  DBUG_ASSERT(table->s->virtual_fields == 0 && table->def_vcol_set == 0);
+  DBUG_ASSERT(table->s->virtual_fields == 0);
+  DBUG_ASSERT(table->def_vcol_set == 0);
 
   my_bitmap_init(&table->def_read_set, (my_bitmap_map*) bitmaps, field_count,
               FALSE);
@@ -18149,7 +18152,8 @@ void set_postjoin_aggr_write_func(JOIN_TAB *tab)
   AGGR_OP *aggr= tab->aggr;
   TMP_TABLE_PARAM *tmp_tbl= tab->tmp_table_param;
 
-  DBUG_ASSERT(table && aggr);
+  DBUG_ASSERT(table);
+  DBUG_ASSERT(aggr);
 
   if (table->group && tmp_tbl->sum_func_count && 
       !tmp_tbl->precomputed_group_by)
@@ -22021,7 +22025,8 @@ JOIN_TAB::remove_duplicates()
 
   DBUG_ENTER("remove_duplicates");
 
-  DBUG_ASSERT(join->aggr_tables > 0 && table->s->tmp_table != NO_TMP_TABLE);
+  DBUG_ASSERT(join->aggr_tables > 0);
+  DBUG_ASSERT(table->s->tmp_table != NO_TMP_TABLE);
   THD_STAGE_INFO(join->thd, stage_removing_duplicates);
 
   //join->explain->ops_tracker.report_duplicate_removal();

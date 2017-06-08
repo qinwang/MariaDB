@@ -5468,6 +5468,11 @@ bool Field_timestampf::is_max()
 my_time_t Field_timestampf::get_timestamp(const uchar *pos,
                                           ulong *sec_part) const
 {
+// XXX no, the caller always knows whether pos and sec_part are NULL or not.
+// you lose this compile-time information when calling get_timestamp() and
+// need to do a run-time if(). Restore the old code here
+// and use `ulong not_used` style variables in the caller instead.
+// Besides, why do you ignore sec_part?
   struct timeval tm;
   if (sec_part)
   {

@@ -2130,8 +2130,8 @@ Locked_tables_list::init_locked_tables(THD *thd)
 void
 Locked_tables_list::unlock_locked_tables(THD *thd)
 {
-  DBUG_ASSERT(!thd->in_sub_stmt &&
-              !(thd->state_flags & Open_tables_state::BACKUPS_AVAIL));
+  DBUG_ASSERT(!thd->in_sub_stmt);
+  DBUG_ASSERT(!(thd->state_flags & Open_tables_state::BACKUPS_AVAIL));
   /*
     Sic: we must be careful to not close open tables if
     we're not in LOCK TABLES mode: unlock_locked_tables() is
@@ -5342,7 +5342,8 @@ find_field_in_natural_join(THD *thd, TABLE_LIST *table_ref, const char *name,
   DBUG_ENTER("find_field_in_natural_join");
   DBUG_PRINT("enter", ("field name: '%s', ref 0x%lx",
 		       name, (ulong) ref));
-  DBUG_ASSERT(table_ref->is_natural_join && table_ref->join_columns);
+  DBUG_ASSERT(table_ref->is_natural_join);
+  DBUG_ASSERT(table_ref->join_columns);
   DBUG_ASSERT(*actual_table == NULL);
 
   for (nj_col= NULL, curr_nj_col= field_it++; curr_nj_col; 
@@ -6797,8 +6798,8 @@ store_top_level_join_columns(THD *thd, TABLE_LIST *table_ref,
   */
   if (table_ref->is_natural_join)
   {
-    DBUG_ASSERT(table_ref->nested_join &&
-                table_ref->nested_join->join_list.elements == 2);
+    DBUG_ASSERT(table_ref->nested_join);
+    DBUG_ASSERT(table_ref->nested_join->join_list.elements == 2);
     List_iterator_fast<TABLE_LIST> operand_it(table_ref->nested_join->join_list);
     /*
       Notice that the order of join operands depends on whether table_ref
@@ -7591,7 +7592,8 @@ insert_fields(THD *thd, Name_resolution_context *context, const char *db_name,
         bool sys_field= fl & (VERS_SYS_START_FLAG | VERS_SYS_END_FLAG);
         SELECT_LEX *slex= thd->lex->current_select;
         TABLE *table= f->field->table;
-        DBUG_ASSERT(table && table->pos_in_table_list);
+        DBUG_ASSERT(table);
+        DBUG_ASSERT(table->pos_in_table_list);
         TABLE_LIST *tl= table->pos_in_table_list;
         vers_range_type_t vers_type=
           tl->vers_conditions.type == FOR_SYSTEM_TIME_UNSPECIFIED ?

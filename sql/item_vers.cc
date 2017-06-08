@@ -33,7 +33,8 @@ Item_func_vtq_ts::Item_func_vtq_ts(
 {
   decimals= 6;
   null_value= true;
-  DBUG_ASSERT(arg_count == 1 && args[0]);
+  DBUG_ASSERT(arg_count == 1);
+  DBUG_ASSERT(args[0]);
 }
 
 Item_func_vtq_ts::Item_func_vtq_ts(
@@ -45,7 +46,8 @@ Item_func_vtq_ts::Item_func_vtq_ts(
 {
   decimals= 6;
   null_value= true;
-  DBUG_ASSERT(arg_count == 1 && args[0]);
+  DBUG_ASSERT(arg_count == 1);
+  DBUG_ASSERT(args[0]);
 }
 
 template <class Item_func_X>
@@ -118,7 +120,8 @@ Item_func_vtq_id::Item_func_vtq_id(
   decimals= 0;
   unsigned_flag= 1;
   null_value= true;
-  DBUG_ASSERT(arg_count == 1 && args[0]);
+  DBUG_ASSERT(arg_count == 1);
+  DBUG_ASSERT(args[0]);
 }
 
 Item_func_vtq_id::Item_func_vtq_id(
@@ -134,7 +137,9 @@ Item_func_vtq_id::Item_func_vtq_id(
   decimals= 0;
   unsigned_flag= 1;
   null_value= true;
-  DBUG_ASSERT(arg_count == 2 && args[0] && args[1]);
+  DBUG_ASSERT(arg_count == 2);
+  DBUG_ASSERT(args[0]);
+  DBUG_ASSERT(args[1]);
 }
 
 longlong
@@ -229,7 +234,9 @@ Item_func_vtq_trx_sees::Item_func_vtq_trx_sees(
   accept_eq(false)
 {
   null_value= true;
-  DBUG_ASSERT(arg_count == 2 && args[0] && args[1]);
+  DBUG_ASSERT(arg_count == 2);
+  DBUG_ASSERT(args[0]);
+  DBUG_ASSERT(args[1]);
 }
 
 longlong
