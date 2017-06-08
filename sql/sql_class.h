@@ -4481,6 +4481,7 @@ public:
   ulong                     wsrep_affected_rows;
   bool                      wsrep_has_ignored_error;
   bool                      wsrep_replicate_GTID;
+  bool                      wsrep_skip_wsrep_GTID;
 
   bool wsrep_is_streaming()
   {

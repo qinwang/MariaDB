@@ -139,10 +139,6 @@ this program; if not, write to the Free Software Foundation, Inc.,
 class  binlog_trx_data;
 extern handlerton *binlog_hton;
 
-extern MYSQL_PLUGIN_IMPORT mysql_mutex_t LOCK_wsrep_rollback;
-extern MYSQL_PLUGIN_IMPORT mysql_cond_t COND_wsrep_rollback;
-extern MYSQL_PLUGIN_IMPORT wsrep_aborting_thd_t wsrep_aborting_thd;
-
 static inline wsrep_ws_handle_t*
 wsrep_ws_handle(THD* thd, const trx_t* trx) {
 	return wsrep_ws_handle_for_trx(wsrep_thd_ws_handle(thd),
@@ -19809,27 +19805,7 @@ wsrep_innobase_kill_one_trx(
 					      wsrep_thd_trx_seqno(thd));
 			DBUG_RETURN(0);
 		}
-                /* This will lock thd from proceeding after net_read() */
-		wsrep_thd_set_conflict_state(thd, ABORTING);
-
-		wsrep_lock_rollback();
-
-		if (wsrep_aborting_thd_contains(thd)) {
-			WSREP_WARN("duplicate thd aborter %lu",
-			           thd_get_thread_id(thd));
-		} else {
-			wsrep_aborting_thd_enqueue(thd);
-			DBUG_PRINT("wsrep",("enqueuing trx abort for %lu",
-			                    thd_get_thread_id(thd)));
-			WSREP_DEBUG("enqueuing trx abort for (%lu)",
-			            thd_get_thread_id(thd));
-		}
-
-		DBUG_PRINT("wsrep",("signalling wsrep rollbacker"));
-		WSREP_DEBUG("signaling aborter");
-		wsrep_unlock_rollback();
-		wsrep_thd_UNLOCK(thd);
-
+		wsrep_fire_rollbacker(thd);
 		break;
 	}
 	default:
@@ -19838,6 +19814,7 @@ wsrep_innobase_kill_one_trx(
 		wsrep_thd_UNLOCK(thd);
 		break;
 	}
+	wsrep_thd_UNLOCK(thd);
 
 	DBUG_RETURN(0);
 }

@@ -48,7 +48,6 @@ rlimit=""
 # Initially
 stagemsg="${WSREP_SST_OPT_ROLE}"
 cpat=""
-speciald=1
 ib_home_dir=""
 ib_log_dir=""
 ib_undo_dir=""
@@ -72,6 +71,11 @@ xtmpdir=""
 
 scomp=""
 sdecomp=""
+ssl_dhparams=""
+
+ssl_cert=""
+ssl_ca=""
+ssl_key=""
 
 # Required for backup locks
 # For backup locks it is 1 sent by joiner
@@ -151,6 +155,10 @@ get_keys()
     if [[ -z $ekey ]];then
         ecmd="xbcrypt --encrypt-algo=$ealgo --encrypt-key-file=$ekeyfile"
     else
+        wsrep_log_warning "Using the 'encrypt-key' option causes the encryption key"
+        wsrep_log_warning "to be set via the command-line and is considered insecure."
+        wsrep_log_warning "It is recommended to use the 'encrypt-key-file' option instead."
+
         ecmd="xbcrypt --encrypt-algo=$ealgo --encrypt-key=$ekey"
     fi
 
@@ -159,6 +167,86 @@ get_keys()
     fi
 
     stagemsg+="-XB-Encrypted"
+}
+
+#
+# If the ssl_dhparams variable is already set, uses that as a source
+# of dh parameters for OpenSSL. Otherwise, looks for dhparams.pem in the
+# datadir, and creates it there if it can't find the file.
+# No input parameters
+#
+check_for_dhparams()
+{
+    if [[ -z "$ssl_dhparams" ]]; then
+        if ! [[ -r "$DATA/dhparams.pem" ]]; then
+            wsrep_check_programs openssl
+            wsrep_log_info "Could not find dhparams file, creating $DATA/dhparams.pem"
+
+            if ! openssl dhparam -out "$DATA/dhparams.pem" 2048 >/dev/null 2>&1
+            then
+                wsrep_log_error "******** FATAL ERROR ********************************* "
+                wsrep_log_error "* Could not create the dhparams.pem file with OpenSSL. "
+                wsrep_log_error "****************************************************** "
+                exit 22
+            fi
+        fi
+        ssl_dhparams="$DATA/dhparams.pem"
+    fi
+}
+
+#
+# verifies that the certificate matches the private key
+# doing this will save us having to wait for a timeout that would
+# otherwise occur.
+#
+# 1st param: path to the cert
+# 2nd param: path to the private key
+#
+verify_cert_matches_key()
+{
+    local cert_path=$1
+    local key_path=$2
+
+    wsrep_check_programs openssl diff
+
+    # generate the public key from the cert and the key
+    # they should match (otherwise we can't create an SSL connection)
+    if ! diff <(openssl x509 -in "$cert_path" -pubkey -noout) <(openssl rsa -in "$key_path" -pubout 2>/dev/null) >/dev/null 2>&1
+    then
+        wsrep_log_error "******** FATAL ERROR ************************* "
+        wsrep_log_error "* The certifcate and private key do not match. "
+        wsrep_log_error "* Please check your certificate and key files. "
+        wsrep_log_error "********************************************** "
+        exit 22
+    fi
+}
+
+# Checks to see if the file exists
+# If the file does not exist (or cannot be read), issues an error
+# and exits
+#
+# 1st param: file name to be checked (for read access)
+# 2nd param: 1st error message (header)
+# 3rd param: 2nd error message (footer, optional)
+#
+verify_file_exists()
+{
+    local file_path=$1
+    local error_message1=$2
+    local error_message2=$3
+
+    if ! [[ -r "$file_path" ]]; then
+        wsrep_log_error "******** FATAL ERROR ************************* "
+        wsrep_log_error "* $error_message1 "
+        wsrep_log_error "* Could not find/access : $file_path "
+
+        if ! [[ -z "$error_message2" ]]; then
+            wsrep_log_error "* $error_message2 "
+        fi
+
+        wsrep_log_error "********************************************** "
+        exit 22
+    fi
 }
 
 get_transfer()
@@ -309,15 +397,15 @@ read_cnf()
 {
     sfmt=$(parse_cnf sst streamfmt "xbstream")
     tfmt=$(parse_cnf sst transferfmt "socat")
-    tcert=$(parse_cnf sst tca "")
-    tpem=$(parse_cnf sst tcert "")
+    tca=$(parse_cnf sst tca "")
+    tcert=$(parse_cnf sst tcert "")
     tkey=$(parse_cnf sst tkey "")
     encrypt=$(parse_cnf sst encrypt 0)
     sockopt=$(parse_cnf sst sockopt "")
     progress=$(parse_cnf sst progress "")
     rebuild=$(parse_cnf sst rebuild 0)
     ttime=$(parse_cnf sst time 0)
-    cpat=$(parse_cnf sst cpat '.*galera\.cache$\|.*sst_in_progress$\|.*\.sst$\|.*gvwstate\.dat$\|.*grastate\.dat$\|.*\.err$\|.*\.log$\|.*RPM_UPGRADE_MARKER$\|.*RPM_UPGRADE_HISTORY$')
+    cpat=$(parse_cnf sst cpat '.*\.pem$\|.*init\.ok$\|.*galera\.cache$\|.*sst_in_progress$\|.*\.sst$\|.*gvwstate\.dat$\|.*grastate\.dat$\|.*\.err$\|.*\.log$\|.*RPM_UPGRADE_MARKER$\|.*RPM_UPGRADE_HISTORY$')
     ealgo=$(parse_cnf xtrabackup encrypt "")
     ekey=$(parse_cnf xtrabackup encrypt-key "")
     ekeyfile=$(parse_cnf xtrabackup encrypt-key-file "")
@@ -331,9 +419,23 @@ read_cnf()
         ekey=$(parse_cnf sst encrypt-key "")
         ekeyfile=$(parse_cnf sst encrypt-key-file "")
     fi
+
+    # Pull the parameters needed for encrypt=4
+    ssl_ca=$(parse_cnf sst ssl-ca "")
+    if [[ -z "$ssl_ca" ]]; then
+        ssl_ca=$(parse_cnf mysqld ssl-ca "")
+    fi
+    ssl_cert=$(parse_cnf sst ssl-cert "")
+    if [[ -z "$ssl_cert" ]]; then
+        ssl_cert=$(parse_cnf mysqld ssl-cert "")
+    fi
+    ssl_key=$(parse_cnf sst ssl-key "")
+    if [[ -z "$ssl_key" ]]; then
+        ssl_key=$(parse_cnf mysqld ssl-key "")
+    fi
+
     rlimit=$(parse_cnf sst rlimit "")
     uextra=$(parse_cnf sst use-extra 0)
-    speciald=$(parse_cnf sst sst-special-dirs 1)
     iopts=$(parse_cnf sst inno-backup-opts "")
     iapts=$(parse_cnf sst inno-apply-opts "")
     impts=$(parse_cnf sst inno-move-opts "")
@@ -622,10 +724,63 @@ send_donor()
 
 }
 
+# Returns the version string in a standardized format
+# Input "1.2.3" => echoes "010203"
+# Wrongly formatted values => echoes "000000"
+normalize_version()
+{
+    local major=0
+    local minor=0
+    local patch=0
+
+    # Only parses purely numeric version numbers, 1.2.3 
+    # Everything after the first three values are ignored
+    if [[ $1 =~ ^([0-9]+)\.([0-9]+)\.?([0-9]*)([\.0-9])*$ ]]; then
+        major=${BASH_REMATCH[1]}
+        minor=${BASH_REMATCH[2]}
+        patch=${BASH_REMATCH[3]}
+    fi
+
+    printf %02d%02d%02d $major $minor $patch
+}
+
+# Compares two version strings
+# The first parameter is the version to be checked
+# The second parameter is the minimum version required
+# Returns 1 (failure) if $1 >= $2, 0 (success) otherwise
+check_for_version()
+{
+    local local_version_str="$( normalize_version $1 )"
+    local required_version_str="$( normalize_version $2 )"
+
+    if [[ "$local_version_str" < "$required_version_str" ]]; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+
 if [[ ! -x `which $INNOBACKUPEX_BIN` ]];then 
     wsrep_log_error "innobackupex not in path: $PATH"
     exit 2
 fi
+
+# check the version, we require XB-2.4 to ensure that we can pass the
+# datadir via the command-line option
+XB_REQUIRED_VERSION="2.3.5"
+
+XB_VERSION=`$INNOBACKUPEX_BIN --version 2>&1 | grep -oe '[0-9]\.[0-9][\.0-9]*' | head -n1`
+if [[ -z $XB_VERSION ]]; then
+    wsrep_log_error "FATAL: Cannot determine the $INNOBACKUPEX_BIN version. Needs xtrabackup-$XB_REQUIRED_VERSION or higher to perform SST"
+    exit 2
+fi
+
+if ! check_for_version $XB_VERSION $XB_REQUIRED_VERSION; then
+    wsrep_log_error "FATAL: The $INNOBACKUPEX_BIN version is $XB_VERSION. Needs xtrabackup-$XB_REQUIRED_VERSION or higher to perform SST"
+    exit 2
+fi
+
 
 rm -f "${MAGIC_FILE}"
 
@@ -718,15 +873,6 @@ then
         fi
 
         get_keys
-        if [[ $encrypt -eq 1 ]];then
-            if [[ -n $ekey ]];then
-                INNOEXTRA+=" --encrypt=$ealgo --encrypt-key=$ekey "
-            else 
-                INNOEXTRA+=" --encrypt=$ealgo --encrypt-key-file=$ekeyfile "
-            fi
-        fi
-
-
         check_extra
 
         wsrep_log_info "Streaming GTID file before SST"
@@ -739,17 +885,17 @@ then
 
         if [[ $encrypt -eq 1 ]];then
             if [[ -n $scomp ]];then 
-                tcmd=" $ecmd | $scomp | $tcmd "
+                tcmd=" \$ecmd | $scomp | $tcmd "
             else 
-                tcmd=" $ecmd | $tcmd "
+                tcmd=" \$ecmd | $tcmd "
             fi
         elif [[ -n $scomp ]];then 
             tcmd=" $scomp | $tcmd "
         fi
 
-
         send_donor $DATA "${stagemsg}-gtid"
 
+        # Restore the transport commmand to its original state
         tcmd="$ttcmd"
         if [[ -n $progress ]];then 
             get_footprint
@@ -764,8 +910,14 @@ then
 
         wsrep_log_info "Streaming the backup to joiner at ${REMOTEIP} ${SST_PORT:-4444}"
 
-        if [[ -n $scomp ]];then 
+        # Add compression to the head of the stream (if specified)
+        if [[ -n $scomp ]]; then
             tcmd="$scomp | $tcmd"
+        fi
+
+        # Add encryption to the head of the stream (if specified)
+        if [[ $encrypt -eq 1 ]]; then
+            tcmd=" \$ecmd | $tcmd "
         fi
 
         set +e
@@ -797,9 +949,9 @@ then
         get_keys
         if [[ $encrypt -eq 1 ]];then
             if [[ -n $scomp ]];then 
-                tcmd=" $ecmd | $scomp | $tcmd "
+                tcmd=" \$ecmd | $scomp | $tcmd "
             else
-                tcmd=" $ecmd | $tcmd "
+                tcmd=" \$ecmd | $tcmd "
             fi
         elif [[ -n $scomp ]];then 
             tcmd=" $scomp | $tcmd "
@@ -824,7 +976,6 @@ then
 
     stagemsg="Joiner-Recv"
 
-
     sencrypted=1
     nthreads=1
 
@@ -835,14 +986,7 @@ then
     # May need xtrabackup_checkpoints later on
     rm -f ${DATA}/xtrabackup_binary ${DATA}/xtrabackup_galera_info  ${DATA}/xtrabackup_logfile
 
-    ADDR=${WSREP_SST_OPT_ADDR}
-    if [ -z "${SST_PORT}" ]
-    then
-        SST_PORT=4444
-        ADDR="$(echo ${WSREP_SST_OPT_ADDR} | awk -F ':' '{ print $1 }'):${SST_PORT}"
-    fi
-
-    wait_for_listen ${SST_PORT} ${ADDR} ${MODULE} &
+    wait_for_listen ${WSREP_SST_OPT_HOST} ${WSREP_SST_OPT_PORT:-4444} ${MODULE} &
 
     trap sig_joiner_cleanup HUP PIPE INT TERM
     trap cleanup_joiner EXIT
@@ -855,9 +999,9 @@ then
     get_keys
     if [[ $encrypt -eq 1 && $sencrypted -eq 1 ]];then
         if [[ -n $sdecomp ]];then 
-            strmcmd=" $sdecomp | $ecmd | $strmcmd"
+            strmcmd=" $sdecomp | \$ecmd | $strmcmd"
         else 
-            strmcmd=" $ecmd | $strmcmd"
+            strmcmd=" \$ecmd | $strmcmd"
         fi
     elif [[ -n $sdecomp ]];then 
             strmcmd=" $sdecomp | $strmcmd"

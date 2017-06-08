@@ -144,11 +144,12 @@ enum enum_wsrep_OSU_method {
 
 enum enum_wsrep_sync_wait {
     WSREP_SYNC_WAIT_NONE = 0x0,
-    // show, select, begin
+    // select, begin
     WSREP_SYNC_WAIT_BEFORE_READ = 0x1,
     WSREP_SYNC_WAIT_BEFORE_UPDATE_DELETE = 0x2,
     WSREP_SYNC_WAIT_BEFORE_INSERT_REPLACE = 0x4,
-    WSREP_SYNC_WAIT_MAX = 0x7
+    WSREP_SYNC_WAIT_BEFORE_SHOW = 0x8,
+    WSREP_SYNC_WAIT_MAX = 0xF
 };
 
 enum enum_wsrep_ignore_apply_error {
@@ -403,20 +404,12 @@ int  wsrep_hire_brute_force_killer(THD *thd, uint64_t trx_id);
 
 //extern "C" bool wsrep_consistency_check(void *thd_ptr);
 
-/* this is visible for client build so that innodb plugin gets this */
-typedef struct wsrep_aborting_thd {
-  struct wsrep_aborting_thd *next;
-  THD *aborting_thd;
-} *wsrep_aborting_thd_t;
-
 extern mysql_mutex_t LOCK_wsrep_ready;
 extern mysql_cond_t  COND_wsrep_ready;
 extern mysql_mutex_t LOCK_wsrep_sst;
 extern mysql_cond_t  COND_wsrep_sst;
 extern mysql_mutex_t LOCK_wsrep_sst_init;
 extern mysql_cond_t  COND_wsrep_sst_init;
-extern mysql_mutex_t LOCK_wsrep_rollback;
-extern mysql_cond_t  COND_wsrep_rollback;
 extern int wsrep_replaying;
 extern mysql_mutex_t LOCK_wsrep_replaying;
 extern mysql_cond_t  COND_wsrep_replaying;
@@ -426,7 +419,6 @@ extern mysql_mutex_t LOCK_wsrep_SR_pool;
 extern mysql_mutex_t LOCK_wsrep_SR_store;
 extern mysql_mutex_t LOCK_wsrep_thd_pool;
 extern mysql_mutex_t LOCK_wsrep_config_state;
-extern wsrep_aborting_thd_t wsrep_aborting_thd;
 extern my_bool       wsrep_emulate_bin_log;
 extern int           wsrep_to_isolation;
 #ifdef GTID_SUPPORT
@@ -447,8 +439,6 @@ extern PSI_mutex_key key_LOCK_wsrep_sst_init;
 extern PSI_cond_key  key_COND_wsrep_sst_init;
 extern PSI_mutex_key key_LOCK_wsrep_sst_thread;
 extern PSI_cond_key  key_COND_wsrep_sst_thread;
-extern PSI_mutex_key key_LOCK_wsrep_rollback;
-extern PSI_cond_key  key_COND_wsrep_rollback;
 extern PSI_mutex_key key_LOCK_wsrep_replaying;
 extern PSI_cond_key  key_COND_wsrep_replaying;
 extern PSI_mutex_key key_LOCK_wsrep_slave_threads;

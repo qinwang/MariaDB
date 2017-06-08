@@ -421,6 +421,7 @@ static int wsrep_apply_trx(THD*                    orig_thd,
   THD* thd= orig_thd;
   DBUG_ENTER("wsrep_apply_trx");
 
+  DBUG_ASSERT(thd->wsrep_apply_toi == false);
   DBUG_ASSERT(!(flags & WSREP_FLAG_ROLLBACK));
   DBUG_ASSERT(!(flags & WSREP_FLAG_ISOLATION));
 
@@ -922,7 +923,7 @@ wsrep_cb_status_t wsrep_commit_cb(void*         const     ctx,
     mysql_mutex_unlock(&LOCK_wsrep_slave_threads);
   }
 
-  if (*exit == false && thd->wsrep_applier)
+  if (thd->wsrep_applier)
   {
     /* From trans_begin() */
     thd->variables.option_bits|= OPTION_BEGIN;

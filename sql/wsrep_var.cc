@@ -27,6 +27,8 @@
 #include <cstdlib>
 
 
+static long wsrep_prev_slave_threads = wsrep_slave_threads;
+
 int wsrep_init_vars()
 {
   wsrep_provider        = my_strdup(WSREP_NONE, MYF(MY_WME));
@@ -516,18 +518,15 @@ void wsrep_node_address_init (const char* value)
   wsrep_node_address = (value) ? my_strdup(value, MYF(0)) : NULL;
 }
 
-bool wsrep_slave_threads_check (sys_var *self, THD* thd, set_var* var)
+static void wsrep_slave_count_change_update ()
 {
-  mysql_mutex_lock(&LOCK_wsrep_slave_threads);
-  wsrep_slave_count_change += (var->save_result.ulonglong_value -
-                               wsrep_slave_threads);
-  mysql_mutex_unlock(&LOCK_wsrep_slave_threads);
-
-  return 0;
+  wsrep_slave_count_change += (wsrep_slave_threads - wsrep_prev_slave_threads);
+  wsrep_prev_slave_threads = wsrep_slave_threads;
 }
 
 bool wsrep_slave_threads_update (sys_var *self, THD* thd, enum_var_type type)
 {
+  wsrep_slave_count_change_update();
   if (wsrep_slave_count_change > 0)
   {
     wsrep_create_appliers(wsrep_slave_count_change);

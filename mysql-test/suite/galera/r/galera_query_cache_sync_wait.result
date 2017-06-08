@@ -19,7 +19,6 @@ Warnings:
 Warning	1287	'@@debug' is deprecated and will be removed in a future release. Please use '@@debug_dbug' instead
 SET DEBUG_SYNC = "now SIGNAL signal.wsrep_apply_cb";
 FLUSH QUERY CACHE;
-SET SESSION wsrep_sync_wait = 7;
 SET GLOBAL DEBUG = "d,sync.wsrep_apply_cb";
 Warnings:
 Warning	1287	'@@debug' is deprecated and will be removed in a future release. Please use '@@debug_dbug' instead
