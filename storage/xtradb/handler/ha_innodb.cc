@@ -10983,7 +10983,8 @@ wsrep_append_foreign_key(
 
 	wsrep_buf_t wkey_part[3];
         wsrep_key_t wkey = {wkey_part, 3};
-	if (!wsrep_prepare_key(
+	if (!wsrep_prepare_key_for_innodb(
+		thd,
 		(const uchar*)cache_key,
 		cache_key_len +  1,
 		(const uchar*)key, len+1,
@@ -11039,7 +11040,8 @@ wsrep_append_key(
 #endif
 	wsrep_buf_t wkey_part[3];
         wsrep_key_t wkey = {wkey_part, 3};
-	if (!wsrep_prepare_key(
+	if (!wsrep_prepare_key_for_innodb(
+			thd,
 			(const uchar*)table_share->table_cache_key.str,
 			table_share->table_cache_key.length,
 			(const uchar*)key, key_len,
@@ -19652,8 +19654,14 @@ wsrep_innobase_kill_one_trx(
 		DBUG_RETURN(1);
 	}
 
+	if (wsrep_thd_trx_id(thd) == WSREP_UNDEFINED_TRX_ID) {
+		wsrep_ws_handle_for_trx(wsrep_thd_ws_handle(thd),
+			wsrep_thd_next_trx_id(thd));
+	}
+
 	WSREP_LOG_CONFLICT(bf_thd, thd, TRUE);
 
+	wsrep_thd_LOCK(thd);
 	WSREP_DEBUG("BF kill (%lu, seqno: %lld), victim: (%lu) trx: "
 		    TRX_ID_FMT,
  		    signal, (long long)bf_seqno,
@@ -19663,7 +19671,6 @@ wsrep_innobase_kill_one_trx(
 	WSREP_DEBUG("Aborting query: %s",
 		  (thd && wsrep_thd_query(thd)) ? wsrep_thd_query(thd) : "void");
 
-	wsrep_thd_LOCK(thd);
         DBUG_EXECUTE_IF("sync.wsrep_after_BF_victim_lock",
                  {
                    const char act[]=
@@ -19826,9 +19833,16 @@ wsrep_abort_transaction(handlerton* hton, THD *bf_thd, THD *victim_thd,
 	DBUG_ENTER("wsrep_innobase_abort_thd");
 	trx_t* victim_trx = thd_to_trx(victim_thd);
 	trx_t* bf_trx     = (bf_thd) ? thd_to_trx(bf_thd) : NULL;
-	WSREP_DEBUG("abort transaction: BF: %s victim: %s",
-		    wsrep_thd_query(bf_thd),
-		    wsrep_thd_query(victim_thd));
+
+	if (wsrep_debug)
+	{
+		wsrep_thd_LOCK(victim_thd);
+		WSREP_DEBUG("abort transaction: BF: %s victim: %s conf: %d",
+			wsrep_thd_query(bf_thd),
+			wsrep_thd_query(victim_thd),
+			wsrep_thd_conflict_state(victim_thd));
+		wsrep_thd_UNLOCK(victim_thd);
+	}
 
 	if (victim_trx) {
 		lock_mutex_enter();
