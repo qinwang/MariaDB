@@ -19840,7 +19840,7 @@ wsrep_abort_transaction(handlerton* hton, THD *bf_thd, THD *victim_thd,
 		WSREP_DEBUG("abort transaction: BF: %s victim: %s conf: %d",
 			wsrep_thd_query(bf_thd),
 			wsrep_thd_query(victim_thd),
-			wsrep_thd_conflict_state(victim_thd));
+			wsrep_thd_get_conflict_state(victim_thd));
 		wsrep_thd_UNLOCK(victim_thd);
 	}
 
