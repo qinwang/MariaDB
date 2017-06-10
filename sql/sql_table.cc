@@ -3432,8 +3432,17 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
     */
     if (sql_field->stored_in_db())
       record_offset+= sql_field->pack_length;
+    if (sql_field->field_visibility == USER_DEFINED_HIDDEN &&
+        sql_field->flags & NOT_NULL_FLAG &&
+        sql_field->flags & NO_DEFAULT_VALUE_FLAG)
+    {
+      my_error(ER_HIDDEN_NOT_NULL_WITHOUT_DEFAULT, MYF(0), sql_field->field_name);
+      DBUG_RETURN(TRUE);
+    }
   }
-  /* Update virtual fields' offset*/
+  /* Update virtual fields' offset and give error if
+     All fields are hidden */
+  bool is_all_hidden= true;
   it.rewind();
   while ((sql_field=it++))
   {
@@ -3442,6 +3451,13 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
       sql_field->offset= record_offset;
       record_offset+= sql_field->pack_length;
     }
+    if (sql_field->field_visibility == NOT_HIDDEN)
+      is_all_hidden= false;
+  }
+  if (is_all_hidden)
+  { //STODO correct add error
+    my_error(ER_TABLE_MUST_HAVE_COLUMNS, MYF(0));
+    DBUG_RETURN(TRUE);
   }
   if (auto_increment > 1)
   {
@@ -7473,6 +7489,11 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
   */
   for (f_ptr=table->field ; (field= *f_ptr) ; f_ptr++)
   {
+    if (field->field_visibility == COMPLETELY_HIDDEN)
+    {
+      alter_info->flags |= Alter_info::ALTER_ADD_CHECK_CONSTRAINT;
+      continue;
+    }
     Alter_drop *drop;
     if (field->type() == MYSQL_TYPE_VARCHAR)
       create_info->varchar= TRUE;

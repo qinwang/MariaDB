@@ -1596,7 +1596,7 @@ Field::Field(uchar *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,
   unireg_check(unireg_check_arg), field_length(length_arg),
   null_bit(null_bit_arg), is_created_from_null_item(FALSE),
   read_stats(NULL), collected_stats(0), vcol_info(0), check_constraint(0),
-  default_value(0)
+  default_value(0),field_visibility(NOT_HIDDEN)
 {
   flags=null_ptr ? 0: NOT_NULL_FLAG;
   comment.str= (char*) "";
@@ -10399,6 +10399,7 @@ Column_definition::Column_definition(THD *thd, Field *old_field,
   check_constraint= orig_field ? orig_field->check_constraint : 0;
   option_list= old_field->option_list;
   pack_flag= 0;
+  field_visibility= old_field->field_visibility;
 
   switch (real_field_type()) {
   case MYSQL_TYPE_TINY_BLOB:

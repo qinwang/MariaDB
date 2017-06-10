@@ -335,6 +335,16 @@ enum enum_vcol_update_mode
   VCOL_UPDATE_FOR_REPLACE
 };
 
+/* Field visibility enums */
+
+enum  field_visible_type{
+	NOT_HIDDEN=0,
+	USER_DEFINED_HIDDEN,
+	// pseudo-columns (like ROWID). Can be queried explicitly in SELECT,
+	//otherwise hidden from anything
+	PSEUDO_COLUMN_HIDDEN,
+	COMPLETELY_HIDDEN
+};
 
 /**
   Category of table found in the table share.
@@ -1328,6 +1338,7 @@ public:
   void mark_columns_used_by_check_constraints(void);
   void mark_check_constraint_columns_for_read(void);
   int verify_constraints(bool ignore_failure);
+  uint total_visible_fields();
   inline void column_bitmaps_set(MY_BITMAP *read_set_arg)
   {
     read_set= read_set_arg;

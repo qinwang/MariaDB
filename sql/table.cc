@@ -43,6 +43,7 @@
 #include "rpl_filter.h"
 #include "sql_cte.h"
 #include "ha_sequence.h"
+#include "sql_show.h"
 
 /* For MySQL 5.7 virtual fields */
 #define MYSQL57_GENERATED_FIELD 128
@@ -1173,13 +1174,15 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
   uint db_create_options, keys, key_parts, n_length;
   uint com_length, null_bit_pos, mysql57_vcol_null_bit_pos, bitmap_count;
   uint i;
+  uint field_additional_property_length= 0;
   bool use_hash, mysql57_null_bits= 0;
   char *keynames, *names, *comment_pos;
   const uchar *forminfo, *extra2;
   const uchar *frm_image_end = frm_image + frm_length;
   uchar *record, *null_flags, *null_pos, *mysql57_vcol_null_pos= 0;
   const uchar *disk_buff, *strpos;
-  ulong pos, record_offset; 
+  const uchar *field_properties= NULL;
+  ulong pos, record_offset;
   ulong rec_buff_length;
   handler *handler_file= 0;
   KEY	*keyinfo;
@@ -1290,6 +1293,10 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
           gis_options_len= length;
         }
 #endif /*HAVE_SPATIAL*/
+        break;
+      case EXTRA2_FIELD_FLAGS:
+         field_properties = extra2;
+         field_additional_property_length= length;
         break;
       default:
         /* abort frm parsing if it's an unknown but important extra2 value */
@@ -1607,7 +1614,8 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
   memcpy(record, frm_image + record_offset, share->reclength);
 
   disk_buff= frm_image + pos + FRM_FORMINFO_SIZE;
-
+  if (field_properties && field_additional_property_length != share->fields)
+    goto err;
   share->fields= uint2korr(forminfo+258);
   pos= uint2korr(forminfo+260);   /* Length of all screens */
   n_length= uint2korr(forminfo+268);
@@ -1988,6 +1996,13 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
     reg_field->field_index= i;
     reg_field->comment=comment;
     reg_field->vcol_info= vcol_info;
+    if(field_properties!=NULL)
+    {
+      uint temp= *field_properties++;
+      reg_field->field_visibility= static_cast<field_visible_type> (temp & 3);
+    }
+    if (reg_field->field_visibility == USER_DEFINED_HIDDEN)
+      status_var_increment(thd->status_var.feature_hidden_columns);
     if (field_type == MYSQL_TYPE_BIT && !f_bit_as_char(pack_flag))
     {
       null_bits_are_used= 1;
@@ -5081,6 +5096,15 @@ int TABLE::verify_constraints(bool ignore_failure)
   return VIEW_CHECK_OK;
 }
 
+uint TABLE::total_visible_fields()
+{
+  uint fields= 0;
+  Field **f, *field;
+  for (f= this->field; (f) && (field= *f); f++)
+    if (field->field_visibility == NOT_HIDDEN)
+      fields++;
+  return fields;
+}
 
 /*
   Find table in underlying tables by mask and check that only this

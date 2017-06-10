@@ -5474,6 +5474,8 @@ find_field_in_table(THD *thd, TABLE *table, const char *name, uint length,
 
   if (field_ptr && *field_ptr)
   {
+    if ((*field_ptr)->field_visibility == COMPLETELY_HIDDEN)
+       DBUG_RETURN((Field*) 0);
     *cached_field_index_ptr= field_ptr - table->field;
     field= *field_ptr;
   }
@@ -7545,6 +7547,18 @@ insert_fields(THD *thd, Name_resolution_context *context, const char *db_name,
 
     for (; !field_iterator.end_of_fields(); field_iterator.next())
     {
+      /* Field can be null here STODO->verify , shouldnt field be null for select * from table 
+         test case
+         create table t1 (empnum smallint, grp int);
+         create table t2 (empnum int, name char(5));
+         insert into t1 values(1,1);
+         insert into t2 values(1,'bob');
+         create view v1 as select * from t2 inner join t1 using (empnum);
+         select * from v1;
+      */
+      if ((field= field_iterator.field()) &&
+          field->field_visibility != NOT_HIDDEN)
+        continue;
       Item *item;
 
       if (!(item= field_iterator.create_item(thd)))
