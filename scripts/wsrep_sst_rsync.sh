@@ -362,7 +362,7 @@ EOF
         sleep 0.2
     done
 
-    echo "ready $ADDR/$MODULE"
+    echo "ready $WSREP_SST_OPT_HOST:$RSYNC_PORT/$MODULE"
 
     # wait for SST to complete by monitoring magic file
     while [ ! -r "$MAGIC_FILE" ] && check_pid "$RSYNC_PID" && \

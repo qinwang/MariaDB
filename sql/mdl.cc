@@ -1071,7 +1071,7 @@ MDL_wait::timed_wait(MDL_context_owner *owner, struct timespec *abs_timeout,
   thd_wait_begin(NULL, THD_WAIT_META_DATA_LOCK);
   while (!m_wait_status && !owner->is_killed() &&
          wait_result != ETIMEDOUT && wait_result != ETIME)
-  {
+    {
 #ifdef WITH_WSREP
     // Allow tests to block the applier thread using the DBUG facilities
     DBUG_EXECUTE_IF("sync.wsrep_before_mdl_wait",
@@ -1082,7 +1082,7 @@ MDL_wait::timed_wait(MDL_context_owner *owner, struct timespec *abs_timeout,
                    DBUG_ASSERT(!debug_sync_set_action((owner->get_thd()),
                                                       STRING_WITH_LEN(act)));
                  };);
-    if (wsrep_thd_is_BF(owner->get_thd(), false))
+    if (wsrep_thd_is_BF((void*)owner->get_thd(), false))
     {
       wait_result= mysql_cond_wait(&m_COND_wait_status, &m_LOCK_wait_status);
     }
@@ -1156,19 +1156,19 @@ void MDL_lock::Ticket_list::add_ticket(MDL_ticket *ticket)
   DBUG_ASSERT(ticket->get_lock());
 #ifdef WITH_WSREP
   if ((this == &(ticket->get_lock()->m_waiting)) &&
-      wsrep_thd_is_BF(ticket->get_ctx()->get_thd(), false))
+      wsrep_thd_is_BF((void*)ticket->get_ctx()->get_thd(), false))
   {
     Ticket_iterator itw(ticket->get_lock()->m_waiting);
     Ticket_iterator itg(ticket->get_lock()->m_granted);
 
     DBUG_ASSERT(WSREP_ON);
-    MDL_ticket *waiting, *granted;
+    MDL_ticket *waiting;
     MDL_ticket *prev=NULL;
     bool added= false;
 
     while ((waiting= itw++) && !added)
     {
-      if (!wsrep_thd_is_BF(waiting->get_ctx()->get_thd(), true))
+      if (!wsrep_thd_is_BF((void*)waiting->get_ctx()->get_thd(), true))
       {
         WSREP_DEBUG("MDL add_ticket inserted before: %lu %s",
                     thd_get_thread_id(waiting->get_ctx()->get_thd()),
@@ -1183,18 +1183,6 @@ void MDL_lock::Ticket_list::add_ticket(MDL_ticket *ticket)
     /* Otherwise, insert the ticket at the back of the waiting list. */
     if (!added) m_list.push_back(ticket);
 
-    while ((granted= itg++))
-    {
-      if (granted->get_ctx() != ticket->get_ctx() &&
-          granted->is_incompatible_when_granted(ticket->get_type()))
-      {
-        if (!wsrep_grant_mdl_exception(ticket->get_ctx(), granted,
-                                       &ticket->get_lock()->key))
-        {
-          WSREP_DEBUG("MDL victim killed at add_ticket");
-        }
-      }
-    }
   }
   else
 #endif /* WITH_WSREP */
@@ -1581,7 +1569,7 @@ MDL_lock::can_grant_lock(enum_mdl_type type_arg,
             ticket->is_incompatible_when_granted(type_arg))
         {
 #ifdef WITH_WSREP
-          if (wsrep_thd_is_BF(requestor_ctx->get_thd(),false) &&
+          if (wsrep_thd_is_BF((void*)requestor_ctx->get_thd(),false) &&
               key.mdl_namespace() == MDL_key::GLOBAL)
           {
             WSREP_DEBUG("global lock granted for BF: %lu %s",
@@ -1615,7 +1603,7 @@ MDL_lock::can_grant_lock(enum_mdl_type type_arg,
   }
   else
   {
-    if (wsrep_thd_is_BF(requestor_ctx->get_thd(), false) &&
+    if (wsrep_thd_is_BF((void*)requestor_ctx->get_thd(), false) &&
 	key.mdl_namespace() == MDL_key::GLOBAL)
     {
       WSREP_DEBUG("global lock granted for BF (waiting queue): %lu %s",

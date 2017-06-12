@@ -533,7 +533,6 @@ bool Sql_cmd_alter_table_exchange_partition::
         wsrep_to_isolation_begin(thd, table_list->db, table_list->table_name,
                                  NULL))
     {
-      WSREP_WARN("ALTER TABLE EXCHANGE PARTITION isolation failure");
       DBUG_RETURN(TRUE);
     }
   }

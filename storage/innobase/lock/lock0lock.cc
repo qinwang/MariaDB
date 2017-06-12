@@ -985,8 +985,9 @@ lock_rec_has_to_wait(
 					   << wsrep_thd_query(lock2->trx->mysql_thd);
 			}
 
-			if (wsrep_trx_order_before(trx->mysql_thd,
-						   lock2->trx->mysql_thd) &&
+                        //			if (wsrep_trx_order_before(trx->mysql_thd,
+                        //						   lock2->trx->mysql_thd) &&
+			if (
 			    (type_mode & LOCK_MODE_MASK) == LOCK_X        &&
 			    (lock2->type_mode & LOCK_MODE_MASK) == LOCK_X) {
 				if (for_locking || wsrep_debug) {
@@ -1370,8 +1371,10 @@ wsrep_kill_victim(
 	my_bool bf_other = wsrep_thd_is_BF(lock->trx->mysql_thd, TRUE);
 
 	if ((bf_this && !bf_other) ||
-		(bf_this && bf_other && wsrep_trx_order_before(
-			trx->mysql_thd, lock->trx->mysql_thd))) {
+//		(bf_this && bf_other && wsrep_trx_order_before(
+//			trx->mysql_thd, lock->trx->mysql_thd))) {
+            (bf_this)) {
+
 
 		if (lock->trx->lock.que_state == TRX_QUE_LOCK_WAIT) {
 			if (wsrep_debug) {
@@ -1394,7 +1397,7 @@ wsrep_kill_victim(
 				} else {
 					ib::info() << "*** Victim TRANSACTION:";
 				}
-                                wsrep_trx_print_locking(stderr, lock->trx, 3000);
+				wsrep_trx_print_locking(stderr, lock->trx, 3000);
 
 				ib::info() << "*** WAITING FOR THIS LOCK TO BE GRANTED:";
 
@@ -1984,9 +1987,10 @@ RecLock::create(
 
 		while (hash 						       &&
 		       wsrep_thd_is_BF(((lock_t *)hash)->trx->mysql_thd, TRUE) &&
-		       wsrep_trx_order_before(
-				((lock_t *)hash)->trx->mysql_thd,
-				trx->mysql_thd)) {
+                       //		       wsrep_trx_order_before(
+                       //				((lock_t *)hash)->trx->mysql_thd,
+                       //				trx->mysql_thd)) {
+                       true) {
 			prev = hash;
 			hash = (lock_t *)hash->hash;
 		}
@@ -8395,6 +8399,9 @@ DeadlockChecker::trx_rollback()
 	trx_t*	trx = m_wait_lock->trx;
 
 	print("*** WE ROLL BACK TRANSACTION (1)\n");
+#ifdef WITH_WSREP
+        wsrep_handle_SR_rollback(m_start->mysql_thd, trx->mysql_thd);
+#endif
 
 	trx_mutex_enter(trx);
 

@@ -1279,6 +1279,9 @@ public:
   }
 
   friend int cmp_key_rowid_part_id(void *ptr, uchar *ref1, uchar *ref2);
+#ifdef WITH_WSREP
+    virtual int wsrep_db_type() const;
+#endif /* WITH_WSREP */
 };
 
 #endif /* HA_PARTITION_INCLUDED */

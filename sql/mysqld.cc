@@ -1983,7 +1983,7 @@ static void __cdecl kill_server(int sig_ptr)
   /* Stop wsrep threads in case they are running. */
   if (wsrep_running_threads > 0)
   {
-    wsrep_stop_replication(NULL);
+    wsrep_shutdown_replication();
   }
 
   close_connections();
@@ -2095,10 +2095,14 @@ extern "C" void unireg_abort(int exit_code)
   if (wsrep)
   {
     /*
+      Signal SE init waiters to exit with error status
+     */
+    wsrep_SE_init_failed();
+    /*
       This is an abort situation, we cannot expect to gracefully close all
       wsrep threads here, we can only diconnect from service
     */
-    wsrep_close_client_connections(FALSE);
+    wsrep_close_client_connections(FALSE, NULL);
     shutdown_in_progress= 1;
     wsrep->disconnect(wsrep);
     WSREP_INFO("Service disconnected.");
@@ -5931,10 +5935,7 @@ int mysqld_main(int argc, char **argv)
         wsrep_SE_init_grab();
         wsrep_SE_init_done();
         /*! in case of SST wsrep waits for wsrep->sst_received */
-        if (wsrep_sst_continue())
-        {
-          WSREP_ERROR("Failed to signal the wsrep provider to continue.");
-        }
+        wsrep_sst_continue();
       }
       else
       {

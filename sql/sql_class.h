@@ -61,7 +61,24 @@ void set_thd_stage_info(void *thd,
 
 #include "my_apc.h"
 #include "rpl_gtid.h"
+
+#ifdef WITH_WSREP
+#include <vector>
 #include "wsrep_mysqld.h"
+#include "wsrep_binlog.h"
+struct wsrep_thd_shadow {
+  ulonglong            options;
+  uint                 server_status;
+  enum wsrep_exec_mode wsrep_exec_mode;
+  Vio                  *vio;
+  ulong                tx_isolation;
+  char                 *db;
+  size_t               db_length;
+  my_hrtime_t          user_time;
+  longlong             row_count_func;
+};
+typedef std::vector<wsrep_trx_meta_t> wsrep_fragment_set;
+#endif /* WITH_WSREP */
 
 class Reprepare_observer;
 class Relay_log_info;
@@ -672,10 +689,12 @@ typedef struct system_variables
 
   my_bool wsrep_on;
   my_bool wsrep_causal_reads;
+  uint    wsrep_sync_wait;
+  ulong   wsrep_retry_autocommit;
+  ulong   wsrep_trx_fragment_size;
+  ulong   wsrep_trx_fragment_unit;
+  ulong   wsrep_OSU_method;
   my_bool wsrep_dirty_reads;
-  uint wsrep_sync_wait;
-  ulong wsrep_retry_autocommit;
-  ulong wsrep_OSU_method;
   double long_query_time_double, max_statement_time_double;
 
   my_bool pseudo_slave_mode;
@@ -4048,6 +4067,13 @@ public:
   void set_query_id(query_id_t new_query_id)
   {
     query_id= new_query_id;
+#ifdef WITH_WSREP
+  if (wsrep_next_trx_id() == WSREP_UNDEFINED_TRX_ID)
+  {
+    set_wsrep_next_trx_id(query_id);
+    WSREP_DEBUG("assigned new next trx id: %lu", wsrep_next_trx_id());
+  }
+#endif /* WITH_WSREP */
   }
   void set_open_tables(TABLE *open_tables_arg)
   {
@@ -4307,9 +4333,214 @@ public:
   bool                      wsrep_apply_toi; /* applier processing in TOI */
   enum wsrep_exec_mode      wsrep_exec_mode;
   query_id_t                wsrep_last_query_id;
-  enum wsrep_query_state    wsrep_query_state;
-  enum wsrep_conflict_state wsrep_conflict_state;
+  XID                       wsrep_xid;
+  my_bool                   wsrep_no_gaps;
+  /*
+    Delegated rollback:
+
+    Wsrep_query_state, wsrep_conflict_state and wsrep_exec_mode define
+    together the state for rollback process. In most of the cases the
+    client thread will handle the rollback, but if the BF abort happens when
+    the client thread is in QUERY_IDLE state, the rollback process
+    is delegated to rollbacker thread. In this case rollbacker thread
+    will do the rollback on behalf of client thread and will leave
+    the states into the following
+    * wsrep_query_state = QUERY_IDLE
+    * wsrep_conflict_state = ABORTED
+    * wsrep_exec_mode = LOCAL_ROLLBACK
+   */
+
+  /*
+    Set wsrep_query_state
+
+    Asserts LOCK_wsrep_thd ownership.
+   */
+  void set_wsrep_query_state(enum wsrep_query_state state)
+  {
+    mysql_mutex_assert_owner(&LOCK_wsrep_thd);
+    /*
+      State machine:
+
+      QI - QUERY_IDLE
+      QX - QUERY_EXEC
+      QC - QUERY_COMMITTING
+      QE - QUERY_EXITING
+
+           |---> QE
+           |
+      o--> QI -> QX <-> QC
+           ^     |      |
+           |     |      |
+           --------------
+     */
+    static const bool allowed[QUERY_EXITING + 1][QUERY_EXITING + 1] =
+    {
+      /* QI     QX     QC     QE  */
+      {  false, true,  false, true  }, /* QI */
+      {  true , false, true,  false }, /* QX */
+      {  true , true , false, false }, /* QC */
+      {  false, false, false, false }  /* QE */
+    };
+    if (allowed[m_wsrep_query_state][state] == false)
+    {
+      WSREP_DEBUG("Unallowed query state change %d -> %d",
+                  m_wsrep_query_state, state);
+    }
+    DBUG_ASSERT(allowed[m_wsrep_query_state][state] == true);
+    m_wsrep_query_state= state;
+  }
+
+  /*
+    Return current wsrep_query_state
+
+    Asserts LOCK_wsrep_thd ownership
+   */
+  enum wsrep_query_state wsrep_query_state() const
+  {
+    mysql_mutex_assert_owner(&LOCK_wsrep_thd);
+    return m_wsrep_query_state;
+  }
+
+  /*
+    Return current wsrep_query_state
+
+    Does not assert LOCK_wsrep_thd ownership, useful for
+    debugging and logging where strict access is not
+    absolutely required.
+   */
+  enum wsrep_query_state wsrep_query_state_unsafe() const
+  {
+    return m_wsrep_query_state;
+  }
+
+  void set_wsrep_conflict_state(enum wsrep_conflict_state state)
+  {
+    mysql_mutex_assert_owner(&LOCK_wsrep_thd);
+    /*
+      State machine
+
+      NC - NO_CONFLICT
+      MA - MUST_ABORT
+      AB - ABORTING
+      AD - ABORTED
+      MR - MUST_REPLAY
+      RI - REPLAYING
+      RA - RETRY_AUTOCOMMIT
+      CF - CERT_FAILURE
+
+      1) BF abort
+      2) Cert failure or rollback
+      3) Pre commit returns success, so the transaction must be replayed
+      4) Pre commit return certification failure, cleanup after certification
+         failure
+      5) Post rollback phase
+      6) Is autocommit and wsrep_retry_autocommit is set
+      7) Simultaneous certification failure and BF abort
+
+                         4                      5
+          -> NC <-----------------> CF -------------------
+          |  ^^                     | 7                  |
+          |  ||     1            2  |                    |
+          | 6||-----------> MA --------> AB ------> AD <-|
+          |  |              |            ^          |
+          |  |-> RA         | 3          |          |
+          |                 |            |          |
+          |                  -> MR -> RI -          |
+          |                           |             |
+          |------------------------------------------
+
+     */
+
+    static const bool allowed[CERT_FAILURE + 1][CERT_FAILURE + 1] =
+    {
+      /* NC     MA     AB     AD     MR     RI     RA     CF */
+      {  false, true,  false, false, false, false, true, true  }, /* NC */
+      {  true,  false, true,  false, true,  false, false, false }, /* MA */
+      {  false, false, false, true,  false, false, false, false }, /* AB */
+      {  true , false, false, false, false, false, false,  false }, /* AD */
+      {  false, false, false, false, false, true,  false, false }, /* MR */
+      {  true,  false, true, false,  false, false, false, false }, /* RI */
+      {  true,  false, false, false, false, false, false, false }, /* RA */
+      {  true,  false, true,  true,  false, false, false, false }  /* CF */
+    };
+    if (allowed[m_wsrep_conflict_state][state] == false)
+    {
+      WSREP_DEBUG("Unallowed conflict state change %d -> %d",
+                  m_wsrep_conflict_state, state);
+    }
+    DBUG_ASSERT(allowed[m_wsrep_conflict_state][state] == true);
+
+    /*
+      Sanity checks agains query state and thread context
+    */
+    switch (state)
+    {
+    case MUST_ABORT:
+      break;
+    default:
+      /*
+        Only the current thread context may change the state apart from
+        NC -> MA transition.
+      */
+      DBUG_ASSERT(this == current_thd);
+      break;
+    }
+#ifndef DBUG_OFF
+    if (state == NO_CONFLICT)
+    {
+      m_wsrep_conflict_state_history.clear();
+    }
+    else
+    {
+      m_wsrep_conflict_state_history.push_back(m_wsrep_conflict_state);
+    }
+#endif /* DBUG_OFF */
+    m_wsrep_conflict_state= state;
+  }
+
+  /*
+    Return wsrep_conflict_state
+
+    Asserts LOCK_wsrep_thd ownership
+   */
+  enum wsrep_conflict_state wsrep_conflict_state() const
+  {
+    mysql_mutex_assert_owner(&LOCK_wsrep_thd);
+    return m_wsrep_conflict_state;
+  }
+
+  /*
+    Return wsrep_conflict_state
+
+    Does not assert LOCK_wsrep_thd ownership, useful mostly
+    for debugging and logging where strict access is not
+    aboslutely required.
+   */
+  enum wsrep_conflict_state wsrep_conflict_state_unsafe() const
+  {
+    return m_wsrep_conflict_state;
+  }
+
+  /*
+    Check if wsrep rollback process has started
+   */
+  bool wsrep_is_rolling_back() const
+  {
+    return (wsrep_conflict_state() == MUST_ABORT ||
+            wsrep_conflict_state() == ABORTING);
+  }
+
+
+private:
+  enum wsrep_query_state    m_wsrep_query_state;
+  enum wsrep_conflict_state m_wsrep_conflict_state;
+#ifndef DBUG_OFF
+  std::vector<enum wsrep_conflict_state> m_wsrep_conflict_state_history;
+#endif /* DBUG_OFF */
+public:
+
   mysql_mutex_t             LOCK_wsrep_thd;
+  mysql_cond_t              COND_wsrep_thd;
   wsrep_trx_meta_t          wsrep_trx_meta;
   uint32                    wsrep_rand;
   Relay_log_info            *wsrep_rli;
@@ -4321,6 +4552,7 @@ public:
   enum enum_server_command  wsrep_retry_command;
   enum wsrep_consistency_check_mode
                             wsrep_consistency_check;
+  wsrep_stats_var*          wsrep_status_vars;
   int                       wsrep_mysql_replicated;
   const char                *wsrep_TOI_pre_query; /* a query to apply before
                                                      the actual TOI query */
@@ -4338,8 +4570,67 @@ public:
     table updates from being replicated to other nodes via galera replication.
   */
   bool                      wsrep_ignore_table;
+  ulong                     wsrep_fragments_sent; // # of fragments replicated
+                                                  //   for trx
+  bool                      wsrep_SR_thd; // is applier THD for streaming
+                                          // transaction
+  wsrep_trx_id_t            wsrep_SR_rollback_replicated_for_trx;
+  wsrep_fragment_set        wsrep_SR_fragments;
+  TABLE_LIST                wsrep_SR_table;
+  uchar*                    wsrep_rbr_buf;
+  Wsrep_nbo_ctx*            wsrep_nbo_ctx; // Context for non-blocking operations
   wsrep_gtid_t              wsrep_sync_wait_gtid;
+  wsrep_gtid_t              wsrep_last_written_gtid;
   ulong                     wsrep_affected_rows;
+  bool                      wsrep_has_ignored_error;
+  bool                      wsrep_replicate_GTID;
+  bool                      wsrep_skip_wsrep_GTID;
+
+  bool wsrep_is_streaming()
+  {
+    return ((wsrep_fragments_sent > 0) &&
+            (wsrep_exec_mode == LOCAL_STATE  ||
+             wsrep_exec_mode == LOCAL_COMMIT ||
+             wsrep_exec_mode == LOCAL_ROLLBACK));
+  }
+
+  /*
+    Transaction id:
+    * m_next_wsrep_trx_id is assigned on the first query after
+      wsrep_next_trx_id() return WSREP_UNDEFINED_TRX_ID
+    * Each storage engine must assign value of wsrep_next_trx_id()
+      via wsrep_ws_handle_for_trx() when the transaction starts.
+    * Effective transaction id is returned via wsrep_trx_id()
+   */
+
+  /*
+    Return effective transaction id
+   */
+  wsrep_trx_id_t wsrep_trx_id() const
+  {
+    return wsrep_ws_handle.trx_id;
+  }
+
+  /*
+    Set next trx id
+   */
+  void set_wsrep_next_trx_id(query_id_t query_id)
+  {
+    DBUG_ASSERT(wsrep_ws_handle.trx_id == WSREP_UNDEFINED_TRX_ID);
+    m_wsrep_next_trx_id = (wsrep_trx_id_t) query_id;
+  }
+
+  /*
+    Return next trx id
+   */
+  wsrep_trx_id_t wsrep_next_trx_id() const
+  {
+    return m_wsrep_next_trx_id;
+  }
+
+private:
+  wsrep_trx_id_t m_wsrep_next_trx_id; /* cast from query_id_t */
+public:
 #endif /* WITH_WSREP */
 
   /* Handling of timeouts for commands */
@@ -5658,7 +5949,7 @@ public:
   be rolled back or that do not expect any previously metadata
   locked tables.
 */
-#define CF_IMPLICT_COMMIT_BEGIN   (1U << 6)
+#define CF_IMPLICIT_COMMIT_BEGIN   (1U << 6)
 /**
   Implicitly commit after the SQL statement.
 
@@ -5676,7 +5967,7 @@ public:
   before and after every DDL statement and any statement that
   modifies our currently non-transactional system tables.
 */
-#define CF_AUTO_COMMIT_TRANS  (CF_IMPLICT_COMMIT_BEGIN | CF_IMPLICIT_COMMIT_END)
+#define CF_AUTO_COMMIT_TRANS  (CF_IMPLICIT_COMMIT_BEGIN | CF_IMPLICIT_COMMIT_END)
 
 /**
   Diagnostic statement.
@@ -5720,6 +6011,13 @@ public:
 */
 #define CF_DISALLOW_IN_RO_TRANS   (1U << 15)
 
+#ifdef WITH_WSREP
+/**
+  DDL statement that may be subject to error filtering.
+*/
+#define CF_WSREP_MAY_IGNORE_ERRORS (1U << 24)
+#endif /* WITH_WSREP */
+ 
 /**
   Statement that need the binlog format to be unchanged.
 */

@@ -271,7 +271,8 @@ void wsrep_sst_complete (const wsrep_uuid_t* sst_uuid,
           true                        Error
 
 */
-bool wsrep_sst_received (wsrep_t*            const wsrep,
+void wsrep_sst_received (THD*                thd,
+                         wsrep_t* const      wsrep,
                          const wsrep_uuid_t&       uuid,
                          const wsrep_seqno_t       seqno,
                          const void*         const state,
@@ -284,81 +285,67 @@ bool wsrep_sst_received (wsrep_t*            const wsrep,
     OK from wsrep provider. By doing so, the values remain consistent across
     the server & wsrep provider.
   */
-  bool do_update= false;
-
-  // Get the locally stored uuid:seqno.
-  if (wsrep_get_SE_checkpoint(local_uuid, local_seqno))
-  {
-    return true;
-  }
-
-  if (memcmp(&local_uuid, &uuid, sizeof(wsrep_uuid_t)) ||
-      local_seqno < seqno)
-  {
-    do_update= true;
-  }
-  else if (local_seqno > seqno)
-  {
-    WSREP_WARN("SST position can't be set in past. Requested: %lld, Current: "
-               " %lld.", (long long)seqno, (long long)local_seqno);
     /*
-      If we are here because of SET command, simply return true (error) instead of
-      aborting.
+      TODO: Handle backwards compatibility. WSREP API v25 does not have
+      wsrep schema.
     */
-    if (implicit)
-    {
-      WSREP_WARN("Can't continue.");
-      unireg_abort(1);
+    /*
+      If thd is non-NULL, this thread is holding LOCK_global_system_variables.
+      It needs to be released temporarily since wsrep_init_schema()
+      does THD pool initialization, which will lock this lock in
+      THD allocation.
+     */
+    if (thd) mysql_mutex_unlock(&LOCK_global_system_variables);
+    wsrep_init_schema();
+    /*
+      Logical SST methods (mysqldump etc) don't update InnoDB sys header.
+      Reset the SE checkpoint before recovering view in order to avoid
+      sanity check failure.
+     */
+    if (!wsrep_before_SE()) {
+      wsrep_seqno_t se_seqno= -1;
+      wsrep_uuid_t se_uuid= WSREP_UUID_UNDEFINED;
+      wsrep_set_SE_checkpoint(se_uuid, se_seqno);
     }
-    else
-    {
-      return true;
+    wsrep_recover_view();
+    wsrep_init_SR();
+    if (thd) mysql_mutex_lock(&LOCK_global_system_variables);
+
+    /*
+      Both wsrep_init_schema_and_SR() and wsrep_recover_view() may use
+      wsrep thread pool. Restore original thd context before returning.
+    */
+    if (thd) {
+      thd->store_globals();
     }
-  }
+    else {
+      my_pthread_setspecific_ptr(THR_THD, NULL);
+    }
 
 #ifdef GTID_SUPPORT
   wsrep_init_sidno(uuid);
 #endif /* GTID_SUPPORT */
 
-  if (wsrep)
-  {
-    int const rcode(seqno < 0 ? seqno : 0);
-    wsrep_gtid_t const state_id= {uuid,
-      (rcode ? WSREP_SEQNO_UNDEFINED : seqno)};
-
-    wsrep_status_t ret= wsrep->sst_received(wsrep, &state_id, state,
-                                            state_len, rcode);
-
-    if (ret != WSREP_OK)
+    if (wsrep)
     {
-      return true;
+        int const rcode(seqno < 0 ? seqno : 0);
+        wsrep_gtid_t const state_id = {
+            uuid, (rcode ? WSREP_SEQNO_UNDEFINED : seqno)
+        };
+
+        wsrep_buf_t const st= { state, state_len };
+        wsrep->sst_received(wsrep, &state_id, &st, rcode);
     }
-  }
-
-  // Now is the good time to update the local state and checkpoint.
-  if (do_update)
-  {
-    if (wsrep_set_SE_checkpoint(uuid, seqno))
-    {
-      return true;
-    }
-
-    local_uuid= uuid;
-    local_seqno= seqno;
-  }
-
-  return false;
 }
 
 // Let applier threads to continue
-bool wsrep_sst_continue ()
+void wsrep_sst_continue ()
 {
   if (sst_needed)
   {
     WSREP_INFO("Signalling provider to continue.");
-    return wsrep_sst_received (wsrep, local_uuid, local_seqno, NULL, 0, true);
+    wsrep_sst_received (0, wsrep, local_uuid, local_seqno, NULL, 0, true);
   }
-  return false;
 }
 
 struct sst_thread_arg
@@ -719,7 +706,12 @@ static ssize_t sst_prepare_mysqldump (const char*  addr_in,
   return ret;
 }
 
-static bool SE_initialized = false;
+static enum
+{
+    WSREP_SE_UNINITIALIZED,
+    WSREP_SE_INITIALIZED,
+    WSREP_SE_INIT_ERROR
+} SE_init_status;
 
 ssize_t wsrep_sst_prepare (void** msg)
 {
@@ -733,7 +725,7 @@ ssize_t wsrep_sst_prepare (void** msg)
     if (!msg)
     {
       WSREP_ERROR("Could not allocate %zd bytes for state request", ret);
-      unireg_abort(1);
+      ret= -ENOMEM;
     }
     return ret;
   }
@@ -760,7 +752,7 @@ ssize_t wsrep_sst_prepare (void** msg)
     {
       WSREP_ERROR("Could not parse wsrep_node_address : %s",
                   wsrep_node_address);
-      unireg_abort(1);
+      return -ENXIO; /* No such device or address */
     }
     memcpy(ip_buf, addr.get_address(), addr.get_address_len());
     addr_in= ip_buf;
@@ -786,12 +778,17 @@ ssize_t wsrep_sst_prepare (void** msg)
   if (!strcmp(wsrep_sst_method, WSREP_SST_MYSQLDUMP))
   {
     addr_len= sst_prepare_mysqldump (addr_in, &addr_out);
-    if (addr_len < 0) unireg_abort(1);
+    if (addr_len < 0)
+    {
+      WSREP_ERROR("Failed to prepare for '%s' SST. Unrecoverable.",
+                   wsrep_sst_method);
+      return addr_len;
+    }
   }
   else
   {
     /*! A heuristic workaround until we learn how to stop and start engines */
-    if (SE_initialized)
+    if (SE_init_status == WSREP_SE_INITIALIZED)
     {
       // we already did SST at initializaiton, now engines are running
       // sql_print_information() is here because the message is too long
@@ -813,12 +810,12 @@ ssize_t wsrep_sst_prepare (void** msg)
     {
       WSREP_ERROR("Failed to prepare for '%s' SST. Unrecoverable.",
                    wsrep_sst_method);
-      unireg_abort(1);
+      return addr_len;
     }
   }
 
   size_t const method_len(strlen(wsrep_sst_method));
-  size_t const msg_len   (method_len + addr_len + 2 /* + auth_len + 1*/);
+  size_t msg_len   (method_len + addr_len + 2 /* + auth_len + 1*/);
 
   *msg = malloc (msg_len);
   if (NULL != *msg) {
@@ -832,7 +829,8 @@ ssize_t wsrep_sst_prepare (void** msg)
   else {
     WSREP_ERROR("Failed to allocate SST request of size %zu. Can't continue.",
                 msg_len);
-    unireg_abort(1);
+    msg_len= -ENOMEM;
+
   }
 
   if (addr_out != addr_in) /* malloc'ed */ free ((char*)addr_out);
@@ -912,15 +910,14 @@ static int sst_donate_mysqldump (const char*         addr,
 
   int ret= snprintf (cmd_str(), cmd_len,
                      "wsrep_sst_mysqldump "
-                     WSREP_SST_OPT_HOST" '%s' "
-                     WSREP_SST_OPT_PORT" '%d' "
+                     WSREP_SST_OPT_ADDR" '%s' "
                      WSREP_SST_OPT_LPORT" '%u' "
                      WSREP_SST_OPT_SOCKET" '%s' "
-                     " %s "
+                     WSREP_SST_OPT_CONF" '%s' "
                      WSREP_SST_OPT_GTID" '%s:%lld' "
                      WSREP_SST_OPT_GTID_DOMAIN_ID" '%d'"
                      "%s",
-                     host, port, mysqld_port, mysqld_unix_port,
+                     addr, mysqld_port, mysqld_unix_port,
                      wsrep_defaults_file, uuid_str,
                      (long long)seqno, wsrep_gtid_domain_id,
                      bypass ? " " WSREP_SST_OPT_BYPASS : "");
@@ -1315,18 +1312,20 @@ static int sst_donate_other (const char*   method,
   return arg.err;
 }
 
-wsrep_cb_status_t wsrep_sst_donate_cb (void* app_ctx, void* recv_ctx,
-                                       const void* msg, size_t msg_len,
-                                       const wsrep_gtid_t* current_gtid,
-                                       const char* state, size_t state_len,
-                                       bool bypass)
+wsrep_cb_status_t wsrep_sst_donate_cb (void*               const app_ctx,
+                                       void*               const recv_ctx,
+                                       const wsrep_buf_t*  const msg,
+                                       const wsrep_gtid_t* const current_gtid,
+                                       const wsrep_buf_t*  const state,
+                                       bool                const bypass)
 {
   /* This will be reset when sync callback is called.
    * Should we set wsrep_ready to FALSE here too? */
 
   wsrep_config_state->set(WSREP_MEMBER_DONOR);
+  local_status.set(WSREP_MEMBER_DONOR);
 
-  const char* method = (char*)msg;
+  const char* method = (char*)msg->ptr;
   size_t method_len  = strlen (method);
   const char* data   = method + method_len + 1;
 
@@ -1366,13 +1365,14 @@ void wsrep_SE_init_grab()
   if (mysql_mutex_lock (&LOCK_wsrep_sst_init)) abort();
 }
 
-void wsrep_SE_init_wait()
+int wsrep_SE_init_wait()
 {
-  while (SE_initialized == false)
+  while (SE_init_status == WSREP_SE_UNINITIALIZED)
   {
     mysql_cond_wait (&COND_wsrep_sst_init, &LOCK_wsrep_sst_init);
   }
   mysql_mutex_unlock (&LOCK_wsrep_sst_init);
+  return !(SE_init_status == WSREP_SE_INITIALIZED);
 }
 
 void wsrep_SE_init_done()
@@ -1383,5 +1383,15 @@ void wsrep_SE_init_done()
 
 void wsrep_SE_initialized()
 {
-  SE_initialized = true;
+  SE_init_status= WSREP_SE_INITIALIZED;
 }
+
+void wsrep_SE_init_failed()
+{
+  mysql_mutex_lock(&LOCK_wsrep_sst_init);
+  SE_init_status= WSREP_SE_INIT_ERROR;
+  mysql_cond_signal(&COND_wsrep_sst_init);
+  mysql_mutex_unlock(&LOCK_wsrep_sst_init);
+}
+  
+

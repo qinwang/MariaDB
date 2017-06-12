@@ -63,6 +63,7 @@
 #endif
 #include "wsrep_mysqld.h"
 #include "wsrep_thd.h"
+#include "wsrep_sr.h"
 
 bool
 No_such_table_error_handler::handle_condition(THD *,
@@ -866,10 +867,19 @@ void close_thread_table(THD *thd, TABLE **table_ptr)
     The metadata lock must be released after giving back
     the table to the table cache.
   */
-  DBUG_ASSERT(thd->mdl_context.is_lock_owner(MDL_key::TABLE,
+#ifdef WITH_WSREP
+  /* if SR thread was aborted, MDL locks were released early */
+  DBUG_ASSERT(thd->variables.wsrep_trx_fragment_size > 0 ||
+              thd->mdl_context.is_lock_owner(MDL_key::TABLE,
                                              table->s->db.str,
                                              table->s->table_name.str,
                                              MDL_SHARED));
+#else
+ DBUG_ASSERT(thd->mdl_context.is_lock_owner(MDL_key::TABLE,
+                                             table->s->db.str,
+                                             table->s->table_name.str,
+                                             MDL_SHARED));
+#endif /* WITH_WSSREP */
   table->mdl_ticket= NULL;
 
   if (table->file)
@@ -3846,6 +3856,15 @@ bool open_tables(THD *thd, const DDL_options_st &options,
 
   thd->current_tablenr= 0;
 restart:
+#ifdef WITH_WSREP
+  if (WSREP_CLIENT(thd) &&
+      (thd->wsrep_is_streaming() ||
+       thd->variables.wsrep_trx_fragment_size > 0) &&
+      wsrep_may_produce_SR_step(thd))
+  {
+    wsrep_prepare_SR_for_open_tables(thd, start);
+  }
+#endif /* WITH_WSREP */
   /*
     Close HANDLER tables which are marked for flush or against which there
     are pending exclusive metadata locks. This is needed both in order to
@@ -8400,7 +8419,7 @@ bool mysql_notify_thread_having_shared_lock(THD *thd, THD *in_use,
       if (!thd_table->needs_reopen())
       {
 	signalled|= mysql_lock_abort_for_thread(thd, thd_table);
-	if (thd && WSREP(thd) && wsrep_thd_is_BF(thd, true))
+	if (thd && WSREP(thd) && wsrep_thd_is_BF((void*)thd, true))
 	{
 	  WSREP_DEBUG("remove_table_from_cache: %llu",
 		      (unsigned long long) thd->real_id);

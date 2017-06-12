@@ -11,9 +11,6 @@ connection node_1;
 CREATE TABLE t1 (f1 INT PRIMARY KEY) Engine=InnoDB;
 connection node_2;
 SET GLOBAL wsrep_sync_wait = 1;
-SHOW TABLES LIKE '%t1';
-Tables_in_test (%t1)
-t1
 SELECT COUNT(*) = 0 FROM t1;
 COUNT(*) = 0
 1

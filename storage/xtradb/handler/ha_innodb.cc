@@ -139,10 +139,6 @@ this program; if not, write to the Free Software Foundation, Inc.,
 class  binlog_trx_data;
 extern handlerton *binlog_hton;
 
-extern MYSQL_PLUGIN_IMPORT mysql_mutex_t LOCK_wsrep_rollback;
-extern MYSQL_PLUGIN_IMPORT mysql_cond_t COND_wsrep_rollback;
-extern MYSQL_PLUGIN_IMPORT wsrep_aborting_thd_t wsrep_aborting_thd;
-
 static inline wsrep_ws_handle_t*
 wsrep_ws_handle(THD* thd, const trx_t* trx) {
 	return wsrep_ws_handle_for_trx(wsrep_thd_ws_handle(thd),
@@ -10987,7 +10983,8 @@ wsrep_append_foreign_key(
 
 	wsrep_buf_t wkey_part[3];
         wsrep_key_t wkey = {wkey_part, 3};
-	if (!wsrep_prepare_key(
+	if (!wsrep_prepare_key_for_innodb(
+		thd,
 		(const uchar*)cache_key,
 		cache_key_len +  1,
 		(const uchar*)key, len+1,
@@ -11043,7 +11040,8 @@ wsrep_append_key(
 #endif
 	wsrep_buf_t wkey_part[3];
         wsrep_key_t wkey = {wkey_part, 3};
-	if (!wsrep_prepare_key(
+	if (!wsrep_prepare_key_for_innodb(
+			thd,
 			(const uchar*)table_share->table_cache_key.str,
 			table_share->table_cache_key.length,
 			(const uchar*)key, key_len,
@@ -19667,8 +19665,14 @@ wsrep_innobase_kill_one_trx(
 		DBUG_RETURN(1);
 	}
 
+	if (wsrep_thd_trx_id(thd) == WSREP_UNDEFINED_TRX_ID) {
+		wsrep_ws_handle_for_trx(wsrep_thd_ws_handle(thd),
+			wsrep_thd_next_trx_id(thd));
+	}
+
 	WSREP_LOG_CONFLICT(bf_thd, thd, TRUE);
 
+	wsrep_thd_LOCK(thd);
 	WSREP_DEBUG("BF kill (%lu, seqno: %lld), victim: (%lu) trx: "
 		    TRX_ID_FMT,
  		    signal, (long long)bf_seqno,
@@ -19678,7 +19682,6 @@ wsrep_innobase_kill_one_trx(
 	WSREP_DEBUG("Aborting query: %s",
 		  (thd && wsrep_thd_query(thd)) ? wsrep_thd_query(thd) : "void");
 
-	wsrep_thd_LOCK(thd);
         DBUG_EXECUTE_IF("sync.wsrep_after_BF_victim_lock",
                  {
                    const char act[]=
@@ -19820,27 +19823,7 @@ wsrep_innobase_kill_one_trx(
 					      wsrep_thd_trx_seqno(thd));
 			DBUG_RETURN(0);
 		}
-                /* This will lock thd from proceeding after net_read() */
-		wsrep_thd_set_conflict_state(thd, ABORTING);
-
-		wsrep_lock_rollback();
-
-		if (wsrep_aborting_thd_contains(thd)) {
-			WSREP_WARN("duplicate thd aborter %lu",
-			           thd_get_thread_id(thd));
-		} else {
-			wsrep_aborting_thd_enqueue(thd);
-			DBUG_PRINT("wsrep",("enqueuing trx abort for %lu",
-			                    thd_get_thread_id(thd)));
-			WSREP_DEBUG("enqueuing trx abort for (%lu)",
-			            thd_get_thread_id(thd));
-		}
-
-		DBUG_PRINT("wsrep",("signalling wsrep rollbacker"));
-		WSREP_DEBUG("signaling aborter");
-		wsrep_unlock_rollback();
-		wsrep_thd_UNLOCK(thd);
-
+		wsrep_fire_rollbacker(thd);
 		break;
 	}
 	default:
@@ -19849,6 +19832,7 @@ wsrep_innobase_kill_one_trx(
 		wsrep_thd_UNLOCK(thd);
 		break;
 	}
+	wsrep_thd_UNLOCK(thd);
 
 	DBUG_RETURN(0);
 }
@@ -19860,9 +19844,16 @@ wsrep_abort_transaction(handlerton* hton, THD *bf_thd, THD *victim_thd,
 	DBUG_ENTER("wsrep_innobase_abort_thd");
 	trx_t* victim_trx = thd_to_trx(victim_thd);
 	trx_t* bf_trx     = (bf_thd) ? thd_to_trx(bf_thd) : NULL;
-	WSREP_DEBUG("abort transaction: BF: %s victim: %s",
-		    wsrep_thd_query(bf_thd),
-		    wsrep_thd_query(victim_thd));
+
+	if (wsrep_debug)
+	{
+		wsrep_thd_LOCK(victim_thd);
+		WSREP_DEBUG("abort transaction: BF: %s victim: %s conf: %d",
+			wsrep_thd_query(bf_thd),
+			wsrep_thd_query(victim_thd),
+			wsrep_thd_get_conflict_state(victim_thd));
+		wsrep_thd_UNLOCK(victim_thd);
+	}
 
 	if (victim_trx) {
 		lock_mutex_enter();

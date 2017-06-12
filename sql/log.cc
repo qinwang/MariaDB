@@ -397,8 +397,49 @@ public:
     Cache to store data before copying it to the binary log.
   */
   IO_CACHE cache_log;
+#ifdef WITH_WSREP
+  void wsrep_reset_fragment_base(ulong size)
+  {
+    wsrep_fragment_base = size;
+  }
+
+  void wsrep_reset_fragment_fill(ulong size)
+  {
+    wsrep_fragment_fill = size;
+  }
+
+  void wsrep_reset_SR_trans()
+  {
+    wsrep_reset_fragment_fill(0);
+    wsrep_reset_fragment_base(0);
+  }
+
+  ulong wsrep_get_fragment_fill()
+  {
+    return (wsrep_fragment_fill);
+  }
+
+  void wsrep_append_fill_rate(ulong size)
+  {
+    wsrep_fragment_fill += size;
+  }
+
+  void wsrep_step_fragment_base(ulong size)
+  {
+    wsrep_fragment_base += size;
+  }
+  ulong wsrep_get_fragment_base()
+  {
+    return(wsrep_fragment_base);
+  }
+#endif /* WITH_WSREP */
 
 private:
+#ifdef WITH_WSREP
+  ulong wsrep_fragment_fill;
+  ulong wsrep_fragment_base;
+#endif /* WITH_WSREP */
+
   /*
     Pending binrows event. This event is the event where the rows are currently
     written.
@@ -524,6 +565,9 @@ public:
       using_xa= FALSE;
       last_commit_pos_file[0]= 0;
       last_commit_pos_offset= 0;
+#ifdef WITH_WSREP
+      trx_cache.wsrep_reset_SR_trans();
+#endif /* WITH_WSREP */
     }
   }
 
@@ -1698,7 +1742,8 @@ static int binlog_close_connection(handlerton *hton, THD *thd)
     (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
 #ifdef WITH_WSREP
   if (cache_mngr && !cache_mngr->trx_cache.empty()) {
-    IO_CACHE* cache= get_trans_log(thd);
+    //IO_CACHE* cache= wsrep_get_trans_cache(thd);
+    IO_CACHE* cache= cache_mngr->get_binlog_cache_log(true);
     uchar *buf;
     size_t len=0;
     wsrep_write_cache_buf(cache, &buf, &len);
@@ -2286,8 +2331,17 @@ static int binlog_savepoint_rollback(handlerton *hton, THD *thd, void *sv)
     non-transactional table. Otherwise, truncate the binlog cache starting
     from the SAVEPOINT command.
   */
+#ifdef WITH_WSREP
+  /* for streaming replication, we  must replicate savepoint rollback so that 
+     slaves can maintain SR transactions
+   */
+  if (unlikely(thd->wsrep_is_streaming() ||
+               (trans_has_updated_non_trans_table(thd)) ||
+               (thd->variables.option_bits & OPTION_KEEP_LOG)))
+#else
   if (unlikely(trans_has_updated_non_trans_table(thd) ||
                (thd->variables.option_bits & OPTION_KEEP_LOG)))
+#endif /* WITH_WSREP */
   {
     char buf[1024];
     String log_query(buf, sizeof(buf), &my_charset_bin);
@@ -10257,7 +10311,44 @@ maria_declare_plugin(binlog)
 maria_declare_plugin_end;
 
 #ifdef WITH_WSREP
-IO_CACHE * get_trans_log(THD * thd)
+#include "wsrep_trans_observer.h"
+#include "wsrep_mysqld.h"
+
+static int wsrep_plugin_init(void *p)
+{
+  WSREP_INFO("wsrep_plugin_init()");
+  return wsrep_register_trans_observer(p);
+}
+
+static int wsrep_plugin_deinit(void *p)
+{
+  WSREP_INFO("wsrep_plugin_deinit()");
+  return wsrep_unregister_trans_observer(p);
+}
+
+struct Mysql_replication wsrep_plugin= {
+  MYSQL_REPLICATION_INTERFACE_VERSION
+};
+
+maria_declare_plugin(wsrep)
+{
+  MYSQL_REPLICATION_PLUGIN,
+  &wsrep_plugin,
+  "wsrep",
+  "Codership Oy",
+  "Wsrep replication plugin",
+  PLUGIN_LICENSE_GPL,
+  wsrep_plugin_init,
+  wsrep_plugin_deinit,
+  0x0100,
+  NULL, /* Status variables */
+  NULL, /* System variables */
+  "1.0", /* Version (string) */
+  MariaDB_PLUGIN_MATURITY_STABLE     /* Maturity */
+}
+maria_declare_plugin_end;
+
+IO_CACHE *wsrep_get_trans_cache(THD * thd)
 {
   DBUG_ASSERT(binlog_hton->slot != HA_SLOT_UNDEF);
   binlog_cache_mngr *cache_mngr = (binlog_cache_mngr*)
@@ -10271,15 +10362,115 @@ IO_CACHE * get_trans_log(THD * thd)
 }
 
 
-bool wsrep_trans_cache_is_empty(THD *thd)
+uint wsrep_get_trans_cache_position(THD *thd)
 {
-  binlog_cache_mngr *const cache_mngr=
-      (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
-  return (!cache_mngr || cache_mngr->trx_cache.empty());
+  if (binlog_hton)
+  {
+    my_off_t pos = 0;
+    binlog_cache_mngr *const cache_mngr= (binlog_cache_mngr*)
+      thd_get_ha_data(thd, binlog_hton);
+    if (cache_mngr) binlog_trans_log_savepos(thd, &pos);
+    return (pos);
+  }
+  return 0;
 }
 
+void wsrep_reset_SR_trans(THD *thd)
+{
+  DBUG_ENTER("wsrep_reset_SR_trans");
+  if (!binlog_hton || !WSREP(thd)) DBUG_VOID_RETURN;
+  thd->wsrep_fragments_sent = 0;
 
-void thd_binlog_trx_reset(THD * thd)
+  binlog_cache_mngr *const cache_mngr=
+    (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
+  if (cache_mngr)
+  {
+    cache_mngr->trx_cache.wsrep_reset_fragment_base(0);
+    cache_mngr->trx_cache.wsrep_reset_fragment_fill(0);
+  }
+  DBUG_VOID_RETURN;
+}
+
+void wsrep_step_fragment_base(THD *thd, ulong size)
+{
+  DBUG_ASSERT(binlog_hton && WSREP(thd) &&
+              thd->variables.wsrep_trx_fragment_size > 0);
+  if (!binlog_hton || !WSREP(thd) ||
+      thd->variables.wsrep_trx_fragment_size == 0) return;
+
+  binlog_cache_mngr *const cache_mngr=
+    (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
+
+  if (cache_mngr)
+  {
+    cache_mngr->trx_cache.wsrep_step_fragment_base(size);
+  }
+}
+
+ulong wsrep_get_fragment_base(THD *thd)
+{
+  if (!binlog_hton || !WSREP(thd)) return 0;
+
+  binlog_cache_mngr *const cache_mngr=
+    (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
+
+
+  if (cache_mngr)
+  {
+    return cache_mngr->trx_cache.wsrep_get_fragment_base();
+  }
+  return 0;
+}
+void wsrep_append_fill_rate(THD *thd, ulong size)
+{
+  DBUG_ASSERT(binlog_hton && WSREP(thd) &&
+              thd->variables.wsrep_trx_fragment_size > 0);
+  if (!binlog_hton || !WSREP(thd) ||
+      thd->variables.wsrep_trx_fragment_size == 0) return;
+
+  binlog_cache_mngr *const cache_mngr=
+    (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
+
+  if (cache_mngr)
+  {
+    cache_mngr->trx_cache.wsrep_append_fill_rate(size);
+  }
+}
+
+void wsrep_reset_fragment_fill(THD *thd, ulong size)
+{
+  DBUG_ASSERT(binlog_hton && WSREP(thd) &&
+              thd->variables.wsrep_trx_fragment_size > 0);
+  if (!binlog_hton || !WSREP(thd) ||
+      thd->variables.wsrep_trx_fragment_size == 0) return;
+
+  binlog_cache_mngr *const cache_mngr=
+    (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
+
+  if (cache_mngr)
+  {
+    cache_mngr->trx_cache.wsrep_reset_fragment_fill(size);
+  }
+}
+
+ulong wsrep_get_fragment_fill(THD *thd)
+{
+  DBUG_ASSERT(binlog_hton && WSREP(thd) &&
+              thd->variables.wsrep_trx_fragment_size > 0);
+  if (!binlog_hton || !WSREP(thd) ||
+      thd->variables.wsrep_trx_fragment_size == 0) return 0;
+
+  binlog_cache_mngr *const cache_mngr=
+    (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
+
+  if (cache_mngr)
+  {
+    return cache_mngr->trx_cache.wsrep_get_fragment_fill();
+  }
+  return 0;
+}
+
+void wsrep_thd_binlog_trx_reset(THD * thd)
 {
   /*
     todo: fix autocommit select to not call the caller
@@ -10311,4 +10502,84 @@ void thd_binlog_rollback_stmt(THD * thd)
   if (cache_mngr)
     cache_mngr->trx_cache.set_prev_position(MY_OFF_T_UNDEF);
 }
+
+int wsrep_thd_binlog_prepare(THD* thd, bool all)
+{
+  /* applier and replayer can skip binlog prepare */
+  if (WSREP_EMULATE_BINLOG(thd) && (thd->wsrep_exec_mode != REPL_RECV))
+    return binlog_hton->prepare(binlog_hton, thd, all);
+  else
+    return ha_prepare(thd);
+}
+
+bool wsrep_stmt_rollback_is_safe(THD* thd)
+{
+  bool ret(true);
+
+  DBUG_ENTER("wsrep_binlog_stmt_rollback_is_safe");
+
+  binlog_cache_mngr *cache_mngr= 
+    (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
+
+
+  if (binlog_hton && cache_mngr)
+  {
+    binlog_cache_data * trx_cache = &cache_mngr->trx_cache;
+    if (thd->wsrep_fragments_sent > 0 &&
+        (trx_cache->get_prev_position() == MY_OFF_T_UNDEF ||
+         trx_cache->get_prev_position() < trx_cache->wsrep_get_fragment_base()))
+    {
+      WSREP_DEBUG("statement rollback is not safe for streaming replication"
+                  " pre-stmt_pos: %llu, frag repl pos: %lu\nThread: %llu, SQL: %s",
+                  trx_cache->get_prev_position(), trx_cache->wsrep_get_fragment_base(),
+                  thd->thread_id, thd->query());
+      ret = false;
+    }
+  }
+  DBUG_RETURN(ret);
+}
+
+void wsrep_register_binlog_handler(THD *thd, bool trx)
+{
+  DBUG_ENTER("register_binlog_handler");
+  /*
+    If this is the first call to this function while processing a statement,
+    the transactional cache does not have a savepoint defined. So, in what
+    follows:
+      . an implicit savepoint is defined;
+      . callbacks are registered;
+      . binary log is set as read/write.
+
+    The savepoint allows for truncating the trx-cache transactional changes
+    fail. Callbacks are necessary to flush caches upon committing or rolling
+    back a statement or a transaction. However, notifications do not happen
+    if the binary log is set as read/write.
+  */
+  //binlog_cache_mngr *cache_mngr= thd_get_cache_mngr(thd);
+  binlog_cache_mngr *cache_mngr=
+    (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
+  if (cache_mngr->trx_cache.get_prev_position() == MY_OFF_T_UNDEF)
+  {
+    /*
+      Set an implicit savepoint in order to be able to truncate a trx-cache.
+    */
+    my_off_t pos= 0;
+    binlog_trans_log_savepos(thd, &pos);
+    cache_mngr->trx_cache.set_prev_position(pos);
+
+    /*
+      Set callbacks in order to be able to call commmit or rollback.
+    */
+    if (trx)
+      trans_register_ha(thd, TRUE, binlog_hton);
+    trans_register_ha(thd, FALSE, binlog_hton);
+
+    /*
+      Set the binary log as read/write otherwise callbacks are not called.
+    */
+    thd->ha_data[binlog_hton->slot].ha_info[0].set_trx_read_write();
+  }
+  DBUG_VOID_RETURN;
+}
+
 #endif /* WITH_WSREP */
