@@ -8159,13 +8159,19 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
   List<TABLE> tbl_list;
   bool all_fields_have_values= true;
   Item *value;
-  Field *field;
+  Field *field, **f;
   bool abort_on_warning_saved= thd->abort_on_warning;
   uint autoinc_index= table->next_number_field
                         ? table->next_number_field->field_index
                         : ~0U;
+  uint field_count= 0;
+  bool need_default_value= false;
   DBUG_ENTER("fill_record");
-
+  //TODO will fields count be alwats equal to table->fields ?
+  for (f= ptr; f && (field= *f); f++)
+    field_count++;
+  if (field_count != values.elements)
+    need_default_value= true;
   if (!*ptr)
   {
     /* No fields to update, quite strange!*/
@@ -8183,12 +8189,16 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
     only one row.
   */
   table->auto_increment_field_not_null= FALSE;
+  Name_resolution_context *context= & thd->lex->select_lex.context;
   while ((field = *ptr++) && ! thd->is_error())
   {
     /* Ensure that all fields are from the same table */
     DBUG_ASSERT(field->table == table);
 
-    value=v++;
+    if (need_default_value && field->field_visibility != NOT_HIDDEN)
+      value = new (thd->mem_root) Item_default_value(thd,context);
+    else
+      value=v++;
     if (field->field_index == autoinc_index)
       table->auto_increment_field_not_null= TRUE;
     if (field->vcol_info)

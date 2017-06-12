@@ -1,18 +1,17 @@
 FLUSH STATUS;
-create table h_1(abc int primary key, xyz int hidden);
+create table t1(abc int primary key, xyz int hidden);
 SHOW STATUS LIKE 'Feature_hidden_columns';
-desc h_1;
-show create table h_1;
-drop table h_1;
+desc t1;
+show create table t1;
+drop table t1;
 --error ER_TABLE_MUST_HAVE_COLUMNS
-create table h_2(a1 int hidden);
+create table t1(a1 int hidden);
 --error ER_PARSE_ERROR
-create table h_3(a1 blob,hidden(a1));
---error ER_HIDDEN_NOT_NULL_WITHOUT_DEFAULT 
-create table h_4(a1 int primary key hidden ,a2 int unique hidden , a3 blob,a4
-int not null hidden unique);
+create table t1(a1 blob,hidden(a1));
 --error ER_HIDDEN_NOT_NULL_WITHOUT_DEFAULT
-create table h_5(abc int not null hidden);
+create table t1(a1 int primary key hidden ,a2 int unique hidden , a3 blob,a4 int not null hidden unique);
+--error ER_HIDDEN_NOT_NULL_WITHOUT_DEFAULT
+create table t1(abc int not null hidden);
 create table t1(a int hidden, b int);
 #should automatically add null
 insert into t1 values(1);
@@ -26,7 +25,7 @@ insert into t1 values(1),(2),(3),(4);
 select * from t1;
 select a from t1;
 drop table t1;
---echo #more complex case of hidden 
+--echo #more complex case of hidden
 create table t1(a int , b int hidden , c int hidden auto_increment unique, d blob , e int unique, f int);
 desc t1;
 insert into t1 values(1,'d blob',1,1),(1,'d blob',11,1),(1,'d blob',2,1),(1,'d blob',3,1),(1,'d blob',41,1);
@@ -80,7 +79,7 @@ select * from t2;
 --error ER_BAD_FIELD_ERROR
 select a,b,c,d,e,f from t2;
 drop table t2;
---echo #now this will copy hidden fields 
+--echo #now this will copy hidden fields
 create table t2 as select a,b,c,d,e,f from t1;
 desc t2;
 select * from t2;
@@ -123,7 +122,7 @@ insert into v(a,b,c,d,e,f) values(1,32,31,41,5,6);
 select a,b,c,d,e,f from v;
 drop view v;
 drop table t1;
---echo #now hidden column in where and some join query 
+--echo #now hidden column in where and some join query
 create table t1 (a int unique , b int hidden unique, c int unique  hidden);
 insert into t1(a,b,c) values(1,1,1);
 insert into t1(a,b,c) values(2,2,2);
