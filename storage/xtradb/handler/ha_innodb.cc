@@ -10824,6 +10824,8 @@ ha_innobase::ft_end()
 	fprintf(stderr, "ft_end()\n");
 
 	rnd_end();
+
+  handler::ft_end();
 }
 #ifdef WITH_WSREP
 extern dict_index_t*
