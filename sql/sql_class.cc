@@ -4204,16 +4204,12 @@ my_bool thd_net_is_killed()
 
 void thd_increment_bytes_received(void *thd, ulong length)
 {
-  if (unlikely(!thd))                           // Called from federatedx
-    thd= current_thd;
   ((THD*) thd)->status_var.bytes_received+= length;
 }
 
 
 void thd_increment_net_big_packet_count(void *thd, ulong length)
 {
-  if (unlikely(!thd))                           // Called from federatedx
-    thd= current_thd;
   ((THD*) thd)->status_var.net_big_packet_count+= length;
 }
 
@@ -6045,8 +6041,7 @@ int THD::decide_logging_format(TABLE_LIST *tables)
             table->table->file->ht)
           multi_write_engine= TRUE;
         if (table->table->s->non_determinstic_insert &&
-            lex->sql_command != SQLCOM_CREATE_SEQUENCE &&
-            lex->sql_command != SQLCOM_CREATE_TABLE)
+            !(sql_command_flags[lex->sql_command] & CF_SCHEMA_CHANGE))
           has_write_tables_with_unsafe_statements= true;
 
         trans= table->table->file->has_transactions();

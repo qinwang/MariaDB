@@ -1,6 +1,6 @@
 /*
    Copyright (c) 2000, 2014, Oracle and/or its affiliates.
-   Copyright (c) 2009, 2016, MariaDB
+   Copyright (c) 2009, 2017, MariaDB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1074,9 +1074,7 @@ static void print_table_data_xml(MYSQL_RES *result);
 static void print_tab_data(MYSQL_RES *result);
 static void print_table_data_vertically(MYSQL_RES *result);
 static void print_warnings(void);
-static ulong start_timer(void);
-static void end_timer(ulong start_time,char *buff);
-static void mysql_end_timer(ulong start_time,char *buff);
+static void end_timer(ulonglong start_time, char *buff);
 static void nice_time(double sec,char *buff,bool part_second);
 extern "C" sig_handler mysql_end(int sig);
 extern "C" sig_handler handle_sigint(int sig);
@@ -3206,9 +3204,10 @@ static int
 com_go(String *buffer,char *line __attribute__((unused)))
 {
   char		buff[200]; /* about 110 chars used so far */
-  char		time_buff[52+3+1]; /* time max + space&parens + NUL */
+  char          time_buff[53+3+1]; /* time max + space&parens + NUL */
   MYSQL_RES	*result;
-  ulong		timer, warnings= 0;
+  ulonglong	timer;
+  ulong		warnings= 0;
   uint		error= 0;
   int           err= 0;
 
@@ -3247,7 +3246,7 @@ com_go(String *buffer,char *line __attribute__((unused)))
     return 0;
   }
 
-  timer=start_timer();
+  timer= microsecond_interval_timer();
   executing_query= 1;
   error= mysql_real_query_for_lazy(buffer->ptr(),buffer->length());
   report_progress_end();
@@ -3286,7 +3285,7 @@ com_go(String *buffer,char *line __attribute__((unused)))
     }
 
     if (verbose >= 3 || !opt_silent)
-      mysql_end_timer(timer,time_buff);
+      end_timer(timer, time_buff);
     else
       time_buff[0]= '\0';
 
@@ -5021,31 +5020,11 @@ void tee_putc(int c, FILE *file)
     putc(c, OUTFILE);
 }
 
-#if defined(__WIN__)
-#include <time.h>
-#else
-#include <sys/times.h>
-#ifdef _SC_CLK_TCK				// For mit-pthreads
-#undef CLOCKS_PER_SEC
-#define CLOCKS_PER_SEC (sysconf(_SC_CLK_TCK))
-#endif
-#endif
-
-static ulong start_timer(void)
-{
-#if defined(__WIN__)
-  return clock();
-#else
-  struct tms tms_tmp;
-  return times(&tms_tmp);
-#endif
-}
-
 
 /** 
   Write as many as 52+1 bytes to buff, in the form of a legible duration of time.
 
-  len("4294967296 days, 23 hours, 59 minutes, 60.00 seconds")  ->  52
+  len("4294967296 days, 23 hours, 59 minutes, 60.000 seconds")  ->  53
 */
 static void nice_time(double sec,char *buff,bool part_second)
 {
@@ -5072,24 +5051,20 @@ static void nice_time(double sec,char *buff,bool part_second)
     buff=strmov(buff," min ");
   }
   if (part_second)
-    sprintf(buff,"%.2f sec",sec);
+    sprintf(buff,"%.3f sec",sec);
   else
     sprintf(buff,"%d sec",(int) sec);
 }
 
 
-static void end_timer(ulong start_time,char *buff)
+static void end_timer(ulonglong start_time, char *buff)
 {
-  nice_time((double) (start_timer() - start_time) /
-	    CLOCKS_PER_SEC,buff,1);
-}
+  double sec;
 
-
-static void mysql_end_timer(ulong start_time,char *buff)
-{
   buff[0]=' ';
   buff[1]='(';
-  end_timer(start_time,buff+2);
+  sec= (microsecond_interval_timer() - start_time) / (double) (1000 * 1000);
+  nice_time(sec, buff + 2, 1);
   strmov(strend(buff),")");
 }
 

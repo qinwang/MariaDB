@@ -2095,8 +2095,6 @@ files_checked:
 		dict_stats_thread_init();
 	}
 
-	trx_sys_file_format_init();
-
 	trx_sys_create();
 
 	if (create_new_db) {
@@ -2141,26 +2139,6 @@ files_checked:
 			return(srv_init_abort(err));
 		}
 	} else {
-
-		/* Check if we support the max format that is stamped
-		on the system tablespace.
-		Note:  We are NOT allowed to make any modifications to
-		the TRX_SYS_PAGE_NO page before recovery  because this
-		page also contains the max_trx_id etc. important system
-		variables that are required for recovery.  We need to
-		ensure that we return the system to a state where normal
-		recovery is guaranteed to work. We do this by
-		invalidating the buffer cache, this will force the
-		reread of the page and restoration to its last known
-		consistent state, this is REQUIRED for the recovery
-		process to work. */
-		err = trx_sys_file_format_max_check(
-			srv_max_file_format_at_startup);
-
-		if (err != DB_SUCCESS) {
-			return(srv_init_abort(err));
-		}
-
 		/* Invalidate the buffer pool to ensure that we reread
 		the page that we read above, during recovery.
 		Note that this is not as heavy weight as it seems. At
@@ -2210,6 +2188,11 @@ files_checked:
 			recv_group_scan_log_recs(). */
 
 			recv_apply_hashed_log_recs(true);
+
+			if (recv_sys->found_corrupt_log) {
+				return (DB_CORRUPTION);
+			}
+
 			DBUG_PRINT("ib_log", ("apply completed"));
 
 			if (recv_needed_recovery) {
@@ -2458,25 +2441,10 @@ files_checked:
 		}
 
 		recv_recovery_rollback_active();
-
-		/* It is possible that file_format tag has never
-		been set. In this case we initialize it to minimum
-		value.  Important to note that we can do it ONLY after
-		we have finished the recovery process so that the
-		image of TRX_SYS_PAGE_NO is not stale. */
-		trx_sys_file_format_tag_init();
 	}
 
 	ut_ad(err == DB_SUCCESS);
 	ut_a(sum_of_new_sizes != ULINT_UNDEFINED);
-
-	/* Open temp-tablespace and keep it open until shutdown. */
-
-	err = srv_open_tmp_tablespace(create_new_db);
-
-	if (err != DB_SUCCESS) {
-		return(srv_init_abort(err));
-	}
 
 	/* Create the doublewrite buffer to a new tablespace */
 	if (!srv_read_only_mode && srv_force_recovery < SRV_FORCE_NO_TRX_UNDO
@@ -2550,6 +2518,18 @@ files_checked:
 		/* fall through */
 	default:
 		return(srv_init_abort(err));
+	}
+
+	if (!srv_read_only_mode) {
+		/* Initialize the innodb_temporary tablespace and keep
+		it open until shutdown. */
+		err = srv_open_tmp_tablespace(create_new_db);
+
+		if (err != DB_SUCCESS) {
+			return(srv_init_abort(err));
+		}
+
+		trx_temp_rseg_create();
 	}
 
 	srv_is_being_started = false;
@@ -2828,7 +2808,6 @@ innodb_shutdown()
 		log_shutdown();
 	}
 	if (trx_sys) {
-		trx_sys_file_format_close();
 		trx_sys_close();
 	}
 	UT_DELETE(purge_sys);

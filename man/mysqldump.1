@@ -1,6 +1,6 @@
 '\" t
 .\"
-.TH "\FBMYSQLDUMP\FR" "1" "3 April 2017" "MariaDB 10\&.2" "MariaDB Database System"
+.TH "\FBMYSQLDUMP\FR" "1" "9 May 2017" "MariaDB 10\&.3" "MariaDB Database System"
 .\" -----------------------------------------------------------------
 .\" * set default formatting
 .\" -----------------------------------------------------------------
@@ -261,6 +261,25 @@ Add a
 DROP TABLE
 statement before each
 CREATE TABLE
+statement\&.
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04'\(bu\h'+03'\c
+.\}
+.el \{\
+.sp -1
+.IP \(bu 2.3
+.\}
+.\" mysqldump: add-drop-trigger option
+.\" add-drop-trigger option: mysqldump
+\fB\-\-add\-drop\-trigger\fR
+.sp
+Add a
+DROP TRIGGER
+statement before each
+CREATE TRIGGER
 statement\&.
 .RE
 .sp
