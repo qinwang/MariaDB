@@ -283,8 +283,8 @@ create view v as select a,b,c,d,e,f from t1;
 desc v;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	YES		NULL	NEVER
-b	int(11)	YES		NULL	NEVER, HIDDEN
-c	int(11)	NO		0	NEVER, HIDDEN
+b	int(11)	YES		NULL	NEVER
+c	int(11)	NO		0	NEVER
 d	blob	YES		NULL	NEVER
 e	int(11)	YES		NULL	NEVER
 f	int(11)	YES		NULL	NEVER
