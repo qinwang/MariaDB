@@ -3390,6 +3390,8 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 	  sql_field->create_length_to_internal_length();
           sql_field->interval=          dup_field->interval;
           sql_field->vcol_info=         dup_field->vcol_info;
+      DBUG_EXECUTE_IF("test_pseduo_hidden",sql_field->field_visibility= PSEUDO_COLUMN_HIDDEN;);
+      DBUG_EXECUTE_IF("test_completely_hidden",sql_field->field_visibility= COMPLETELY_HIDDEN;);
 	  it2.remove();			// Remove first (create) definition
 	  select_field_pos--;
 	  break;
