@@ -3348,7 +3348,7 @@ public:
   int compare_key2(key_range *range);
   virtual int ft_init() { return HA_ERR_WRONG_COMMAND; }
   virtual int pre_ft_init() { return HA_ERR_WRONG_COMMAND; }
-  virtual void ft_end() { ft_handler=NULL; }
+  virtual void ft_end() { ha_ft_end(); }
   virtual int pre_ft_end() { return 0; }
   virtual FT_INFO *ft_init_ext(uint flags, uint inx,String *key)
     { return NULL; }
@@ -3372,6 +3372,7 @@ public:
 
   /* Same as above, but with statistics */
   inline int ha_ft_read(uchar *buf);
+  inline void ha_ft_end() { ft_handler=NULL; }
   int ha_rnd_next(uchar *buf);
   int ha_rnd_pos(uchar *buf, uchar *pos);
   inline int ha_rnd_pos_by_record(uchar *buf);

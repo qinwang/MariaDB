@@ -6850,7 +6850,7 @@ void ha_partition::ft_end()
   }
   m_scan_value= 2;
   m_part_spec.start_part= NO_CURRENT_PART_ID;
-  handler::ft_end();
+  ha_ft_end();
   DBUG_VOID_RETURN;
 }
 

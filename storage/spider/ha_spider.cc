@@ -7898,7 +7898,7 @@ void ha_spider::ft_end()
       store_error_num = index_end();
   }
   ft_init_without_index_init = FALSE;
-  handler::ft_end();
+  ha_ft_end();
   DBUG_VOID_RETURN;
 }
 
