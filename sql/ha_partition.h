@@ -1414,6 +1414,9 @@ public:
                                          Field **top_table_field,
                                          uint top_table_fields);
     virtual void clear_top_table_fields();
+#ifdef HANDLER_HAS_PRUNE_PARTITIONS_FOR_CHILD
+    virtual bool prune_partitions_for_child(THD *thd, Item *pprune_cond);
+#endif
 
     private:
     int handle_opt_partitions(THD *thd, HA_CHECK_OPT *check_opt, uint flags);
