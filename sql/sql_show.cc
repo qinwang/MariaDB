@@ -59,6 +59,7 @@
 #include "debug_sync.h"
 #include "keycaches.h"
 #include "ha_sequence.h"
+#include "my_dbug.h"
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
 #endif
@@ -2128,7 +2129,16 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
       {
         packet->append(STRING_WITH_LEN(" HIDDEN"));
       }
-
+      DBUG_EXECUTE_IF("test_pseduo_hidden",
+              if (field->field_visibility  == PSEUDO_COLUMN_HIDDEN)
+              {
+                 packet->append(STRING_WITH_LEN(" PSEDUO HIDDEN"));
+              });
+      DBUG_EXECUTE_IF("test_completely_hidden",
+              if (field->field_visibility  == COMPLETELY_HIDDEN)
+              {
+                 packet->append(STRING_WITH_LEN(" COMPLETELY HIDDEN"));
+              });
       def_value.set(def_value_buf, sizeof(def_value_buf), system_charset_info);
       if (get_field_default_value(thd, field, &def_value, 1))
       {

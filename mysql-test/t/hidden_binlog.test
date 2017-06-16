@@ -18,6 +18,11 @@ insert into t2 values(1);
 select a,b from t2;
 desc t2;
 
+set debug_dbug="+d,test_pseduo_hidden";
+create table t3 (hidden int , b int , c int );
+insert into t3 values(1,1);
+desc t3;
+
 --sync_slave_with_master
 select * from t1;
 select a,b from t1;
@@ -30,6 +35,7 @@ desc t2;
 show create table t2;
 
 --connection master
-drop table t1,t2;
+drop table t1,t2,t3;
 
+set debug_dbug="";
 --source include/rpl_end.inc

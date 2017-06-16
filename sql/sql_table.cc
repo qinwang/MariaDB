@@ -3390,8 +3390,6 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 	  sql_field->create_length_to_internal_length();
           sql_field->interval=          dup_field->interval;
           sql_field->vcol_info=         dup_field->vcol_info;
-      DBUG_EXECUTE_IF("test_pseduo_hidden",sql_field->field_visibility= PSEUDO_COLUMN_HIDDEN;);
-      DBUG_EXECUTE_IF("test_completely_hidden",sql_field->field_visibility= COMPLETELY_HIDDEN;);
 	  it2.remove();			// Remove first (create) definition
 	  select_field_pos--;
 	  break;
@@ -3414,7 +3412,11 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
   while ((sql_field=it++))
   {
     DBUG_ASSERT(sql_field->charset != 0);
-
+    if (!my_strcasecmp(system_charset_info, "hidden", sql_field->field_name.str))
+    {
+      DBUG_EXECUTE_IF("test_pseduo_hidden",sql_field->field_visibility= PSEUDO_COLUMN_HIDDEN;);
+      DBUG_EXECUTE_IF("test_completely_hidden",sql_field->field_visibility= COMPLETELY_HIDDEN;);
+    }
     if (sql_field->prepare_stage2(file, file->ha_table_flags()))
       DBUG_RETURN(TRUE);
     if (sql_field->real_field_type() == MYSQL_TYPE_VARCHAR)
