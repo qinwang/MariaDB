@@ -48,3 +48,5 @@ galera.galera_wan : MDEV-12319 #Failed to start mysqld
 galera.rpl_row_annotate : MDEV-12319 #Failed to start mysqld
 galera.MW-44 : MDEV-12319
 galera.galera_var_slave_threads : MDEV-12319
+galera_var_dirty_reads :  MDEV-12539
+query_cache : MDEV-12539

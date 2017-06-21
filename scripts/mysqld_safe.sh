@@ -961,6 +961,9 @@ max_fast_restarts=5
 # flag whether a usable sleep command exists
 have_sleep=1
 
+# maximum number of wsrep restarts
+max_wsrep_restarts=0
+
 # close stdout and stderr, everything goes to $logging now
 if expr "${-}" : '.*x' > /dev/null
 then
@@ -969,9 +972,6 @@ else
   exec 1>&-
   exec 2>&-
 fi
-
-# maximum number of wsrep restarts
-max_wsrep_restarts=0
 
 while true
 do
@@ -992,6 +992,12 @@ do
   else
     eval_log_error "$cmd $wsrep_start_position_opt --wsrep_cluster_address=$url $nohup_redir"
   fi
+
+  if [ $want_syslog -eq 0 -a ! -f "$err_log" ]; then
+    touch "$err_log"                    # hypothetical: log was renamed but not
+    chown $user "$err_log"              # flushed yet. we'd recreate it with
+    chmod "$fmode" "$err_log"           # wrong owner next time we log, so set
+  fi                                    # it up correctly while we can!
 
   end_time=`date +%M%S`
 
