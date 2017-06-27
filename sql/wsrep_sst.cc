@@ -33,6 +33,7 @@
 char wsrep_defaults_file[FN_REFLEN * 2 + 10 +
                          sizeof(WSREP_SST_OPT_CONF) +
                          sizeof(WSREP_SST_OPT_EXTRA_CONF)] = {0};
+const char wsrep_defaults_group_suffix[256] = {0};
 
 // container for real auth string
 static const char* sst_auth_real      = NULL;
@@ -892,8 +893,7 @@ static int sst_donate_mysqldump (const char*         addr,
   }
 
   memcpy(host, address.get_address(), address.get_address_len());
-  int port= address.get_port();
-
+ 
   int const cmd_len= 4096;
   wsp::string  cmd_str(cmd_len);
 
@@ -1276,13 +1276,14 @@ static int sst_donate_other (const char*   method,
                  WSREP_SST_OPT_ADDR" '%s' "
                  WSREP_SST_OPT_SOCKET" '%s' "
                  WSREP_SST_OPT_DATA" '%s' "
-                 " %s "
+                 WSREP_SST_OPT_CONF" '%s' "
+                 WSREP_SST_OPT_CONF_SUFFIX" '%s' "
                  " %s '%s' "
                  WSREP_SST_OPT_GTID" '%s:%lld' "
                  WSREP_SST_OPT_GTID_DOMAIN_ID" '%d'"
                  "%s",
                  method, addr, mysqld_unix_port, mysql_real_data_home,
-                 wsrep_defaults_file,
+                 wsrep_defaults_file, wsrep_defaults_group_suffix,
                  binlog_opt, binlog_opt_val,
                  uuid, (long long) seqno, wsrep_gtid_domain_id,
                  bypass ? " " WSREP_SST_OPT_BYPASS : "");
