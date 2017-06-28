@@ -28,13 +28,13 @@ DROP FUNCTION test.f1;
 #########################################################################
 DESCRIBE          information_schema.KEY_COLUMN_USAGE;
 Field	Type	Null	Key	Default	Extra
-CONSTRAINT_CATALOG	varchar(512)	NO			
-CONSTRAINT_SCHEMA	varchar(64)	NO			
-CONSTRAINT_NAME	varchar(64)	NO			
-TABLE_CATALOG	varchar(512)	NO			
-TABLE_SCHEMA	varchar(64)	NO			
-TABLE_NAME	varchar(64)	NO			
-COLUMN_NAME	varchar(64)	NO			
+CONSTRAINT_CATALOG	varchar(512)	NO		''	
+CONSTRAINT_SCHEMA	varchar(64)	NO		''	
+CONSTRAINT_NAME	varchar(64)	NO		''	
+TABLE_CATALOG	varchar(512)	NO		''	
+TABLE_SCHEMA	varchar(64)	NO		''	
+TABLE_NAME	varchar(64)	NO		''	
+COLUMN_NAME	varchar(64)	NO		''	
 ORDINAL_POSITION	bigint(10)	NO		0	
 POSITION_IN_UNIQUE_CONSTRAINT	bigint(10)	YES		NULL	
 REFERENCED_TABLE_SCHEMA	varchar(64)	YES		NULL	
@@ -58,13 +58,13 @@ KEY_COLUMN_USAGE	CREATE TEMPORARY TABLE `KEY_COLUMN_USAGE` (
 ) ENGINE=MEMORY DEFAULT CHARSET=utf8
 SHOW COLUMNS FROM information_schema.KEY_COLUMN_USAGE;
 Field	Type	Null	Key	Default	Extra
-CONSTRAINT_CATALOG	varchar(512)	NO			
-CONSTRAINT_SCHEMA	varchar(64)	NO			
-CONSTRAINT_NAME	varchar(64)	NO			
-TABLE_CATALOG	varchar(512)	NO			
-TABLE_SCHEMA	varchar(64)	NO			
-TABLE_NAME	varchar(64)	NO			
-COLUMN_NAME	varchar(64)	NO			
+CONSTRAINT_CATALOG	varchar(512)	NO		''	
+CONSTRAINT_SCHEMA	varchar(64)	NO		''	
+CONSTRAINT_NAME	varchar(64)	NO		''	
+TABLE_CATALOG	varchar(512)	NO		''	
+TABLE_SCHEMA	varchar(64)	NO		''	
+TABLE_NAME	varchar(64)	NO		''	
+COLUMN_NAME	varchar(64)	NO		''	
 ORDINAL_POSITION	bigint(10)	NO		0	
 POSITION_IN_UNIQUE_CONSTRAINT	bigint(10)	YES		NULL	
 REFERENCED_TABLE_SCHEMA	varchar(64)	YES		NULL	

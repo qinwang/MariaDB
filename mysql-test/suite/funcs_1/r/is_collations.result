@@ -28,11 +28,11 @@ DROP FUNCTION test.f1;
 #########################################################################
 DESCRIBE          information_schema.COLLATIONS;
 Field	Type	Null	Key	Default	Extra
-COLLATION_NAME	varchar(32)	NO			
-CHARACTER_SET_NAME	varchar(32)	NO			
+COLLATION_NAME	varchar(32)	NO		''	
+CHARACTER_SET_NAME	varchar(32)	NO		''	
 ID	bigint(11)	NO		0	
-IS_DEFAULT	varchar(3)	NO			
-IS_COMPILED	varchar(3)	NO			
+IS_DEFAULT	varchar(3)	NO		''	
+IS_COMPILED	varchar(3)	NO		''	
 SORTLEN	bigint(3)	NO		0	
 SHOW CREATE TABLE information_schema.COLLATIONS;
 Table	Create Table
@@ -46,11 +46,11 @@ COLLATIONS	CREATE TEMPORARY TABLE `COLLATIONS` (
 ) ENGINE=MEMORY DEFAULT CHARSET=utf8
 SHOW COLUMNS FROM information_schema.COLLATIONS;
 Field	Type	Null	Key	Default	Extra
-COLLATION_NAME	varchar(32)	NO			
-CHARACTER_SET_NAME	varchar(32)	NO			
+COLLATION_NAME	varchar(32)	NO		''	
+CHARACTER_SET_NAME	varchar(32)	NO		''	
 ID	bigint(11)	NO		0	
-IS_DEFAULT	varchar(3)	NO			
-IS_COMPILED	varchar(3)	NO			
+IS_DEFAULT	varchar(3)	NO		''	
+IS_COMPILED	varchar(3)	NO		''	
 SORTLEN	bigint(3)	NO		0	
 # Testcases 3.2.3.2 and 3.2.3.3 are checked in suite/funcs_1/t/charset_collation*.test
 ########################################################################

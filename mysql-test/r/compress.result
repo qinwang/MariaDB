@@ -2080,17 +2080,17 @@ Field	Type	Collation	Null	Key	Default	Extra	Privileges	Comment
 auto	int(11)	NULL	NO	PRI	NULL	auto_increment	#	
 fld1	int(6) unsigned zerofill	NULL	NO	UNI	000000		#	
 companynr	tinyint(2) unsigned zerofill	NULL	NO		00		#	
-fld3	char(30)	latin1_swedish_ci	NO	MUL			#	
-fld4	char(35)	latin1_swedish_ci	NO				#	
-fld5	char(35)	latin1_swedish_ci	NO				#	
-fld6	char(4)	latin1_swedish_ci	NO				#	
+fld3	char(30)	latin1_swedish_ci	NO	MUL	''		#	
+fld4	char(35)	latin1_swedish_ci	NO		''		#	
+fld5	char(35)	latin1_swedish_ci	NO		''		#	
+fld6	char(4)	latin1_swedish_ci	NO		''		#	
 show full columns from t2 from test like 'f%';
 Field	Type	Collation	Null	Key	Default	Extra	Privileges	Comment
 fld1	int(6) unsigned zerofill	NULL	NO	UNI	000000		#	
-fld3	char(30)	latin1_swedish_ci	NO	MUL			#	
-fld4	char(35)	latin1_swedish_ci	NO				#	
-fld5	char(35)	latin1_swedish_ci	NO				#	
-fld6	char(4)	latin1_swedish_ci	NO				#	
+fld3	char(30)	latin1_swedish_ci	NO	MUL	''		#	
+fld4	char(35)	latin1_swedish_ci	NO		''		#	
+fld5	char(35)	latin1_swedish_ci	NO		''		#	
+fld6	char(4)	latin1_swedish_ci	NO		''		#	
 show full columns from t2 from test like 's%';
 Field	Type	Collation	Null	Key	Default	Extra	Privileges	Comment
 show keys from t2;

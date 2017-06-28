@@ -29,12 +29,12 @@ DROP FUNCTION test.f1;
 #########################################################################
 DESCRIBE          information_schema.ROUTINES;
 Field	Type	Null	Key	Default	Extra
-SPECIFIC_NAME	varchar(64)	NO			
-ROUTINE_CATALOG	varchar(512)	NO			
-ROUTINE_SCHEMA	varchar(64)	NO			
-ROUTINE_NAME	varchar(64)	NO			
-ROUTINE_TYPE	varchar(9)	NO			
-DATA_TYPE	varchar(64)	NO			
+SPECIFIC_NAME	varchar(64)	NO		''	
+ROUTINE_CATALOG	varchar(512)	NO		''	
+ROUTINE_SCHEMA	varchar(64)	NO		''	
+ROUTINE_NAME	varchar(64)	NO		''	
+ROUTINE_TYPE	varchar(9)	NO		''	
+DATA_TYPE	varchar(64)	NO		''	
 CHARACTER_MAXIMUM_LENGTH	int(21)	YES		NULL	
 CHARACTER_OCTET_LENGTH	int(21)	YES		NULL	
 NUMERIC_PRECISION	int(21)	YES		NULL	
@@ -43,23 +43,23 @@ DATETIME_PRECISION	bigint(21) unsigned	YES		NULL
 CHARACTER_SET_NAME	varchar(64)	YES		NULL	
 COLLATION_NAME	varchar(64)	YES		NULL	
 DTD_IDENTIFIER	longtext	YES		NULL	
-ROUTINE_BODY	varchar(8)	NO			
+ROUTINE_BODY	varchar(8)	NO		''	
 ROUTINE_DEFINITION	longtext	YES		NULL	
 EXTERNAL_NAME	varchar(64)	YES		NULL	
 EXTERNAL_LANGUAGE	varchar(64)	YES		NULL	
-PARAMETER_STYLE	varchar(8)	NO			
-IS_DETERMINISTIC	varchar(3)	NO			
-SQL_DATA_ACCESS	varchar(64)	NO			
+PARAMETER_STYLE	varchar(8)	NO		''	
+IS_DETERMINISTIC	varchar(3)	NO		''	
+SQL_DATA_ACCESS	varchar(64)	NO		''	
 SQL_PATH	varchar(64)	YES		NULL	
-SECURITY_TYPE	varchar(7)	NO			
-CREATED	datetime	NO		0000-00-00 00:00:00	
-LAST_ALTERED	datetime	NO		0000-00-00 00:00:00	
-SQL_MODE	varchar(8192)	NO			
-ROUTINE_COMMENT	longtext	NO			
-DEFINER	varchar(189)	NO			
-CHARACTER_SET_CLIENT	varchar(32)	NO			
-COLLATION_CONNECTION	varchar(32)	NO			
-DATABASE_COLLATION	varchar(32)	NO			
+SECURITY_TYPE	varchar(7)	NO		''	
+CREATED	datetime	NO		'0000-00-00 00:00:00'	
+LAST_ALTERED	datetime	NO		'0000-00-00 00:00:00'	
+SQL_MODE	varchar(8192)	NO		''	
+ROUTINE_COMMENT	longtext	NO		''	
+DEFINER	varchar(189)	NO		''	
+CHARACTER_SET_CLIENT	varchar(32)	NO		''	
+COLLATION_CONNECTION	varchar(32)	NO		''	
+DATABASE_COLLATION	varchar(32)	NO		''	
 SHOW CREATE TABLE information_schema.ROUTINES;
 Table	Create Table
 ROUTINES	CREATE TEMPORARY TABLE `ROUTINES` (
@@ -97,12 +97,12 @@ ROUTINES	CREATE TEMPORARY TABLE `ROUTINES` (
 )  DEFAULT CHARSET=utf8
 SHOW COLUMNS FROM information_schema.ROUTINES;
 Field	Type	Null	Key	Default	Extra
-SPECIFIC_NAME	varchar(64)	NO			
-ROUTINE_CATALOG	varchar(512)	NO			
-ROUTINE_SCHEMA	varchar(64)	NO			
-ROUTINE_NAME	varchar(64)	NO			
-ROUTINE_TYPE	varchar(9)	NO			
-DATA_TYPE	varchar(64)	NO			
+SPECIFIC_NAME	varchar(64)	NO		''	
+ROUTINE_CATALOG	varchar(512)	NO		''	
+ROUTINE_SCHEMA	varchar(64)	NO		''	
+ROUTINE_NAME	varchar(64)	NO		''	
+ROUTINE_TYPE	varchar(9)	NO		''	
+DATA_TYPE	varchar(64)	NO		''	
 CHARACTER_MAXIMUM_LENGTH	int(21)	YES		NULL	
 CHARACTER_OCTET_LENGTH	int(21)	YES		NULL	
 NUMERIC_PRECISION	int(21)	YES		NULL	
@@ -111,23 +111,23 @@ DATETIME_PRECISION	bigint(21) unsigned	YES		NULL
 CHARACTER_SET_NAME	varchar(64)	YES		NULL	
 COLLATION_NAME	varchar(64)	YES		NULL	
 DTD_IDENTIFIER	longtext	YES		NULL	
-ROUTINE_BODY	varchar(8)	NO			
+ROUTINE_BODY	varchar(8)	NO		''	
 ROUTINE_DEFINITION	longtext	YES		NULL	
 EXTERNAL_NAME	varchar(64)	YES		NULL	
 EXTERNAL_LANGUAGE	varchar(64)	YES		NULL	
-PARAMETER_STYLE	varchar(8)	NO			
-IS_DETERMINISTIC	varchar(3)	NO			
-SQL_DATA_ACCESS	varchar(64)	NO			
+PARAMETER_STYLE	varchar(8)	NO		''	
+IS_DETERMINISTIC	varchar(3)	NO		''	
+SQL_DATA_ACCESS	varchar(64)	NO		''	
 SQL_PATH	varchar(64)	YES		NULL	
-SECURITY_TYPE	varchar(7)	NO			
-CREATED	datetime	NO		0000-00-00 00:00:00	
-LAST_ALTERED	datetime	NO		0000-00-00 00:00:00	
-SQL_MODE	varchar(8192)	NO			
-ROUTINE_COMMENT	longtext	NO			
-DEFINER	varchar(189)	NO			
-CHARACTER_SET_CLIENT	varchar(32)	NO			
-COLLATION_CONNECTION	varchar(32)	NO			
-DATABASE_COLLATION	varchar(32)	NO			
+SECURITY_TYPE	varchar(7)	NO		''	
+CREATED	datetime	NO		'0000-00-00 00:00:00'	
+LAST_ALTERED	datetime	NO		'0000-00-00 00:00:00'	
+SQL_MODE	varchar(8192)	NO		''	
+ROUTINE_COMMENT	longtext	NO		''	
+DEFINER	varchar(189)	NO		''	
+CHARACTER_SET_CLIENT	varchar(32)	NO		''	
+COLLATION_CONNECTION	varchar(32)	NO		''	
+DATABASE_COLLATION	varchar(32)	NO		''	
 USE test;
 DROP PROCEDURE IF EXISTS sp_for_routines;
 DROP FUNCTION  IF EXISTS function_for_routines;

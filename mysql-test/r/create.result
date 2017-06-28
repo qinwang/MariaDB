@@ -521,7 +521,7 @@ create table t1(str varchar(10) default 'def',strnull varchar(10),intg int defau
 insert into t1 values ('','',0,0.0);
 describe t1;
 Field	Type	Null	Key	Default	Extra
-str	varchar(10)	YES		def	
+str	varchar(10)	YES		'def'	
 strnull	varchar(10)	YES		NULL	
 intg	int(11)	YES		10	
 rel	double	YES		3.14	

@@ -255,7 +255,7 @@ a	tinyint(3) unsigned	NO		NULL
 b	smallint(5) unsigned zerofill	NO		NULL	
 c	int(10) unsigned	NO		NULL	
 d	bigint(20) unsigned	NO		NULL	
-e	char(32)	NO		Hello	
+e	char(32)	NO		'Hello'	
 INSERT INTO t1(a,b,c,d) VALUES(255,65535,4294967295,18446744073709551615);
 SELECT * FROM t1;
 a	b	c	d	e
@@ -267,7 +267,7 @@ a	tinyint(3) unsigned	NO		NULL
 b	smallint(5) unsigned zerofill	NO		NULL	
 c	int(10) unsigned	NO		NULL	
 d	bigint(20) unsigned	NO		NULL	
-e	char(32)	NO		Hello	
+e	char(32)	NO		'Hello'	
 SELECT * FROM t2;
 a	b	c	d	e
 255	65535	4294967295	18446744073709551615	Hello

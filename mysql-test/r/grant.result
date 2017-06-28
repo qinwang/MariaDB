@@ -680,14 +680,14 @@ mysqltest	dummytable	ALTER, CREATE, CREATE VIEW, DELETE, DROP, INDEX, INSERT, RE
 mysqltest	dummyview	ALTER, CREATE, CREATE VIEW, DELETE, DROP, INDEX, INSERT, REFERENCES, SELECT, SHOW VIEW, TRIGGER, UPDATE
 SHOW FIELDS FROM mysql.tables_priv;
 Field	Type	Null	Key	Default	Extra
-Host	char(60)	NO	PRI		
-Db	char(64)	NO	PRI		
-User	char(80)	NO	PRI		
-Table_name	char(64)	NO	PRI		
-Grantor	char(141)	NO	MUL		
+Host	char(60)	NO	PRI	''	
+Db	char(64)	NO	PRI	''	
+User	char(80)	NO	PRI	''	
+Table_name	char(64)	NO	PRI	''	
+Grantor	char(141)	NO	MUL	''	
 Timestamp	timestamp	NO		current_timestamp()	on update current_timestamp()
-Table_priv	set('Select','Insert','Update','Delete','Create','Drop','Grant','References','Index','Alter','Create View','Show view','Trigger')	NO			
-Column_priv	set('Select','Insert','Update','References')	NO			
+Table_priv	set('Select','Insert','Update','Delete','Create','Drop','Grant','References','Index','Alter','Create View','Show view','Trigger')	NO		''	
+Column_priv	set('Select','Insert','Update','References')	NO		''	
 use test;
 REVOKE ALL PRIVILEGES, GRANT OPTION FROM dummy@localhost;
 DROP USER dummy@localhost;

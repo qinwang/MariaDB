@@ -146,8 +146,8 @@ t1	CREATE TABLE `t1` (
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 SHOW COLUMNS FROM t1;
 Field	Type	Null	Key	Default	Extra
-‰	char(128)	YES		‰	
-‰1	enum('‰1','‰2')	YES		‰2	
+‰	char(128)	YES		'‰'	
+‰1	enum('‰1','‰2')	YES		'‰2'	
 SET NAMES binary;
 SHOW CREATE TABLE t1;
 Table	Create Table
@@ -157,8 +157,8 @@ t1	CREATE TABLE `t1` (
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 SHOW COLUMNS FROM t1;
 Field	Type	Null	Key	Default	Extra
-√§	char(128)	YES		√§	
-√§1	enum('√§1','√§2')	YES		√§2	
+√§	char(128)	YES		'√§'	
+√§1	enum('√§1','√§2')	YES		'√§2'	
 DROP TABLE t1;
 SET NAMES binary;
 CREATE TABLE `good–Ãœ»œ` (a int);

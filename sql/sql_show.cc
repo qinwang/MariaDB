@@ -5516,7 +5516,7 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
                            cs);
     table->field[4]->store((longlong) count, TRUE);
 
-    if (get_field_default_value(thd, field, &type, 0))
+    if (get_field_default_value(thd, field, &type, 1))
     {
       table->field[5]->store(type.ptr(), type.length(), cs);
       table->field[5]->set_notnull();
