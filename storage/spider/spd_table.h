@@ -265,6 +265,10 @@ int spider_close_connection(
   THD* thd
 );
 
+int spider_close_trx_connection(
+  SPIDER_TRX *trx
+);
+
 void spider_drop_database(
   handlerton *hton,
   char* path

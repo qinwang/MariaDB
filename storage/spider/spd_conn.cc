@@ -37,6 +37,10 @@
 #include "spd_ping_table.h"
 #include "spd_malloc.h"
 
+extern bool is_spider_shutdown();
+extern int  spider_memory_rdlock();
+extern int  spider_memory_unlock();
+
 extern handlerton *spider_hton_ptr;
 extern SPIDER_DBTON spider_dbton[SPIDER_DBTON_SIZE];
 pthread_mutex_t spider_conn_id_mutex;
@@ -2251,6 +2255,7 @@ void *spider_bg_conn_action(
   void *arg
 ) {
   int error_num;
+  bool do_kill = FALSE;
   SPIDER_CONN *conn = (SPIDER_CONN*) arg;
   SPIDER_TRX *trx;
   ha_spider *spider;
@@ -2272,12 +2277,18 @@ void *spider_bg_conn_action(
 #endif
   thd->thread_stack = (char*) &thd;
   thd->store_globals();
-  if (!(trx = spider_get_trx(thd, FALSE, &error_num)))
-  {
+  if (spider_memory_rdlock())
+    do_kill = TRUE;
+  if (
+    do_kill ||
+    !(trx = spider_get_trx(thd, FALSE, &error_num))
+  ) {
     delete thd;
     pthread_mutex_lock(&conn->bg_conn_sync_mutex);
     pthread_cond_signal(&conn->bg_conn_sync_cond);
     pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+    if (!do_kill)
+      spider_memory_unlock();
 #if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
     my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
@@ -2301,7 +2312,10 @@ void *spider_bg_conn_action(
       conn->bg_conn_chain_mutex_ptr = NULL;
     }
     thd->clear_error();
+    spider_memory_unlock();
     pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex);
+    if (spider_memory_rdlock())
+      do_kill = TRUE;
     DBUG_PRINT("info",("spider bg roop start"));
 #ifndef DBUG_OFF
     DBUG_PRINT("info",("spider conn->thd=%p", conn->thd));
@@ -2310,24 +2324,27 @@ void *spider_bg_conn_action(
       DBUG_PRINT("info",("spider query_id=%lld", conn->thd->query_id));
     }
 #endif
-    if (conn->bg_caller_sync_wait)
+    if (!do_kill)
     {
-      pthread_mutex_lock(&conn->bg_conn_sync_mutex);
-      if (conn->bg_direct_sql)
-        conn->bg_get_job_stack_off = TRUE;
-      pthread_cond_signal(&conn->bg_conn_sync_cond);
-      pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
-      if (conn->bg_conn_chain_mutex_ptr)
+      if (conn->bg_caller_sync_wait)
       {
-        pthread_mutex_lock(conn->bg_conn_chain_mutex_ptr);
-        if ((&conn->bg_conn_chain_mutex) != conn->bg_conn_chain_mutex_ptr)
+        pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+        if (conn->bg_direct_sql)
+          conn->bg_get_job_stack_off = TRUE;
+        pthread_cond_signal(&conn->bg_conn_sync_cond);
+        pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+        if (conn->bg_conn_chain_mutex_ptr)
         {
-          pthread_mutex_unlock(conn->bg_conn_chain_mutex_ptr);
-          conn->bg_conn_chain_mutex_ptr = NULL;
+          pthread_mutex_lock(conn->bg_conn_chain_mutex_ptr);
+          if ((&conn->bg_conn_chain_mutex) != conn->bg_conn_chain_mutex_ptr)
+          {
+            pthread_mutex_unlock(conn->bg_conn_chain_mutex_ptr);
+            conn->bg_conn_chain_mutex_ptr = NULL;
+          }
         }
       }
     }
-    if (conn->bg_kill)
+    if (conn->bg_kill || do_kill)
     {
       DBUG_PRINT("info",("spider bg kill start"));
       if (conn->bg_conn_chain_mutex_ptr)
@@ -2342,6 +2359,8 @@ void *spider_bg_conn_action(
       pthread_cond_signal(&conn->bg_conn_sync_cond);
       pthread_mutex_unlock(&conn->bg_conn_mutex);
       pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+      if (!do_kill)
+        spider_memory_unlock();
 #if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
       my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
@@ -2700,6 +2719,7 @@ void *spider_bg_sts_action(
   SPIDER_SHARE *share = (SPIDER_SHARE*) arg;
   SPIDER_TRX *trx;
   int error_num = 0, roop_count;
+  bool do_kill = FALSE;
   ha_spider spider;
 #if defined(_MSC_VER) || defined(__SUNPRO_CC)
   int *need_mons;
@@ -2782,13 +2802,19 @@ void *spider_bg_sts_action(
 #endif
   thd->thread_stack = (char*) &thd;
   thd->store_globals();
-  if (!(trx = spider_get_trx(thd, FALSE, &error_num)))
-  {
+  if (spider_memory_rdlock())
+    do_kill = TRUE;
+  if (
+    do_kill ||
+    !(trx = spider_get_trx(thd, FALSE, &error_num))
+  ) {
     delete thd;
     share->bg_sts_thd_wait = FALSE;
     share->bg_sts_kill = FALSE;
     share->bg_sts_init = FALSE;
     pthread_mutex_unlock(&share->sts_mutex);
+    if (!do_kill)
+      spider_memory_unlock();
 #if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
     my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
@@ -2863,12 +2889,15 @@ void *spider_bg_sts_action(
 #endif
     DBUG_RETURN(NULL);
   }
+  spider_memory_unlock();
   /* init end */
 
   while (TRUE)
   {
     DBUG_PRINT("info",("spider bg sts roop start"));
-    if (share->bg_sts_kill)
+    if (spider_memory_rdlock())
+      do_kill = TRUE;
+    if (share->bg_sts_kill || do_kill)
     {
       DBUG_PRINT("info",("spider bg sts kill start"));
       for (roop_count = SPIDER_DBTON_SIZE - 1; roop_count >= 0; --roop_count)
@@ -2885,6 +2914,8 @@ void *spider_bg_sts_action(
       delete thd;
       pthread_cond_signal(&share->bg_sts_sync_cond);
       pthread_mutex_unlock(&share->sts_mutex);
+      if (!do_kill)
+        spider_memory_unlock();
 #if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
       my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
@@ -2995,6 +3026,7 @@ void *spider_bg_sts_action(
     }
     memset(need_mons, 0, sizeof(int) * share->link_count);
     share->bg_sts_thd_wait = TRUE;
+    spider_memory_unlock();
     pthread_cond_wait(&share->bg_sts_cond, &share->sts_mutex);
   }
 }
@@ -3078,6 +3110,7 @@ void *spider_bg_crd_action(
   SPIDER_SHARE *share = (SPIDER_SHARE*) arg;
   SPIDER_TRX *trx;
   int error_num = 0, roop_count;
+  bool do_kill = FALSE;
   ha_spider spider;
   TABLE table;
 #if defined(_MSC_VER) || defined(__SUNPRO_CC)
@@ -3161,13 +3194,19 @@ void *spider_bg_crd_action(
 #endif
   thd->thread_stack = (char*) &thd;
   thd->store_globals();
-  if (!(trx = spider_get_trx(thd, FALSE, &error_num)))
-  {
+  if (spider_memory_rdlock())
+    do_kill = TRUE;
+  if (
+    do_kill ||
+    !(trx = spider_get_trx(thd, FALSE, &error_num))
+  ) {
     delete thd;
     share->bg_crd_thd_wait = FALSE;
     share->bg_crd_kill = FALSE;
     share->bg_crd_init = FALSE;
     pthread_mutex_unlock(&share->crd_mutex);
+    if (!do_kill)
+      spider_memory_unlock();
 #if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
     my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
@@ -3237,6 +3276,7 @@ void *spider_bg_crd_action(
     share->bg_crd_kill = FALSE;
     share->bg_crd_init = FALSE;
     pthread_mutex_unlock(&share->crd_mutex);
+    spider_memory_unlock();
 #if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
     my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
@@ -3246,12 +3286,15 @@ void *spider_bg_crd_action(
 #endif
     DBUG_RETURN(NULL);
   }
+  spider_memory_unlock();
   /* init end */
 
   while (TRUE)
   {
     DBUG_PRINT("info",("spider bg crd roop start"));
-    if (share->bg_crd_kill)
+    if (spider_memory_rdlock())
+      do_kill = TRUE;
+    if (share->bg_crd_kill || do_kill)
     {
       DBUG_PRINT("info",("spider bg crd kill start"));
       for (roop_count = SPIDER_DBTON_SIZE - 1; roop_count >= 0; --roop_count)
@@ -3268,6 +3311,8 @@ void *spider_bg_crd_action(
       delete thd;
       pthread_cond_signal(&share->bg_crd_sync_cond);
       pthread_mutex_unlock(&share->crd_mutex);
+      if (!do_kill)
+        spider_memory_unlock();
 #if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
       my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
@@ -3378,6 +3423,7 @@ void *spider_bg_crd_action(
     }
     memset(need_mons, 0, sizeof(int) * share->link_count);
     share->bg_crd_thd_wait = TRUE;
+    spider_memory_unlock();
     pthread_cond_wait(&share->bg_crd_cond, &share->crd_mutex);
   }
 }
@@ -3628,6 +3674,7 @@ void *spider_bg_mon_action(
   SPIDER_SHARE *share = link_pack->share;
   SPIDER_TRX *trx;
   int error_num, link_idx = link_pack->link_idx;
+  bool do_kill = FALSE;
   THD *thd;
   my_thread_init();
   DBUG_ENTER("spider_bg_mon_action");
@@ -3647,13 +3694,19 @@ void *spider_bg_mon_action(
 #endif
   thd->thread_stack = (char*) &thd;
   thd->store_globals();
-  if (!(trx = spider_get_trx(thd, FALSE, &error_num)))
-  {
+  if (spider_memory_rdlock())
+    do_kill = TRUE;
+  if (
+    do_kill ||
+    !(trx = spider_get_trx(thd, FALSE, &error_num))
+  ) {
     delete thd;
     share->bg_mon_kill = FALSE;
     share->bg_mon_init = FALSE;
     pthread_cond_signal(&share->bg_mon_conds[link_idx]);
     pthread_mutex_unlock(&share->bg_mon_mutexes[link_idx]);
+    if (!do_kill)
+      spider_memory_unlock();
 #if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
     my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
@@ -3665,13 +3718,16 @@ void *spider_bg_mon_action(
 /*
   pthread_mutex_unlock(&share->bg_mon_mutexes[link_idx]);
 */
+  spider_memory_unlock();
   /* init end */
 
   while (TRUE)
   {
     DBUG_PRINT("info",("spider bg mon sleep %lld",
       share->monitoring_bg_interval[link_idx]));
-    if (!share->bg_mon_kill)
+    if (spider_memory_rdlock())
+      do_kill = TRUE;
+    if (!share->bg_mon_kill && !do_kill)
     {
       struct timespec abstime;
       set_timespec_nsec(abstime,
@@ -3683,7 +3739,7 @@ void *spider_bg_mon_action(
 */
     }
     DBUG_PRINT("info",("spider bg mon roop start"));
-    if (share->bg_mon_kill)
+    if (share->bg_mon_kill || do_kill)
     {
       DBUG_PRINT("info",("spider bg mon kill start"));
 /*
@@ -3693,6 +3749,8 @@ void *spider_bg_mon_action(
       pthread_mutex_unlock(&share->bg_mon_mutexes[link_idx]);
       spider_free_trx(trx, TRUE);
       delete thd;
+      if (!do_kill)
+        spider_memory_unlock();
 #if !defined(MYSQL_DYNAMIC_PLUGIN) || !defined(_WIN32)
       my_pthread_setspecific_ptr(THR_THD, NULL);
 #endif
@@ -3719,6 +3777,7 @@ void *spider_bg_mon_action(
       );
       lex_end(thd->lex);
     }
+    spider_memory_unlock();
   }
 }
 #endif

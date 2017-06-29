@@ -44,6 +44,10 @@
 #define SPIDER_NEED_INIT_ONE_TABLE_FOR_FIND_TEMPORARY_TABLE
 #endif
 
+extern bool is_spider_shutdown();
+extern int  spider_memory_rdlock();
+extern int  spider_memory_unlock();
+
 extern const char **spd_defaults_extra_file;
 extern const char **spd_defaults_file;
 
@@ -1529,6 +1533,7 @@ long long spider_direct_sql_body(
   my_bool bg
 ) {
   int error_num, roop_count;
+  bool do_spider_memory_unlock = FALSE;
   SPIDER_DIRECT_SQL *direct_sql = NULL, *tmp_direct_sql;
   THD *thd = current_thd;
   SPIDER_TRX *trx;
@@ -1543,6 +1548,11 @@ long long spider_direct_sql_body(
 #endif
   DBUG_ENTER("spider_direct_sql_body");
   SPIDER_BACKUP_DASTATUS;
+
+  if (spider_memory_rdlock())
+    goto error;
+  do_spider_memory_unlock = TRUE;
+
   if (!(direct_sql = (SPIDER_DIRECT_SQL *)
     spider_bulk_malloc(spider_current_trx, 34, MYF(MY_WME | MY_ZEROFILL),
       &direct_sql, sizeof(SPIDER_DIRECT_SQL),
@@ -1737,6 +1747,9 @@ long long spider_direct_sql_body(
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   }
 #endif
+
+  if (do_spider_memory_unlock)
+    spider_memory_unlock();
   DBUG_RETURN(1);
 
 error:
@@ -1748,10 +1761,15 @@ error:
     ) {
       SPIDER_RESTORE_DASTATUS;
       spider_udf_free_direct_sql_alloc(direct_sql, bg);
+      if (do_spider_memory_unlock)
+        spider_memory_unlock();
       DBUG_RETURN(1);
     }
     spider_udf_free_direct_sql_alloc(direct_sql, bg);
   }
+
+  if (do_spider_memory_unlock)
+    spider_memory_unlock();
   *error = 1;
   DBUG_RETURN(0);
 }

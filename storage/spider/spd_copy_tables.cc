@@ -40,6 +40,10 @@
 #include "spd_udf.h"
 #include "spd_malloc.h"
 
+extern bool is_spider_shutdown();
+extern int  spider_memory_rdlock();
+extern int  spider_memory_unlock();
+
 extern handlerton *spider_hton_ptr;
 extern SPIDER_DBTON spider_dbton[SPIDER_DBTON_SIZE];
 
@@ -835,6 +839,7 @@ long long spider_copy_tables_body(
   char *error
 ) {
   int error_num, roop_count, all_link_cnt = 0, use_table_charset;
+  bool do_spider_memory_unlock = FALSE;
   SPIDER_COPY_TABLES *copy_tables = NULL;
   THD *thd = current_thd;
   TABLE_LIST *table_list = NULL;
@@ -912,6 +917,10 @@ long long spider_copy_tables_body(
     }
     goto error;
   }
+  
+  if (spider_memory_rdlock())
+    goto error;
+  do_spider_memory_unlock = TRUE;
 
   if (!(copy_tables = (SPIDER_COPY_TABLES *)
     spider_bulk_malloc(spider_current_trx, 27, MYF(MY_WME | MY_ZEROFILL),
@@ -1239,6 +1248,8 @@ long long spider_copy_tables_body(
     delete [] tmp_sql;
   spider_udf_free_copy_tables_alloc(copy_tables);
 
+  if (do_spider_memory_unlock)
+    spider_memory_unlock();
   DBUG_RETURN(1);
 
 error_db_udf_copy_tables:
@@ -1306,6 +1317,8 @@ error:
   {
     spider_udf_free_copy_tables_alloc(copy_tables);
   }
+  if (do_spider_memory_unlock)
+    spider_memory_unlock();
   *error = 1;
   DBUG_RETURN(0);
 }

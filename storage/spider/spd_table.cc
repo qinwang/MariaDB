@@ -54,6 +54,137 @@ const char **spd_defaults_extra_file;
 const char **spd_defaults_file;
 bool volatile *spd_abort_loop;
 
+// Set to TRUE when Spider plugin uninstall begins
+longlong spider_shutdown_thd;
+
+void set_spider_shutdown(THD *thd)
+{
+  my_atomic_store64(&spider_shutdown_thd, (longlong) thd);
+}
+
+void clear_spider_shutdown()
+{
+  my_atomic_store64(&spider_shutdown_thd, (longlong) NULL);
+}
+
+THD *get_spider_shutdown_thd()
+{
+  return (THD *) my_atomic_load64(&spider_shutdown_thd);
+}
+
+bool is_spider_shutdown()
+{
+  return (bool) my_atomic_load64(&spider_shutdown_thd);
+}
+
+int spider_memory_implicit_rdlock_count;
+
+/*
+  Lock for accessing allocated Spider memory
+
+  Spider plugin uninstall acquires a WR lock
+  Other threads acquire a RD lock
+*/
+mysql_rwlock_t spider_memory_lock;
+#ifdef HAVE_PSI_INTERFACE
+PSI_rwlock_key spider_memory_lock_key;
+static PSI_rwlock_info spider_memory_lock_info =
+  { &spider_memory_lock_key, "spider_memory_lock", PSI_FLAG_GLOBAL };
+#endif
+
+int spider_memory_lock_init()
+{
+  clear_spider_shutdown();
+  my_atomic_store32(&spider_memory_implicit_rdlock_count, 0);
+#ifdef HAVE_PSI_INTERFACE
+  mysql_rwlock_register("spider", &spider_memory_lock_info, 1);
+#endif
+  return mysql_rwlock_init(spider_memory_lock_key, &spider_memory_lock);
+}
+
+int spider_memory_unlock()
+{
+  THD *shutdown_thd = get_spider_shutdown_thd();
+  if (shutdown_thd)
+  {
+    if (shutdown_thd == current_thd)
+    {
+      // Current thread is the Spider shutdown thread
+      if (my_atomic_load32(&spider_memory_implicit_rdlock_count))
+      {
+        // Release an implicit read-lock
+        my_atomic_add32(&spider_memory_implicit_rdlock_count, -1);
+        return 0;
+      }
+    }
+  }
+  return mysql_rwlock_unlock(&spider_memory_lock);
+}
+
+int spider_memory_rdlock()
+{
+  THD *shutdown_thd = get_spider_shutdown_thd();
+  if (shutdown_thd)
+  {
+    if (shutdown_thd == current_thd)
+    {
+      /*
+        Current thread is the Spider shutdown thread and
+        already holds a write lock for Spider shutdown,
+        so grant an implicit read-lock
+      */
+      my_atomic_add32(&spider_memory_implicit_rdlock_count, 1);
+      return 0;
+    }
+    // Spider shutdown is in progress, so deny the lock request
+    return ER_PLUGIN_IS_NOT_LOADED;
+  }
+
+  // Acquire the read-lock
+  int result = mysql_rwlock_rdlock(&spider_memory_lock);
+  if (!result)
+  {
+    if (is_spider_shutdown())
+    {
+      spider_memory_unlock();
+      result = ER_PLUGIN_IS_NOT_LOADED;
+    }
+  }
+  return result;
+}
+
+int spider_memory_wrlock()
+{
+  return mysql_rwlock_wrlock(&spider_memory_lock);
+}
+
+int spider_memory_lock_destroy()
+{
+  return mysql_rwlock_destroy(&spider_memory_lock);
+}
+
+int spider_shutdown_lock(THD *thd)
+{
+  set_spider_shutdown(thd);
+
+  // Acquire the write-lock
+  int result = spider_memory_wrlock();
+  if (result)
+  {
+    fprintf(stderr, "\nWrite-lock request on spider memory failed\n");
+    fflush(stderr);
+  }
+  return result;
+}
+
+void spider_shutdown_unlock()
+{
+  spider_memory_unlock();
+  // Do not destroy the spider memory lock as another thread
+  // may try to acquire it after completion of plugin deinit
+  // spider_memory_lock_destroy();
+}
+
 handlerton *spider_hton_ptr;
 SPIDER_DBTON spider_dbton[SPIDER_DBTON_SIZE];
 extern SPIDER_DBTON spider_dbton_mysql;
@@ -5989,36 +6120,56 @@ int spider_close_connection(
   handlerton* hton,
   THD* thd
 ) {
-  int roop_count = 0;
-  SPIDER_CONN *conn;
   SPIDER_TRX *trx;
   DBUG_ENTER("spider_close_connection");
+
+  if (spider_memory_rdlock())
+    DBUG_RETURN(ER_PLUGIN_IS_NOT_LOADED);
+
   if (!(trx = (SPIDER_TRX*) *thd_ha_data(thd, spider_hton_ptr)))
+  {
+    spider_memory_unlock();
     DBUG_RETURN(0); /* transaction is not started */
+  }
+
+  DBUG_ASSERT(thd == trx->thd);
+  spider_close_trx_connection(trx);
+  spider_free_trx(trx, TRUE);
+
+  spider_memory_unlock();
+  DBUG_RETURN(0);
+}
+
+int spider_close_trx_connection(
+  SPIDER_TRX *trx
+) {
+  THD* thd = trx->thd;
+  SPIDER_CONN *conn;
+  DBUG_ENTER("spider_close_trx_connection");
 
   trx->tmp_spider->conns = &conn;
-  while ((conn = (SPIDER_CONN*) my_hash_element(&trx->trx_conn_hash,
-    roop_count)))
+  for (ulong i = 0; i < trx->trx_conn_hash.records; i++)
   {
-    SPIDER_BACKUP_DASTATUS;
-    DBUG_PRINT("info",("spider conn->table_lock=%d", conn->table_lock));
-    if (conn->table_lock > 0)
+    conn = (SPIDER_CONN*) my_hash_element(&trx->trx_conn_hash, i);
+    if (conn)
     {
-      if (!conn->trx_start)
-        conn->disable_reconnect = FALSE;
-      if (conn->table_lock != 2)
+      SPIDER_BACKUP_DASTATUS;
+      DBUG_PRINT("info", ("spider conn->table_lock=%d", conn->table_lock));
+      if (conn->table_lock > 0)
       {
-        spider_db_unlock_tables(trx->tmp_spider, 0);
+        if (!conn->trx_start)
+          conn->disable_reconnect = FALSE;
+        if (conn->table_lock != 2)
+        {
+          spider_db_unlock_tables(trx->tmp_spider, 0);
+        }
+        conn->table_lock = 0;
       }
-      conn->table_lock = 0;
+      SPIDER_CONN_RESTORE_DASTATUS;
     }
-    roop_count++;
-    SPIDER_CONN_RESTORE_DASTATUS;
   }
 
   spider_rollback(spider_hton_ptr, thd, TRUE);
-  spider_free_trx(trx, TRUE);
-
   DBUG_RETURN(0);
 }
 
@@ -6048,12 +6199,37 @@ int spider_db_done(
   void *p
 ) {
   int roop_count;
+  int error_num;
+  bool do_delete_thd;
   THD *thd = current_thd, *tmp_thd;
   SPIDER_CONN *conn;
   SPIDER_INIT_ERROR_TABLE *spider_init_error_table;
   SPIDER_TABLE_MON_LIST *table_mon_list;
   SPIDER_LGTM_TBLHND_SHARE *lgtm_tblhnd_share;
   DBUG_ENTER("spider_db_done");
+
+  if (thd)
+    do_delete_thd = FALSE;
+  else
+  {
+    do_delete_thd = TRUE;
+    my_thread_init();
+    if (!(thd = new THD(next_thread_id())))
+    {
+      my_thread_end();
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    }
+#ifdef HAVE_PSI_INTERFACE
+    mysql_thread_set_psi_id(thd->thread_id);
+#endif
+    thd->thread_stack = (char*) &thd;
+    thd->store_globals();
+  }
+
+  // Begin Spider plugin deinit
+  error_num = spider_shutdown_lock(thd);
+  if (error_num)
+    DBUG_RETURN(error_num);
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   spider_free_trx(spider_global_trx, TRUE);
@@ -6097,21 +6273,28 @@ int spider_db_done(
     pthread_mutex_destroy(&spider_udf_table_mon_mutexes[roop_count]);
   spider_free(NULL, spider_udf_table_mon_mutexes, MYF(0));
 
-  if (thd && thd_sql_command(thd) == SQLCOM_UNINSTALL_PLUGIN) {
-    pthread_mutex_lock(&spider_allocated_thds_mutex);
-    while ((tmp_thd = (THD *) my_hash_element(&spider_allocated_thds, 0)))
+  pthread_mutex_lock(&spider_allocated_thds_mutex);
+  for (ulong i = 0; i < spider_allocated_thds.records;)
+  {
+    tmp_thd = (THD *) my_hash_element(&spider_allocated_thds, i);
+    if (tmp_thd)
     {
       SPIDER_TRX *trx = (SPIDER_TRX *) *thd_ha_data(tmp_thd, spider_hton_ptr);
       if (trx)
       {
         DBUG_ASSERT(tmp_thd == trx->thd);
+        spider_close_trx_connection(trx);
         spider_free_trx(trx, FALSE);
         *thd_ha_data(tmp_thd, spider_hton_ptr) = (void *) NULL;
-      } else
+      }
+      else
         my_hash_delete(&spider_allocated_thds, (uchar *) tmp_thd);
     }
-    pthread_mutex_unlock(&spider_allocated_thds_mutex);
+    else
+      i++;
   }
+  pthread_mutex_unlock(&spider_allocated_thds_mutex);
+
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   pthread_mutex_lock(&spider_hs_w_conn_mutex);
   while ((conn = (SPIDER_CONN*) my_hash_element(&spider_hs_w_conn_hash, 0)))
@@ -6260,10 +6443,16 @@ int spider_db_done(
         spider_current_alloc_mem[roop_count] ? "NG" : "OK"
       ));
   }
+
+  // End Spider plugin deinit
+  spider_shutdown_unlock();
+  if (do_delete_thd)
+    delete thd;
+
 /*
 DBUG_ASSERT(0);
 */
-  DBUG_RETURN(0);
+  DBUG_RETURN(error_num);
 }
 
 int spider_panic(
@@ -6281,6 +6470,12 @@ int spider_db_init(
   uint dbton_id = 0;
   handlerton *spider_hton = (handlerton *)p;
   DBUG_ENTER("spider_db_init");
+  if (spider_memory_lock_init())
+  {
+    error_num = HA_ERR_OUT_OF_MEM;
+    DBUG_RETURN(error_num);
+  }
+
   spider_hton_ptr = spider_hton;
 
   spider_hton->state = SHOW_OPTION_YES;

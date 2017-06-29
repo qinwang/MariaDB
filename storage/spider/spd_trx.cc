@@ -57,6 +57,10 @@ ulonglong spider_thread_id = 1;
 extern PSI_mutex_key spd_key_mutex_udf_table;
 #endif
 
+extern bool is_spider_shutdown();
+extern int  spider_memory_rdlock();
+extern int  spider_memory_unlock();
+
 extern HASH spider_allocated_thds;
 extern uint spider_allocated_thds_id;
 extern const char *spider_allocated_thds_func_name;
@@ -1145,6 +1149,14 @@ SPIDER_TRX *spider_get_trx(
   pthread_mutex_t *udf_table_mutexes;
   DBUG_ENTER("spider_get_trx");
 
+  if (spider_memory_rdlock())
+  {
+    *error_num = ER_PLUGIN_IS_NOT_LOADED;
+    DBUG_RETURN(NULL);
+  }
+
+  *error_num = 0;
+
   if (
     !thd ||
     !(trx = (SPIDER_TRX*) *thd_ha_data(thd, spider_hton_ptr))
@@ -1399,6 +1411,7 @@ SPIDER_TRX *spider_get_trx(
     }
   }
 
+  spider_memory_unlock();
   DBUG_PRINT("info",("spider trx=%p", trx));
   DBUG_RETURN(trx);
 
@@ -1502,6 +1515,7 @@ error_init_udf_table_mutex:
   free_root(&trx->mem_root, MYF(0));
   spider_free(NULL, trx, MYF(0));
 error_alloc_trx:
+  spider_memory_unlock();
   *error_num = HA_ERR_OUT_OF_MEM;
   DBUG_RETURN(NULL);
 }
@@ -1511,7 +1525,8 @@ int spider_free_trx(
   bool need_lock
 ) {
   DBUG_ENTER("spider_free_trx");
-  if (trx->thd)
+  THD *thd = trx->thd;
+  if (thd)
   {
     if (trx->registed_allocated_thds)
     {
@@ -1519,9 +1534,9 @@ int spider_free_trx(
         pthread_mutex_lock(&spider_allocated_thds_mutex);
 #ifdef HASH_UPDATE_WITH_HASH_VALUE
       my_hash_delete_with_hash_value(&spider_allocated_thds,
-        trx->thd_hash_value, (uchar*) trx->thd);
+        trx->thd_hash_value, (uchar*) thd);
 #else
-      my_hash_delete(&spider_allocated_thds, (uchar*) trx->thd);
+      my_hash_delete(&spider_allocated_thds, (uchar*) thd);
 #endif
       if (need_lock)
         pthread_mutex_unlock(&spider_allocated_thds_mutex);
@@ -1793,6 +1808,9 @@ int spider_internal_start_trx(
   time_t tmp_time = (time_t) time((time_t*) 0);
   DBUG_ENTER("spider_internal_start_trx");
 
+  if (spider_memory_rdlock())
+    DBUG_RETURN(ER_PLUGIN_IS_NOT_LOADED);
+
   if (
     conn->server_lost ||
     difftime(tmp_time, conn->ping_time) >= ping_interval_at_trx_start
@@ -1967,11 +1985,14 @@ int spider_internal_start_trx(
     conn->c_big = NULL;
     trx->join_trx_top = conn;
   }
+
+  spider_memory_unlock();
   DBUG_RETURN(0);
 
 error:
   if (xa_lock)
     spider_xa_unlock(&trx->internal_xid_state);
+  spider_memory_unlock();
   DBUG_RETURN(error_num);
 }
 
@@ -3299,8 +3320,14 @@ int spider_commit(
   SPIDER_CONN *conn;
   DBUG_ENTER("spider_commit");
 
+  if (spider_memory_rdlock())
+    DBUG_RETURN(ER_PLUGIN_IS_NOT_LOADED);
+
   if (!(trx = (SPIDER_TRX*) *thd_ha_data(thd, spider_hton_ptr)))
+  {
+    spider_memory_unlock();
     DBUG_RETURN(0); /* transaction is not started */
+  }
 
 #ifdef HA_CAN_BULK_ACCESS
   DBUG_PRINT("info",("spider trx->bulk_access_conn_first=%p",
@@ -3329,6 +3356,7 @@ int spider_commit(
 /*
             }
 */
+            spider_memory_unlock();
             DBUG_RETURN(error_num);
           }
           trx->trx_xa_prepared = TRUE;
@@ -3376,6 +3404,8 @@ int spider_commit(
     trx->trx_consistent_snapshot = FALSE;
   }
   spider_merge_mem_calc(trx, FALSE);
+
+  spider_memory_unlock();
   DBUG_RETURN(error_num);
 }
 
@@ -3389,8 +3419,14 @@ int spider_rollback(
   SPIDER_CONN *conn;
   DBUG_ENTER("spider_rollback");
 
+  if (spider_memory_rdlock())
+    DBUG_RETURN(ER_PLUGIN_IS_NOT_LOADED);
+
   if (!(trx = (SPIDER_TRX*) *thd_ha_data(thd, spider_hton_ptr)))
+  {
+    spider_memory_unlock();
     DBUG_RETURN(0); /* transaction is not started */
+  }
 
 #ifdef HA_CAN_BULK_ACCESS
   DBUG_PRINT("info",("spider trx->bulk_access_conn_first=%p",
@@ -3448,6 +3484,8 @@ int spider_rollback(
   }
 
   spider_merge_mem_calc(trx, FALSE);
+
+  spider_memory_unlock();
   DBUG_RETURN(error_num);
 }
 
@@ -3572,6 +3610,10 @@ int spider_end_trx(
 ) {
   int error_num = 0, need_mon = 0;
   DBUG_ENTER("spider_end_trx");
+
+  if (spider_memory_rdlock())
+    DBUG_RETURN(ER_PLUGIN_IS_NOT_LOADED);
+
   if (conn->table_lock == 3)
   {
     trx->tmp_spider->conns = &conn;
@@ -3608,6 +3650,8 @@ int spider_end_trx(
   conn->semi_trx_isolation = -2;
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
+
+  spider_memory_unlock();
   DBUG_RETURN(error_num);
 }
 
