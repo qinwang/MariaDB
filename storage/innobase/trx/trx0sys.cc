@@ -1,6 +1,6 @@
 /*****************************************************************************
 
-Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 1996, 2017, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
@@ -324,7 +324,6 @@ trx_sys_read_wsrep_checkpoint(
 		long long seqno= -1;
 		memcpy(xid->data + 24, &seqno, sizeof(long long));
 		xid->formatID = -1;
-		trx_sys_update_wsrep_checkpoint(xid, sys_header, &mtr);
 		mtr_commit(&mtr);
 		return;
 	}
@@ -609,7 +608,8 @@ trx_sys_create_rsegs()
 			/* Tablespace 0 is the system tablespace.
 			Dedicated undo log tablespaces start from 1. */
 			ulint space = srv_undo_tablespaces > 0
-				? (i % srv_undo_tablespaces) + 1
+				? (i % srv_undo_tablespaces)
+				+ srv_undo_space_id_start
 				: TRX_SYS_SPACE;
 
 			if (!trx_rseg_create(space)) {

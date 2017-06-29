@@ -1455,14 +1455,14 @@ static bool wsrep_prepare_key_for_isolation(const char* db,
  */
 bool wsrep_prepare_keys_for_isolation(THD*              thd,
                                       const char*       db,
-                                      const char*       table,
+                                      const char*       table_,
                                       const TABLE_LIST* table_list,
                                       wsrep_key_arr_t*  ka)
 {
   ka->keys= 0;
   ka->keys_len= 0;
 
-  if (db || table)
+  if (db || table_)
   {
     if (!(ka->keys= (wsrep_key_t*)my_malloc(sizeof(wsrep_key_t), MYF(0))))
     {
@@ -1478,7 +1478,7 @@ bool wsrep_prepare_keys_for_isolation(THD*              thd,
     }
     ka->keys[0].key_parts_num= 2;
     if (!wsrep_prepare_key_for_isolation(
-                                         db, table,
+                                         db, table_,
                                          (wsrep_buf_t*)ka->keys[0].key_parts,
                                          &ka->keys[0].key_parts_num))
     {
@@ -1490,9 +1490,16 @@ bool wsrep_prepare_keys_for_isolation(THD*              thd,
   for (const TABLE_LIST* table= table_list; table; table= table->next_global)
   {
     wsrep_key_t* tmp;
-    tmp= (wsrep_key_t*)my_realloc(ka->keys,
-                                  (ka->keys_len + 1) * sizeof(wsrep_key_t),
-                                  MYF(0));
+    if (ka->keys)
+    {
+      tmp= (wsrep_key_t*)my_realloc(ka->keys,
+                                    (ka->keys_len + 1) * sizeof(wsrep_key_t),
+                                    MYF(0));
+    }
+    else
+    {
+      tmp= (wsrep_key_t*)my_malloc(sizeof(wsrep_key_t), MYF(0));
+    }
     if (!tmp)
     {
       WSREP_ERROR("Can't allocate memory for key_array");

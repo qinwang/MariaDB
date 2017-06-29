@@ -591,7 +591,6 @@ ha_innobase::check_if_supported_inplace_alter(
 	}
 
 	update_thd();
-	trx_assert_no_search_latch(m_prebuilt->trx);
 
 	/* Change on engine specific table options require rebuild of the
 	table */
@@ -1012,6 +1011,7 @@ ha_innobase::check_if_supported_inplace_alter(
 	constant DEFAULT expression. */
 	cf_it.rewind();
 	Field **af = altered_table->field;
+
 	while (Create_field* cf = cf_it++) {
 		DBUG_ASSERT(cf->field
 			    || (ha_alter_info->handler_flags
@@ -1019,49 +1019,71 @@ ha_innobase::check_if_supported_inplace_alter(
 
 		if (const Field* f = cf->field) {
 			/* This could be changing an existing column
-			from NULL to NOT NULL. For now, ensure that
-			the DEFAULT is a constant. */
-			if (~ha_alter_info->handler_flags
-			    & (Alter_inplace_info::ALTER_COLUMN_NOT_NULLABLE
-			       | Alter_inplace_info::ALTER_COLUMN_DEFAULT)
-			    || (*af)->real_maybe_null()) {
-				/* This ALTER TABLE is not both changing
-				a column to NOT NULL and changing the
-				DEFAULT value of a column, or this column
-				does allow NULL after the ALTER TABLE. */
-				goto next_column;
-			}
-
-			/* Find the matching column in the old table. */
-			Field** fp;
-			for (fp = table->field; *fp; fp++) {
-				if (f != *fp) {
-					continue;
+			from NULL to NOT NULL. */
+			switch ((*af)->type()) {
+			case MYSQL_TYPE_TIMESTAMP:
+			case MYSQL_TYPE_TIMESTAMP2:
+				/* Inserting NULL into a TIMESTAMP column
+				would cause the DEFAULT value to be
+				replaced. Ensure that the DEFAULT
+				expression is not changing during
+				ALTER TABLE. */
+				if (!f->real_maybe_null()
+				    || (*af)->real_maybe_null()) {
+					/* The column was NOT NULL, or it
+					will allow NULL after ALTER TABLE. */
+					goto next_column;
 				}
-				if (!f->real_maybe_null()) {
-					/* The column already is NOT NULL. */
+
+				if (!(*af)->default_value
+				    && (*af)->is_real_null()) {
+					/* No DEFAULT value is
+					specified. We can report
+					errors for any NULL values for
+					the TIMESTAMP.
+
+					FIXME: Allow any DEFAULT
+					expression whose value does
+					not change during ALTER TABLE.
+					This would require a fix in
+					row_merge_read_clustered_index()
+					to try to replace the DEFAULT
+					value before reporting
+					DB_INVALID_NULL. */
 					goto next_column;
 				}
 				break;
+			default:
+				/* For any other data type, NULL
+				values are not converted.
+				(An AUTO_INCREMENT attribute cannot
+				be introduced to a column with
+				ALGORITHM=INPLACE.) */
+				ut_ad((MTYP_TYPENR((*af)->unireg_check)
+				       == Field::NEXT_NUMBER)
+				      == (MTYP_TYPENR(f->unireg_check)
+					  == Field::NEXT_NUMBER));
+				goto next_column;
 			}
 
-			/* The column must be found in the old table. */
-			DBUG_ASSERT(fp < &table->field[table->s->fields]);
-		}
-
-		if (!(*af)->default_value
-		    || (*af)->default_value->flags == 0) {
-			/* The NOT NULL column is not
-			carrying a non-constant DEFAULT. */
-			goto next_column;
-		}
-
-		/* TODO: Allow NULL column values to
-		be replaced with a non-constant DEFAULT. */
-		if (cf->field) {
 			ha_alter_info->unsupported_reason
 				= innobase_get_err_msg(
 					ER_ALTER_OPERATION_NOT_SUPPORTED_REASON_NOT_NULL);
+		} else if (!(*af)->default_value
+			   || !((*af)->default_value->flags
+				& ~(VCOL_SESSION_FUNC | VCOL_TIME_FUNC))) {
+			/* The added NOT NULL column lacks a DEFAULT value,
+			or the DEFAULT is the same for all rows.
+			(Time functions, such as CURRENT_TIMESTAMP(),
+			are evaluated from a timestamp that is assigned
+			at the start of the statement. Session
+			functions, such as USER(), always evaluate the
+			same within a statement.) */
+
+			/* Compute the DEFAULT values of non-constant columns
+			(VCOL_SESSION_FUNC | VCOL_TIME_FUNC). */
+			(*af)->set_default();
+			goto next_column;
 		}
 
 		DBUG_RETURN(HA_ALTER_INPLACE_NOT_SUPPORTED);
@@ -2203,7 +2225,6 @@ innobase_create_index_def(
 	memset(index->fields, 0, n_fields * sizeof *index->fields);
 
 	index->parser = NULL;
-	index->is_ngram = false;
 	index->key_number = key_number;
 	index->n_fields = n_fields;
 	index->name = mem_heap_strdup(heap, key->name);
@@ -2236,12 +2257,6 @@ innobase_create_index_def(
 					index->parser =
 						static_cast<st_mysql_ftparser*>(
 						plugin_decl(parser)->info);
-
-					index->is_ngram = strncmp(
-						plugin_name(parser)->str,
-						FTS_NGRAM_PARSER_NAME,
-						plugin_name(parser)->length)
-						 == 0;
 
 					break;
 				}
@@ -2830,10 +2845,10 @@ online_retry_drop_indexes_with_trx(
 @param drop_fk constraints being dropped
 @param n_drop_fk number of constraints that are being dropped
 @return whether the constraint is being dropped */
-inline MY_ATTRIBUTE((warn_unused_result))
+MY_ATTRIBUTE((pure, nonnull(1), warn_unused_result))
+inline
 bool
 innobase_dropping_foreign(
-/*======================*/
 	const dict_foreign_t*	foreign,
 	dict_foreign_t**	drop_fk,
 	ulint			n_drop_fk)
@@ -2857,10 +2872,10 @@ column that is being dropped or modified to NOT NULL.
 @retval true Not allowed (will call my_error())
 @retval false Allowed
 */
-static MY_ATTRIBUTE((warn_unused_result))
+MY_ATTRIBUTE((pure, nonnull(1,4), warn_unused_result))
+static
 bool
 innobase_check_foreigns_low(
-/*========================*/
 	const dict_table_t*	user_table,
 	dict_foreign_t**	drop_fk,
 	ulint			n_drop_fk,
@@ -2957,10 +2972,10 @@ column that is being dropped or modified to NOT NULL.
 @retval true Not allowed (will call my_error())
 @retval false Allowed
 */
-static MY_ATTRIBUTE((warn_unused_result))
+MY_ATTRIBUTE((pure, nonnull(1,2,3,4), warn_unused_result))
+static
 bool
 innobase_check_foreigns(
-/*====================*/
 	Alter_inplace_info*	ha_alter_info,
 	const TABLE*		altered_table,
 	const TABLE*		old_table,
@@ -4479,11 +4494,13 @@ prepare_inplace_alter_table_dict(
 		       || !innobase_fulltext_exist(altered_table))) {
 		/* InnoDB can perform an online operation (LOCK=NONE). */
 	} else {
+		size_t query_length;
 		/* This should have been blocked in
 		check_if_supported_inplace_alter(). */
 		ut_ad(0);
 		my_error(ER_NOT_SUPPORTED_YET, MYF(0),
-			 thd_query(ctx->prebuilt->trx->mysql_thd));
+			 innobase_get_stmt_unsafe(ctx->prebuilt->trx->mysql_thd,
+						  &query_length));
 		goto error_handled;
 	}
 

@@ -2916,13 +2916,6 @@ int select_send::send_data(List<Item> &items)
   if (thd->killed == ABORT_QUERY)
     DBUG_RETURN(FALSE);
 
-  /*
-    We may be passing the control from mysqld to the client: release the
-    InnoDB adaptive hash S-latch to avoid thread deadlocks if it was reserved
-    by thd
-  */
-  ha_release_temporary_latches(thd);
-
   protocol->prepare_for_resend();
   if (protocol->send_result_set_row(&items))
   {
@@ -2941,13 +2934,6 @@ int select_send::send_data(List<Item> &items)
 
 bool select_send::send_eof()
 {
-  /* 
-    We may be passing the control from mysqld to the client: release the
-    InnoDB adaptive hash S-latch to avoid thread deadlocks if it was reserved
-    by thd 
-  */
-  ha_release_temporary_latches(thd);
-
   /* 
     Don't send EOF if we're in error condition (which implies we've already
     sent or are sending an error)
@@ -4721,25 +4707,46 @@ extern "C" const struct charset_info_st *thd_charset(MYSQL_THD thd)
   return(thd->charset());
 }
 
-/**
-  OBSOLETE : there's no way to ensure the string is null terminated.
-  Use thd_query_string instead()
-*/
-extern "C" char **thd_query(MYSQL_THD thd)
-{
-  return (&thd->query_string.string.str);
-}
 
 /**
   Get the current query string for the thread.
+
+  This function is not thread safe and can be used only by thd owner thread.
 
   @param The MySQL internal thread pointer
   @return query string and length. May be non-null-terminated.
 */
 extern "C" LEX_STRING * thd_query_string (MYSQL_THD thd)
 {
+  DBUG_ASSERT(thd == current_thd);
   return(&thd->query_string.string);
 }
+
+
+/**
+  Get the current query string for the thread.
+
+  @param thd     The MySQL internal thread pointer
+  @param buf     Buffer where the query string will be copied
+  @param buflen  Length of the buffer
+
+  @return Length of the query
+
+  @note This function is thread safe as the query string is
+        accessed under mutex protection and the string is copied
+        into the provided buffer. @see thd_query_string().
+*/
+
+extern "C" size_t thd_query_safe(MYSQL_THD thd, char *buf, size_t buflen)
+{
+  mysql_mutex_lock(&thd->LOCK_thd_data);
+  size_t len= MY_MIN(buflen - 1, thd->query_length());
+  memcpy(buf, thd->query(), len);
+  mysql_mutex_unlock(&thd->LOCK_thd_data);
+  buf[len]= '\0';
+  return len;
+}
+
 
 extern "C" int thd_slave_thread(const MYSQL_THD thd)
 {
@@ -4790,7 +4797,7 @@ thd_need_wait_reports(const MYSQL_THD thd)
 }
 
 /*
-  Used by storage engines (currently TokuDB and InnoDB/XtraDB) to report that
+  Used by storage engines (currently TokuDB and InnoDB) to report that
   one transaction THD is about to go to wait for a transactional lock held by
   another transactions OTHER_THD.
 
@@ -4812,7 +4819,7 @@ thd_need_wait_reports(const MYSQL_THD thd)
   transaction, and later re-try it, to resolve the deadlock.
 
   This call need only receive reports about waits for locks that will remain
-  until the holding transaction commits. InnoDB/XtraDB auto-increment locks,
+  until the holding transaction commits. InnoDB auto-increment locks,
   for example, are released earlier, and so need not be reported. (Such false
   positives are not harmful, but could lead to unnecessary kill and retry, so
   best avoided).
@@ -4865,7 +4872,7 @@ thd_rpl_deadlock_check(MYSQL_THD thd, MYSQL_THD other_thd)
 }
 
 /*
-  This function is called from InnoDB/XtraDB to check if the commit order of
+  This function is called from InnoDB to check if the commit order of
   two transactions has already been decided by the upper layer. This happens
   in parallel replication, where the commit order is forced to be the same on
   the slave as it was originally on the master.
@@ -4895,7 +4902,7 @@ thd_rpl_deadlock_check(MYSQL_THD thd, MYSQL_THD other_thd)
 
   If this function returns true, normal locking should be done as required by
   the binlogging and transaction isolation level in effect. But if it returns
-  false, the correct order will be enforced anyway, and InnoDB/XtraDB can
+  false, the correct order will be enforced anyway, and InnoDB can
   avoid taking the gap lock, preventing the lock conflict.
 
   Calling this function is just an optimisation to avoid unnecessary
@@ -5706,6 +5713,7 @@ bool xid_cache_insert(THD *thd, XID_STATE *xid_state)
     break;
   case 1:
     my_error(ER_XAER_DUPID, MYF(0));
+    /* fall through */
   default:
     xid_state->xid_cache_element= 0;
   }
