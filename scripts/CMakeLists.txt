@@ -309,6 +309,11 @@ ELSE()
       COMPONENT ${${file}_COMPONENT}
      )
   ENDFOREACH()
+  INSTALL(CODE "EXECUTE_PROCESS(COMMAND ${CMAKE_COMMAND} -E create_symlink
+                                 mysql_config
+                                 ${INSTALL_BINDIR}/mariadb_config
+                                WORKING_DIRECTORY \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX})"
+          ${mysql_config_COMPONENT})
 ENDIF()
 
 # Install libgcc as  mylibgcc.a

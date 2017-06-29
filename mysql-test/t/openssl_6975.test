@@ -4,7 +4,6 @@
 # test SSLv3 and TLSv1.2 ciphers when OpenSSL is restricted to SSLv3 or TLSv1.2
 #
 source include/have_ssl_communication.inc;
-source include/require_openssl_client.inc;
 
 # this is OpenSSL test.
 

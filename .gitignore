@@ -105,6 +105,7 @@ plugin/aws_key_management/aws_sdk_cpp-prefix
 scripts/comp_sql
 scripts/make_binary_distribution
 scripts/msql2mysql
+scripts/mariadb_config
 scripts/mysql_config
 scripts/mysql_config.pl
 scripts/mysql_convert_table_format
