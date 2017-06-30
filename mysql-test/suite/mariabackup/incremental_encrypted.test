@@ -24,7 +24,7 @@ SELECT * FROM t;
 --disable_result_log
 exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf   --backup --target-dir=$incremental_dir --incremental-basedir=$basedir;
 echo # Prepare full backup, apply incremental one;
-exec $XTRABACKUP --prepare --apply-log-only --target-dir=$basedir;
+exec $XTRABACKUP --prepare --target-dir=$basedir;
 exec $XTRABACKUP --prepare --target-dir=$basedir --incremental-dir=$incremental_dir;
 
 echo # Restore and check results;
