@@ -1,0 +1,11 @@
+!include ../galera_2nodes_as_slave.cnf
+
+[mysqld]
+gtid-domain-id=1
+log-bin=mysqld-bin
+log-slave-updates
+binlog-format=ROW
+[mysqld.1]
+gtid-domain-id=2
+[mysqld.2]
+gtid-domain-id=3
