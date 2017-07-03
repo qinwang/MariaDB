@@ -100,12 +100,6 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include <crc_glue.h>
 #include <log.h>
 
-/* TODO: replace with appropriate macros used in InnoDB 5.6 */
-#define PAGE_ZIP_MIN_SIZE_SHIFT	10
-#define DICT_TF_ZSSIZE_SHIFT	1
-#define DICT_TF_FORMAT_ZIP	1
-#define DICT_TF_FORMAT_SHIFT		5
-
 int sys_var_init();
 
 /* === xtrabackup specific options === */
@@ -3991,7 +3985,7 @@ pfs_os_file_t
 xb_delta_open_matching_space(
 	const char*	dbname,		/* in: path to destination database dir */
 	const char*	name,		/* in: name of delta file (without .delta) */
-	ulint		space_id,	/* in: space id of delta file */
+	const xb_delta_info_t& info,
 	char*		real_name,	/* out: full path of destination file */
 	size_t		real_name_len,	/* out: buffer size for real_name */
 	bool* 		success)	/* out: indicates error. true = success */
@@ -4000,12 +3994,11 @@ xb_delta_open_matching_space(
 	char			dest_space_name[FN_REFLEN];
 	fil_space_t*		fil_space;
 	pfs_os_file_t		file;
-	ulint			tablespace_flags;
 	xb_filter_entry_t*	table;
 
 	ut_a(dbname != NULL ||
-	     !fil_is_user_tablespace_id(space_id) ||
-	     space_id == ULINT_UNDEFINED);
+	     !fil_is_user_tablespace_id(info.space_id) ||
+	     info.space_id == ULINT_UNDEFINED);
 
 	*success = false;
 
@@ -4036,8 +4029,20 @@ xb_delta_open_matching_space(
 	}
 
 	log_mutex_enter();
-	if (!fil_is_user_tablespace_id(space_id)) {
-		goto found;
+	if (!fil_is_user_tablespace_id(info.space_id)) {
+found:
+		/* open the file and return its handle */
+
+		file = os_file_create_simple_no_error_handling(
+			0, real_name,
+			OS_FILE_OPEN, OS_FILE_READ_WRITE, false, success);
+
+		if (!*success) {
+			msg("xtrabackup: Cannot open file %s\n", real_name);
+		}
+exit:
+		log_mutex_exit();
+		return file;
 	}
 
 	/* remember space name for further reference */
@@ -4055,7 +4060,8 @@ xb_delta_open_matching_space(
 	mutex_exit(&fil_system->mutex);
 
 	if (fil_space != NULL) {
-		if (fil_space->id == space_id || space_id == ULINT_UNDEFINED) {
+		if (fil_space->id == info.space_id
+		    || info.space_id == ULINT_UNDEFINED) {
 			/* we found matching space */
 			goto found;
 		} else {
@@ -4080,14 +4086,14 @@ xb_delta_open_matching_space(
 		}
 	}
 
-	if (space_id == ULINT_UNDEFINED)
+	if (info.space_id == ULINT_UNDEFINED)
 	{
 		msg("xtrabackup: Error: Cannot handle DDL operation on tablespace "
 		    "%s\n", dest_space_name);
 		exit(EXIT_FAILURE);
 	}
 	mutex_enter(&fil_system->mutex);
-	fil_space = fil_space_get_by_id(space_id);
+	fil_space = fil_space_get_by_id(info.space_id);
 	mutex_exit(&fil_system->mutex);
 	if (fil_space != NULL) {
 		char	tmpname[FN_REFLEN];
@@ -4111,36 +4117,30 @@ xb_delta_open_matching_space(
 	}
 
 	/* No matching space found. create the new one.  */
+	const ulint flags = info.page_size.is_compressed()
+		? get_bit_shift(info.page_size.physical()
+				>> (UNIV_ZIP_SIZE_SHIFT_MIN - 1))
+		<< FSP_FLAGS_POS_ZIP_SSIZE
+		| FSP_FLAGS_MASK_POST_ANTELOPE
+		| FSP_FLAGS_MASK_ATOMIC_BLOBS
+		| (info.page_size.logical() == UNIV_PAGE_SIZE_ORIG
+		   ? 0
+		   : get_bit_shift(info.page_size.logical()
+				   >> (UNIV_ZIP_SIZE_SHIFT_MIN - 1))
+		   << FSP_FLAGS_POS_PAGE_SSIZE)
+		: FSP_FLAGS_PAGE_SSIZE();
+	ut_ad(page_size_t(flags).equals_to(info.page_size));
 
-	if (!fil_space_create(dest_space_name, space_id, 0,
+	if (fil_space_create(dest_space_name, info.space_id, flags,
 			      FIL_TYPE_TABLESPACE, 0)) {
+		*success = xb_space_create_file(real_name, info.space_id,
+						flags, &file);
+	} else {
 		msg("xtrabackup: Cannot create tablespace %s\n",
-			dest_space_name);
-		goto exit;
+		    dest_space_name);
 	}
 
-	// FIXME: Test with all innodb_page_size!
-	// FIXME: Get tablespace_flags from the metadata file!
-	tablespace_flags = 0;
-	*success = xb_space_create_file(real_name, space_id, tablespace_flags,
-					&file);
 	goto exit;
-
-found:
-	/* open the file and return it's handle */
-
-	file = os_file_create_simple_no_error_handling(
-		0, real_name,
-		OS_FILE_OPEN, OS_FILE_READ_WRITE, false, success);
-
-	if (!*success) {
-		msg("xtrabackup: Cannot open file %s\n", real_name);
-	}
-
-exit:
-
-	log_mutex_exit();
-	return file;
 }
 
 /************************************************************************
@@ -4230,7 +4230,7 @@ xtrabackup_apply_delta(
 	os_file_set_nocache(src_file, src_path, "OPEN");
 
 	dst_file = xb_delta_open_matching_space(
-			dbname, space_name, info.space_id,
+			dbname, space_name, info,
 			dst_path, sizeof(dst_path), &success);
 	if (!success) {
 		msg("xtrabackup: error: cannot open %s\n", dst_path);
