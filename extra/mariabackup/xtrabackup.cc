@@ -885,6 +885,11 @@ struct my_option xb_client_options[] =
 
 uint xb_client_options_count = array_elements(xb_client_options);
 
+#ifndef DBUG_OFF
+/** Parameters to DBUG */
+static const char *dbug_option;
+#endif
+
 struct my_option xb_server_options[] =
 {
   {"datadir", 'h', "Path to the database root.", (G_PTR*) &mysql_data_home,
@@ -1010,6 +1015,11 @@ struct my_option xb_server_options[] =
    (G_PTR*) &innobase_buffer_pool_filename,
    0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
 
+#ifndef DBUG_OFF /* unfortunately "debug" collides with existing options */
+  {"dbug", '#', "Built in DBUG debugger.",
+   &dbug_option, &dbug_option, 0, GET_STR, OPT_ARG,
+   0, 0, 0, 0, 0, 0},
+#endif
 #ifndef __WIN__
   {"debug-sync", OPT_XTRA_DEBUG_SYNC,
    "Debug sync point. This is only used by the xtrabackup test suite",
@@ -5676,6 +5686,11 @@ int main(int argc, char **argv)
 
 	handle_options(argc, argv, &client_defaults, &server_defaults);
 
+	if (dbug_option) {
+		DBUG_SET_INITIAL(dbug_option);
+		DBUG_SET(dbug_option);
+	}
+
 	int status = main_low(server_defaults);
 
 	backup_cleanup();
@@ -5686,6 +5701,10 @@ int main(int argc, char **argv)
 
 	free_defaults(client_defaults);
 	free_defaults(server_defaults);
+
+	if (dbug_option) {
+		DBUG_END();
+	}
 
 	if (THR_THD)
 		(void) pthread_key_delete(THR_THD);
