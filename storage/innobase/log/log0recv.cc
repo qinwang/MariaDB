@@ -3126,6 +3126,9 @@ recv_recovery_from_checkpoint_start(lsn_t flush_lsn)
 	byte*		buf;
 	dberr_t		err = DB_SUCCESS;
 
+	ut_ad(srv_operation == SRV_OPERATION_RESTORE
+	      || srv_operation == SRV_OPERATION_NORMAL);
+
 	/* Initialize red-black tree for fast insertions into the
 	flush_list during recovery process. */
 	buf_flush_init_flush_rbt();
@@ -3247,8 +3250,9 @@ recv_recovery_from_checkpoint_start(lsn_t flush_lsn)
 	} else if (checkpoint_lsn != flush_lsn) {
 		ut_ad(!srv_log_files_created);
 
-		if (checkpoint_lsn + SIZE_OF_MLOG_CHECKPOINT < flush_lsn) {
-			ib::warn() << " Are you sure you are using the"
+		if (srv_operation == SRV_OPERATION_NORMAL
+		    && checkpoint_lsn + SIZE_OF_MLOG_CHECKPOINT < flush_lsn) {
+			ib::warn() << "Are you sure you are using the"
 				" right ib_logfiles to start up the database?"
 				" Log sequence number in the ib_logfiles is "
 				<< checkpoint_lsn << ", less than the"
