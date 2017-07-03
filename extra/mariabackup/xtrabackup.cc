@@ -5686,10 +5686,12 @@ int main(int argc, char **argv)
 
 	handle_options(argc, argv, &client_defaults, &server_defaults);
 
+#ifndef DBUG_OFF
 	if (dbug_option) {
 		DBUG_SET_INITIAL(dbug_option);
 		DBUG_SET(dbug_option);
 	}
+#endif
 
 	int status = main_low(server_defaults);
 
@@ -5702,9 +5704,11 @@ int main(int argc, char **argv)
 	free_defaults(client_defaults);
 	free_defaults(server_defaults);
 
+#ifndef DBUG_OFF
 	if (dbug_option) {
 		DBUG_END();
 	}
+#endif DBUG_OFF
 
 	if (THR_THD)
 		(void) pthread_key_delete(THR_THD);
