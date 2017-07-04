@@ -5708,7 +5708,7 @@ int main(int argc, char **argv)
 	if (dbug_option) {
 		DBUG_END();
 	}
-#endif DBUG_OFF
+#endif
 
 	if (THR_THD)
 		(void) pthread_key_delete(THR_THD);
