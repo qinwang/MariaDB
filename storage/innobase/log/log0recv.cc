@@ -2794,6 +2794,44 @@ recv_scan_log_recs(
 			break;
 		}
 
+		if (data_len == OS_FILE_LOG_BLOCK_SIZE
+		    && end_lsn == start_lsn + 2 * OS_FILE_LOG_BLOCK_SIZE
+		    && log_block_get_data_len(log_block
+					      + OS_FILE_LOG_BLOCK_SIZE)
+		    == LOG_BLOCK_HDR_SIZE + SIZE_OF_MLOG_CHECKPOINT
+		    && checkpoint_lsn >= (scanned_lsn - data_len
+					  + LOG_BLOCK_HDR_SIZE)
+		    && checkpoint_lsn <= scanned_lsn - LOG_BLOCK_TRL_SIZE
+		    && log_block[OS_FILE_LOG_BLOCK_SIZE + LOG_BLOCK_HDR_SIZE]
+		    == MLOG_CHECKPOINT
+		    && checkpoint_lsn == mach_read_from_8(
+			    OS_FILE_LOG_BLOCK_SIZE + LOG_BLOCK_HDR_SIZE + 1
+			    + log_block)) {
+			/* If the first block consists of
+			MLOG_DUMMY_RECORD only, this should be a dummy
+			redo log file written by Mariabackup --prepare. */
+			const byte* b;
+			const byte* const end = log_block
+				+ (OS_FILE_LOG_BLOCK_SIZE
+				   - LOG_BLOCK_TRL_SIZE);
+			for (b = log_block + LOG_BLOCK_HDR_SIZE;
+			     b < end && *b == MLOG_DUMMY_RECORD;
+			     b++);
+			if (b == end) {
+				/* The redo log is logically empty. */
+				ut_ad(recv_sys->mlog_checkpoint_lsn == 0
+				      || recv_sys->mlog_checkpoint_lsn
+				      == checkpoint_lsn);
+				recv_sys->mlog_checkpoint_lsn = checkpoint_lsn;
+				DBUG_PRINT("ib_log", ("found dummy log; LSN="
+						      LSN_PF, scanned_lsn));
+				*contiguous_lsn = scanned_lsn = checkpoint_lsn
+					+ SIZE_OF_MLOG_CHECKPOINT;
+				finished = true;
+				break;
+			}
+		}
+
 		if (scanned_lsn > recv_sys->scanned_lsn) {
 			ut_ad(!srv_log_files_created);
 			if (!recv_needed_recovery) {
@@ -3244,7 +3282,8 @@ recv_recovery_from_checkpoint_start(lsn_t flush_lsn)
 	there is something wrong we will print a message to the
 	user about recovery: */
 
-	if (flush_lsn == checkpoint_lsn + SIZE_OF_MLOG_CHECKPOINT
+	if ((flush_lsn == checkpoint_lsn + SIZE_OF_MLOG_CHECKPOINT
+	     || contiguous_lsn == checkpoint_lsn + SIZE_OF_MLOG_CHECKPOINT)
 	    && recv_sys->mlog_checkpoint_lsn == checkpoint_lsn) {
 		/* The redo log is logically empty. */
 	} else if (checkpoint_lsn != flush_lsn) {

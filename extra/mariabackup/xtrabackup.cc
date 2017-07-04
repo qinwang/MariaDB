@@ -3362,6 +3362,9 @@ end:
 #endif
 }
 
+/** buffer for generating redo log file */
+static byte MY_ALIGNED(OS_FILE_LOG_BLOCK_SIZE) log_hdr[OS_FILE_LOG_BLOCK_SIZE];
+
 /** Implement --backup
 @return	whether the operation succeeded */
 static
@@ -3637,7 +3640,6 @@ reread_log_header:
 	}
 
 	/* label it */
-	byte MY_ALIGNED(OS_FILE_LOG_BLOCK_SIZE) log_hdr[OS_FILE_LOG_BLOCK_SIZE];
 	memset(log_hdr, 0, sizeof log_hdr);
 	mach_write_to_4(LOG_HEADER_FORMAT + log_hdr, log_sys->log.format);
 	mach_write_to_8(LOG_HEADER_START_LSN + log_hdr, checkpoint_lsn_start);
@@ -5299,6 +5301,102 @@ next_node:
 	/* output to metadata file */
 	if (ok) {
 		char	filename[FN_REFLEN];
+
+		snprintf(filename, sizeof filename, "%s/ib_logfile0",
+			 xtrabackup_target_dir);
+
+		if (xtrabackup_export) {
+			/* --export will already have created redo log files */
+		} else if (FILE* f = fopen(filename, "wb")) {
+			/* Create a dummy redo log file, so that if files are
+			copied without using copy-back, existing redo
+			log file will be replaced. */
+			memset(log_hdr, 0, sizeof log_hdr);
+			mach_write_to_4(LOG_HEADER_FORMAT + log_hdr,
+					LOG_HEADER_FORMAT_CURRENT);
+			mach_write_to_8(LOG_HEADER_START_LSN + log_hdr,
+					srv_start_lsn);
+			strcpy(reinterpret_cast<char*>(LOG_HEADER_CREATOR
+						       + log_hdr),
+			       "Prepare " MYSQL_SERVER_VERSION);
+			log_block_set_checksum(
+				log_hdr,
+				log_block_calc_checksum_crc32(log_hdr));
+			ok = fwrite(log_hdr, 1, sizeof log_hdr, f)
+				== sizeof log_hdr;
+			memset(log_hdr, 0, sizeof log_hdr);
+			mach_write_to_8(log_hdr + LOG_CHECKPOINT_LSN,
+					srv_start_lsn);
+			const unsigned payload_offset = unsigned(srv_start_lsn)
+				& (OS_FILE_LOG_BLOCK_SIZE - 1);
+			mach_write_to_8(log_hdr + LOG_CHECKPOINT_OFFSET,
+					payload_offset | LOG_FILE_HDR_SIZE);
+			mach_write_to_8(log_hdr + LOG_CHECKPOINT_END_LSN,
+					srv_start_lsn);
+			log_block_set_checksum(
+				log_hdr,
+				log_block_calc_checksum_crc32(log_hdr));
+			/* checkpoint page 1 */
+			ok = ok && fwrite(log_hdr, 1, sizeof log_hdr, f)
+				== sizeof log_hdr;
+			memset(log_hdr, 0, sizeof log_hdr);
+			/* two empty pages before payload */
+			ok = ok && fwrite(log_hdr, 1, sizeof log_hdr, f)
+				== sizeof log_hdr
+				&& fwrite(log_hdr, 1, sizeof log_hdr, f)
+				== sizeof log_hdr;
+			const uint block_n = log_block_convert_lsn_to_no(
+				srv_start_lsn);
+			mach_write_to_4(log_hdr + LOG_BLOCK_HDR_NO, block_n);
+			mach_write_to_2(log_hdr + LOG_BLOCK_HDR_DATA_LEN,
+					OS_FILE_LOG_BLOCK_SIZE);
+			mach_write_to_2(log_hdr + LOG_BLOCK_FIRST_REC_GROUP,
+					payload_offset);
+			/* Pad the first block with dummy records, and
+			write the MLOG_CHECKPOINT to the second block. */
+			memset(log_hdr + LOG_BLOCK_HDR_SIZE,
+			       MLOG_DUMMY_RECORD,
+			       OS_FILE_LOG_BLOCK_SIZE
+			       - LOG_BLOCK_TRL_SIZE
+			       - LOG_BLOCK_HDR_SIZE);
+			log_block_set_checksum(
+				log_hdr,
+				log_block_calc_checksum_crc32(log_hdr));
+			ok = ok && fwrite(log_hdr, 1, sizeof log_hdr, f)
+				== sizeof log_hdr;
+
+			mach_write_to_4(log_hdr + LOG_BLOCK_HDR_NO,
+					(block_n + 1) & 0x3fffffff);
+			mach_write_to_2(log_hdr + LOG_BLOCK_HDR_DATA_LEN,
+					LOG_BLOCK_HDR_SIZE
+					+ SIZE_OF_MLOG_CHECKPOINT);
+			mach_write_to_2(log_hdr + LOG_BLOCK_FIRST_REC_GROUP,
+					LOG_BLOCK_HDR_SIZE);
+			/* Write the payload (a MLOG_CHECKPOINT record). */
+			log_hdr[LOG_BLOCK_HDR_SIZE] = MLOG_CHECKPOINT;
+			mach_write_to_8(LOG_BLOCK_HDR_SIZE + 1 + log_hdr,
+					srv_start_lsn);
+			memset(LOG_BLOCK_HDR_SIZE + SIZE_OF_MLOG_CHECKPOINT
+			       + log_hdr, 0,
+			       OS_FILE_LOG_BLOCK_SIZE
+			       - LOG_BLOCK_TRL_SIZE
+			       - LOG_BLOCK_HDR_SIZE
+			       - SIZE_OF_MLOG_CHECKPOINT);
+			log_block_set_checksum(
+				log_hdr,
+				log_block_calc_checksum_crc32(log_hdr));
+			/* payload page */
+			ok = ok && fwrite(log_hdr, 1, sizeof log_hdr, f)
+				== sizeof log_hdr;
+			fclose(f);
+		} else {
+			ok = false;
+		}
+
+		if (!ok) {
+			msg("xtrabackup: cannot initialize empty file %s\n",
+			    filename);
+		}
 
 		strcpy(metadata_type, "log-applied");
 
