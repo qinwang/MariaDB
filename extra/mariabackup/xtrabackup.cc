@@ -5761,7 +5761,7 @@ int main(int argc, char **argv)
 
 	init_signals();
 	MY_INIT(argv[0]);
-
+	setbuf(stderr, NULL);
 	pthread_key_create(&THR_THD, NULL);
 	my_pthread_setspecific_ptr(THR_THD, NULL);
 
