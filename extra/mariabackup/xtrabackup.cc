@@ -5761,7 +5761,6 @@ int main(int argc, char **argv)
 
 	init_signals();
 	MY_INIT(argv[0]);
-	setbuf(stderr, NULL);
 	pthread_key_create(&THR_THD, NULL);
 	my_pthread_setspecific_ptr(THR_THD, NULL);
 
@@ -5790,7 +5789,10 @@ int main(int argc, char **argv)
 		DBUG_SET(dbug_option);
 	}
 #endif
-
+	if (!xtrabackup_stream) {
+		setbuf(stderr, NULL);
+		setbuf(stdout, NULL);
+	}
 	int status = main_low(server_defaults);
 
 	backup_cleanup();
