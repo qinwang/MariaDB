@@ -1714,11 +1714,16 @@ copy_back()
 	}
 
 	/* --backup generates a single ib_logfile0. If --prepare was not
-	yet run, copy that file. */
+	yet run or if it created a dummy empty log file, copy that file. */
 
+	dst_dir = (srv_log_group_home_dir && *srv_log_group_home_dir)
+		? srv_log_group_home_dir : mysql_data_home;
+
+	ds_data = ds_create(dst_dir, DS_TYPE_LOCAL);
 	if (!(ret = !file_exists("ib_logfile0")
 	      || copy_or_move_file("ib_logfile0", "ib_logfile0", dst_dir, 1)))
 	  goto cleanup;
+	ds_destroy(ds_data);
 
 	/* copy innodb system tablespace(s) */
 
@@ -1740,7 +1745,6 @@ copy_back()
 	}
 
 	ds_destroy(ds_data);
-	ds_data = NULL;
 
 	/* copy the rest of tablespaces */
 	ds_data = ds_create(mysql_data_home, DS_TYPE_LOCAL);
@@ -1793,6 +1797,11 @@ copy_back()
 
 		/* skip undo tablespaces */
 		if (sscanf(filename, "undo%d%c", &i_tmp, &c_tmp) == 1) {
+			continue;
+		}
+
+		/* skip the redo log (it was already copied) */
+		if (!strcmp(filename, "ib_logfile0")) {
 			continue;
 		}
 
