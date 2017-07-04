@@ -2310,10 +2310,10 @@ xtrabackup_copy_logfile(lsn_t from_lsn, bool is_last)
 
 		log_mutex_enter();
 
-		end_lsn = log_group_read_log_seg(log_sys->buf, &log_sys->log,
-						 start_lsn, end_lsn);
+		lsn_t lsn = log_group_read_log_seg(log_sys->buf, &log_sys->log,
+						   start_lsn, end_lsn);
 
-		start_lsn = xtrabackup_copy_log(is_last, start_lsn, end_lsn);
+		start_lsn = xtrabackup_copy_log(is_last, start_lsn, lsn);
 
 		log_mutex_exit();
 
