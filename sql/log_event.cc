@@ -12801,6 +12801,9 @@ static bool record_compare(TABLE *table)
   {
     if (table->versioned_by_engine() && *ptr == table->vers_start_field())
     {
+      // XXX hmm. I wonder whether it's possible to replicate
+      // these trx id values too. It'd be a very good feature. Currently
+      // the slave and the master have essentially different data.
       continue;
     }
     /**
@@ -13004,6 +13007,8 @@ int Rows_log_event::find_row(rpl_group_info *rgi)
     DBUG_ASSERT(table->read_set);
     bitmap_set_bit(table->read_set, sys_trx_end->field_index);
     // master table is unversioned
+    // XXX do you mean *if* master table is unversioned?
+    // or that it's always guaranteed to be unversioned here?
     if (sys_trx_end->val_int() == 0)
     {
       DBUG_ASSERT(table->write_set);
@@ -13011,6 +13016,9 @@ int Rows_log_event::find_row(rpl_group_info *rgi)
       sys_trx_end->set_max();
       table->vers_start_field()->set_notnull();
     }
+    // XXX second question, if the master table is versioned,
+    // sys_trx_end column is guaranteed to be MAX, no?
+    // history values can't be replicated, can they?
   }
 
   DBUG_PRINT("info",("looking for the following record"));

@@ -177,6 +177,7 @@ extern const char *log_output_str;
 extern const char *log_backup_output_str;
 
 enum vers_range_type_t
+// XXX better put these definitions in sql_class.h, not in mysqld.h
 {
   FOR_SYSTEM_TIME_UNSPECIFIED = 0,
   FOR_SYSTEM_TIME_AS_OF,
@@ -186,8 +187,12 @@ enum vers_range_type_t
   FOR_SYSTEM_TIME_BEFORE
 };
 
+// XXX add a comment, saying where this structure is used
+// (only for @@vers_current_time sysvar)
 struct st_vers_current_time
 { // This struct must be POD, so no virtual-anything!
+  // XXX why? I mean, the comment must explain why it must be POD
+  // (on the other hand, you don't have to explain what POD is)
   char *str_value; // must be first
   vers_range_type_t type;
   MYSQL_TIME ltime;
@@ -198,6 +203,7 @@ struct st_vers_current_time
 };
 
 enum vers_hide_enum {
+  // XXX looks like it's unused?
   VERS_HIDE_AUTO= 0,
   VERS_HIDE_IMPLICIT,
   VERS_HIDE_FULL,
@@ -344,6 +350,7 @@ extern PSI_rwlock_key key_rwlock_LOCK_grant, key_rwlock_LOCK_logger,
   key_rwlock_LOCK_sys_init_connect, key_rwlock_LOCK_sys_init_slave,
   key_rwlock_LOCK_system_variables_hash, key_rwlock_query_cache_query_lock,
   key_rwlock_LOCK_vers_stats, key_rwlock_LOCK_stat_serial;
+// XXX last two aren't used anywhere
 
 #ifdef HAVE_MMAP
 extern PSI_cond_key key_PAGE_cond, key_COND_active, key_COND_pool;

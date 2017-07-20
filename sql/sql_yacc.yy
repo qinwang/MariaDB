@@ -5122,6 +5122,7 @@ part_definition:
             }
             p_elem->part_state= PART_NORMAL;
             p_elem->id= part_info->partitions.elements - 1;
+            // XXX why? ^^^
             part_info->curr_part_elem= p_elem;
             part_info->current_partition= p_elem;
             part_info->use_default_partitions= FALSE;
@@ -5550,6 +5551,8 @@ opt_versioning_interval:
            INTERVAL interval;
            if (get_interval_value($2, $3, &interval))
              my_yyabort_error((ER_VERS_WRONG_PARAMS, MYF(0), "BY SYSTEM_TIME", "wrong INTERVAL value"));
+           // XXX I won't longer comment on hard-coded English phrases in
+           // error messages, but still it'd be better to get rid of them
            if (part_info->vers_set_interval(interval))
              MYSQL_YYABORT;
          }
@@ -5935,6 +5938,19 @@ create_table_option:
 	  }
         | WITH_SYSTEM_SYM VERSIONING_SYM
           {
+            /* XXX strangely enough, this violates the standard.
+            the standard says:
+
+            <table definition> ::=
+            CREATE [ <table scope> ] TABLE <table name> <table contents source>
+            [ WITH <system versioning clause> ]
+
+            that is WITH SYSTEM VERSIONING comes *after* SELECT clause.
+            It's really strange, if you ask me. But it's the standard.
+            Please, check in your copy of the standard too. Perhaps
+            what I see in a draft is a bug that was fixed in the final version?
+            */
+
             const char *table_name=
                 Lex->create_last_non_select_table->table_name;
             Vers_parse_info &info= Lex->vers_get_info();
@@ -5943,6 +5959,11 @@ create_table_option:
               my_yyabort_error(
                   (ER_VERS_WRONG_PARAMS, MYF(0), table_name,
                    "Versioning specified more than once for the same table"));
+            /* XXX that's... inconsistent. No other create_table_option
+            has that, so why suddenly here?
+            Not an issue, if you move WITH SYSTEM VERSIONING where the standard
+            wants it, there will be no way to specify it twice, so this
+            check will disappear. */
 
             info.declared_with_system_versioning= true;
             Lex->create_info.options|= HA_VERSIONED_TABLE;
@@ -5957,6 +5978,7 @@ create_table_option:
               my_yyabort_error(
                   (ER_VERS_WRONG_PARAMS, MYF(0), table_name,
                    "Versioning specified more than once for the same table"));
+            // XXX again, inconsistent...
 
             info.declared_without_system_versioning= true;
           }
@@ -6162,6 +6184,7 @@ constraint_def:
 period_for_system_time:
           // If FOR_SYM is followed by SYSTEM_TIME_SYM then they are merged to: FOR_SYSTEM_TIME_SYM .
           PERIOD_SYM FOR_SYSTEM_TIME_SYM '(' period_for_system_time_column_id ',' period_for_system_time_column_id ')'
+          // XXX why you're not using ident here?
           {
             Vers_parse_info &info= Lex->vers_get_info();
             if (!my_strcasecmp(system_charset_info, $4->c_ptr(), $6->c_ptr()))
@@ -6169,6 +6192,10 @@ period_for_system_time:
               my_yyabort_error((ER_VERS_WRONG_PARAMS, MYF(0),
                 Lex->create_last_non_select_table->table_name,
                 "'PERIOD FOR SYSTEM_TIME' columns must be different"));
+            /* XXX why do you need this additional check in the parser?
+            you'll check later that the first column is AS ROW START and the
+            second is AS ROW END, so they'll be different automatically.
+            This check looks completely redundant and artificial */
             }
             info.set_period_for_system_time($4, $6);
           }
@@ -6274,6 +6301,7 @@ field_def:
             Vers_parse_info &info= lex->vers_get_info();
             String *field_name= new (thd->mem_root)
               String((const char*)lex->last_field->field_name, system_charset_info);
+            // XXX again, abusing String where LEX_STRING would do
             if (!field_name)
               MYSQL_YYABORT;
 
@@ -6784,6 +6812,9 @@ serial_attribute:
                   (ER_VERS_WRONG_PARAMS, MYF(0),
                    Lex->create_last_non_select_table->table_name,
                    "Versioning specified more than once for the same field"));
+                   // XXX please, no more checks than with other
+                   // field attributes. We want consistent behavior.
+                   // no other attribute checks whether it's specified twice.
 
             Lex->last_field->versioning = Column_definition::WITH_VERSIONING;
             Lex->create_info.vers_info.has_versioned_fields= true;
@@ -8812,6 +8843,10 @@ opt_query_for_system_time_clause:
           {}
         | QUERY_FOR_SYM SYSTEM_TIME_SYM for_system_time_expr
           {
+            // XXX why Why QUERY FOR and not simply FOR? What does it conflict with?
+            // Why QUERY_FOR_SYM and not QUERY_SYM FOR_SYM? What does it conflict with?
+            // -- ok, QUERY_FOR_SYM was removed in a recent commit,
+            // just keeping my comment for the reference...
             DBUG_ASSERT(Select);
             Select->vers_conditions= Lex->vers_conditions;
           }
@@ -8831,6 +8866,12 @@ opt_for_system_time_clause:
 for_system_time_expr:
           AS OF_SYM trans_or_timestamp simple_expr
           {
+            // XXX standard syntax must work. In the standard there is
+            // no trans_or_timestamp. Our options:
+            // * use TIMESTAMP by default
+            // * use whatever column type the table uses for versioning
+            //   (TIMESTAMP for MyISAM, BIGINT for InnoDB)
+            // * use the result type of the expression
             Lex->vers_conditions.init(FOR_SYSTEM_TIME_AS_OF, $3, $4);
           }
         | AS OF_SYM NOW_SYM
@@ -8849,6 +8890,9 @@ for_system_time_expr:
           TO_SYM trans_or_timestamp simple_expr
           {
             if ($2 != $5)
+            // XXX I simply wouldn't let the user to specify
+            // trans_or_timestamp twice. Just have it once (after FROM)
+            // and, of course, optional, see above about the standard.
             {
               Lex->parse_error(ER_VERS_RANGE_UNITS_MISMATCH);
               MYSQL_YYABORT;
@@ -8859,6 +8903,25 @@ for_system_time_expr:
           FROM simple_expr
           TO_SYM simple_expr
           {
+            // XXX or that one. trans_or_timestamp is only specified once.
+            // but doesn't it look very strange?
+            // SELECT * FROM t1 TIMESTAMP FROM xxx TO yyy
+            //
+            // why did you implement both styles? I'd say
+            // either trans_or_timestamp should be always before the standard
+            // clause:
+            //    opt_trans_or_timestamp AS OF ...
+            //    opt_trans_or_timestamp FROM ... TO ...
+            //    opt_trans_or_timestamp BETWEEN ...AND
+            // or it's inside the standard clause:
+            //    AS OF opt_trans_or_timestamp ...
+            //    FROM opt_trans_or_timestamp ... TO ...
+            //    BETWEEN opt_trans_or_timestamp ...AND ...
+            // but please not both.
+            //    SELECT * FROM t1 FOR SYSTEM_TIME AS OF TIMESTAMP xxx
+            //    SELECT * FROM t1 FOR SYSTEM_TIME TIMESTAMP AS OF xxx
+            // Or another option. Remove trans_or_timestamp at all and always
+            // use type of the column or type of the expression.
             Lex->vers_conditions.init(FOR_SYSTEM_TIME_FROM_TO, $1, $3, $5);
           }
         | BETWEEN_SYM trans_or_timestamp simple_expr
@@ -8881,6 +8944,7 @@ for_system_time_expr:
           trans_or_timestamp
           simple_expr
           {
+          // XXX this is non-standard too. Why is it here?
             Lex->vers_conditions.init(FOR_SYSTEM_TIME_BEFORE, $2, $3);
           }
         ;
@@ -11295,6 +11359,14 @@ table_primary_ident:
           }
           table_ident opt_use_partition opt_table_alias opt_key_definition opt_for_system_time_clause
           {
+            // XXX again, standard.
+            // opt_for_system_time_clause goes before opt_table_alias
+            // other clauses here are non-standard extensions, but
+            // check 7.6 <table reference>, it has
+            //   <table primary> ::=
+            //      <table or query name>
+            //      [ <query system time period specification> ]
+            //      [ <correlation or recognition> ]
             if (!($$= Select->add_table_to_list(thd, $2, $4,
                                                 Select->get_table_join_options(),
                                                 YYPS->m_lock_type,
@@ -16203,6 +16275,7 @@ column_list:
 period_for_system_time_column_id:
           ident
           {
+          // XXX not needed, use ident and LEX_STRING directly
             String *new_str= new (thd->mem_root) String((const char*) $1.str,$1.length,system_charset_info);
             if (new_str == NULL)
               MYSQL_YYABORT;

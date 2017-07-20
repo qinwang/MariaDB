@@ -2493,7 +2493,14 @@ public:
 
 
 class Sys_var_vers_asof: public sys_var
-{
+// XXX now I'm really starting to dislike your ... QUERY FOR SYSTEM_TIME
+// extension. A *third* way to do the same thing? It's SQL, not Perl.
+//
+//   SELECT * FROM (SELECT ....) FOR SYSTEM_TIME AS OF xxx
+//   SET STATEMENT vers_current_time=xxx SELECT ...
+//   SELECT ... QUERY FOR SYSTEM_TIME AS OF xxx
+//
+// that's a bit too many alternatives.
 public:
   Sys_var_vers_asof(
     const char *name_arg,
@@ -2539,6 +2546,7 @@ public:
         in.charset(),
         "ALL",
         in.ptr()))
+      // XXX please, use the coding style as in the rest of the server!
     {
       out.type= FOR_SYSTEM_TIME_ALL;
     }

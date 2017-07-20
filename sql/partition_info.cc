@@ -889,11 +889,15 @@ partition_info::vers_part_rotate(THD * thd)
 
 bool partition_info::vers_setup_1(THD * thd, uint32 added)
 {
+  // XXX generally, the more cryptic function name is, the longer and more
+  // detailed function comment must be. "vers_setup_1" is very cryptic :)
   DBUG_ASSERT(part_type == VERSIONING_PARTITION);
 
   if (!table->versioned())
   {
     my_error(ER_VERSIONING_REQUIRED, MYF(0), "`BY SYSTEM_TIME` partitioning");
+    // XXX backticks are only used to quote identifiers, don't use them
+    // like this.
     return true;
   }
 
@@ -910,6 +914,7 @@ bool partition_info::vers_setup_1(THD * thd, uint32 added)
     Field *sys_trx_end= table->vers_end_field();
     part_field_list.empty();
     part_field_list.push_back(const_cast<char *>(sys_trx_end->field_name), thd->mem_root);
+    // XXX what was the content of part_field_list before you repopulated it?
     DBUG_ASSERT(part_field_list.elements == num_columns);
     // needed in handle_list_of_fields()
     sys_trx_end->flags|= GET_FIXED_FIELDS_FLAG;
@@ -1361,6 +1366,12 @@ error:
 */
 
 bool partition_info::check_range_constants(THD *thd, bool init)
+  // XXX what are you trying to do by introducing this 'init' argument?
+  // This function "allocates an array..." and "also check that the
+  // range constants are defined in increasing order".
+  // One could expect init=false to mean that the caller is only
+  // interestd in "check" part, not in "allocate" part. But in the only place
+  // where init=false, you ignore the return value. So, what's the point?
 {
   partition_element* part_def;
   bool first= TRUE;

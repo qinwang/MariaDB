@@ -91,8 +91,17 @@ typedef struct p_elem_val
 struct st_ddl_log_memory_entry;
 
 class Vers_field_stats : public Sql_alloc
+// XXX "stats"? what does that mean?
+// please add a comment explaining what this structure is for
+// or (better) rename it to something that doesn't need explaining
 {
   static const uint buf_size= 4 + (TIME_SECOND_PART_DIGITS + 1) / 2;
+  // XXX please, avoid static const class members, use, for example,
+  //
+  //    enum { buf_size = 4 + (TIME_SECOND_PART_DIGITS + 1) / 2};
+  //
+  // this is much more gdb-friendly. Just print Alter_inplace_info
+  // object in gdb to see what I mean.
   uchar min_buf[buf_size];
   uchar max_buf[buf_size];
   Field_timestampf min_value;
@@ -169,8 +178,8 @@ public:
   bool has_null_value;
   bool signed_flag;                          // Range value signed
   bool max_value;                            // MAXVALUE range
-  uint32 id;
-  bool empty;
+  uint32 id;  // XXX why is that?
+  bool empty; // XXX why is that?
 
   enum elem_type
   {
@@ -180,6 +189,10 @@ public:
   };
 
   elem_type type;
+  // XXX I don't think this is needed. 'max_value' flag means
+  // MAXVALUE for RANGE partitioning, DEFAULT for LIST partitioning.
+  // I don't see why it cannot mean AS_OF_NOW for SYSTEM_TIME partitioning.
+  // (in a sense AS_OF_NOW *is* max_value of the second timestamp column)
 
   partition_element()
   : part_max_rows(0), part_min_rows(0), range_value(0),
@@ -215,8 +228,12 @@ public:
   part_column_list_val& get_col_val(uint idx)
   {
     DBUG_ASSERT(type != CONVENTIONAL);
+    // XXX I don't see why it should be type != CONVENTIONAL.
+    // The method is fairly generic
     DBUG_ASSERT(list_val_list.elements == 1);
     part_elem_value *ev= static_cast<part_elem_value*>(list_val_list.first_node()->info);
+    // XXX That's not how one uses List.
+    // Better: ev= list_val_list->head();
     DBUG_ASSERT(ev);
     DBUG_ASSERT(ev->col_val_array);
     return ev->col_val_array[idx];

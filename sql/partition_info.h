@@ -68,9 +68,17 @@ struct Vers_part_info : public Sql_alloc
   }
   my_time_t interval;
   ulonglong limit;
-  partition_element *now_part;
-  partition_element *hist_part;
-  ulonglong stat_serial;
+  partition_element *now_part; // XXX I thought it's always the last partition?
+  partition_element *hist_part; // XXX What if there're many historical partitions?
+  ulonglong stat_serial; // XXX this needs a comment
+  // XXX also, I don't know if that's a good idea here. It works best for
+  // read-often-modify-rarely data. Partitioned tables aren't always (or even
+  // mostly) these kinds of thing.
+  //
+  // XXX by the way, a somewhat unrelated question. InnoDB. Transactions.
+  // One does a DELETE within a transaction. That queries historical
+  // data - before the DELETE but within the same transaction. How
+  // does that work now? And how does it work with partitioning?
 };
 
 class partition_info : public Sql_alloc
@@ -401,6 +409,8 @@ public:
   bool vers_set_limit(ulonglong limit);
   partition_element* vers_part_rotate(THD *thd);
   bool vers_setup_1(THD *thd, uint32 added= 0);
+  // XXX better to avoid default arguments in this case.
+  // it doesn't add many key presses to type ,0 in just one place.
   bool vers_setup_2(THD *thd, bool is_create_table_ind);
   bool vers_scan_min_max(THD *thd, partition_element *part);
   void vers_update_col_vals(THD *thd, partition_element *el0, partition_element *el1);

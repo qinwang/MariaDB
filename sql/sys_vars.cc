@@ -390,6 +390,7 @@ static Sys_var_vers_asof Sys_vers_current_time(
 // applications without modifications". And if you use 0 instead of "NOW",
 // there will be no need for a special class Sys_var_vers_asof.
 // Did you read a comment at the beginning of the file? :)
+// And don't abbrev user visible names
        SESSION_VAR(vers_current_time), CMD_LINE(REQUIRED_ARG, OPT_VERS_CURRENT_TIME),
 // XXX and I wouldn't create a command line option for it. it'll only make
 // --help output longer

@@ -2035,6 +2035,7 @@ int ha_partition::copy_partitions(ulonglong * const copied,
         result= new_file->ha_write_row(m_rec0);
         reenable_binlog(thd);
         if (new_file->ha_external_lock(thd, F_UNLCK) || new_file->ha_external_lock(thd, F_RDLCK) || result)
+        // XXX and here
           goto error;
       }
     }
