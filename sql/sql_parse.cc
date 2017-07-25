@@ -6414,9 +6414,9 @@ finish:
     if (thd->is_error() || (thd->variables.option_bits & OPTION_MASTER_SQL_ERROR))
       trans_rollback_stmt(thd);
 #ifdef WITH_WSREP
-    else if (thd->sp_runtime_ctx &&
-             (thd->wsrep_conflict_state == MUST_ABORT ||
-              thd->wsrep_conflict_state == CERT_FAILURE))
+    else if (thd->spcont &&
+             (thd->wsrep_conflict_state() == MUST_ABORT ||
+              thd->wsrep_conflict_state() == CERT_FAILURE))
     {
       /*
         The error was cleared, but THD was aborted by wsrep and
@@ -6427,8 +6427,8 @@ finish:
         sp_rcontext::handle_sql_condition().
       */
       trans_rollback_stmt(thd);
-      thd->wsrep_conflict_state= NO_CONFLICT;
-      thd->killed= THD::NOT_KILLED;
+      thd->set_wsrep_conflict_state(NO_CONFLICT);
+      thd->killed= NOT_KILLED;
     }
 #endif /* WITH_WSREP */
     else
