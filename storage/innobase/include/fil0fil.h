@@ -392,6 +392,10 @@ extern fil_addr_t	fil_addr_null;
 #define FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED 37401 /*!< Page is compressed and
 						 then encrypted */
 #define FIL_PAGE_PAGE_COMPRESSED 34354  /*!< page compressed page */
+/*!< First page of the double write buffer holds the
+space ids and the page numbers for the most recently
+flushed pages. */
+#define FIL_PAGE_TYPE_DBLWR_HEADER 32124 /*!< Doublewrite header */
 #define FIL_PAGE_INDEX		17855	/*!< B-tree node */
 #define FIL_PAGE_RTREE		17854	/*!< B-tree node */
 #define FIL_PAGE_UNDO_LOG	2	/*!< Undo log page */

@@ -1,0 +1,111 @@
+call mtr.add_suppression("InnoDB: Failed to set O_DIRECT on file.*");
+call mtr.add_suppression("InnoDB: Cannot recover page \\[page id: space=[1-9][0-9]*, page number=[1-9][0-9]*\\] from the doublewrite buffer because it was written in reduced-doublewrite mode");
+call mtr.add_suppression("InnoDB: Database page corruption on disk or a failed file read of tablespace .*");
+call mtr.add_suppression("InnoDB: Failed to read file .* at offset .*: Page read from tablespace is corrupted.");
+call mtr.add_suppression("InnoDB: Table .* is corrupted. Please drop the table and recreate.");
+SET GLOBAL innodb_fast_shutdown = 0;
+SET GLOBAL innodb_doublewrite=2;
+show variables like 'innodb_doublewrite';
+Variable_name	Value
+innodb_doublewrite	2
+show variables like 'innodb_fil_make_page_dirty_debug';
+Variable_name	Value
+innodb_fil_make_page_dirty_debug	0
+show variables like 'innodb_saved_page_number_debug';
+Variable_name	Value
+innodb_saved_page_number_debug	0
+CREATE TABLE t1(a INT PRIMARY KEY AUTO_INCREMENT, b char(255) default '') ENGINE=innodb;
+start transaction;
+INSERT INTO t1(b) VALUES(repeat('#',200));
+INSERT INTO t1(b) VALUES(repeat('+',200));
+INSERT INTO t1(b) VALUES(repeat('/',200));
+INSERT INTO t1(b) VALUES(repeat('|',200));
+INSERT INTO t1(b) VALUES(repeat('\\',200));
+INSERT INTO t1(b) VALUES(repeat('-',200));
+INSERT INTO t1(b) VALUES(repeat('&',200));
+INSERT INTO t1(b) VALUES(repeat('%',200));
+INSERT INTO t1(b) VALUES(repeat('@',200));
+INSERT INTO t1(b) VALUES(repeat('?',200));
+INSERT INTO t1(b) SELECT b FROM t1;
+INSERT INTO t1(b) SELECT b FROM t1;
+INSERT INTO t1(b) SELECT b FROM t1;
+INSERT INTO t1(b) SELECT b FROM t1;
+INSERT INTO t1(b) SELECT b FROM t1;
+INSERT INTO t1(b) SELECT b FROM t1;
+INSERT INTO t1(b) SELECT b FROM t1;
+INSERT INTO t1(b) SELECT b FROM t1;
+commit work;
+select space from information_schema.innodb_sys_tables where name = 'test/t1' into @space_id;
+# Ensure that dirty pages of table t1 is flushed.
+flush tables t1 for export;
+unlock tables;
+begin;
+insert into t1(b) values (repeat('_', 42));
+# Make the first page dirty for table t1
+set global innodb_saved_page_number_debug = 0;
+set global innodb_fil_make_page_dirty_debug = @space_id;
+# Ensure that dirty pages of table t1 are flushed.
+set global innodb_buf_flush_list_now = 1;
+# Kill the server
+# Backup table and system tablespace before corrupting
+SELECT * FROM t1;
+ERROR 42S02: Table 'test.t1' doesn't exist in engine
+ FOUND 1 /buffer because it was written in reduced-doublewrite mode/ in mysqld.1.err
+ FOUND 1 /Database page corruption on disk or a failed file read of tables/ in mysqld.1.err
+# Backup table and system tablespace BACK
+CHECK TABLE t1;
+Table	Op	Msg_type	Msg_text
+test.t1	check	status	OK
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+2560
+SET GLOBAL innodb_doublewrite=1;
+CREATE TABLE t2(a INT PRIMARY KEY AUTO_INCREMENT, b char(255) default '') ENGINE=innodb;
+start transaction;
+INSERT INTO t2(b) VALUES(repeat('#',200));
+INSERT INTO t2(b) VALUES(repeat('+',200));
+INSERT INTO t2(b) VALUES(repeat('/',200));
+INSERT INTO t2(b) VALUES(repeat('|',200));
+INSERT INTO t2(b) VALUES(repeat('\\',200));
+INSERT INTO t2(b) VALUES(repeat('-',200));
+INSERT INTO t2(b) VALUES(repeat('&',200));
+INSERT INTO t2(b) VALUES(repeat('%',200));
+INSERT INTO t2(b) VALUES(repeat('@',200));
+INSERT INTO t2(b) VALUES(repeat('?',200));
+INSERT INTO t2(b) SELECT b FROM t2;
+INSERT INTO t2(b) SELECT b FROM t2;
+INSERT INTO t2(b) SELECT b FROM t2;
+INSERT INTO t2(b) SELECT b FROM t2;
+INSERT INTO t2(b) SELECT b FROM t2;
+INSERT INTO t2(b) SELECT b FROM t2;
+INSERT INTO t2(b) SELECT b FROM t2;
+INSERT INTO t2(b) SELECT b FROM t2;
+commit work;
+select space from information_schema.innodb_sys_tables where name = 'test/t2' into @space_id;
+# Ensure that dirty pages of table t2 is flushed.
+flush tables t2 for export;
+unlock tables;
+begin;
+insert into t2(b) values (repeat('_', 42));
+# Make the first page dirty for table t2
+set global innodb_saved_page_number_debug = 0;
+set global innodb_fil_make_page_dirty_debug = @space_id;
+# Ensure that dirty pages of table t2 are flushed.
+set global innodb_buf_flush_list_now = 1;
+# Kill the server
+CHECK TABLE t1;
+Table	Op	Msg_type	Msg_text
+test.t1	check	status	OK
+CHECK TABLE t2;
+Table	Op	Msg_type	Msg_text
+test.t2	check	status	OK
+SELECT COUNT(*) FROM t1;
+COUNT(*)
+2560
+SELECT COUNT(*) FROM t2;
+COUNT(*)
+2560
+DROP TABLE t1;
+DROP TABLE t2;
+ FOUND 1 /Trying to recover page/ in mysqld.1.err
+ FOUND 1 /Recovered page/ in mysqld.1.err

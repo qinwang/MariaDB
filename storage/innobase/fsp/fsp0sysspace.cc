@@ -571,7 +571,7 @@ SysTablespace::read_lsn_and_check_flags(lsn_t* flushed_lsn)
 	ut_a(it->order() == 0);
 
 
-	buf_dblwr_init_or_load_pages(it->handle(), it->filepath());
+	buf_dblwr_init_or_load_pages(it->handle(), it->filepath(), true);
 
 	/* Check the contents of the first page of the
 	first datafile. */

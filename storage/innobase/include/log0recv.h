@@ -173,10 +173,20 @@ struct recv_addr_t{
 	hash_node_t	addr_hash;/*!< hash node in the hash bucket chain */
 };
 
+struct recv_dblwr_item_t {
+	const byte*	page;
+	ulint	space_id;
+	ulint	page_no;
+};
+
 struct recv_dblwr_t {
 	/** Add a page frame to the doublewrite recovery buffer. */
-	void add(byte* page) {
-		pages.push_back(page);
+	void add(const byte* page, ulint space_id, ulint page_no) {
+		recv_dblwr_item_t item;
+		item.page = page;
+		item.space_id = space_id;
+		item.page_no = page_no;
+		pages.push_back(item);
 	}
 
 	/** Find a doublewrite copy of a page.
@@ -186,10 +196,11 @@ struct recv_dblwr_t {
 	@retval NULL if no page was found */
 	const byte* find_page(ulint space_id, ulint page_no);
 
-	typedef std::list<byte*, ut_allocator<byte*> >	list;
+	std::list<recv_dblwr_item_t, ut_allocator<recv_dblwr_item_t> > pages;
 
-	/** Recovered doublewrite buffer page frames */
-	list	pages;
+	void operator() () {
+		pages.clear();
+	}
 };
 
 /** Recovery system data structure */

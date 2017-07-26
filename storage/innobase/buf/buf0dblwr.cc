@@ -152,14 +152,28 @@ buf_dblwr_init(
 		ut_zalloc_nokey(buf_size * sizeof(bool)));
 
 	buf_dblwr->write_buf_unaligned = static_cast<byte*>(
-		ut_malloc_nokey((1 + buf_size) * UNIV_PAGE_SIZE));
+		ut_zalloc_nokey((1 + buf_size) * UNIV_PAGE_SIZE));
 
 	buf_dblwr->write_buf = static_cast<byte*>(
 		ut_align(buf_dblwr->write_buf_unaligned,
 			 UNIV_PAGE_SIZE));
 
+	buf_dblwr->header_unaligned = static_cast<byte*>(
+		ut_zalloc_nokey(2 * UNIV_PAGE_SIZE));
+
+	buf_dblwr->header = static_cast<byte*>(
+		ut_align(buf_dblwr->header_unaligned,
+			 UNIV_PAGE_SIZE));
+
 	buf_dblwr->buf_block_arr = static_cast<buf_page_t**>(
 		ut_zalloc_nokey(buf_size * sizeof(void*)));
+
+	/* Write the page number and the page type to the doublewrite
+	 * header in case it gets used. */
+	mach_write_to_4(buf_dblwr->header + FIL_PAGE_OFFSET,
+			buf_dblwr->block1);
+	mach_write_to_2(buf_dblwr->header + FIL_PAGE_TYPE,
+			FIL_PAGE_TYPE_DBLWR_HEADER);
 }
 
 /** Create the doublewrite buffer if the doublewrite buffer header
@@ -342,6 +356,73 @@ too_small:
 	goto start_again;
 }
 
+/***************************************************************//**
+Zeroes out the pages in the doublewrite buffer on disk, and flushes them.
+This function must be called before the first double-write batch flush after
+the doublewrite mode is changed by the user.
+This function is only called from buf_dblwr_flush_buffered_writes(), while
+it is holding buf_dblwr->mutex, so this function need not be thread-safe. */
+static
+void
+buf_dblwr_reset(
+	ulint	doublewrite_mode) {
+	ulint	i = 0;
+	void*	page_unaligned = ut_zalloc_nokey(
+			(TRX_SYS_DOUBLEWRITE_BLOCK_SIZE + 1) * UNIV_PAGE_SIZE);
+	byte*	page = page_align((byte*)page_unaligned + UNIV_PAGE_SIZE);
+
+	ut_a(doublewrite_mode);
+
+	buf_dblwr_being_created = TRUE;
+
+	/* Reset the first half of doublewrite buffer on disk.
+	 * We handle the first block separately because it determines whether
+	 * the last flush was done in the reduced-doublewrite mode.
+	 */
+	if (doublewrite_mode == 2) {
+		/* Write an empty header page */
+		i = 1;
+		memcpy(page, buf_dblwr->header, FIL_PAGE_DATA);
+		buf_flush_init_for_writing(NULL, page, NULL, 0);
+		ut_ad(!buf_page_is_corrupted(FALSE, page, univ_page_size, NULL));
+		page += UNIV_PAGE_SIZE;
+	}
+
+	for (; i < TRX_SYS_DOUBLEWRITE_BLOCK_SIZE; ++i) {
+		mach_write_to_4(page + FIL_PAGE_OFFSET, buf_dblwr->block1 + i);
+		buf_flush_init_for_writing(NULL, page, NULL, 0);
+		page += UNIV_PAGE_SIZE;
+	}
+
+	IORequest	write_request(IORequest::WRITE);
+	const page_id_t		page_id(TRX_SYS_SPACE, buf_dblwr->block1);
+
+	page = page_align((byte*)page_unaligned + UNIV_PAGE_SIZE);
+
+	fil_io(write_request, true, page_id, univ_page_size,
+		0,
+		TRX_SYS_DOUBLEWRITE_BLOCK_SIZE * UNIV_PAGE_SIZE,
+		(void*) page, NULL);
+
+	/* Reset the second half of doublewrite buffer on disk. */
+
+	for (i = 0; i < TRX_SYS_DOUBLEWRITE_BLOCK_SIZE; ++i) {
+		mach_write_to_4(page + FIL_PAGE_OFFSET, buf_dblwr->block2 + i);
+		buf_flush_init_for_writing(NULL, page, NULL, 0);
+		page += UNIV_PAGE_SIZE;
+	}
+
+	page = page_align((byte*)page_unaligned + UNIV_PAGE_SIZE);
+
+	const page_id_t		page_id2(TRX_SYS_SPACE, buf_dblwr->block2);
+
+	fil_io(write_request, true, page_id2, univ_page_size, 0,
+		TRX_SYS_DOUBLEWRITE_BLOCK_SIZE * UNIV_PAGE_SIZE,
+		(void*) page, NULL);
+
+	ut_free(page_unaligned);
+}
+
 /**
 At database startup initializes the doublewrite buffer memory structure if
 we already have a doublewrite buffer created in the data files. If we are
@@ -354,7 +435,8 @@ recovery, this function loads the pages from double write buffer into memory.
 dberr_t
 buf_dblwr_init_or_load_pages(
 	pfs_os_file_t	file,
-	const char*	path)
+	const char*	path,
+	bool		load_corrupt_pages)
 {
 	byte*		buf;
 	byte*		page;
@@ -366,6 +448,7 @@ buf_dblwr_init_or_load_pages(
 	byte*		unaligned_read_buf;
 	ibool		reset_space_ids = FALSE;
 	recv_dblwr_t&	recv_dblwr = recv_sys->dblwr;
+	bool		header_found = false;
 
 	/* We do the file i/o past the buffer pool */
 
@@ -469,9 +552,57 @@ buf_dblwr_init_or_load_pages(
 
 	page = buf;
 
-	for (ulint i = 0; i < TRX_SYS_DOUBLEWRITE_BLOCK_SIZE * 2; i++) {
+	/* First check if the first page is of type FIL_PAGE_TYPE_DBLWR_HEADER.
+	 * If so, this means that the last time the doublewrite was used in
+	 * reduced doublewrite mode (innodb_doublewrite=2).
+	 */
+	if (fil_page_get_type(page) == FIL_PAGE_TYPE_DBLWR_HEADER) {
+		header_found = TRUE;
+	}
+
+	if (header_found && load_corrupt_pages) {
+		byte* ptr = page + FIL_PAGE_DATA;
+		ulint num_pages;
+		const page_size_t& page_size = page_size_t(BUF_DBLWR_HEADER_SIZE, BUF_DBLWR_HEADER_SIZE, true);
+
+		ut_a(!reset_space_ids);
+
+		if (buf_page_is_corrupted(
+				FALSE, page, page_size, NULL)) {
+			ib::error()
+				<< "InnoDB: The first block of the doublewrite "
+				<< "buffer is corrupt.";
+			buf_page_print(
+				page,
+				page_size,
+				BUF_PAGE_PRINT_NO_CRASH);
+			ut_error;
+		}
+
+		num_pages = mach_read_from_2(ptr);
+		ptr += 2;
+
+		for (ulint i = 0; i < num_pages; ++i) {
+			ulint space_id = mach_read_from_4(ptr);
+			ptr += 4;
+			ulint page_no = mach_read_from_4(ptr);
+			ptr += 4;
+			recv_dblwr.add(NULL, space_id, page_no);
+		}
+	}
+
+	if (header_found) {
+		page += univ_page_size.physical();
+	}
+
+	/* We go through all of the pages in the doublewrite buffer even if
+	 * we found the header page.
+	 */
+	for (ulint i = (header_found ? 1 : 0);
+	     i < TRX_SYS_DOUBLEWRITE_BLOCK_SIZE * 2; i++) {
 		if (reset_space_ids) {
 			ulint source_page_no;
+			ut_a(!header_found);
 
 			space_id = 0;
 			mach_write_to_4(page + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID,
@@ -493,6 +624,7 @@ buf_dblwr_init_or_load_pages(
 				write_request, path, file, page,
 				source_page_no * UNIV_PAGE_SIZE,
 				UNIV_PAGE_SIZE);
+
 			if (err != DB_SUCCESS) {
 
 				ib::error()
@@ -504,10 +636,15 @@ buf_dblwr_init_or_load_pages(
 				return(err);
 			}
 
-		} else if (memcmp(field_ref_zero, page + FIL_PAGE_LSN, 8)) {
+		} else if (load_corrupt_pages
+			&& memcmp(field_ref_zero, page + FIL_PAGE_LSN, 8)) {
 			/* Each valid page header must contain
 			a nonzero FIL_PAGE_LSN field. */
-			recv_dblwr.add(page);
+			ulint space_id =
+				mach_read_from_4(page + FIL_PAGE_SPACE_ID);
+			ulint page_no  =
+				mach_read_from_4(page + FIL_PAGE_OFFSET);
+			recv_dblwr.add(page, space_id, page_no);
 		}
 
 		page += univ_page_size.physical();
@@ -529,7 +666,7 @@ buf_dblwr_process()
 	ulint		page_no_dblwr	= 0;
 	byte*		read_buf;
 	byte*		unaligned_read_buf;
-	recv_dblwr_t&	recv_dblwr	= recv_sys->dblwr;
+	std::list<recv_dblwr_item_t, ut_allocator<recv_dblwr_item_t> >& dblwr_pages = recv_sys->dblwr.pages;
 
 	if (!buf_dblwr) {
 		return;
@@ -541,12 +678,11 @@ buf_dblwr_process()
 	read_buf = static_cast<byte*>(
 		ut_align(unaligned_read_buf, UNIV_PAGE_SIZE));
 
-	for (recv_dblwr_t::list::iterator i = recv_dblwr.pages.begin();
-	     i != recv_dblwr.pages.end();
-	     ++i, ++page_no_dblwr) {
-		byte*	page		= *i;
-		ulint	space_id	= page_get_space_id(page);
-		fil_space_t*	space = fil_space_get(space_id);
+	for (std::list<recv_dblwr_item_t>::iterator i = dblwr_pages.begin();
+	     i != dblwr_pages.end(); ++i, ++page_no_dblwr ) {
+		byte*	page		= const_cast<byte*>(i->page);
+		fil_space_t*	space = fil_space_get(i->space_id);
+		ulint	space_id	= i->space_id;
 
 		if (space == NULL) {
 			/* Maybe we have dropped the tablespace
@@ -556,7 +692,7 @@ buf_dblwr_process()
 
 		fil_space_open_if_needed(space);
 
-		const ulint		page_no	= page_get_page_no(page);
+		const ulint		page_no	= i->page_no;
 		const page_id_t		page_id(space_id, page_no);
 
 		if (page_no >= space->size) {
@@ -575,7 +711,6 @@ buf_dblwr_process()
 		}
 
 		const page_size_t	page_size(space->flags);
-		ut_ad(!buf_page_is_zeroes(page, page_size));
 
 		/* We want to ensure that for partial reads the
 		unread portion of the page is NUL. */
@@ -632,6 +767,21 @@ buf_dblwr_process()
 				<< " from the doublewrite buffer.";
 		}
 
+		if (!page) {
+			/* Theoretically we could have another good
+			copy for this page in the doublewrite
+			buffer. If not, we will report a fatal error
+			for a corrupted page somewhere else if that
+			page was truly needed. */
+
+			ib::warn() << "Cannot recover page " << page_id
+				   << " from the doublewrite buffer"
+				   << " because it was written in reduced-doublewrite mode";
+			continue;
+		}
+
+		ut_ad(!buf_page_is_zeroes(page, page_size));
+
 		/* Next, validate the doublewrite page. */
 		if (fil_page_is_compressed_encrypted(page) ||
 		    fil_page_is_compressed(page)) {
@@ -684,7 +834,7 @@ buf_dblwr_process()
 			<< " from the doublewrite buffer.";
 	}
 
-	recv_dblwr.pages.clear();
+	dblwr_pages.clear();
 
 	fil_flush_file_spaces(FIL_TYPE_TABLESPACE);
 	ut_free(unaligned_read_buf);
@@ -704,6 +854,9 @@ buf_dblwr_free()
 	os_event_destroy(buf_dblwr->s_event);
 	ut_free(buf_dblwr->write_buf_unaligned);
 	buf_dblwr->write_buf_unaligned = NULL;
+	ut_free(buf_dblwr->header_unaligned);
+	buf_dblwr->header_unaligned = NULL;
+	buf_dblwr->header = NULL;
 
 	ut_free(buf_dblwr->buf_block_arr);
 	buf_dblwr->buf_block_arr = NULL;
@@ -953,8 +1106,10 @@ buf_dblwr_flush_buffered_writes()
 	byte*		write_buf;
 	ulint		first_free;
 	ulint		len;
+	byte*		header_ptr;
+	ulong		use_doublewrite_buf = srv_use_doublewrite_buf;
 
-	if (!srv_use_doublewrite_buf || buf_dblwr == NULL) {
+	if (!use_doublewrite_buf || buf_dblwr == NULL) {
 		/* Sync the writes to the disk. */
 		buf_dblwr_sync_datafiles();
 		return;
@@ -999,6 +1154,31 @@ try_again:
 	start another batch of flushing. */
 	buf_dblwr->batch_running = true;
 	first_free = buf_dblwr->first_free;
+	/* Reset the doublewrite buffer if srv_doublewrite_reset is set.
+	 * This protects against the following scenario:
+	 * 1- server starts with full(=1) doublewrite mode and writes a bunch
+	 * of pages to the doublewrite buffer.
+	 * 2- user changes doublewrite mode from full(=1) to reduced(=2).
+	 * 3- server runs for a long time in the reduced doublewrite mode so
+	 * that the copies that were written to the doublewrite buffer in step
+	 * 1 become stale.
+	 * 4- some of the non-doublewrite pages on disk whose copies in the
+	 * doublewrite buffer became stale get corrupted because of a hardware
+	 * or a software failure.
+	 * 5- server crashes. During recovery InnoDB processes pages both
+	 * in the doublewrite header and the following full pages.
+	 * 6- The stale copies in the doublewrite buffer are used to restore
+	 * corrupt non-doublewrite pages on disk. Now the stale data will be
+	 * served when these pages are accessed.
+	 * This is a rare case because it needs the corruption to happen to one
+	 * of the pages written to the doublewrite buffer in full mode. We
+	 * nevertheless protect against this case by resetting the doublewrite
+	 * buffer on disk, when the doublewrite mode changes.
+	 */
+	if (srv_doublewrite_reset) {
+		buf_dblwr_reset(use_doublewrite_buf);
+		srv_doublewrite_reset = FALSE;
+	}
 
 	/* Now safe to release the mutex. Note that though no other
 	thread is allowed to post to the doublewrite batch flushing
@@ -1007,14 +1187,23 @@ try_again:
 	mutex_exit(&buf_dblwr->mutex);
 
 	write_buf = buf_dblwr->write_buf;
+	header_ptr = buf_dblwr->header + FIL_PAGE_DATA;
+	memset(header_ptr, 0, BUF_DBLWR_HEADER_SIZE - FIL_PAGE_DATA);
+	mach_write_to_2(header_ptr, buf_dblwr->first_free);
+	header_ptr += 2;
 
 	for (ulint len2 = 0, i = 0;
 	     i < buf_dblwr->first_free;
 	     len2 += UNIV_PAGE_SIZE, i++) {
 
-		const buf_block_t*	block;
-
+		const buf_block_t* block;
 		block = (buf_block_t*) buf_dblwr->buf_block_arr[i];
+		const buf_page_t* page = &block->page;
+
+		mach_write_to_4(header_ptr, page->id.space());
+		header_ptr += 4;
+		mach_write_to_4(header_ptr, page->id.page_no());
+		header_ptr += 4;
 
 		if (buf_block_get_state(block) != BUF_BLOCK_FILE_PAGE
 		    || block->page.zip.data) {
@@ -1033,14 +1222,30 @@ try_again:
 	}
 
 	/* Write out the first block of the doublewrite buffer */
-	len = ut_min(TRX_SYS_DOUBLEWRITE_BLOCK_SIZE,
-		     buf_dblwr->first_free) * UNIV_PAGE_SIZE;
+	if (use_doublewrite_buf == 2) {
+		ib_uint32_t	checksum = page_zip_calc_checksum(
+			buf_dblwr->header, BUF_DBLWR_HEADER_SIZE,
+			static_cast<srv_checksum_algorithm_t>(
+				srv_checksum_algorithm));
+
+		const page_size_t& page_size = page_size_t(BUF_DBLWR_HEADER_SIZE, BUF_DBLWR_HEADER_SIZE, true);
+		mach_write_to_4(buf_dblwr->header + FIL_PAGE_SPACE_OR_CHKSUM,
+				checksum);
+		len = BUF_DBLWR_HEADER_SIZE;
+		write_buf = buf_dblwr->header;
+		ut_ad(!buf_page_is_corrupted(FALSE, write_buf, page_size, NULL));
+	} else {
+		len = ut_min(TRX_SYS_DOUBLEWRITE_BLOCK_SIZE,
+			buf_dblwr->first_free) * UNIV_PAGE_SIZE;
+	}
 
 	fil_io(IORequestWrite, true,
 	       page_id_t(TRX_SYS_SPACE, buf_dblwr->block1), univ_page_size,
 	       0, len, (void*) write_buf, NULL);
 
-	if (buf_dblwr->first_free <= TRX_SYS_DOUBLEWRITE_BLOCK_SIZE) {
+
+	if (buf_dblwr->first_free <= TRX_SYS_DOUBLEWRITE_BLOCK_SIZE
+	    || use_doublewrite_buf == 2) {
 		/* No unwritten pages in the second block. */
 		goto flush;
 	}
@@ -1058,7 +1263,12 @@ try_again:
 
 flush:
 	/* increment the doublewrite flushed pages counter */
-	srv_stats.dblwr_pages_written.add(buf_dblwr->first_free);
+	if (use_doublewrite_buf == 1) {
+		srv_stats.dblwr_pages_written.add(buf_dblwr->first_free);
+	} else {
+		srv_stats.dblwr_pages_written.inc();
+	}
+
 	srv_stats.dblwr_writes.inc();
 
 	/* Now flush the doublewrite buffer data to disk */

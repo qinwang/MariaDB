@@ -5994,6 +5994,18 @@ database_corrupted:
 					" You can use CHECK TABLE to scan"
 					" your table for corruption. "
 					<< FORCE_RECOVERY_MSG;
+
+				/* Remove the page that is corrupted when
+				recovering. */
+				if (recv_recovery_on) {
+					ib::info() << "Removing the corrupted page "
+						   << bpage->id << " in tablepace "
+						   << space->name << " from recovered pages.";
+					mutex_enter(&recv_sys->mutex);
+					ut_ad(recv_sys->n_addrs > 0);
+					recv_sys->n_addrs--;
+					mutex_exit(&recv_sys->mutex);
+				}
 			}
 
 			if (srv_force_recovery < SRV_FORCE_IGNORE_CORRUPT) {

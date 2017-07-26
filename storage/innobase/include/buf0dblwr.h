@@ -37,6 +37,9 @@ Created 2011/12/19 Inaam Rana
 extern buf_dblwr_t*	buf_dblwr;
 /** Set to TRUE when the doublewrite buffer is being created */
 extern ibool		buf_dblwr_being_created;
+/** The size of the doublewrite header page when the reduced-doublewrite mode
+is used. */
+#define BUF_DBLWR_HEADER_SIZE 4096
 
 /** Create the doublewrite buffer if the doublewrite buffer header
 is not present in the TRX_SYS page.
@@ -59,7 +62,8 @@ recovery, this function loads the pages from double write buffer into memory.
 dberr_t
 buf_dblwr_init_or_load_pages(
 	pfs_os_file_t	file,
-	const char*	path);
+	const char*	path,
+	bool		load_corrupt_pages);
 
 /** Process and remove the double write buffer pages for all tablespaces. */
 void
@@ -157,6 +161,11 @@ struct buf_dblwr_t{
 	buf_page_t**	buf_block_arr;/*!< array to store pointers to
 				the buffer blocks which have been
 				cached to write_buf */
+	byte*		header;/*!< write buffer used for writing out the
+				doublewrite header for reduced doublewrite
+				mode (innodb_doublewrite=2) */
+	byte*		header_unaligned;/*!< pointer to header,
+				but unaligned */
 };
 
 #endif

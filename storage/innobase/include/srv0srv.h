@@ -486,7 +486,8 @@ extern my_bool			srv_stats_include_delete_marked;
 extern unsigned long long	srv_stats_modified_counter;
 extern my_bool			srv_stats_sample_traditional;
 
-extern ibool	srv_use_doublewrite_buf;
+extern ulong	srv_use_doublewrite_buf;
+extern my_bool	srv_doublewrite_reset;
 extern ulong	srv_doublewrite_batch_size;
 extern ulong	srv_checksum_algorithm;
 

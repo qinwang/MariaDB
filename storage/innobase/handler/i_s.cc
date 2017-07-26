@@ -112,6 +112,7 @@ static buf_page_desc_t	i_s_page_type[] = {
 	{"IBUF_INDEX", I_S_PAGE_TYPE_IBUF},
 	{"PAGE COMPRESSED", FIL_PAGE_PAGE_COMPRESSED},
 	{"PAGE COMPRESSED AND ENCRYPTED", FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED},
+	{"DOUBLEWRITE HEADER", FIL_PAGE_TYPE_DBLWR_HEADER},
 };
 
 /** This structure defines information we will fetch from pages

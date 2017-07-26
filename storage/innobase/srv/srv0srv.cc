@@ -392,8 +392,8 @@ unsigned long long srv_stats_modified_counter;
 based on number of configured pages */
 my_bool	srv_stats_sample_traditional;
 
-/** copy of innodb_doublewrite */
-ibool	srv_use_doublewrite_buf;
+ulong	srv_use_doublewrite_buf	= 1;
+my_bool	srv_doublewrite_reset = FALSE;
 
 /** innodb_doublewrite_batch_size (a debug parameter) specifies the
 number of pages to use in LRU and flush_list batch flushing.
