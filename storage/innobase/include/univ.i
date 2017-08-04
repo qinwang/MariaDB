@@ -371,6 +371,8 @@ and 2 bits for flags. This limits the uncompressed page size to 16k.
 #define UNIV_PAGE_SIZE_SHIFT_DEF	14
 /** Original 16k InnoDB Page Size Shift, in case the default changes */
 #define UNIV_PAGE_SIZE_SHIFT_ORIG	14
+/** Original 16k InnoDB Page Size as an ssize (log2 - 9) */
+#define UNIV_PAGE_SSIZE_ORIG		(UNIV_PAGE_SIZE_SHIFT_ORIG - 9)
 
 /** Minimum page size InnoDB currently supports. */
 #define UNIV_PAGE_SIZE_MIN	(1 << UNIV_PAGE_SIZE_SHIFT_MIN)
