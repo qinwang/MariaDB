@@ -1365,12 +1365,15 @@ get_options(
 	char	***argv)
 {
 	if (handle_options(argc, argv, innochecksum_options,
-		innochecksum_get_one_option))
+			innochecksum_get_one_option)) {
+		my_end(0);
 		exit(true);
+	}
 
 	/* The next arg must be the filename */
 	if (!*argc) {
 		usage();
+		my_end(0);
 		return (true);
 	}
 
