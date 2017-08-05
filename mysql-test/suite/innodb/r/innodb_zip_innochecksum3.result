@@ -166,9 +166,9 @@ Filename::tab#.ibd
 #::       #		|		File Space Header		|	-
 #::       #		|		Insert Buffer Bitmap		|	-
 #::       #		|		Inode page			|	-
-#::       #		|		Index page			|	index id=#, page level=#, No. of records=#, garbage=#, -
-#::       #		|		Index page			|	index id=#, page level=#, No. of records=#, garbage=#, -
-#::       #		|		Index page			|	index id=#, page level=#, No. of records=#, garbage=#, -
+#::       #		|		Index page			|	index id=#, page level=# leaf #, No. of records=#, garbage=#, n_recs=#, -
+#::       #		|		Index page			|	index id=#, page level=# leaf #, No. of records=#, garbage=#, n_recs=#, -
+#::       #		|		Index page			|	index id=#, page level=# leaf #, No. of records=#, garbage=#, n_recs=#, -
 #::       #		|		Freshly allocated page		|	-
 #::       #		|		Freshly allocated page		|	-
 # Variables used by page type dump for ibdata1
@@ -201,9 +201,9 @@ Filename::tab#.ibd
 #::       #		|		File Space Header		|	-
 #::       #		|		Insert Buffer Bitmap		|	-
 #::       #		|		Inode page			|	-
-#::       #		|		Index page			|	index id=#, page level=#, No. of records=#, garbage=#, -
-#::       #		|		Index page			|	index id=#, page level=#, No. of records=#, garbage=#, -
-#::       #		|		Index page			|	index id=#, page level=#, No. of records=#, garbage=#, -
+#::       #		|		Index page			|	index id=#, page level=# leaf #, No. of records=#, garbage=#, n_recs=#, -
+#::       #		|		Index page			|	index id=#, page level=# leaf #, No. of records=#, garbage=#, n_recs=#, -
+#::       #		|		Index page			|	index id=#, page level=# leaf #, No. of records=#, garbage=#, n_recs=#, -
 #::       #		|		Freshly allocated page		|	-
 #::       #		|		Freshly allocated page		|	-
 [6]: check the valid lower bound values for option

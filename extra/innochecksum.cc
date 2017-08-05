@@ -788,6 +788,7 @@ parse_page(
 	ulint data_bytes;
 	int is_leaf;
 	int size_range_id;
+	ulint data_types=0;
 
 	/* Check whether page is doublewrite buffer. */
 	if(skip_page) {
@@ -815,6 +816,25 @@ parse_page(
 		}
 
 		is_leaf = page_is_leaf(page);
+
+		if (page_type_dump) {
+			fprintf(file, "#::%8" PRIuMAX "\t\t|\t\tIndex page\t\t\t|"
+				"\tindex id=%llu,", cur_page_num, id);
+
+			fprintf(file,
+				" page level=" ULINTPF " leaf %u"
+				", No. of records=" ULINTPF
+				", garbage=" ULINTPF
+				", n_recs=" ULINTPF
+				", %s\n",
+				page_header_get_field(page, PAGE_LEVEL),
+				is_leaf,
+				n_recs,
+				page_header_get_field(page, PAGE_GARBAGE),
+				data_types,
+				str);
+		}
+
 		size_range_id = (data_bytes * SIZE_RANGES_FOR_PAGE
 			+ page_size.logical() - 1) /
 			page_size.logical();
@@ -845,7 +865,9 @@ parse_page(
 				index.free_pages++;
 				return;
 			}
+
 			index.pages++;
+
 			if (is_leaf) {
 				index.leaf_pages++;
 				if (data_bytes > index.max_data_size) {
@@ -861,23 +883,12 @@ parse_page(
 					index.count++;
 				}
 			}
+
 			index.total_n_recs += n_recs;
 			index.total_data_bytes += data_bytes;
 			index.pages_in_size_range[size_range_id] ++;
 		}
 
-		if (page_type_dump) {
-			fprintf(file, "#::%8" PRIuMAX "\t\t|\t\tIndex page\t\t\t|"
-				"\tindex id=%llu,", cur_page_num, id);
-
-			fprintf(file,
-				" page level=" ULINTPF
-				", No. of records=" ULINTPF
-				", garbage=" ULINTPF ", %s\n",
-				page_header_get_field(page, PAGE_LEVEL),
-				page_header_get_field(page, PAGE_N_RECS),
-				page_header_get_field(page, PAGE_GARBAGE), str);
-		}
 		break;
 	}
 	case FIL_PAGE_UNDO_LOG:
