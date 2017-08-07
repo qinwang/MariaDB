@@ -485,9 +485,9 @@ typedef unsigned long long int	ullint;
 #endif /* UNIV_HOTBACKUP */
 
 #ifdef UNIV_INNOCHECKSUM
-extern bool 		strict_verify;
-extern FILE* 		log_file;
-extern ulint		cur_page_num;
+extern bool 			strict_verify;
+extern FILE* 			log_file;
+extern unsigned long long	cur_page_num;
 #endif /* UNIV_INNOCHECKSUM */
 
 #ifndef __WIN__
