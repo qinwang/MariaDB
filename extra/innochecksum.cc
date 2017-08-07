@@ -106,7 +106,7 @@ bool				strict_verify = 0;
 /* Enabled for rewrite checksum. */
 static bool			do_write;
 /* Mismatches count allowed (0 by default). */
-static ulint     		allow_mismatches;
+static ulint     		allow_mismatches=0;
 static bool			page_type_summary;
 static bool			page_type_dump;
 /* Store filename for page-type-dump option. */
@@ -473,7 +473,7 @@ is_page_corrupted(
 	ulint logseq;
 	ulint logseqfield;
 	ulint page_type = mach_read_from_2(buf+FIL_PAGE_TYPE);
-	ulint key_version = mach_read_from_4(buf+FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION);
+	uint key_version = mach_read_from_4(buf+FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION);
 	ulint space_id = mach_read_from_4(
 		buf + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);
 
@@ -802,7 +802,7 @@ parse_page(
 	switch (mach_read_from_2(page + FIL_PAGE_TYPE)) {
 
 	case FIL_PAGE_INDEX: {
-		ulint key_version = mach_read_from_4(page + FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION);
+		uint key_version = mach_read_from_4(page + FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION);
 		page_type.n_fil_page_index++;
 
 		/* If page is encrypted we can't read index header */
@@ -891,7 +891,7 @@ parse_page(
 			}
 		} else {
 			fprintf(file, "#::" ULINTPF "\t\t|\t\tEncrypted Index page\t\t\t|"
-				"\tkey_version,%s\n", cur_page_num, key_version, str);
+				"\tkey_version %u,%s\n", cur_page_num, key_version, str);
 		}
 
 		break;
