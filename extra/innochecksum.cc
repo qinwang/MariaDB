@@ -84,9 +84,9 @@ typedef void fil_space_t;
 /* Global variables */
 static bool			verbose;
 static bool			just_count;
-static ulint			start_page;
-static ulint			end_page;
-static ulint			do_page;
+static unsigned long long	start_page;
+static unsigned long long	end_page;
+static unsigned long long	do_page;
 static bool			use_end_page;
 static bool			do_one_page;
 static my_bool do_leaf;
@@ -106,7 +106,7 @@ bool				strict_verify = 0;
 /* Enabled for rewrite checksum. */
 static bool			do_write;
 /* Mismatches count allowed (0 by default). */
-static ulint     		allow_mismatches=0;
+static unsigned long long     	allow_mismatches=0;
 static bool			page_type_summary;
 static bool			page_type_dump;
 /* Store filename for page-type-dump option. */
