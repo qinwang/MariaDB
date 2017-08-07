@@ -5012,7 +5012,7 @@ page_zip_verify_checksum(
 		}
 		if (i >= size) {
 			if (log_file) {
-			fprintf(log_file, "Page::" ULINTPF " is empty and"
+			fprintf(log_file, "Page::%llu is empty and"
 					" uncorrupted\n", cur_page_num);
 			}
 
@@ -5041,7 +5041,7 @@ page_zip_verify_checksum(
 
 #ifdef UNIV_INNOCHECKSUM
 	if (log_file) {
-		fprintf(log_file, "page::" ULINTPF ";"
+		fprintf(log_file, "page::%llu;"
 			" %s checksum: calculated = %u;"
 			" recorded = %u\n", cur_page_num,
 			buf_checksum_algorithm_name(
@@ -5056,10 +5056,10 @@ page_zip_verify_checksum(
 			data, size, SRV_CHECKSUM_ALGORITHM_CRC32);
 
 		if (log_file) {
-			fprintf(log_file, "page::" ULINTPF ": crc32 checksum:"
+			fprintf(log_file, "page::%llu: crc32 checksum:"
 				" calculated = %u; recorded = %u\n",
 				cur_page_num, crc32, stored);
-			fprintf(log_file, "page::" ULINTPF ": none checksum:"
+			fprintf(log_file, "page::%llu: none checksum:"
 				" calculated = %lu; recorded = %u\n",
 				cur_page_num, BUF_NO_CHECKSUM_MAGIC, stored);
 		}

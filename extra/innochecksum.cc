@@ -100,7 +100,7 @@ static ulong logical_page_size;   /* Page size when uncompressed. */
 ulong srv_page_size;
 page_size_t			univ_page_size(0, 0, false);
 /* Current page number (0 based). */
-ulint				cur_page_num;
+unsigned long long		cur_page_num;
 /* Skip the checksum verification. */
 static bool			no_check;
 /* Enabled for strict checksum verification. */
@@ -499,13 +499,13 @@ is_page_corrupted(
 
 		if (is_log_enabled) {
 			fprintf(log_file,
-				"space::" ULINTPF " page::" ULINTPF
+				"space::" ULINTPF " page::%llu"
 				"; log sequence number:first = " ULINTPF
 				"; second = " ULINTPF "\n",
 				space_id, cur_page_num, logseq, logseqfield);
 			if (logseq != logseqfield) {
 				fprintf(log_file,
-					"Fail; space " ULINTPF " page " ULINTPF
+					"Fail; space::" ULINTPF " page::%llu"
 					" invalid (fails log "
 					"sequence number check)\n",
 					space_id, cur_page_num);
@@ -630,7 +630,7 @@ update_checksum(
 
 		mach_write_to_4(page + FIL_PAGE_SPACE_OR_CHKSUM, checksum);
 		if (is_log_enabled) {
-			fprintf(log_file, "page::" ULINTPF "; Updated checksum ="
+			fprintf(log_file, "page::%llu; Updated checksum ="
 				" %u\n", cur_page_num, checksum);
 		}
 
@@ -661,7 +661,7 @@ update_checksum(
 
 		mach_write_to_4(page + FIL_PAGE_SPACE_OR_CHKSUM, checksum);
 		if (is_log_enabled) {
-			fprintf(log_file, "page::" ULINTPF "; Updated checksum field1"
+			fprintf(log_file, "page::%llu; Updated checksum field1"
 				" = %u\n", cur_page_num, checksum);
 		}
 
@@ -675,7 +675,7 @@ update_checksum(
 				FIL_PAGE_END_LSN_OLD_CHKSUM,checksum);
 
 		if (is_log_enabled) {
-			fprintf(log_file, "page::" ULINTPF "; Updated checksum "
+			fprintf(log_file, "page::%llu; Updated checksum "
 				"field2 = %u\n", cur_page_num, checksum);
 		}
 
@@ -750,7 +750,7 @@ write_file(
 
 	if (page_size
 		!= fwrite(buf, 1, page_size, file == stdin ? stdout : file)) {
-		fprintf(stderr, "Failed to write page " ULINTPF " to %s: %s\n",
+		fprintf(stderr, "Failed to write page::%llu to %s: %s\n",
 			cur_page_num, filename, strerror(errno));
 
 		return(false);
@@ -793,7 +793,6 @@ parse_page(
 	ulint data_bytes;
 	bool is_leaf;
 	int size_range_id;
-	ulint data_types=0;
 
 	/* Check whether page is doublewrite buffer. */
 	if(skip_page) {
@@ -829,7 +828,7 @@ parse_page(
 			is_leaf = (!*(const uint16*) (page + (PAGE_HEADER + PAGE_LEVEL)));
 
 			if (page_type_dump) {
-				fprintf(file, "#::" ULINTPF "\t\t|\t\tIndex page\t\t\t|"
+				fprintf(file, "#::%llu\t\t|\t\tIndex page\t\t\t|"
 					"\tindex id=%llu,", cur_page_num, id);
 
 				fprintf(file,
@@ -891,7 +890,7 @@ parse_page(
 				index.pages_in_size_range[size_range_id] ++;
 			}
 		} else {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tEncrypted Index page\t\t\t|"
+			fprintf(file, "#::%llu\t\t|\t\tEncrypted Index page\t\t\t|"
 				"\tkey_version %u,%s\n", cur_page_num, key_version, str);
 		}
 
@@ -902,7 +901,7 @@ parse_page(
 		undo_page_type = mach_read_from_2(page +
 				     TRX_UNDO_PAGE_HDR + TRX_UNDO_PAGE_TYPE);
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tUndo log page\t\t\t|",
+			fprintf(file, "#::%llu\t\t|\t\tUndo log page\t\t\t|",
 				cur_page_num);
 		}
 		if (undo_page_type == TRX_UNDO_INSERT) {
@@ -976,7 +975,7 @@ parse_page(
 	case FIL_PAGE_INODE:
 		page_type.n_fil_page_inode++;
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tInode page\t\t\t|"
+			fprintf(file, "#::%llu\t\t|\t\tInode page\t\t\t|"
 				"\t%s\n",cur_page_num, str);
 		}
 		break;
@@ -984,7 +983,7 @@ parse_page(
 	case FIL_PAGE_IBUF_FREE_LIST:
 		page_type.n_fil_page_ibuf_free_list++;
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tInsert buffer free list"
+			fprintf(file, "#::%llu\t\t|\t\tInsert buffer free list"
 				" page\t|\t%s\n", cur_page_num, str);
 		}
 		break;
@@ -992,7 +991,7 @@ parse_page(
 	case FIL_PAGE_TYPE_ALLOCATED:
 		page_type.n_fil_page_type_allocated++;
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tFreshly allocated "
+			fprintf(file, "#::%llu\t\t|\t\tFreshly allocated "
 				"page\t\t|\t%s\n", cur_page_num, str);
 		}
 		break;
@@ -1000,7 +999,7 @@ parse_page(
 	case FIL_PAGE_IBUF_BITMAP:
 		page_type.n_fil_page_ibuf_bitmap++;
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tInsert Buffer "
+			fprintf(file, "#::%llu\t\t|\t\tInsert Buffer "
 				"Bitmap\t\t|\t%s\n", cur_page_num, str);
 		}
 		break;
@@ -1008,7 +1007,7 @@ parse_page(
 	case FIL_PAGE_TYPE_SYS:
 		page_type.n_fil_page_type_sys++;
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tSystem page\t\t\t|"
+			fprintf(file, "#::%llu\t\t|\t\tSystem page\t\t\t|"
 				"\t%s\n",cur_page_num, str);
 		}
 		break;
@@ -1016,7 +1015,7 @@ parse_page(
 	case FIL_PAGE_TYPE_TRX_SYS:
 		page_type.n_fil_page_type_trx_sys++;
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tTransaction system "
+			fprintf(file, "#::%llu\t\t|\t\tTransaction system "
 				"page\t\t|\t%s\n", cur_page_num, str);
 		}
 		break;
@@ -1025,7 +1024,7 @@ parse_page(
 		page_type.n_fil_page_type_fsp_hdr++;
 		memcpy(xdes, page, page_size.physical());
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tFile Space "
+			fprintf(file, "#::%llu\t\t|\t\tFile Space "
 				"Header\t\t|\t%s\n", cur_page_num, str);
 		}
 		break;
@@ -1034,7 +1033,7 @@ parse_page(
 		page_type.n_fil_page_type_xdes++;
 		memcpy(xdes, page, page_size.physical());
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tExtent descriptor "
+			fprintf(file, "#::%llu\t\t|\t\tExtent descriptor "
 				"page\t\t|\t%s\n", cur_page_num, str);
 		}
 		break;
@@ -1042,7 +1041,7 @@ parse_page(
 	case FIL_PAGE_TYPE_BLOB:
 		page_type.n_fil_page_type_blob++;
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tBLOB page\t\t\t|\t%s\n",
+			fprintf(file, "#::%llu\t\t|\t\tBLOB page\t\t\t|\t%s\n",
 				cur_page_num, str);
 		}
 		break;
@@ -1050,7 +1049,7 @@ parse_page(
 	case FIL_PAGE_TYPE_ZBLOB:
 		page_type.n_fil_page_type_zblob++;
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tCompressed BLOB "
+			fprintf(file, "#::%llu\t\t|\t\tCompressed BLOB "
 				"page\t\t|\t%s\n", cur_page_num, str);
 		}
 		break;
@@ -1058,7 +1057,7 @@ parse_page(
 	case FIL_PAGE_TYPE_ZBLOB2:
 		page_type.n_fil_page_type_zblob2++;
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tSubsequent Compressed "
+			fprintf(file, "#::%llu\t\t|\t\tSubsequent Compressed "
 				"BLOB page\t|\t%s\n", cur_page_num, str);
 		}
 			break;
@@ -1066,7 +1065,7 @@ parse_page(
 	case FIL_PAGE_PAGE_COMPRESSED:
 		page_type.n_fil_page_type_page_compressed++;
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tPage compressed "
+			fprintf(file, "#::%llu\t\t|\t\tPage compressed "
 				"page\t|\t%s\n", cur_page_num, str);
 		}
 		break;
@@ -1074,7 +1073,7 @@ parse_page(
 	case FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED:
 		page_type.n_fil_page_type_page_compressed_encrypted++;
 		if (page_type_dump) {
-			fprintf(file, "#::" ULINTPF "\t\t|\t\tPage compressed encrypted "
+			fprintf(file, "#::%llu\t\t|\t\tPage compressed encrypted "
 				"page\t|\t%s\n", cur_page_num, str);
 		}
 		break;
@@ -1459,7 +1458,7 @@ int verify_checksum(
 	const page_size_t& page_size,
 	bool is_encrypted,
 	bool is_compressed,
-	ulint* mismatch_count)
+	unsigned long long* mismatch_count)
 {
 	int exit_status = 0;
 	bool is_corrupted = false;
@@ -1468,7 +1467,7 @@ int verify_checksum(
 		buf, page_size, is_encrypted, is_compressed);
 
 	if (is_corrupted) {
-		fprintf(stderr, "Fail: page " ULINTPF " invalid\n",
+		fprintf(stderr, "Fail: page::%llu invalid\n",
 			cur_page_num);
 
 		(*mismatch_count)++;
@@ -1478,7 +1477,7 @@ int verify_checksum(
 				"Exceeded the "
 				"maximum allowed "
 				"checksum mismatch "
-				"count::" ULINTPF " current " ULINTPF "\n",
+				"count::%llu current::%llu\n",
 				*mismatch_count,
 				allow_mismatches);
 
@@ -1560,7 +1559,7 @@ int main(
 
 	off_t		offset			= 0;
 	/* count the no. of page corrupted. */
-	ulint		mismatch_count		= 0;
+	unsigned long long   mismatch_count		= 0;
 
 	bool		partial_page_read	= false;
 	/* Enabled when read from stdin is done. */
@@ -1730,7 +1729,7 @@ int main(
 		checksum mismatch on page 0, because that would mean we
 		could not trust it content. */
 		if (!no_check) {
-			ulint tmp_allow_mismatches = allow_mismatches;
+			unsigned long long tmp_allow_mismatches = allow_mismatches;
 			allow_mismatches = 0;
 
 			exit_status = verify_checksum(buf, page_size, is_encrypted, is_compressed, &mismatch_count);
@@ -1762,7 +1761,7 @@ int main(
 		}
 
 		if (per_page_details) {
-			printf("page %ld ", cur_page_num);
+			printf("page %llu ", cur_page_num);
 		}
 
 		if (page_type_summary || page_type_dump) {
@@ -1784,14 +1783,14 @@ int main(
 					"(" ULINTPF " pages)\n", filename, size, pages);
 				if (do_one_page) {
 					fprintf(log_file, "Innochecksum: "
-						"checking page " ULINTPF "\n",
+						"checking page::%llu;\n",
 						do_page);
 				}
 			}
 		} else {
 			if (is_log_enabled) {
 				fprintf(log_file, "Innochecksum: checking "
-					"pages in range " ULINTPF " to " ULINTPF "\n",
+					"pages in range::%llu to %llu\n",
 					start_page, use_end_page ?
 					end_page : (pages - 1));
 			}
@@ -1930,7 +1929,7 @@ int main(
 			}
 
 			if (per_page_details) {
-				printf("page %ld ", cur_page_num);
+				printf("page %llu ", cur_page_num);
 			}
 
 			if (page_type_summary || page_type_dump) {
@@ -1948,7 +1947,7 @@ int main(
 					}
 					if (now - lastt >= 1
 					    && is_log_enabled) {
-						fprintf(log_file, "page " ULINTPF " "
+						fprintf(log_file, "page::%llu "
 							"okay: %.3f%% done\n",
 							(cur_page_num - 1),
 							(float) cur_page_num / pages * 100);
