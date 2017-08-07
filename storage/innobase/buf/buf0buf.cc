@@ -645,10 +645,10 @@ buf_page_is_checksum_valid_crc32(
 #ifdef UNIV_INNOCHECKSUM
 	if (log_file
 	    && srv_checksum_algorithm == SRV_CHECKSUM_ALGORITHM_STRICT_CRC32) {
-		fprintf(log_file, "page::%lu;"
+		fprintf(log_file, "page::" ULINTPF ";"
 			" crc32 calculated = %u;"
-			" recorded checksum field1 = %lu recorded"
-			" checksum field2 =%lu\n", cur_page_num,
+			" recorded checksum field1 = " ULINTPF " recorded"
+			" checksum field2 =" ULINTPF "\n", cur_page_num,
 			crc32, checksum_field1, checksum_field2);
 	}
 #endif /* UNIV_INNOCHECKSUM */
@@ -702,28 +702,28 @@ buf_page_is_checksum_valid_innodb(
 #ifdef UNIV_INNOCHECKSUM
 	if (log_file
 	    && srv_checksum_algorithm == SRV_CHECKSUM_ALGORITHM_INNODB) {
-		fprintf(log_file, "page::%lu;"
+		fprintf(log_file, "page::" ULINTPF ";"
 			" old style: calculated ="
-			" %lu; recorded = %lu\n",
+			" " ULINTPF "; recorded = " ULINTPF "\n",
 			cur_page_num, old_checksum,
 			checksum_field2);
-		fprintf(log_file, "page::%lu;"
+		fprintf(log_file, "page::" ULINTPF ";"
 			" new style: calculated ="
-			" %lu; crc32 = %u; recorded = %lu\n",
+			" " ULINTPF "; crc32 = %u; recorded = " ULINTPF "\n",
 			cur_page_num, new_checksum,
 			buf_calc_page_crc32(read_buf), checksum_field1);
 	}
 
 	if (log_file
 	    && srv_checksum_algorithm == SRV_CHECKSUM_ALGORITHM_STRICT_INNODB) {
-		fprintf(log_file, "page::%lu;"
+		fprintf(log_file, "page::" ULINTPF ";"
 			" old style: calculated ="
-			" %lu; recorded checksum = %lu\n",
+			" " ULINTPF "; recorded checksum = " ULINTPF "\n",
 			cur_page_num, old_checksum,
 			checksum_field2);
-		fprintf(log_file, "page::%lu;"
+		fprintf(log_file, "page::" ULINTPF ";"
 			" new style: calculated ="
-			" %lu; recorded checksum  = %lu\n",
+			" " ULINTPF "; recorded checksum  = " ULINTPF "\n",
 			cur_page_num, new_checksum,
 			checksum_field1);
 	}
@@ -789,9 +789,9 @@ buf_page_is_checksum_valid_none(
 	if (log_file
 	    && srv_checksum_algorithm == SRV_CHECKSUM_ALGORITHM_STRICT_NONE) {
 		fprintf(log_file,
-			"page::%lu; none checksum: calculated"
-			" = %lu; recorded checksum_field1 = %lu"
-			" recorded checksum_field2 = %lu\n",
+			"page::" ULINTPF "; none checksum: calculated"
+			" = " ULINTPF "; recorded checksum_field1 = " ULINTPF
+			" recorded checksum_field2 = " ULINTPF "\n",
 			cur_page_num, BUF_NO_CHECKSUM_MAGIC,
 			checksum_field1, checksum_field2);
 	}

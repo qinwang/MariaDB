@@ -5012,7 +5012,7 @@ page_zip_verify_checksum(
 		}
 		if (i >= size) {
 			if (log_file) {
-				fprintf(log_file, "Page::%lu is empty and"
+			fprintf(log_file, "Page::" ULINTPF " is empty and"
 					" uncorrupted\n", cur_page_num);
 			}
 
