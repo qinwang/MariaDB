@@ -1871,7 +1871,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         opt_format_json
         prepare prepare_src execute deallocate
         statement sp_suid
-        sp_c_chistics sp_a_chistics sp_chistic sp_c_chistic sp_a_chistic xa
+        sp_c_chistics sp_a_chistics sp_chistic sp_c_chistic xa
         opt_field_or_var_spec fields_or_vars opt_load_data_set_spec
         view_algorithm view_or_trigger_or_sp_or_event
         definer_tail no_definer_tail
@@ -2913,7 +2913,7 @@ sp_name:
 
 sp_a_chistics:
           /* Empty */ {}
-        | sp_a_chistics sp_a_chistic {}
+        | sp_a_chistics sp_chistic {}
         ;
 
 sp_c_chistics:
@@ -2943,11 +2943,6 @@ sp_chistic:
 sp_c_chistic:
           sp_chistic            { }
         | opt_not DETERMINISTIC_SYM { Lex->sp_chistics.detistic= ! $1; }
-        ;
-sp_a_chistic:
-         sp_chistic             {}
-        | AGGREGATE_SYM  GROUP_SYM { Lex->sp_chistics.agg_type= GROUP_AGGREGATE; }
-        | AGGREGATE_SYM  NONE_SYM  { Lex->sp_chistics.agg_type= NOT_AGGREGATE; }
         ;
 
 sp_suid:
