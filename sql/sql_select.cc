@@ -8686,7 +8686,7 @@ JOIN_TAB *first_top_level_tab(JOIN *join, enum enum_with_const_tables const_tbls
   JOIN_TAB *tab= join->join_tab;
   if (const_tbls == WITHOUT_CONST_TABLES)
   {
-    if (join->const_tables == join->table_count)
+    if (join->const_tables == join->table_count || !tab)
       return NULL;
     tab += join->const_tables;
   }
@@ -8709,6 +8709,10 @@ JOIN_TAB *first_linear_tab(JOIN *join,
                            enum enum_with_const_tables const_tbls)
 {
   JOIN_TAB *first= join->join_tab;
+
+  if (!first)
+    return NULL;
+
   if (const_tbls == WITHOUT_CONST_TABLES)
     first+= join->const_tables;
 
@@ -8795,7 +8799,7 @@ JOIN_TAB *first_depth_first_tab(JOIN* join)
 {
   JOIN_TAB* tab;
   /* This means we're starting the enumeration */
-  if (join->const_tables == join->top_join_tab_count)
+  if (join->const_tables == join->top_join_tab_count || !join->join_tab)
     return NULL;
 
   tab= join->join_tab + join->const_tables;
@@ -8866,6 +8870,7 @@ bool key_can_be_used_to_split_by_fields(KEY *key_info, uint used_key_parts,
 
 bool JOIN::check_for_splittable_grouping_derived(THD *thd)
 {
+  partition_list= 0;
   st_select_lex_unit *unit= select_lex->master_unit();
   TABLE_LIST *derived= unit->derived;
   if (!optimizer_flag(thd, OPTIMIZER_SWITCH_SPLIT_GROUPING_DERIVED))
@@ -8878,15 +8883,26 @@ bool JOIN::check_for_splittable_grouping_derived(THD *thd)
     return false;
   if (derived->is_recursive_with_table())
     return false;
-  if (!group_list)
+  if (group_list)
+  {
+    if (!select_lex->have_window_funcs())
+      partition_list= group_list;
+  }
+  else if (select_lex->have_window_funcs() &&
+           select_lex->window_specs.elements == 1)
+  {
+    partition_list=
+      select_lex->window_specs.head()->partition_list->first;
+  }
+  if (!partition_list)
     return false;
-
+ 
   ORDER *ord;
   TABLE *table= 0;
   key_map ref_keys;
   uint group_fields= 0;
   ref_keys.set_all();
-  for (ord= group_list; ord; ord= ord->next, group_fields++)
+  for (ord= partition_list; ord; ord= ord->next, group_fields++)
   {
     Item *ord_item= *ord->item;
     if (ord_item->real_item()->type() != Item::FIELD_ITEM)
@@ -8905,7 +8921,7 @@ bool JOIN::check_for_splittable_grouping_derived(THD *thd)
   List<Field> grouping_fields;
   List<Field> splitting_fields;
   List_iterator<Item> li(fields_list);
-  for (ord= group_list; ord; ord= ord->next)
+  for (ord= partition_list; ord; ord= ord->next)
   {
     Item *item;
     i= 0;
@@ -8981,7 +8997,8 @@ Item *JOIN_TAB::get_splitting_cond_for_grouping_derived(THD *thd)
   KEY_PART_INFO *end= start + table->splitting_fields.elements;
   List_iterator_fast<Field> li(table->splitting_fields);
   Field *fld= li++;
-  for (ORDER *ord= sel->join->group_list; ord; ord= ord->next, fld= li++)  
+  for (ORDER *ord= sel->join->partition_list; ord;
+       ord= ord->next, fld= li++)  
   {
     Item *left_item= (*ord->item)->build_clone(thd, thd->mem_root);
     uint i= 0;
