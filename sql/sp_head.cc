@@ -1033,6 +1033,8 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
   sp_rcontext *ctx= thd->spcont;
   bool err_status= FALSE;
   uint ip= 0;
+  if (m_chistics->agg_type == GROUP_AGGREGATE)
+    ip= thd->spcont->instr_ptr;
   ulonglong save_sql_mode;
   bool save_abort_on_warning;
   Query_arena *old_arena;
@@ -1200,405 +1202,8 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
 #if defined(ENABLED_PROFILING)
       thd->profiling.discard_current_query();
 #endif
-      break;
-    }
-
-    /* Reset number of warnings for this query. */
-    thd->get_stmt_da()->reset_for_next_command();
-
-    DBUG_PRINT("execute", ("Instruction %u", ip));
-
-    /*
-      We need to reset start_time to allow for time to flow inside a stored
-      procedure. This is only done for SP since time is suppose to be constant
-      during execution of triggers and functions.
-    */
-    reset_start_time_for_sp(thd);
-
-    /*
-      We have to set thd->stmt_arena before executing the instruction
-      to store in the instruction free_list all new items, created
-      during the first execution (for example expanding of '*' or the
-      items made during other permanent subquery transformations).
-    */
-    thd->stmt_arena= i;
-
-    /*
-      Will write this SP statement into binlog separately.
-      TODO: consider changing the condition to "not inside event union".
-    */
-    MEM_ROOT *user_var_events_alloc_saved= thd->user_var_events_alloc;
-    if (thd->locked_tables_mode <= LTM_LOCK_TABLES)
-      thd->user_var_events_alloc= thd->mem_root;
-
-    sql_digest_state *parent_digest= thd->m_digest;
-    thd->m_digest= NULL;
-
-    err_status= i->execute(thd, &ip);
-
-    thd->m_digest= parent_digest;
-
-    if (i->free_list)
-      cleanup_items(i->free_list);
-
-    /*
-      If we've set thd->user_var_events_alloc to mem_root of this SP
-      statement, clean all the events allocated in it.
-    */
-    if (thd->locked_tables_mode <= LTM_LOCK_TABLES)
-    {
-      reset_dynamic(&thd->user_var_events);
-      thd->user_var_events_alloc= user_var_events_alloc_saved;
-    }
-
-    /* we should cleanup free_list and memroot, used by instruction */
-    thd->cleanup_after_query();
-    free_root(&execute_mem_root, MYF(0));
-
-    /*
-      Find and process SQL handlers unless it is a fatal error (fatal
-      errors are not catchable by SQL handlers) or the connection has been
-      killed during execution.
-    */
-    if (!thd->is_fatal_error && !thd->killed_errno() &&
-        ctx->handle_sql_condition(thd, &ip, i))
-    {
-      err_status= FALSE;
-    }
-
-    /* Reset sp_rcontext::end_partial_result_set flag. */
-    ctx->end_partial_result_set= FALSE;
-
-  } while (!err_status && !thd->killed && !thd->is_fatal_error);
-
-#if defined(ENABLED_PROFILING)
-  thd->profiling.finish_current_query();
-  thd->profiling.start_new_query("tail end of routine");
-#endif
-
-  /* Restore query context. */
-
-  if (m_creation_ctx)
-    m_creation_ctx->restore_env(thd, saved_creation_ctx);
-
-  /* Restore arena. */
-
-  thd->restore_active_arena(&execute_arena, &backup_arena);
-
-  thd->spcont->pop_all_cursors(); // To avoid memory leaks after an error
-
-  /* Restore all saved */
-  thd->server_status= (thd->server_status & ~status_backup_mask) | old_server_status;
-  old_packet.swap(thd->packet);
-  DBUG_ASSERT(thd->change_list.is_empty());
-  old_change_list.move_elements_to(&thd->change_list);
-  thd->lex= old_lex;
-  thd->set_query_id(old_query_id);
-  DBUG_ASSERT(!thd->derived_tables);
-  thd->derived_tables= old_derived_tables;
-  thd->variables.sql_mode= save_sql_mode;
-  thd->abort_on_warning= save_abort_on_warning;
-  thd->m_reprepare_observer= save_reprepare_observer;
-
-  thd->stmt_arena= old_arena;
-  state= STMT_EXECUTED;
-
-  /*
-    Restore the caller's original warning information area:
-      - warnings generated during trigger execution should not be
-        propagated to the caller on success;
-      - if there was an exception during execution, warning info should be
-        propagated to the caller in any case.
-  */
-  da->pop_warning_info();
-
-  if (err_status || merge_da_on_success)
-  {
-    /*
-      If a routine body is empty or if a routine did not generate any warnings,
-      do not duplicate our own contents by appending the contents of the called
-      routine. We know that the called routine did not change its warning info.
-
-      On the other hand, if the routine body is not empty and some statement in
-      the routine generates a warning or uses tables, warning info is guaranteed
-      to have changed. In this case we know that the routine warning info
-      contains only new warnings, and thus we perform a copy.
-    */
-    if (da->warning_info_changed(&sp_wi))
-    {
-      /*
-        If the invocation of the routine was a standalone statement,
-        rather than a sub-statement, in other words, if it's a CALL
-        of a procedure, rather than invocation of a function or a
-        trigger, we need to clear the current contents of the caller's
-        warning info.
-
-        This is per MySQL rules: if a statement generates a warning,
-        warnings from the previous statement are flushed.  Normally
-        it's done in push_warning(). However, here we don't use
-        push_warning() to avoid invocation of condition handlers or
-        escalation of warnings to errors.
-      */
-      da->opt_clear_warning_info(thd->query_id);
-      da->copy_sql_conditions_from_wi(thd, &sp_wi);
-      da->remove_marked_sql_conditions();
-    }
-  }
-
- done:
-  DBUG_PRINT("info", ("err_status: %d  killed: %d  is_slave_error: %d  report_error: %d",
-                      err_status, thd->killed, thd->is_slave_error,
-                      thd->is_error()));
-
-  if (thd->killed)
-    err_status= TRUE;
-  /*
-    If the DB has changed, the pointer has changed too, but the
-    original thd->db will then have been freed
-  */
-  if (cur_db_changed && thd->killed != KILL_CONNECTION)
-  {
-    /*
-      Force switching back to the saved current database, because it may be
-      NULL. In this case, mysql_change_db() would generate an error.
-    */
-
-    err_status|= mysql_change_db(thd, (LEX_CSTRING*) &saved_cur_db_name, TRUE);
-  }
-  m_flags&= ~IS_INVOKED;
-  DBUG_PRINT("info",
-             ("first free for 0x%lx --: 0x%lx->0x%lx, level: %lu, flags %x",
-              (ulong) m_first_instance,
-              (ulong) m_first_instance->m_first_free_instance,
-              (ulong) this, m_recursion_level, m_flags));
-  /*
-    Check that we have one of following:
-
-    1) there are not free instances which means that this instance is last
-    in the list of instances (pointer to the last instance point on it and
-    ther are not other instances after this one in the list)
-    
-    2) There are some free instances which mean that first free instance
-    should go just after this one and recursion level of that free instance
-    should be on 1 more then recursion level of this instance.
-  */
-  DBUG_ASSERT((m_first_instance->m_first_free_instance == 0 &&
-               this == m_first_instance->m_last_cached_sp &&
-               m_next_cached_sp == 0) ||
-              (m_first_instance->m_first_free_instance != 0 &&
-               m_first_instance->m_first_free_instance == m_next_cached_sp &&
-               m_first_instance->m_first_free_instance->m_recursion_level ==
-               m_recursion_level + 1));
-  m_first_instance->m_first_free_instance= this;
-
-  DBUG_RETURN(err_status);
-}
-
-/**
-  Execute the aggregate routine. The main instruction jump loop is there.
-  The parameters are not already set for the first iteration but for subsequent
-  iterations the parameters will be set. After encountering the first FETCH GROUP
-  NEXT ROW instruction, the parameters are set for the first instruction.
-
-  @param thd                  Thread context.
-  @param merge_da_on_success  Flag specifying if Warning Info should be
-                              propagated to the caller on Completion
-                              Condition or not.
-
-  @todo
-    - Will write this SP statement into binlog separately
-    (TODO: consider changing the condition to "not inside event union")
-
-  @return Error status.
-  @retval
-    FALSE  on success
-  @retval
-    TRUE   on error
-*/
-
-
-bool
-sp_head::execute_agg(THD *thd, bool merge_da_on_success)
-{
-  DBUG_ENTER("sp_head::execute_agg");
-  char saved_cur_db_name_buf[SAFE_NAME_LEN+1];
-  LEX_STRING saved_cur_db_name=
-    { saved_cur_db_name_buf, sizeof(saved_cur_db_name_buf) };
-  bool cur_db_changed= FALSE;
-  sp_rcontext *ctx= thd->spcont;
-  uint ip;
-  if (m_chistics->agg_type == GROUP_AGGREGATE)
-    ip= thd->spcont->instr_ptr;
-  else
-    ip=0;
-  bool err_status= FALSE;
-  ulonglong save_sql_mode;
-  bool save_abort_on_warning;
-  Query_arena *old_arena;
-  /* per-instruction arena */
-  MEM_ROOT execute_mem_root;
-  Query_arena execute_arena(&execute_mem_root, STMT_INITIALIZED_FOR_SP),
-              backup_arena;
-  query_id_t old_query_id;
-  TABLE *old_derived_tables;
-  LEX *old_lex;
-  Item_change_list old_change_list;
-  String old_packet;
-  uint old_server_status;
-  const uint status_backup_mask= SERVER_STATUS_CURSOR_EXISTS |
-                                 SERVER_STATUS_LAST_ROW_SENT;
-  Reprepare_observer *save_reprepare_observer= thd->m_reprepare_observer;
-  Object_creation_ctx *UNINIT_VAR(saved_creation_ctx);
-  Diagnostics_area *da= thd->get_stmt_da();
-  Warning_info sp_wi(da->warning_info_id(), false, true);
-
-  /* this 7*STACK_MIN_SIZE is a complex matter with a long history (see it!) */
-  if (check_stack_overrun(thd, 7 * STACK_MIN_SIZE, (uchar*)&old_packet))
-    DBUG_RETURN(TRUE);
-
-  /* init per-instruction memroot */
-  init_sql_alloc(&execute_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
-
-  DBUG_ASSERT(!(m_flags & IS_INVOKED));
-  m_flags|= IS_INVOKED;
-  m_first_instance->m_first_free_instance= m_next_cached_sp;
-  if (m_next_cached_sp)
-  {
-    DBUG_PRINT("info",
-               ("first free for 0x%lx ++: 0x%lx->0x%lx  level: %lu  flags %x",
-                (ulong)m_first_instance, (ulong) this,
-                (ulong) m_next_cached_sp,
-                m_next_cached_sp->m_recursion_level,
-                m_next_cached_sp->m_flags));
-  }
-  /*
-    Check that if there are not any instances after this one then
-    pointer to the last instance points on this instance or if there are
-    some instances after this one then recursion level of next instance
-    greater then recursion level of current instance on 1
-  */
-  DBUG_ASSERT((m_next_cached_sp == 0 &&
-               m_first_instance->m_last_cached_sp == this) ||
-              (m_recursion_level + 1 == m_next_cached_sp->m_recursion_level));
-
-  /*
-    NOTE: The SQL Standard does not specify the context that should be
-    preserved for stored routines. However, at SAP/Walldorf meeting it was
-    decided that current database should be preserved.
-  */
-
-  if (m_db.length &&
-      (err_status= mysql_opt_change_db(thd, &m_db, &saved_cur_db_name, FALSE,
-                                       &cur_db_changed)))
-  {
-    goto done;
-  }
-
-  thd->is_slave_error= 0;
-  old_arena= thd->stmt_arena;
-
-  /* Push a new warning information area. */
-  da->copy_sql_conditions_to_wi(thd, &sp_wi);
-  da->push_warning_info(&sp_wi);
-
-  /*
-    Switch query context. This has to be done early as this is sometimes
-    allocated trough sql_alloc
-  */
-  if (m_creation_ctx)
-    saved_creation_ctx= m_creation_ctx->set_n_backup(thd);
-
-  /*
-    We have to save/restore this info when we are changing call level to
-    be able properly do close_thread_tables() in instructions.
-  */
-  old_query_id= thd->query_id;
-  old_derived_tables= thd->derived_tables;
-  thd->derived_tables= 0;
-  save_sql_mode= thd->variables.sql_mode;
-  thd->variables.sql_mode= m_sql_mode;
-  save_abort_on_warning= thd->abort_on_warning;
-  thd->abort_on_warning= 0;
-  /**
-    When inside a substatement (a stored function or trigger
-    statement), clear the metadata observer in THD, if any.
-    Remember the value of the observer here, to be able
-    to restore it when leaving the substatement.
-
-    We reset the observer to suppress errors when a substatement
-    uses temporary tables. If a temporary table does not exist
-    at start of the main statement, it's not prelocked
-    and thus is not validated with other prelocked tables.
-
-    Later on, when the temporary table is opened, metadata
-    versions mismatch, expectedly.
-
-    The proper solution for the problem is to re-validate tables
-    of substatements (Bug#12257, Bug#27011, Bug#32868, Bug#33000),
-    but it's not implemented yet.
-  */
-  thd->m_reprepare_observer= 0;
-
-  /*
-    It is also more efficient to save/restore current thd->lex once when
-    do it in each instruction
-  */
-  old_lex= thd->lex;
-  /*
-    We should also save Item tree change list to avoid rollback something
-    too early in the calling query.
-  */
-  thd->change_list.move_elements_to(&old_change_list);
-  /*
-    Cursors will use thd->packet, so they may corrupt data which was prepared
-    for sending by upper level. OTOH cursors in the same routine can share this
-    buffer safely so let use use routine-local packet instead of having own
-    packet buffer for each cursor.
-
-    It is probably safe to use same thd->convert_buff everywhere.
-  */
-  old_packet.swap(thd->packet);
-  old_server_status= thd->server_status & status_backup_mask;
-
-  /*
-    Switch to per-instruction arena here. We can do it since we cleanup
-    arena after every instruction.
-  */
-  thd->set_n_backup_active_arena(&execute_arena, &backup_arena);
-
-  /*
-    Save callers arena in order to store instruction results and out
-    parameters in it later during sp_eval_func_item()
-  */
-  thd->spcont->callers_arena= &backup_arena;
-
-#if defined(ENABLED_PROFILING)
-  /* Discard the initial part of executing routines. */
-  thd->profiling.discard_current_query();
-#endif
-  DEBUG_SYNC(thd, "sp_head_execute_before_loop");
-  do
-  {
-    sp_instr *i;
-
-#if defined(ENABLED_PROFILING)
-    /*
-     Treat each "instr" of a routine as discrete unit that could be profiled.
-     Profiling only records information for segments of code that set the
-     source of the query, and almost all kinds of instructions in s-p do not.
-    */
-    thd->profiling.finish_current_query();
-    thd->profiling.start_new_query("continuing inside routine");
-#endif
-
-    /* get_instr returns NULL when we're done. */
-    i = get_instr(ip);
-    if (i == NULL)
-    {
-#if defined(ENABLED_PROFILING)
-      thd->profiling.discard_current_query();
-#endif
-      thd->spcont->quit_func= TRUE;
+      if (m_chistics->agg_type == GROUP_AGGREGATE)
+        thd->spcont->quit_func= TRUE;
       break;
     }
 
@@ -1687,8 +1292,9 @@ sp_head::execute_agg(THD *thd, bool merge_da_on_success)
 
   thd->restore_active_arena(&execute_arena, &backup_arena);
 
-  if (err_status || thd->killed || thd->is_fatal_error || thd->spcont->quit_func)
-      thd->spcont->pop_all_cursors(); // To avoid memory leaks after an error*/
+  if (m_chistics->agg_type != GROUP_AGGREGATE ||
+      (m_chistics->agg_type == GROUP_AGGREGATE && thd->spcont->quit_func))
+    thd->spcont->pop_all_cursors(); // To avoid memory leaks after an error
 
   /* Restore all saved */
   if (m_chistics->agg_type == GROUP_AGGREGATE)
@@ -1795,6 +1401,7 @@ sp_head::execute_agg(THD *thd, bool merge_da_on_success)
                m_first_instance->m_first_free_instance->m_recursion_level ==
                m_recursion_level + 1));
   m_first_instance->m_first_free_instance= this;
+
   DBUG_RETURN(err_status);
 }
 
@@ -2283,7 +1890,7 @@ err_with_cleanup:
 
    - changes security context for SUID routines
    - switch to new memroot
-   - call sp_head::execute_agg
+   - call sp_head::execute
    - evaluate parameters
    - restore old memroot
    - evaluate the return value
@@ -2466,11 +2073,11 @@ sp_head::execute_aggregate_function(THD *thd, Item **args, uint argcount,
           itself) on it directly rather than juggle with arenas.
   */
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
-  err_status= execute_agg(thd, TRUE);
+  err_status= execute(thd, TRUE);
   if (!err_status)
   {
     if (!argument_sent && thd->spcont->pause_state)
-      err_status= execute_agg(thd, TRUE);
+      err_status= execute(thd, TRUE);
   }
 
   thd->restore_active_arena(&call_arena, &backup_arena);
