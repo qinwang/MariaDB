@@ -235,6 +235,71 @@ buf_read_page_low(
 	return(1);
 }
 
+/** Handle errors returned by lower level page read functions.
+@param[in]	err		DB_SUCCESS or error code
+@param[in]	space_id	Tablespace identifier
+@param[in]	page_no		Page accessed
+@param[in]	ibuf_merge	true if this was ibuf merge
+@retval true if read processing should be finished because of error
+@retval false if read processing should be continued */
+static
+bool
+buf_read_handle_errors(
+	dberr_t	err,
+	ulint	space_id,
+	ulint	page_no,
+	bool	ibuf_merge = false)
+{
+	bool stop = false;
+	FilSpace space(space_id, true);
+
+	switch(err) {
+	case DB_SUCCESS:
+	case DB_ERROR:
+		break;
+	case DB_TABLESPACE_DELETED: {
+		if (ibuf_merge) {
+			/* We have deleted or are deleting the single-table
+			tablespace: remove the entries for tablespace. */
+			ibuf_delete_for_discarded_space(space_id);
+		} else {
+			ib_logf(IB_LOG_LEVEL_WARN,
+				" Trying to access"
+				" tablespace " ULINTPF " page " ULINTPF
+				" but the tablespace does not"
+				" exist or is just being dropped.",
+				space_id, page_no);
+		}
+		break;
+	}
+	case DB_DECRYPTION_FAILED:
+		ib_logf(IB_LOG_LEVEL_ERROR,
+			"Failed to decrypt page "
+			ULINTPF ":" ULINTPF " for tablespace %s.",
+			space_id, page_no, space()->chain.start->name);
+		stop = true;
+		break;
+	case DB_PAGE_CORRUPTED:
+		ib_logf(IB_LOG_LEVEL_ERROR,
+			"Failed to read page "
+			ULINTPF ":" ULINTPF " from tablespace %s because page is corrupted.",
+			space_id, page_no, space()->chain.start->name);
+		stop = true;
+		break;
+	default:
+		ib_logf(IB_LOG_LEVEL_FATAL,
+			"Failed to read page "
+			ULINTPF ":" ULINTPF " from tablepace %s "
+			"because of incorrect error:"
+			"%d = %s.",
+			space_id, page_no, space()->chain.start->name,
+			err, ut_strerr(err));
+		break;
+	}
+
+	return (stop);
+}
+
 /********************************************************************//**
 Applies a random read-ahead in buf_pool if there are at least a threshold
 value of accessed pages from the random read-ahead area. Does not read any
@@ -364,27 +429,8 @@ read_ahead:
 				space, zip_size, FALSE,
 				tablespace_version, i);
 
-			switch(err) {
-			case DB_SUCCESS:
-			case DB_ERROR:
+			if (buf_read_handle_errors(err, space, i)) {
 				break;
-			case DB_TABLESPACE_DELETED:
-				ib_logf(IB_LOG_LEVEL_WARN,
-					"In random"
-					" readahead trying to access"
-					" tablespace " ULINTPF " page " ULINTPF
-					" but the tablespace does not"
-					" exist or is just being dropped.",
-					space, i);
-				break;
-			case DB_DECRYPTION_FAILED:
-				ib_logf(IB_LOG_LEVEL_ERROR,
-					"Random readahead failed to decrypt page "
-					ULINTPF "." ULINTPF " .",
-					space, i);
-				break;
-			default:
-				ut_error;
 			}
 		}
 	}
@@ -502,28 +548,8 @@ buf_read_page_async(
 				  | BUF_READ_IGNORE_NONEXISTENT_PAGES,
 				  space, zip_size, FALSE,
 				  tablespace_version, offset);
-	switch(err) {
-	case DB_SUCCESS:
-	case DB_ERROR:
-		break;
-	case DB_TABLESPACE_DELETED:
-		ib_logf(IB_LOG_LEVEL_ERROR,
-			"In async page read "
-			"trying to access "
-			"page " ULINTPF ":" ULINTPF
-			" in nonexisting or being-dropped tablespace",
-			space, offset);
-		break;
 
-	case DB_DECRYPTION_FAILED:
-		ib_logf(IB_LOG_LEVEL_ERROR,
-			"Async page read failed to decrypt page "
-			ULINTPF ":" ULINTPF ".",
-			space, offset);
-		break;
-	default:
-		ut_error;
-	}
+	buf_read_handle_errors(err, space, offset);
 
 	srv_stats.buf_pool_reads.add(count);
 
@@ -784,27 +810,8 @@ buf_read_ahead_linear(
 				ibuf_mode,
 				space, zip_size, FALSE, tablespace_version, i);
 
-			switch(err) {
-			case DB_SUCCESS:
-			case DB_ERROR:
+			if (buf_read_handle_errors(err, space, i)) {
 				break;
-			case DB_TABLESPACE_DELETED:
-				ib_logf(IB_LOG_LEVEL_WARN,
-					"In linear "
-					" readahead trying to access "
-					" tablespace " ULINTPF ":" ULINTPF
-					" but the tablespace does not"
-					" exist or is just being dropped.",
-					space, i);
-				break;
-			case DB_DECRYPTION_FAILED:
-				ib_logf(IB_LOG_LEVEL_ERROR,
-					"Linear readahead failed to decrypt page "
-					ULINTPF ":" ULINTPF ".",
-					space, i);
-				break;
-			default:
-				ut_error;
 			}
 		}
 	}
@@ -878,6 +885,7 @@ buf_read_ibuf_merge_pages(
 		}
 
 		if (UNIV_UNLIKELY(zip_size == ULINT_UNDEFINED)) {
+			err = DB_TABLESPACE_DELETED;
 			goto tablespace_deleted;
 		}
 
@@ -885,29 +893,9 @@ buf_read_ibuf_merge_pages(
 				  BUF_READ_ANY_PAGE, space_ids[i],
 				  zip_size, TRUE, space_versions[i],
 				  page_nos[i]);
-
-		switch(err) {
-		case DB_SUCCESS:
-		case DB_ERROR:
-			break;
-		case DB_TABLESPACE_DELETED:
-
 tablespace_deleted:
-			/* We have deleted or are deleting the single-table
-			tablespace: remove the entries for that page */
-
-			ibuf_merge_or_delete_for_page(NULL, space_ids[i],
-						      page_nos[i],
-						      zip_size, FALSE);
+		if (buf_read_handle_errors(err, space_ids[i], page_nos[i], true)) {
 			break;
-		case DB_DECRYPTION_FAILED:
-			ib_logf(IB_LOG_LEVEL_ERROR,
-				"Failed to decrypt insert buffer page "
-				ULINTPF ":" ULINTPF ".",
-				space_ids[i], page_nos[i]);
-			break;
-		default:
-			ut_error;
 		}
 	}
 
