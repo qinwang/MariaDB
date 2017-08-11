@@ -577,21 +577,27 @@ next_column:
 	}
 }
 
-/****************************************************************//**
+/**
 Handles user errors and lock waits detected by the database engine.
-@return true if it was a lock wait and we should continue running the
-query thread and in that case the thr is ALREADY in the running state. */
+return true if it was a lock wait and we should continue running the
+query thread and in that case the thr is ALREADY in the running state.
+@param[out]	err	possible new error encountered in
+			lock wait, or if no new error, the value
+			of trx->error_state at the entry of this
+			function
+@param[in]	trx	Transaction
+@param[in]	thr	Query thread, or NULL
+@param[in]	savept	Savepoint or NULL
+@param[in]	prebuilt Prebuild
+@retval true if it was a lock wait, false if not */
 UNIV_INTERN
 bool
 row_mysql_handle_errors(
-/*====================*/
-	dberr_t*	new_err,/*!< out: possible new error encountered in
-				lock wait, or if no new error, the value
-				of trx->error_state at the entry of this
-				function */
-	trx_t*		trx,	/*!< in: transaction */
-	que_thr_t*	thr,	/*!< in: query thread, or NULL */
-	trx_savept_t*	savept)	/*!< in: savepoint, or NULL */
+	dberr_t*	new_err,
+	trx_t*		trx,
+	que_thr_t*	thr,
+	trx_savept_t*	savept,
+	const row_prebuilt_t* prebuilt)
 {
 	dberr_t	err;
 
@@ -685,6 +691,28 @@ handle_new_error:
 			"Please drop excessive foreign constraints"
 			" and try again\n", (ulong) DICT_FK_MAX_RECURSIVE_LOAD);
 		break;
+	case DB_MISSING_HISTORY: {
+		ut_a(prebuilt && prebuilt->index);
+
+		if(!prebuilt->index_usable) {
+			ib_logf(IB_LOG_LEVEL_ERROR,
+				"Index %s for table %s used by query is not yet usable.",
+				prebuilt->index->name, prebuilt->index->table->name);
+
+			ib_push_warning(trx, HA_ERR_INDEX_CORRUPT,
+				"Index %s for table %s used by query is not yet usable.",
+				prebuilt->index->name, prebuilt->index->table->name);
+		} else {
+			ib_logf(IB_LOG_LEVEL_ERROR,
+				"Can't find history for index %s for table %s.",
+				prebuilt->index->name, prebuilt->index->table->name);
+
+			ib_push_warning(trx, HA_ERR_INDEX_CORRUPT,
+				"Can't find history for index %s for table %s.",
+				prebuilt->index->name, prebuilt->index->table->name);
+		}
+		break;
+	}
 	default:
 		fprintf(stderr, "InnoDB: unknown error code %lu\n",
 			(ulong) err);
@@ -1181,7 +1209,7 @@ run_again:
 	if (err != DB_SUCCESS) {
 		que_thr_stop_for_mysql(thr);
 
-		was_lock_wait = row_mysql_handle_errors(&err, trx, thr, NULL);
+		was_lock_wait = row_mysql_handle_errors(&err, trx, thr, NULL, prebuilt);
 
 		if (was_lock_wait) {
 			goto run_again;
@@ -1262,7 +1290,7 @@ run_again:
 	if (err != DB_SUCCESS) {
 		que_thr_stop_for_mysql(thr);
 
-		was_lock_wait = row_mysql_handle_errors(&err, trx, thr, NULL);
+		was_lock_wait = row_mysql_handle_errors(&err, trx, thr, NULL, prebuilt);
 
 		if (was_lock_wait) {
 			goto run_again;
@@ -1439,7 +1467,7 @@ error_exit:
 		thr->lock_state = QUE_THR_LOCK_ROW;
 
 		was_lock_wait = row_mysql_handle_errors(
-			&err, trx, thr, &savept);
+			&err, trx, thr, &savept, prebuilt);
 
 		thr->lock_state = QUE_THR_LOCK_NOLOCK;
 
@@ -1869,7 +1897,8 @@ run_again:
 		DEBUG_SYNC(trx->mysql_thd, "row_update_for_mysql_error");
 
 		was_lock_wait = row_mysql_handle_errors(&err, trx, thr,
-							&savept);
+			&savept, prebuilt);
+
 		thr->lock_state= QUE_THR_LOCK_NOLOCK;
 
 		if (was_lock_wait) {
@@ -4515,16 +4544,18 @@ row_drop_table_for_mysql(
 
 		break;
 
-	case DB_OUT_OF_FILE_SPACE:
+	case DB_OUT_OF_FILE_SPACE: {
 		err = DB_MUST_GET_MORE_FILE_SPACE;
 
 		trx->error_state = err;
-		row_mysql_handle_errors(&err, trx, NULL, NULL);
+		bool lock_wait = row_mysql_handle_errors(&err, trx, NULL, NULL);
+
+		ut_a(!lock_wait);
 
 		/* raise error */
 		ut_error;
 		break;
-
+	}
 	case DB_TOO_MANY_CONCURRENT_TRXS:
 		/* Cannot even find a free slot for the
 		the undo log. We can directly exit here

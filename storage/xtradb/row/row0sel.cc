@@ -3747,6 +3747,13 @@ row_search_for_mysql(
 			return(DB_DECRYPTION_FAILED);
 		}
 	} else if (!prebuilt->index_usable) {
+		size_t length = 0;
+		const char* query = trx->mysql_thd ?
+			innobase_get_stmt((THD*)trx->mysql_thd, &length) : NULL;
+
+		ib_logf(IB_LOG_LEVEL_ERROR,
+			"Index %s in table %s not yet usable in query %s",
+			index->name, index->table->name, query ? query : "NULL");
 
 		return(DB_MISSING_HISTORY);
 
@@ -5189,7 +5196,7 @@ lock_table_wait:
 
 	thr->lock_state = QUE_THR_LOCK_ROW;
 
-	if (row_mysql_handle_errors(&err, trx, thr, NULL)) {
+	if (row_mysql_handle_errors(&err, trx, thr, NULL, prebuilt)) {
 		/* It was a lock wait, and it ended */
 
 		thr->lock_state = QUE_THR_LOCK_NOLOCK;

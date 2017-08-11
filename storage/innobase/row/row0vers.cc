@@ -588,6 +588,30 @@ row_vers_build_for_consistent_read(
 						  *offsets, heap,
 						  &prev_version)
 			? DB_SUCCESS : DB_MISSING_HISTORY;
+
+		if (err != DB_SUCCESS) {
+			trx_id_t rec_trx_id = row_get_rec_trx_id(rec, index, *offsets);
+
+			ib_logf(IB_LOG_LEVEL_ERROR,
+				"Failed to find correct version of the record for index %s "
+				" table %s record trx_id %lu.",
+				index->name, index->table->name, rec_trx_id);
+
+			ib_logf(IB_LOG_LEVEL_INFO,
+				"Looking trx_id between %lu-%lu.", view->low_limit_id,
+				view->up_limit_id);
+
+			rec_print(stderr, rec, index);
+
+			if (rec != version) {
+				rec_trx_id = row_get_rec_trx_id(version, index, *offsets);
+				ib_logf(IB_LOG_LEVEL_INFO,
+					"Previous version of this record has trx_id %lu.",
+					rec_trx_id);
+				rec_print(stderr, version, index);
+			}
+		}
+
 		if (heap2) {
 			mem_heap_free(heap2); /* free version */
 		}

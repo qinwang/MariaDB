@@ -156,21 +156,29 @@ row_mysql_store_col_in_innobase_format(
 					payload data; if the column is a true
 					VARCHAR then this is irrelevant */
 	ulint		comp);		/*!< in: nonzero=compact format */
-/****************************************************************//**
+/**
 Handles user errors and lock waits detected by the database engine.
-@return true if it was a lock wait and we should continue running the
-query thread */
+return true if it was a lock wait and we should continue running the
+query thread and in that case the thr is ALREADY in the running state.
+@param[out]	err	possible new error encountered in
+			lock wait, or if no new error, the value
+			of trx->error_state at the entry of this
+			function
+@param[in]	trx	Transaction
+@param[in]	thr	Query thread, or NULL
+@param[in]	savept	Savepoint or NULL
+@param[in]	prebuilt Prebuild used or NULL
+@retval true if it was a lock wait, false if not */
 UNIV_INTERN
 bool
 row_mysql_handle_errors(
-/*====================*/
-	dberr_t*	new_err,/*!< out: possible new error encountered in
-				rollback, or the old error which was
-				during the function entry */
-	trx_t*		trx,	/*!< in: transaction */
-	que_thr_t*	thr,	/*!< in: query thread, or NULL */
-	trx_savept_t*	savept)	/*!< in: savepoint, or NULL */
-	MY_ATTRIBUTE((nonnull(1,2)));
+	dberr_t*	new_err,
+	trx_t*		trx,
+	que_thr_t*	thr,
+	trx_savept_t*	savept,
+	const row_prebuilt_t* prebuilt = NULL)
+	MY_ATTRIBUTE((warn_unused_result));
+
 /********************************************************************//**
 Create a prebuilt struct for a MySQL table handle.
 @return	own: a prebuilt struct */
