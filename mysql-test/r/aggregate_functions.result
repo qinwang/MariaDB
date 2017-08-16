@@ -222,6 +222,33 @@ INSERT INTO t3 (i) select agg_sum(sal) from t1;
 select * from t3;
 i
 64000
+create aggregate function agg_func(x INT) returns INT
+begin
+declare z int default 0;
+DECLARE done BOOLEAN DEFAULT FALSE;
+DECLARE a,b,c  INT;
+DECLARE cur1 CURSOR FOR SELECT id FROM test.t2;
+declare continue handler for not found return z;
+outer_loop: LOOP
+FETCH GROUP NEXT ROW;
+set z= z+x;
+inner_block: begin
+DECLARE cur2 CURSOR FOR SELECT id FROM test.t2;
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+OPEN cur2;
+read_loop: LOOP
+FETCH cur2 INTO a;
+IF done THEN
+CLOSE cur2;
+LEAVE read_loop;
+END IF;
+END LOOP read_loop;
+end inner_block;
+END LOOP outer_loop;
+end|
+select agg_func(sal) from t1;
+agg_func(sal)
+64000
 drop table t1;
 drop table t2;
 drop table t3;
@@ -236,3 +263,4 @@ drop function f1;
 drop function increase;
 drop function agg_reg_func;
 drop function agg_agg_func;
+drop function agg_func;

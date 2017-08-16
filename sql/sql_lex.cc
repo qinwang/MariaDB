@@ -7067,9 +7067,7 @@ bool LEX::sp_add_cfetch(THD *thd, const LEX_CSTRING *name)
     return true;
   }
   i= new (thd->mem_root)
-    sp_instr_cfetch(sphead->instructions(), spcont, offset,
-                    sphead->m_chistics->agg_type == GROUP_AGGREGATE
-                    ? FALSE : TRUE);
+    sp_instr_cfetch(sphead->instructions(), spcont, offset, TRUE);
   if (i == NULL || sphead->add_instr(i))
     return true;
   return false;

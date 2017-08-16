@@ -5015,8 +5015,7 @@ bool sp_head::add_for_loop_open_cursor(THD *thd, sp_pcontext *spcont,
   sp_instr_cfetch *instr_cfetch=
     new (thd->mem_root) sp_instr_cfetch(instructions(),
                                         spcont, coffset,
-                                        m_chistics->agg_type == GROUP_AGGREGATE
-                                        ? FALSE : TRUE);
+                                        TRUE);
   if (instr_cfetch == NULL || add_instr(instr_cfetch))
     return true;
   instr_cfetch->add_to_varlist(index);
