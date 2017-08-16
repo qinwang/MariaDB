@@ -1772,6 +1772,32 @@ private:
 }; // class sp_instr_cfetch : public sp_instr
 
 
+/*
+This class is created for the special fetch instruction 
+FETCH GROUP NEXT ROW, used in the user-defined aggregate 
+functions
+*/
+
+class sp_instr_agg_cfetch : public sp_instr
+{
+  sp_instr_agg_cfetch(const sp_instr_cfetch &); /**< Prevent use of these */
+  void operator=(sp_instr_cfetch &);
+
+public:
+
+  sp_instr_agg_cfetch(uint ip, sp_pcontext *ctx, uint c, bool flag)
+    : sp_instr(ip, ctx){}
+
+  virtual ~sp_instr_agg_cfetch()
+  {}
+
+  virtual int execute(THD *thd, uint *nextp);
+
+  virtual void print(String *str){};
+}; // class sp_instr_agg_cfetch : public sp_instr
+
+
+
 class sp_instr_error : public sp_instr
 {
   sp_instr_error(const sp_instr_error &); /**< Prevent use of these */
