@@ -4391,33 +4391,10 @@ sp_instr_cfetch::execute(THD *thd, uint *nextp)
 {
   DBUG_ENTER("sp_instr_cfetch::execute");
   int res= 0;
-  if (normal_cursor_fetch)
-  {
-    sp_cursor *c= thd->spcont->get_cursor(m_cursor);
-    Query_arena backup_arena;
-    res= c ? c->fetch(thd, &m_varlist) : -1;
-    *nextp= m_ip+1;
-  }
-  else
-  {
-    if (!thd->spcont->pause_state)
-    {
-      thd->spcont->pause_state= TRUE;
-    }
-    else
-    {
-      thd->spcont->pause_state= FALSE;
-      if (thd->server_status == SERVER_STATUS_LAST_ROW_SENT)
-      {
-        my_message(ER_SP_FETCH_NO_DATA,
-          ER_THD(thd, ER_SP_FETCH_NO_DATA), MYF(0));
-        res=-1;
-        thd->spcont->quit_func= TRUE;
-      }
-      else
-        *nextp = m_ip+1;
-    }
-  }
+  sp_cursor *c= thd->spcont->get_cursor(m_cursor);
+  Query_arena backup_arena;
+  res= c ? c->fetch(thd, &m_varlist) : -1;
+  *nextp= m_ip+1;
   DBUG_RETURN(res);
 }
 
@@ -5037,8 +5014,7 @@ bool sp_head::add_for_loop_open_cursor(THD *thd, sp_pcontext *spcont,
 
   sp_instr_cfetch *instr_cfetch=
     new (thd->mem_root) sp_instr_cfetch(instructions(),
-                                        spcont, coffset,
-                                        TRUE);
+                                        spcont, coffset);
   if (instr_cfetch == NULL || add_instr(instr_cfetch))
     return true;
   instr_cfetch->add_to_varlist(index);

@@ -5640,9 +5640,7 @@ bool LEX::sp_for_loop_cursor_finalize(THD *thd, const Lex_for_loop_st &loop)
 {
   sp_instr_cfetch *instr=
     new (thd->mem_root) sp_instr_cfetch(sphead->instructions(),
-                                        spcont, loop.m_cursor_offset,
-                                        (sphead->m_chistics->agg_type == GROUP_AGGREGATE)
-                                        ? FALSE : TRUE);
+                                        spcont, loop.m_cursor_offset);
   if (instr == NULL || sphead->add_instr(instr))
     return true;
   instr->add_to_varlist(loop.m_index);
@@ -7067,7 +7065,7 @@ bool LEX::sp_add_cfetch(THD *thd, const LEX_CSTRING *name)
     return true;
   }
   i= new (thd->mem_root)
-    sp_instr_cfetch(sphead->instructions(), spcont, offset, TRUE);
+    sp_instr_cfetch(sphead->instructions(), spcont, offset);
   if (i == NULL || sphead->add_instr(i))
     return true;
   return false;
