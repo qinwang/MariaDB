@@ -1238,6 +1238,7 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
     sql_digest_state *parent_digest= thd->m_digest;
     thd->m_digest= NULL;
 
+    uint prev_ip= ip;
     err_status= i->execute(thd, &ip);
 
     if (m_chistics->agg_type == NOT_AGGREGATE)
@@ -1275,8 +1276,10 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
 
     /* Reset sp_rcontext::end_partial_result_set flag. */
     ctx->end_partial_result_set= FALSE;
+    if (prev_ip == ip)
+      break;
 
-  } while (!err_status && !thd->killed && !thd->is_fatal_error && !thd->spcont->pause_state);
+  } while (!err_status && !thd->killed && !thd->is_fatal_error);
 
 #if defined(ENABLED_PROFILING)
   thd->profiling.finish_current_query();
@@ -2074,11 +2077,6 @@ sp_head::execute_aggregate_function(THD *thd, Item **args, uint argcount,
   */
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
   err_status= execute(thd, TRUE);
-  if (!err_status)
-  {
-    if (!argument_sent && thd->spcont->pause_state)
-      err_status= execute(thd, TRUE);
-  }
 
   thd->restore_active_arena(&call_arena, &backup_arena);
 
@@ -4436,7 +4434,12 @@ sp_instr_agg_cfetch::execute(THD *thd, uint *nextp)
 {
   DBUG_ENTER("sp_instr_cfetch::execute");
   int res= 0;
-  if (!thd->spcont->pause_state)
+  if (!thd->spcont->instr_ptr)
+  {
+    *nextp= m_ip+1;
+    thd->spcont->instr_ptr= m_ip+1;
+  }
+  else if (!thd->spcont->pause_state)
     thd->spcont->pause_state= TRUE;
   else
   {
