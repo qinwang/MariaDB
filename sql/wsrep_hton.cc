@@ -329,6 +329,7 @@ wsrep_run_wsrep_commit(THD *thd, bool all)
                 thd->get_stmt_da()->sql_errno(), thd->get_stmt_da()->message());
   }
 
+  DBUG_ENTER("wsrep_run_wsrep_commit");
   DEBUG_SYNC(thd, "wsrep_before_replication");
 
   if (thd->slave_thread && !opt_log_slave_updates) DBUG_RETURN(WSREP_TRX_OK);
@@ -509,6 +510,9 @@ wsrep_run_wsrep_commit(THD *thd, bool all)
   }
 
   mysql_mutex_lock(&thd->LOCK_wsrep_thd);
+
+  DEBUG_SYNC(thd, "wsrep_after_replication");
+
   switch(rcode) {
   case 0:
     /*
