@@ -7547,7 +7547,7 @@ insert_fields(THD *thd, Name_resolution_context *context, const char *db_name,
 
     for (; !field_iterator.end_of_fields(); field_iterator.next())
     {
-      /* Field can be null here STODO->verify , shouldnt field be null for select * from table 
+      /* field can be null here STODO->verify , shouldnt field be null for select * from table 
          test case
          create table t1 (empnum smallint, grp int);
          create table t2 (empnum int, name char(5));

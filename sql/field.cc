@@ -2154,6 +2154,7 @@ Field *Field::make_new_field(MEM_ROOT *root, TABLE *new_table,
   tmp->flags&= (NOT_NULL_FLAG | BLOB_FLAG | UNSIGNED_FLAG |
                 ZEROFILL_FLAG | BINARY_FLAG | ENUM_FLAG | SET_FLAG);
   tmp->reset_fields();
+  tmp->field_visibility= NOT_HIDDEN;
   return tmp;
 }
 
@@ -10399,7 +10400,7 @@ Column_definition::Column_definition(THD *thd, Field *old_field,
   check_constraint= orig_field ? orig_field->check_constraint : 0;
   option_list= old_field->option_list;
   pack_flag= 0;
-  field_visibility= old_field->field_visibility;
+  field_visibility= NOT_HIDDEN;
 
   switch (real_field_type()) {
   case MYSQL_TYPE_TINY_BLOB:

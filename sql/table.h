@@ -678,6 +678,7 @@ struct TABLE_SHARE
   uint blob_fields;                     /* number of blob fields */
   uint varchar_fields;                  /* number of varchar fields */
   uint default_fields;                  /* number of default fields */
+  uint visible_fields;                  /* number of visible fields */
 
   uint default_expressions;
   uint table_check_constraints, field_check_constraints;
@@ -1338,7 +1339,6 @@ public:
   void mark_columns_used_by_check_constraints(void);
   void mark_check_constraint_columns_for_read(void);
   int verify_constraints(bool ignore_failure);
-  uint total_visible_fields();
   inline void column_bitmaps_set(MY_BITMAP *read_set_arg)
   {
     read_set= read_set_arg;

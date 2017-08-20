@@ -248,7 +248,7 @@ LEX_CUSTRING build_frm_image(THD *thd, const char *table,
     extra2_size+= 1 + (gis_extra2_len > 255 ? 3 : 1) + gis_extra2_len;
   if(have_additional_field_properties)
     extra2_size+=1 + (create_fields.elements > 255 ? 3 : 1) +
-        create_fields.elements;// first one for type(extra2_field_flags) next 1 or 3  for length
+        create_fields.elements;
 
   key_buff_length= uint4korr(fileinfo+47);
 

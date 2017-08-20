@@ -1627,6 +1627,7 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
   vcol_screen_length= uint2korr(forminfo+286);
   share->virtual_fields= share->default_expressions=
     share->field_check_constraints= share->default_fields= 0;
+  share->visible_fields= 0;
   share->stored_fields= share->fields;
   if (forminfo[46] != (uchar)255)
   {
@@ -2003,6 +2004,8 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
     }
     if (reg_field->field_visibility == USER_DEFINED_HIDDEN)
       status_var_increment(thd->status_var.feature_hidden_columns);
+    if (reg_field->field_visibility == NOT_HIDDEN)
+      share->visible_fields++;
     if (field_type == MYSQL_TYPE_BIT && !f_bit_as_char(pack_flag))
     {
       null_bits_are_used= 1;
@@ -5094,16 +5097,6 @@ int TABLE::verify_constraints(bool ignore_failure)
     }
   }
   return VIEW_CHECK_OK;
-}
-
-uint TABLE::total_visible_fields()
-{
-  uint fields= 0;
-  Field **f, *field;
-  for (f= this->field; (f) && (field= *f); f++)
-    if (field->field_visibility == NOT_HIDDEN)
-      fields++;
-  return fields;
 }
 
 /*

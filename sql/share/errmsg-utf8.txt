@@ -7487,4 +7487,4 @@ ER_UNKNOWN_SEQUENCES 42S02
 ER_UNKNOWN_VIEW 42S02
         eng "Unknown VIEW: '%-.300s'"
 ER_HIDDEN_NOT_NULL_WITHOUT_DEFAULT
-        eng "Hidden column '%s' should either allow null values or it must have default value"
+        eng "Hidden column '%s' must either have a default value or allow null values"

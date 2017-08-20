@@ -3,6 +3,7 @@ create table t1(abc int primary key, xyz int hidden);
 SHOW STATUS LIKE 'Feature_hidden_columns';
 desc t1;
 show create table t1;
+select * from INFORMATION_SCHEMA.COLUMNS where TABLE_SCHEMA='test' and TABLE_NAME='t1';
 drop table t1;
 --error ER_TABLE_MUST_HAVE_COLUMNS
 create table t1(a1 int hidden);
@@ -114,7 +115,7 @@ drop view v;
 create view v as select a,b,c,d,e,f from t1;
 desc v;
 select * from v;
---echo #v does  have hidden column;
+--echo #v does  have hidden column but they aren't hidden anymore.
 select a,b,c,d,e,f from v;
 insert into v values(1,26,33,4,45,66);
 select a,b,c,d,e,f from v;

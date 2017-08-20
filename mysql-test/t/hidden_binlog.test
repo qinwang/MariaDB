@@ -18,7 +18,7 @@ insert into t2 values(1);
 select a,b from t2;
 desc t2;
 
-set debug_dbug="+d,test_pseduo_hidden";
+set debug_dbug="+d,test_pseudo_hidden";
 create table t3 (hidden int , b int , c int );
 insert into t3 values(1,1);
 desc t3;

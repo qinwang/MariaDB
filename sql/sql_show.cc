@@ -59,7 +59,6 @@
 #include "debug_sync.h"
 #include "keycaches.h"
 #include "ha_sequence.h"
-#include "my_dbug.h"
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
 #endif
@@ -2066,8 +2065,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
 
     uint flags = field->flags;
 
-    if (field->field_visibility == PSEUDO_COLUMN_HIDDEN ||
-        field->field_visibility == COMPLETELY_HIDDEN )
+    if (field->field_visibility > NOT_HIDDEN)
        continue;
     if (not_the_first_field)
       packet->append(STRING_WITH_LEN(",\n"));
@@ -2129,10 +2127,10 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
       {
         packet->append(STRING_WITH_LEN(" HIDDEN"));
       }
-      DBUG_EXECUTE_IF("test_pseduo_hidden",
+      DBUG_EXECUTE_IF("test_pseudo_hidden",
               if (field->field_visibility  == PSEUDO_COLUMN_HIDDEN)
               {
-                 packet->append(STRING_WITH_LEN(" PSEDUO HIDDEN"));
+                 packet->append(STRING_WITH_LEN(" PSEUDO HIDDEN"));
               });
       DBUG_EXECUTE_IF("test_completely_hidden",
               if (field->field_visibility  == COMPLETELY_HIDDEN)
@@ -5663,8 +5661,7 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
         buf.set(STRING_WITH_LEN("VIRTUAL GENERATED"), cs);
     }
     else
-      buf.set(STRING_WITH_LEN("NEVER"), cs);
-
+      table->field[20]->store(STRING_WITH_LEN("NEVER"), cs);
     /*hidden can coexist with auto_increment and virtual */
     if(field->field_visibility==USER_DEFINED_HIDDEN)
     {

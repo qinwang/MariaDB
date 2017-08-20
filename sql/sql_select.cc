@@ -16578,7 +16578,6 @@ create_tmp_table(THD *thd, TMP_TABLE_PARAM *param, List<Item> &fields,
           agg_item->result_field= new_field;
       }
       tmp_from_field++;
-      new_field->field_visibility= NOT_HIDDEN;
       if (param->force_not_null_cols)
       {
         new_field->flags|= NOT_NULL_FLAG;
