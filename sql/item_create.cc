@@ -3461,25 +3461,11 @@ Create_sp_func::create_with_db(THD *thd, LEX_CSTRING *db, LEX_CSTRING *name,
 
   qname= new (thd->mem_root) sp_name(db, name, use_explicit_name);
   sp_add_used_routine(lex, thd, qname, TYPE_ENUM_FUNCTION);
-  if (db_get_aggregate_value(thd,TYPE_ENUM_FUNCTION,qname,&chistics) == SP_OK)
-  {
-    if (chistics.agg_type == GROUP_AGGREGATE)
-    {
-      if (arg_count > 0)
-        func= new (thd->mem_root) Item_sum_sp(thd, lex->current_context(), qname,
+  if (arg_count > 0)
+    func= new (thd->mem_root) Item_func_sp(thd, lex->current_context(), qname,
                                            *item_list);
-      else
-        func= new (thd->mem_root) Item_sum_sp(thd, lex->current_context(), qname);
-    }
-    else
-    {
-      if (arg_count > 0)
-        func= new (thd->mem_root) Item_func_sp(thd, lex->current_context(), qname,
-                                           *item_list);
-      else
-        func= new (thd->mem_root) Item_func_sp(thd, lex->current_context(), qname);
-    }
-  }
+  else
+    func= new (thd->mem_root) Item_func_sp(thd, lex->current_context(), qname);
 
   lex->safe_to_cache_query= 0;
   return func;
