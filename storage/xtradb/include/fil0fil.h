@@ -804,6 +804,8 @@ the first page of a first data file at database startup.
 @param[out]	space_id		tablepspace ID
 @param[out]	flushed_lsn		flushed lsn value
 @param[out]	crypt_data		encryption crypt data
+@param[in]	undo_tablespace		true, if this is undo
+					tablespace
 @retval NULL on success, or if innodb_force_recovery is set
 @return pointer to an error message string */
 UNIV_INTERN
@@ -814,7 +816,8 @@ fil_read_first_page(
 	ulint*		flags,
 	ulint*		space_id,
 	lsn_t*		flushed_lsn,
-	fil_space_crypt_t**   crypt_data)
+	fil_space_crypt_t**   crypt_data,
+	bool		undo_tablespace = false)
 	MY_ATTRIBUTE((warn_unused_result));
 
 #endif /* !UNIV_HOTBACKUP */

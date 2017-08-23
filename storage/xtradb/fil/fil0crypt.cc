@@ -191,7 +191,9 @@ fil_crypt_get_latest_key_version(
 				crypt_data->min_key_version,
 				key_version,
 				srv_fil_crypt_rotate_key_age)) {
-			os_event_set(fil_crypt_threads_event);
+			if (fil_crypt_threads_event) {
+				os_event_set(fil_crypt_threads_event);
+			}
 		}
 	}
 
