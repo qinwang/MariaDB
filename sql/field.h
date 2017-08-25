@@ -3239,6 +3239,7 @@ private:
     str.append(STRING_WITH_LEN(" /*!100301 COMPRESSED*/"));
   }
   uint32 max_display_length() { return field_length - 1; }
+  int cmp_max(const uchar *a_ptr, const uchar *b_ptr, uint max_len);
 
   /*
     Compressed fields can't have keys as two rows may have different

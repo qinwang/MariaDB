@@ -7864,6 +7864,35 @@ longlong Field_varstring_compressed::val_int(void)
 }
 
 
+int Field_varstring_compressed::cmp_max(const uchar *a_ptr, const uchar *b_ptr,
+                                        uint max_len)
+{
+  String a, b;
+  uint a_length, b_length;
+
+  if (length_bytes == 1)
+  {
+    a_length= (uint) *a_ptr;
+    b_length= (uint) *b_ptr;
+  }
+  else
+  {
+    a_length= uint2korr(a_ptr);
+    b_length= uint2korr(b_ptr);
+  }
+
+  uncompress(&a, &a, a_ptr + length_bytes, a_length);
+  uncompress(&b, &b, b_ptr + length_bytes, b_length);
+
+  if (a.length() > max_len)
+    a.length(max_len);
+  if (b.length() > max_len)
+    b.length(max_len);
+
+  return sortcmp(&a, &b, field_charset);
+}
+
+
 /****************************************************************************
 ** blob type
 ** A blob is saved as a length and a pointer. The length is stored in the
