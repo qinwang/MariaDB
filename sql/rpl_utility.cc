@@ -127,8 +127,9 @@ max_display_length_for_field(enum_field_types sql_type, unsigned int metadata)
 
   case MYSQL_TYPE_VAR_STRING:
   case MYSQL_TYPE_VARCHAR:
-  case MYSQL_TYPE_VARCHAR_COMPRESSED:
     return metadata;
+  case MYSQL_TYPE_VARCHAR_COMPRESSED:
+    return metadata - 1;
 
     /*
       The actual length for these types does not really matter since

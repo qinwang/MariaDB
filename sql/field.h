@@ -3238,6 +3238,7 @@ private:
     Field_varstring::sql_type(str);
     str.append(STRING_WITH_LEN(" /*!100301 COMPRESSED*/"));
   }
+  uint32 max_display_length() { return field_length - 1; }
 
   /*
     Compressed fields can't have keys as two rows may have different
