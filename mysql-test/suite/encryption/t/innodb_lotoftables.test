@@ -53,7 +53,7 @@ show status like 'innodb_pages0_read%';
 #
 # Verify
 #
---echo # should be 100
+--echo # should be 0
 
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE NAME LIKE 'innodb_encrypted%';
 
@@ -91,7 +91,7 @@ show status like 'innodb_pages0_read%';
 #
 --echo # should be 100
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0 AND NAME LIKE 'innodb_encrypted%';
---echo # should be 100
+--echo # should be 0
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0 AND NAME LIKE 'innodb_encrypted%';
 
 #
@@ -128,7 +128,7 @@ show status like 'innodb_pages0_read%';
 #
 --echo # should be 100
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0 AND NAME LIKE 'innodb_encrypted%';
---echo # should be 200
+--echo # should be 100
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0 AND NAME LIKE 'innodb_encrypted%';
 
 use test;

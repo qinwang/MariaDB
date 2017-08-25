@@ -19,10 +19,10 @@ commit work;
 show status like 'innodb_pages0_read%';
 Variable_name	Value
 Innodb_pages0_read	3
-# should be 100
+# should be 0
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE NAME LIKE 'innodb_encrypted%';
 COUNT(*)
-100
+0
 create database innodb_encrypted_2;
 use innodb_encrypted_2;
 show status like 'innodb_pages0_read%';
@@ -38,10 +38,10 @@ Innodb_pages0_read	3
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0 AND NAME LIKE 'innodb_encrypted%';
 COUNT(*)
 100
-# should be 100
+# should be 0
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0 AND NAME LIKE 'innodb_encrypted%';
 COUNT(*)
-100
+0
 create database innodb_encrypted_3;
 use innodb_encrypted_3;
 show status like 'innodb_pages0_read%';
@@ -57,10 +57,10 @@ Innodb_pages0_read	3
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0 AND NAME LIKE 'innodb_encrypted%';
 COUNT(*)
 100
-# should be 200
+# should be 100
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0 AND NAME LIKE 'innodb_encrypted%';
 COUNT(*)
-200
+100
 use test;
 show status like 'innodb_pages0_read%';
 Variable_name	Value
@@ -70,7 +70,7 @@ COUNT(*)
 100
 SELECT COUNT(*) FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0 AND NAME LIKE 'innodb_encrypted%';
 COUNT(*)
-200
+100
 SET GLOBAL innodb_encrypt_tables = on;
 SET GLOBAL innodb_encryption_threads=4;
 # Wait until all encrypted tables have been encrypted
