@@ -595,10 +595,10 @@ can_convert_field_to(Field *field,
                      int *order_var)
 {
   DBUG_ENTER("can_convert_field_to");
+  bool same_type;
 #ifndef DBUG_OFF
   char field_type_buf[MAX_FIELD_WIDTH];
   String field_type(field_type_buf, sizeof(field_type_buf), &my_charset_latin1);
-  bool same_type;
   field->sql_type(field_type);
   DBUG_PRINT("enter", ("field_type: %s, target_type: %d, source_type: %d, source_metadata: 0x%x",
                        field_type.c_ptr_safe(), field->real_type(), source_type, metadata));
