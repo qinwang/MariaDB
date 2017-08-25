@@ -6262,22 +6262,25 @@ longlong Item_func_row_count::val_int()
 
 Item_func_sp::Item_func_sp(THD *thd, Name_resolution_context *context_arg,
                            sp_name *name):
-  Item_func(thd), context(context_arg), m_name(name), m_sp(NULL), sp_result_field(NULL)
+  Item_func(thd), context(context_arg), m_name(name), m_sp(NULL), 
+  func_ctx(NULL), sp_result_field(NULL)
 {
   maybe_null= 1;
   dummy_table= (TABLE*) thd->calloc(sizeof(TABLE)+ sizeof(TABLE_SHARE));
   dummy_table->s= (TABLE_SHARE*) (dummy_table+1);
+  init_sql_alloc(&caller_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
 }
 
 
 Item_func_sp::Item_func_sp(THD *thd, Name_resolution_context *context_arg,
                            sp_name *name_arg, List<Item> &list):
   Item_func(thd, list), context(context_arg), m_name(name_arg), m_sp(NULL),
-  sp_result_field(NULL)
+  func_ctx(NULL), sp_result_field(NULL)
 {
   maybe_null= 1;
   dummy_table= (TABLE*) thd->calloc(sizeof(TABLE)+ sizeof(TABLE_SHARE));
   dummy_table->s= (TABLE_SHARE*) (dummy_table+1);
+  init_sql_alloc(&caller_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
 }
 
 
@@ -6290,6 +6293,10 @@ Item_func_sp::cleanup()
     sp_result_field= NULL;
   }
   m_sp= NULL;
+  if (func_ctx)
+    delete func_ctx;
+  func_ctx= NULL;
+  free_root(&caller_mem_root, MYF(0));
   dummy_table->alias.free();
   Item_func::cleanup();
 }
@@ -6518,7 +6525,9 @@ Item_func_sp::execute_impl(THD *thd)
     function call into binlog.
   */
   thd->reset_sub_statement_state(&statement_state, SUB_STMT_FUNCTION);
-  err_status= m_sp->execute_function(thd, args, arg_count, sp_result_field); 
+  err_status= m_sp->execute_aggregate_function(thd, args, arg_count,
+                                               sp_result_field, &func_ctx,
+                                               &caller_mem_root);
   thd->restore_sub_statement_state(&statement_state);
 
 error:

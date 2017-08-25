@@ -1202,7 +1202,6 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
 #if defined(ENABLED_PROFILING)
       thd->profiling.discard_current_query();
 #endif
-      if (m_chistics->agg_type == GROUP_AGGREGATE)
         thd->spcont->quit_func= TRUE;
       break;
     }
@@ -1240,9 +1239,6 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
 
     uint prev_ip= ip;
     err_status= i->execute(thd, &ip);
-
-    if (m_chistics->agg_type == NOT_AGGREGATE)
-      thd->spcont->pause_state= FALSE;
 
     thd->m_digest= parent_digest;
 
@@ -1926,7 +1922,6 @@ sp_head::execute_aggregate_function(THD *thd, Item **args, uint argcount,
   ulonglong UNINIT_VAR(binlog_save_options);
   sp_rcontext *octx= thd->spcont;
   bool need_binlog_call= FALSE;
-  bool argument_sent= TRUE;
   uint arg_no;
   char buf[STRING_BUFFER_USUAL_SIZE];
   String binlog_buf(buf, sizeof(buf), &my_charset_bin);
@@ -1979,7 +1974,6 @@ sp_head::execute_aggregate_function(THD *thd, Item **args, uint argcount,
     this function call will be finished (e.g. in Item::cleanup()).
     */
     thd->restore_active_arena(&call_arena, &backup_arena);
-    argument_sent= FALSE;
   }
 
   for (arg_no= 0; arg_no < argcount; arg_no++)

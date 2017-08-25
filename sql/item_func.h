@@ -2615,6 +2615,8 @@ private:
   mutable sp_head *m_sp;
   TABLE *dummy_table;
   uchar result_buf[64];
+  sp_rcontext *func_ctx;
+  MEM_ROOT caller_mem_root;
   /*
      The result field of the concrete stored function.
   */
