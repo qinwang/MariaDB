@@ -10787,7 +10787,7 @@ bool Column_definition::set_compressed(const char *method)
     my_error(ER_UNKNOWN_COMPRESSION_METHOD, MYF(0), method);
   }
   else
-    my_error(ER_WRONG_FIELD_SPEC, MYF(0), field_name);
+    my_error(ER_WRONG_FIELD_SPEC, MYF(0), field_name.str);
   return true;
 }
 
