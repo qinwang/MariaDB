@@ -1,0 +1,25 @@
+call mtr.add_suppression("Can't init tc log");
+call mtr.add_suppression("Aborting");
+set debug_sync='RESET';
+CREATE TABLE t1 (i INT) ENGINE=InnoDB;
+FLUSH TABLES;
+SET @@global.innodb_flush_log_at_trx_commit=1;
+set debug_sync='ha_commit_trans_after_prepare WAIT_FOR go';
+INSERT INTO t1 VALUES (1);;
+*** (1) the server is killed and (2) restarted with --innodb-force-recovery=3
+*** (3)  Shut down
+SET GLOBAL innodb_fast_shutdown=0;
+FOUND 1 /was in the XA prepared state/ in mysqld.1.err
+*** (4) restart with conflicing recovery options: --innodb-force-recovery=0 --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK --debug=d,info.
+FOUND 1 /\[ERROR\] Can\'t init tc log/ in mysqld.1.err
+*** the following search MUST report NOT FOUND into the result file!
+NOT FOUND /info: rollback xid/ in mysqld.1.err
+*** (5) restart with non-conflicing recovery options: --innodb-force-recovery=0 --innodb-read-only=0 --tc-heuristic-recover=ROLLBACK --debug=d,info
+FOUND 2 /\[ERROR\] Can\'t init tc log/ in mysqld.1.err
+*** the following search MUST report YES FOUND into the result file!
+FOUND 1 /info: rollback xid/ in mysqld.1.err
+*** (6) The server restarts with --innodb-force-recovery=0 and stably now.
+*** Table must be empty:
+SELECT * FROM t1;
+i
+DROP TABLE t1;

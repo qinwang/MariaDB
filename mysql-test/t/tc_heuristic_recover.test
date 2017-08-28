@@ -1,0 +1,111 @@
+# The test verifies a few server/engine recovery option combinations.
+# Specifically, MDEV-13437,13438 are concerned with no crashes
+# due to a pair of --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK.
+#
+# The whole test consists of 6 phases, see (lables) echoed.
+# Initially the test commits a transaction and in the following proceeds
+# throughout the 6 phases.
+# Within them the server is shut  down and attempted to restart, to succeed
+# that in the end.
+# All this proves no crashes and effective uncommit of the transaction
+# which is asserted.
+#
+--source include/have_innodb.inc
+# The test logics really requires --log-bin.
+--source include/have_binlog_format_mixed.inc
+--source include/have_debug.inc
+--source include/have_debug_sync.inc
+
+call mtr.add_suppression("Can't init tc log");
+call mtr.add_suppression("Aborting");
+
+# Now take a shapshot of the last time server options.
+#
+# The "restart" expect-file facility can't be engaged because the server
+#  having conflicting options may not succeed to boot up.
+# Also notice $MYSQLD_CMD is too "static" being unaware of the actual options
+# of the last (before shutdown or kill) server run.
+# That's why $MYSQLD_LAST_CMD that allows for the server new start
+# with more options appended to a stub set which is settled at this very point.
+--let $mysqld_stub_cmd= $MYSQLD_LAST_CMD
+--let $error_log= $MYSQLTEST_VARDIR/log/mysqld.1.err
+--let SEARCH_FILE= $error_log
+set debug_sync='RESET';
+
+CREATE TABLE t1 (i INT) ENGINE=InnoDB;
+FLUSH TABLES; # we need the table post crash-restart, see MDEV-8841.
+SET @@global.innodb_flush_log_at_trx_commit=1;
+
+# Run transaction in a separate "prey" connection
+--connect (con1,localhost,root,,)
+# The signal won't arrive though
+set debug_sync='ha_commit_trans_after_prepare WAIT_FOR go';
+--send INSERT INTO t1 VALUES (1);
+
+--let $restart_parameters= --innodb-force-recovery=3
+--echo *** (1) the server is killed and (2) restarted with $restart_parameters
+
+--connection default
+--let $table= information_schema.processlist
+--let $where= where state = 'debug sync point: ha_commit_trans_after_prepare'
+--let $wait_condition= SELECT count(*) = 1 FROM $table $where
+--source include/wait_condition.inc
+
+--let $shutdown_timeout= 0
+--source include/restart_mysqld.inc
+
+#
+# Stop and try to restart the server with $restart_parameters, which
+# will neither succeed not conduct any rollback because of read-only true.
+# FIXME: MDEV-12700 Allow innodb_read_only_mode startup without prior
+# slow shutdown.
+--echo *** (3)  Shut down
+SET GLOBAL innodb_fast_shutdown=0;
+--let $shutdown_timeout=
+--source include/shutdown_mysqld.inc
+
+# the --innodb-force-recovery=3 restart above must leave the following trace:
+--let SEARCH_PATTERN= was in the XA prepared state
+--source include/search_pattern_in_file++.inc
+
+--let $restart_parameters= --innodb-force-recovery=0 --innodb-read-only=1 --tc-heuristic-recover=ROLLBACK --debug=d,info
+--echo *** (4) restart with conflicing recovery options: $restart_parameters.
+--source include/fail_start_mysqld.inc
+
+--let SEARCH_PATTERN= \[ERROR\] Can\'t init tc log
+--source include/search_pattern_in_file++.inc
+
+# The transaction is left intact which can be proved in the dbug mode with
+ --echo *** the following search MUST report NOT FOUND into the result file!
+--let SEARCH_PATTERN= info: rollback xid
+--source include/search_pattern_in_file++.inc
+
+
+--let $restart_parameters= --innodb-force-recovery=0 --innodb-read-only=0 --tc-heuristic-recover=ROLLBACK --debug=d,info
+--echo *** (5) restart with non-conflicing recovery options: $restart_parameters
+--source include/fail_start_mysqld.inc
+
+# Check that the server won't complete initialization due to the
+# heuristic option.
+--let SEARCH_PATTERN= \[ERROR\] Can\'t init tc log
+--source include/search_pattern_in_file++.inc
+
+# Conversely, in dbug mode this time the log witnesses the transaction
+# is rolled back.
+--echo *** the following search MUST report YES FOUND into the result file!
+--let SEARCH_PATTERN= info: rollback xid
+--source include/search_pattern_in_file++.inc
+
+
+--let $restart_parameters= --innodb-force-recovery=0
+--echo *** (6) The server restarts with $restart_parameters and stably now.
+--source include/start_mysqld.inc
+
+# Another prove of (5) rollback
+--echo *** Table must be empty:
+SELECT * FROM t1;
+
+#
+# Cleanup
+#
+DROP TABLE t1;
