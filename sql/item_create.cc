@@ -3439,7 +3439,6 @@ Create_sp_func::create_with_db(THD *thd, LEX_CSTRING *db, LEX_CSTRING *name,
   Item *func= NULL;
   LEX *lex= thd->lex;
   sp_name *qname;
-  st_sp_chistics chistics;
 
   if (has_named_parameters(item_list))
   {

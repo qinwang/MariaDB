@@ -1259,27 +1259,19 @@ Field *Item_sum_hybrid::create_tmp_field(bool group, TABLE *table)
 ***********************************************************************/
 
 Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
-                           sp_name *name, List<Item> &list)
-  :Item_sum(thd, list), context(context_arg), m_name(name), m_sp(NULL),
-   func_ctx(NULL), sp_result_field(NULL)
+                           sp_name *name_arg, List<Item> &list)
+  :Item_sum(thd, list), Item_sp(thd, context_arg, name_arg)
 {
   maybe_null= 1;
   quick_group= 0;
-  dummy_table= (TABLE*) thd->calloc(sizeof(TABLE)+ sizeof(TABLE_SHARE));
-  dummy_table->s= (TABLE_SHARE*) (dummy_table + 1);
-  init_sql_alloc(&caller_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
 }
 
 Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
-                           sp_name *name)
-  :Item_sum(thd), context(context_arg), m_name(name), m_sp(NULL),
-   func_ctx(NULL), sp_result_field(NULL)
+                           sp_name *name_arg)
+  :Item_sum(thd), Item_sp(thd, context_arg, name_arg)
 {
   maybe_null= 1;
   quick_group= 0;
-  dummy_table= (TABLE*) thd->calloc(sizeof(TABLE)+ sizeof(TABLE_SHARE));
-  dummy_table->s= (TABLE_SHARE*) (dummy_table + 1);
-  init_sql_alloc(&caller_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
 }
 
 /**
@@ -1303,53 +1295,26 @@ Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
 bool
 Item_sum_sp::init_result_field(THD *thd)
 {
-  TABLE_SHARE *share;
+  bool res;
   DBUG_ENTER("Item_sum_sp::init_result_field");
-
-  DBUG_ASSERT(m_sp == NULL);
-  DBUG_ASSERT(sp_result_field == NULL);
-
-  if (!(m_sp= sp_find_routine(thd, TYPE_ENUM_FUNCTION, m_name,
-                               &thd->sp_func_cache, TRUE)))
-  {
-    my_missing_function_error (m_name->m_name, ErrConvDQName(m_name).ptr());
-    context->process_error(thd);
-    DBUG_RETURN(TRUE);
-  }
-
+  res= Item_sp::find_routine(thd);
+  if (res)
+    DBUG_RETURN(res);
   /*
-    A Field need to be attached to a Table.
-    Below we "create" a dummy table by initializing
-    the needed pointers.
+     A Field need to be attached to a Table.
+     Below we "create" a dummy table by initializing 
+     the needed pointers.
    */
 
-  share= dummy_table->s;
-  dummy_table->alias.set("", 0, table_alias_charset);
-  dummy_table->maybe_null= maybe_null;
-  dummy_table->in_use= thd;
-  dummy_table->copy_blobs= TRUE;
-  share->table_cache_key = empty_clex_str;
-  share->table_name= empty_clex_str;
+  dummy_table->maybe_null = maybe_null;
+  Item_sp::init_dummy_table(thd);
 
-  if (!(sp_result_field= m_sp->create_result_field(max_length, &name,
-                                                   dummy_table)))
-  {
-   DBUG_RETURN(TRUE);
-  }
-
-  if (sp_result_field->pack_length() > sizeof(result_buf))
-  {
-    void *tmp;
-    if (!(tmp= thd->alloc(sp_result_field->pack_length())))
-      DBUG_RETURN(TRUE);
-    sp_result_field->move_field((uchar*) tmp);
-  }
-  else
-    sp_result_field->move_field(result_buf);
-
+  res= Item_sp::init_result_field(thd, max_length, &name);
+  if (res)
+    DBUG_RETURN(res);
   sp_result_field->null_ptr= (uchar *) &null_value;
   sp_result_field->null_bit= 1;
-  DBUG_RETURN(FALSE);
+  DBUG_RETURN(res);
 }
 
 bool
@@ -1403,12 +1368,7 @@ bool
 Item_sum_sp::sp_check_access(THD *thd)
 {
   DBUG_ENTER("Item_sum_sp::sp_check_access");
-  DBUG_ASSERT(m_sp);
-  if (check_routine_access(thd, EXECUTE_ACL,
-         m_sp->m_db.str, m_sp->m_name.str, 0, FALSE))
-    DBUG_RETURN(TRUE);
-
-  DBUG_RETURN(FALSE);
+  DBUG_RETURN(Item_sp::sp_check_access(thd));
 }
 
 /**
@@ -1433,20 +1393,9 @@ Item_sum_sp::execute()
      function with the return value. */
 
   thd->server_status= SERVER_STATUS_LAST_ROW_SENT;
-  res= execute_impl(thd);
+  res= Item_sp::execute(thd, &null_value, args, arg_count);
   thd->server_status= old_server_status;
-  if (res)
-  {
-    null_value= 1;
-    context->process_error(thd);
-    if (thd->killed)
-      thd->send_kill_message();
-    return TRUE;
-  }
-
-  /* Check that the field (the value) is not NULL. */
-  null_value= sp_result_field->is_null();
-  return null_value;
+  return res;
 }
 
 /**
@@ -1462,51 +1411,8 @@ Item_sum_sp::execute()
 bool
 Item_sum_sp::execute_impl(THD *thd)
 {
-  bool err_status= TRUE;
-  Sub_statement_state statement_state;
-  Security_context *save_security_ctx= thd->security_ctx;
-  enum enum_sp_data_access access=
-    (m_sp->m_chistics->daccess == SP_DEFAULT_ACCESS) ?
-     SP_DEFAULT_ACCESS_MAPPING : m_sp->m_chistics->daccess;
-
   DBUG_ENTER("Item_sum_sp::execute_impl");
-
-  if (context->security_ctx)
-  {
-    /* Set view definer security context */
-    thd->security_ctx= context->security_ctx;
-  }
-  if (sp_check_access(thd))
-    goto error;
-
-  /*
-    Throw an error if a non-deterministic function is called while
-    statement-based replication (SBR) is active.
-  */
-
-  if (!m_sp->m_chistics->detistic && !trust_function_creators &&
-      (access == SP_CONTAINS_SQL || access == SP_MODIFIES_SQL_DATA) &&
-      (mysql_bin_log.is_open() &&
-       thd->variables.binlog_format == BINLOG_FORMAT_STMT))
-  {
-    my_error(ER_BINLOG_UNSAFE_ROUTINE, MYF(0));
-    goto error;
-  }
-
-  /*
-    Disable the binlogging if this is not a SELECT statement. If this is a
-    SELECT, leave binlogging on, so execute_aggregate_function() code writes the
-    function call into binlog.
-  */
-  thd->reset_sub_statement_state(&statement_state, SUB_STMT_FUNCTION);
-  err_status= m_sp->execute_aggregate_function(thd, args, arg_count,
-                                               sp_result_field, &func_ctx,
-                                               &caller_mem_root);
-  thd->restore_sub_statement_state(&statement_state);
-
-error:
-  thd->security_ctx= save_security_ctx;
-  DBUG_RETURN(err_status);
+  DBUG_RETURN(Item_sp::execute_impl(thd, args, arg_count));
 }
 
 /**
@@ -1545,22 +1451,13 @@ enum Item_result
 Item_sum_sp::result_type() const
 {
   DBUG_ENTER("Item_sum_sp::result_type");
-  DBUG_PRINT("info", ("m_sp = %p", (void *) m_sp));
-  DBUG_ASSERT(sp_result_field);
-  DBUG_RETURN(sp_result_field->result_type());
+  DBUG_RETURN(Item_sp::result_type());
 }
 
 void
 Item_sum_sp::cleanup()
 {
-  if (sp_result_field)
-  {
-    delete sp_result_field;
-    sp_result_field= NULL;
-  }
-  m_sp= NULL;
-  clear();
-  dummy_table->alias.free();
+  Item_sp::cleanup();
   Item_sum::cleanup();
 }
 
@@ -1584,33 +1481,14 @@ const char *
 Item_sum_sp::func_name() const
 {
   THD *thd= current_thd;
-  /* Calculate length to avoid reallocation of string for sure */
-  uint len= (((m_name->m_explicit_name ? m_name->m_db.length : 0) +
-              m_name->m_name.length)*2 + //characters*quoting
-             2 +                         // ` and `
-             (m_name->m_explicit_name ?
-              3 : 0) +                   // '`', '`' and '.' for the db
-             1 +                         // end of string
-             ALIGN_SIZE(1));             // to avoid String reallocation
-  String qname((char *)alloc_root(thd->mem_root, len), len,
-               system_charset_info);
-
-  qname.length(0);
-  if (m_name->m_explicit_name)
-  {
-    append_identifier(thd, &qname, m_name->m_db.str, m_name->m_db.length);
-    qname.append('.');
-  }
-  append_identifier(thd, &qname, m_name->m_name.str, m_name->m_name.length);
-  return qname.c_ptr_safe();
+  return Item_sp::func_name(thd);
 }
 
 enum enum_field_types
 Item_sum_sp::field_type() const
 {
   DBUG_ENTER("Item_sum_sp::field_type");
-  DBUG_ASSERT(sp_result_field);
-  DBUG_RETURN(sp_result_field->type());
+  DBUG_RETURN(Item_sp::field_type());
 }
 
 /***********************************************************************
