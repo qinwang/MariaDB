@@ -7672,7 +7672,8 @@ uint Field_varstring::is_equal(Create_field *new_field)
       new_field->charset == field_charset &&
       !new_field->compression_method() == !compression_method())
   {
-    if (new_field->length == max_display_length())
+    if (new_field->length - MY_TEST(new_field->compression_method()) ==
+        max_display_length())
       return IS_EQUAL_YES;
     if (new_field->length > max_display_length() &&
 	((new_field->length <= 255 && max_display_length() <= 255) ||
