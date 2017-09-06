@@ -5,19 +5,18 @@ Variable_name	Value
 Feature_hidden_columns	1
 desc t1;
 Field	Type	Null	Key	Default	Extra
-abc	int(11)	NO	PRI	NULL	NEVER
-xyz	int(11)	YES		NULL	NEVER, HIDDEN
+abc	int(11)	NO	PRI	NULL	
+xyz	int(11)	YES		NULL	 HIDDEN
 show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `abc` int(11) NOT NULL,
-  `xyz` int(11) HIDDEN DEFAULT NULL,
   PRIMARY KEY (`abc`)
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 select * from INFORMATION_SCHEMA.COLUMNS where TABLE_SCHEMA='test' and TABLE_NAME='t1';
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	DATETIME_PRECISION	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	IS_GENERATED	GENERATION_EXPRESSION
-def	test	t1	abc	1	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	NULL	int(11)	PRI	NEVER	select,insert,update,references			NULL
-def	test	t1	xyz	2	NULL	YES	int	NULL	NULL	10	0	NULL	NULL	NULL	int(11)		NEVER, HIDDEN	select,insert,update,references			NULL
+def	test	t1	abc	1	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	NULL	int(11)	PRI		select,insert,update,references		NEVER	NULL
+def	test	t1	xyz	2	NULL	YES	int	NULL	NULL	10	0	NULL	NULL	NULL	int(11)		 HIDDEN	select,insert,update,references		NEVER	NULL
 drop table t1;
 create table t1(a1 int hidden);
 ERROR 42000: A table must have at least 1 column
@@ -63,12 +62,12 @@ drop table t1;
 create table t1(a int , b int hidden , c int hidden auto_increment unique, d blob , e int unique, f int);
 desc t1;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	NEVER
-b	int(11)	YES		NULL	NEVER, HIDDEN
-c	int(11)	NO	PRI	NULL	NEVER, HIDDEN
-d	blob	YES		NULL	NEVER
-e	int(11)	YES	UNI	NULL	NEVER
-f	int(11)	YES		NULL	NEVER
+a	int(11)	YES		NULL	
+b	int(11)	YES		NULL	 HIDDEN
+c	int(11)	NO	PRI	NULL	auto_increment, HIDDEN
+d	blob	YES		NULL	
+e	int(11)	YES	UNI	NULL	
+f	int(11)	YES		NULL	
 insert into t1 values(1,'d blob',1,1),(1,'d blob',11,1),(1,'d blob',2,1),(1,'d blob',3,1),(1,'d blob',41,1);
 select * from t1;
 a	d	e	f
@@ -83,7 +82,7 @@ ERROR 42000: You have an error in your SQL syntax; check the manual that corresp
 create table t1(a int,abc int as (a mod 3) virtual hidden);
 desc t1;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	NEVER
+a	int(11)	YES		NULL	
 abc	int(11)	YES		NULL	VIRTUAL GENERATED, HIDDEN
 insert into t1 values(1,default);
 ERROR 21S01: Column count doesn't match value count at row 1
@@ -102,12 +101,11 @@ drop table t1;
 create table t1(abc int primary key hidden auto_increment, a int);
 desc t1;
 Field	Type	Null	Key	Default	Extra
-abc	int(11)	NO	PRI	NULL	NEVER, HIDDEN
-a	int(11)	YES		NULL	NEVER
+abc	int(11)	NO	PRI	NULL	auto_increment, HIDDEN
+a	int(11)	YES		NULL	
 show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
-  `abc` int(11) NOT NULL HIDDEN AUTO_INCREMENT,
   `a` int(11) DEFAULT NULL,
   PRIMARY KEY (`abc`)
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
@@ -141,15 +139,15 @@ alter table t1 add column xyz int;
 alter table t1 modify column abc  int ;
 desc t1;
 Field	Type	Null	Key	Default	Extra
-abc	int(11)	YES		NULL	NEVER
-xyz	int(11)	YES		NULL	NEVER
+abc	int(11)	YES		NULL	
+xyz	int(11)	YES		NULL	
 insert into t1 values(22);
 ERROR 21S01: Column count doesn't match value count at row 1
 alter table t1 modify column abc  int hidden;
 desc t1;
 Field	Type	Null	Key	Default	Extra
-abc	int(11)	YES		NULL	NEVER, HIDDEN
-xyz	int(11)	YES		NULL	NEVER
+abc	int(11)	YES		NULL	 HIDDEN
+xyz	int(11)	YES		NULL	
 insert into t1 values(12);
 drop table t1;
 #some test on copy table structure with table data;
@@ -157,12 +155,12 @@ drop table t1;
 create table t1(a int , b int hidden , c int hidden auto_increment unique, d blob , e int unique, f int);
 desc t1;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	NEVER
-b	int(11)	YES		NULL	NEVER, HIDDEN
-c	int(11)	NO	PRI	NULL	NEVER, HIDDEN
-d	blob	YES		NULL	NEVER
-e	int(11)	YES	UNI	NULL	NEVER
-f	int(11)	YES		NULL	NEVER
+a	int(11)	YES		NULL	
+b	int(11)	YES		NULL	 HIDDEN
+c	int(11)	NO	PRI	NULL	auto_increment, HIDDEN
+d	blob	YES		NULL	
+e	int(11)	YES	UNI	NULL	
+f	int(11)	YES		NULL	
 insert into t1 values(1,'d blob',1,1),(1,'d blob',11,1),(1,'d blob',2,1),(1,'d blob',3,1),(1,'d blob',41,1);
 select * from t1;
 a	d	e	f
@@ -182,10 +180,10 @@ a	b	c	d	e	f
 create table t2 as select * from t1;
 desc t2;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	NEVER
-d	blob	YES		NULL	NEVER
-e	int(11)	YES		NULL	NEVER
-f	int(11)	YES		NULL	NEVER
+a	int(11)	YES		NULL	
+d	blob	YES		NULL	
+e	int(11)	YES		NULL	
+f	int(11)	YES		NULL	
 select * from t2;
 a	d	e	f
 1	d blob	1	1
@@ -200,12 +198,12 @@ drop table t2;
 create table t2 as select a,b,c,d,e,f from t1;
 desc t2;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	NEVER
-b	int(11)	YES		NULL	NEVER
-c	int(11)	NO		0	NEVER
-d	blob	YES		NULL	NEVER
-e	int(11)	YES		NULL	NEVER
-f	int(11)	YES		NULL	NEVER
+a	int(11)	YES		NULL	
+b	int(11)	YES		NULL	
+c	int(11)	NO		0	
+d	blob	YES		NULL	
+e	int(11)	YES		NULL	
+f	int(11)	YES		NULL	
 select * from t2;
 a	b	c	d	e	f
 1	NULL	1	d blob	1	1
@@ -257,10 +255,10 @@ insert into t1 values(1,'d blob',1,1),(1,'d blob',11,1),(1,'d blob',2,1),(1,'d b
 create view v as select * from t1;
 desc v;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	NEVER
-d	blob	YES		NULL	NEVER
-e	int(11)	YES		NULL	NEVER
-f	int(11)	YES		NULL	NEVER
+a	int(11)	YES		NULL	
+d	blob	YES		NULL	
+e	int(11)	YES		NULL	
+f	int(11)	YES		NULL	
 select * from v;
 a	d	e	f
 1	d blob	1	1
@@ -286,12 +284,12 @@ drop view v;
 create view v as select a,b,c,d,e,f from t1;
 desc v;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	NEVER
-b	int(11)	YES		NULL	NEVER
-c	int(11)	NO		0	NEVER
-d	blob	YES		NULL	NEVER
-e	int(11)	YES		NULL	NEVER
-f	int(11)	YES		NULL	NEVER
+a	int(11)	YES		NULL	
+b	int(11)	YES		NULL	
+c	int(11)	NO		0	
+d	blob	YES		NULL	
+e	int(11)	YES		NULL	
+f	int(11)	YES		NULL	
 select * from v;
 a	b	c	d	e	f
 1	NULL	1	d blob	1	1
@@ -359,9 +357,9 @@ a
 create table t2 as select a,b,c from t1;
 desc t2;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	NEVER
-b	int(11)	YES		NULL	NEVER
-c	int(11)	YES		NULL	NEVER
+a	int(11)	YES		NULL	
+b	int(11)	YES		NULL	
+c	int(11)	YES		NULL	
 explain select * from t1,t2 where t1.b = t2.c and t1.c = t2.b;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	10	
@@ -379,28 +377,26 @@ show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
   `a` int(11) NOT NULL,
-  `b` int(11) HIDDEN DEFAULT NULL,
-  `c` int(11) HIDDEN DEFAULT NULL,
   PRIMARY KEY (`a`),
   UNIQUE KEY `c` (`c`)
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 desc t1;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	NO	PRI	NULL	NEVER
-b	int(11)	YES		NULL	NEVER, HIDDEN
-c	int(11)	YES	UNI	NULL	NEVER, HIDDEN
+a	int(11)	NO	PRI	NULL	
+b	int(11)	YES		NULL	 HIDDEN
+c	int(11)	YES	UNI	NULL	 HIDDEN
 alter table t1 modify column b int;
 desc t1;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	NO	PRI	NULL	NEVER
-b	int(11)	YES		NULL	NEVER
-c	int(11)	YES	UNI	NULL	NEVER
+a	int(11)	NO	PRI	NULL	
+b	int(11)	YES		NULL	
+c	int(11)	YES	UNI	NULL	
 alter table t1 change column c d int;
 desc t1;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	NO	PRI	NULL	NEVER
-b	int(11)	YES		NULL	NEVER
-d	int(11)	YES	UNI	NULL	NEVER
+a	int(11)	NO	PRI	NULL	
+b	int(11)	YES		NULL	
+d	int(11)	YES	UNI	NULL	
 drop table t1;
 SHOW STATUS LIKE 'Feature_hidden_columns';
 Variable_name	Value
@@ -409,13 +405,13 @@ Feature_hidden_columns	44
 create table t1(a int unique , hidden int hidden, c int );
 desc t1;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	YES	UNI	NULL	NEVER
-hidden	int(11)	YES		NULL	NEVER, HIDDEN
-c	int(11)	YES		NULL	NEVER
+a	int(11)	YES	UNI	NULL	
+hidden	int(11)	YES		NULL	 HIDDEN
+c	int(11)	YES		NULL	
 alter table t1 change column hidden hid int hidden;
 desc t1;
 Field	Type	Null	Key	Default	Extra
-a	int(11)	YES	UNI	NULL	NEVER
-hid	int(11)	YES		NULL	NEVER, HIDDEN
-c	int(11)	YES		NULL	NEVER
+a	int(11)	YES	UNI	NULL	
+hid	int(11)	YES		NULL	 HIDDEN
+c	int(11)	YES		NULL	
 drop table t1;

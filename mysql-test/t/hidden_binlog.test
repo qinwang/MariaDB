@@ -34,6 +34,9 @@ select a,b from t2;
 desc t2;
 show create table t2;
 
+show create table t3;
+select * from t3;
+
 --connection master
 drop table t1,t2,t3;
 
