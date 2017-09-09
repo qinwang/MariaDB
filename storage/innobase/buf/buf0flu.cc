@@ -3477,6 +3477,39 @@ thread_exit:
 	OS_THREAD_DUMMY_RETURN;
 }
 
+/** Adjust thread count for page cleaner workers.
+@param[in]	new_cnt		Number of threads to be used */
+void
+buf_flush_set_page_cleaner_thread_cnt(ulong new_cnt)
+{
+	mutex_enter(&page_cleaner->mutex);
+
+	if (new_cnt > srv_n_page_cleaners) {
+		/* User has increased the number of page
+		cleaner threads. */
+		uint add = new_cnt - srv_n_page_cleaners;
+		srv_n_page_cleaners = new_cnt;
+		for (uint i = 0; i < add; i++) {
+			os_thread_id_t cleaner_thread_id;
+			os_thread_create(buf_flush_page_cleaner_worker, NULL, &cleaner_thread_id);
+		}
+	} else if (new_cnt < srv_n_page_cleaners) {
+		/* User has decreased the number of page
+		cleaner threads. */
+		srv_n_page_cleaners = new_cnt;
+	}
+
+	mutex_exit(&page_cleaner->mutex);
+
+	/* Wait until defined number of workers has started. */
+	while (page_cleaner->is_running &&
+	       page_cleaner->n_workers != (srv_n_page_cleaners - 1)) {
+		os_event_set(page_cleaner->is_requested);
+		os_event_reset(page_cleaner->is_finished);
+		os_event_wait_time(page_cleaner->is_finished, 1000000);
+	}
+}
+
 /******************************************************************//**
 Worker thread of page_cleaner.
 @return a dummy parameter */
@@ -3489,9 +3522,19 @@ DECLARE_THREAD(buf_flush_page_cleaner_worker)(
 			os_thread_create */
 {
 	my_thread_init();
+	os_thread_id_t cleaner_thread_id = os_thread_get_curr_id();
 
 	mutex_enter(&page_cleaner->mutex);
+	ulint thread_no = page_cleaner->n_workers;
 	page_cleaner->n_workers++;
+
+	DBUG_LOG("ib_buf", "Thread "
+		<< cleaner_thread_id
+		<< " started n_workers "
+		<< page_cleaner->n_workers << ".");
+
+	/* Signal that we have started */
+	os_event_set(page_cleaner->is_finished);
 	mutex_exit(&page_cleaner->mutex);
 
 #ifdef UNIV_LINUX
@@ -3514,11 +3557,31 @@ DECLARE_THREAD(buf_flush_page_cleaner_worker)(
 			break;
 		}
 
+		ut_ad(srv_n_page_cleaners >= 1);
+
+		/* If number of page cleaner threads is decreased
+		exit those that are not anymore needed. */
+		if (srv_shutdown_state == SRV_SHUTDOWN_NONE &&
+		    thread_no >= (srv_n_page_cleaners - 1)) {
+			DBUG_LOG("ib_buf", "Exiting "
+				<< thread_no
+				<< " page cleaner worker thread_id "
+				<< os_thread_pf(cleaner_thread_id)
+				<< " total threads " << srv_n_page_cleaners << ".");
+			break;
+		}
+
 		pc_flush_slot();
 	}
 
 	mutex_enter(&page_cleaner->mutex);
 	page_cleaner->n_workers--;
+
+	DBUG_LOG("ib_buf", "Thread " << cleaner_thread_id
+		<< " exiting n_workers " << page_cleaner->n_workers<< ".");
+
+	/* Signal that we have stopped */
+	os_event_set(page_cleaner->is_finished);
 	mutex_exit(&page_cleaner->mutex);
 
 	my_thread_end();
