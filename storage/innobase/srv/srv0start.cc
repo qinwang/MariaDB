@@ -1867,8 +1867,12 @@ innobase_start_or_create_for_mysql()
 		buf_page_cleaner_is_active = true;
 		os_thread_create(buf_flush_page_cleaner_coordinator,
 				 NULL, NULL);
-		/* Create page cleaner workers if needed */
-		buf_flush_set_page_cleaner_thread_cnt(srv_n_page_cleaners);
+
+		/* Create page cleaner workers if needed. For example
+		mariabackup could set srv_n_page_cleaners = 0. */
+		if (srv_n_page_cleaners > 1) {
+			buf_flush_set_page_cleaner_thread_cnt(srv_n_page_cleaners);
+		}
 
 #ifdef UNIV_LINUX
 		/* Wait for the setpriority() call to finish. */
