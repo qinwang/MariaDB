@@ -149,6 +149,8 @@ struct page_cleaner_t {
 						threads. */
 	os_event_t		is_finished;	/*!< event to signal that all
 						slots were finished. */
+	os_event_t		is_started;	/*!< event to signal that
+						thread is started/exiting */
 	volatile ulint		n_workers;	/*!< number of worker threads
 						in existence */
 	bool			requested;	/*!< true if requested pages
@@ -2727,6 +2729,7 @@ buf_flush_page_cleaner_init(void)
 
 	page_cleaner->is_requested = os_event_create("pc_is_requested");
 	page_cleaner->is_finished = os_event_create("pc_is_finished");
+	page_cleaner->is_started = os_event_create("pc_is_started");
 
 	page_cleaner->n_slots = static_cast<ulint>(srv_buf_pool_instances);
 
@@ -2756,6 +2759,7 @@ buf_flush_page_cleaner_close(void)
 
 	os_event_destroy(page_cleaner->is_finished);
 	os_event_destroy(page_cleaner->is_requested);
+	os_event_destroy(page_cleaner->is_started);
 
 	ut_free(page_cleaner);
 
@@ -3505,8 +3509,8 @@ buf_flush_set_page_cleaner_thread_cnt(ulong new_cnt)
 	while (page_cleaner->is_running &&
 	       page_cleaner->n_workers != (srv_n_page_cleaners - 1)) {
 		os_event_set(page_cleaner->is_requested);
-		os_event_reset(page_cleaner->is_finished);
-		os_event_wait_time(page_cleaner->is_finished, 1000000);
+		os_event_reset(page_cleaner->is_started);
+		os_event_wait_time(page_cleaner->is_started, 1000000);
 	}
 }
 
@@ -3534,7 +3538,7 @@ DECLARE_THREAD(buf_flush_page_cleaner_worker)(
 		<< page_cleaner->n_workers << ".");
 
 	/* Signal that we have started */
-	os_event_set(page_cleaner->is_finished);
+	os_event_set(page_cleaner->is_started);
 	mutex_exit(&page_cleaner->mutex);
 
 #ifdef UNIV_LINUX
@@ -3581,7 +3585,7 @@ DECLARE_THREAD(buf_flush_page_cleaner_worker)(
 		<< " exiting n_workers " << page_cleaner->n_workers<< ".");
 
 	/* Signal that we have stopped */
-	os_event_set(page_cleaner->is_finished);
+	os_event_set(page_cleaner->is_started);
 	mutex_exit(&page_cleaner->mutex);
 
 	my_thread_end();
