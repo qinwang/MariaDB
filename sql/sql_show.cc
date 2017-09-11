@@ -2065,7 +2065,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
 
     uint flags = field->flags;
 
-    if (field->field_visibility > NOT_HIDDEN)
+    if (field->field_visibility > USER_DEFINED_HIDDEN)
        continue;
     if (not_the_first_field)
       packet->append(STRING_WITH_LEN(",\n"));
@@ -2127,16 +2127,6 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
       {
         packet->append(STRING_WITH_LEN(" HIDDEN"));
       }
-      DBUG_EXECUTE_IF("test_pseudo_hidden",
-              if (field->field_visibility  == PSEUDO_COLUMN_HIDDEN)
-              {
-                 packet->append(STRING_WITH_LEN(" PSEUDO HIDDEN"));
-              });
-      DBUG_EXECUTE_IF("test_completely_hidden",
-              if (field->field_visibility  == COMPLETELY_HIDDEN)
-              {
-                 packet->append(STRING_WITH_LEN(" COMPLETELY HIDDEN"));
-              });
       def_value.set(def_value_buf, sizeof(def_value_buf), system_charset_info);
       if (get_field_default_value(thd, field, &def_value, 1))
       {

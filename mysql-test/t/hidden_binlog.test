@@ -1,27 +1,18 @@
---source include/have_debug.inc
 --source include/master-slave.inc
 
 --connection master
-create table t1(a int , b int hidden);
+create table t1(a int , b int invisible);
 insert into t1 values(1);
-insert into t1 values(1);
-insert into t1 values(1);
-insert into t1 values(1);
+insert into t1(a,b) values(2,2);
 select a,b from t1;
 desc t1;
 
-create table t2(a int , b int hidden default 5);
-insert into t2 values(1);
-insert into t2 values(1);
-insert into t2 values(1);
-insert into t2 values(1);
+create table t2(a int , b int invisible default 5);
+insert into t1 values(1);
+insert into t1(a,b) values(2,2);
 select a,b from t2;
 desc t2;
 
-set debug_dbug="+d,test_pseudo_hidden";
-create table t3 (hidden int , b int , c int );
-insert into t3 values(1,1);
-desc t3;
 
 --sync_slave_with_master
 select * from t1;
@@ -34,11 +25,8 @@ select a,b from t2;
 desc t2;
 show create table t2;
 
-show create table t3;
-select * from t3;
 
 --connection master
-drop table t1,t2,t3;
+drop table t1,t2;
 
-set debug_dbug="";
 --source include/rpl_end.inc
