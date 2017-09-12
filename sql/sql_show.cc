@@ -2065,7 +2065,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
 
     uint flags = field->flags;
 
-    if (field->field_visibility > USER_DEFINED_HIDDEN)
+    if (field->field_visibility > USER_DEFINED_INVISIBLE)
        continue;
     if (not_the_first_field)
       packet->append(STRING_WITH_LEN(",\n"));
@@ -2123,7 +2123,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
         packet->append(STRING_WITH_LEN(" NULL"));
       }
 
-      if (field->field_visibility == USER_DEFINED_HIDDEN)
+      if (field->field_visibility == USER_DEFINED_INVISIBLE)
       {
         packet->append(STRING_WITH_LEN(" HIDDEN"));
       }
@@ -5571,8 +5571,7 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
 
   for (; (field= *ptr) ; ptr++)
   {
-    if(field->field_visibility == COMPLETELY_HIDDEN ||
-           field->field_visibility == PSEUDO_COLUMN_HIDDEN)
+    if(field->field_visibility > USER_DEFINED_INVISIBLE)
       continue;
     uchar *pos;
     char tmp[MAX_FIELD_WIDTH];
@@ -5653,7 +5652,7 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
     else
       table->field[20]->store(STRING_WITH_LEN("NEVER"), cs);
     /*hidden can coexist with auto_increment and virtual */
-    if(field->field_visibility==USER_DEFINED_HIDDEN)
+    if(field->field_visibility == USER_DEFINED_INVISIBLE)
     {
       if (buf.length())
         buf.append(STRING_WITH_LEN(","));

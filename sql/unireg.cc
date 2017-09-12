@@ -141,7 +141,7 @@ LEX_CUSTRING build_frm_image(THD *thd, const char *table,
   bool have_additional_field_properties= false;
   while ((field=it++))
   {
-    if (field->field_visibility != NOT_HIDDEN)
+    if (field->field_visibility != NOT_INVISIBLE)
     {
       have_additional_field_properties= true;
       break;

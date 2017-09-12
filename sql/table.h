@@ -338,12 +338,12 @@ enum enum_vcol_update_mode
 /* Field visibility enums */
 
 enum  field_visible_type{
-	NOT_HIDDEN=0,
-	USER_DEFINED_HIDDEN,
+	NOT_INVISIBLE= 0,
+	USER_DEFINED_INVISIBLE,
 	// pseudo-columns (like ROWID). Can be queried explicitly in SELECT,
 	//otherwise hidden from anything
-	PSEUDO_COLUMN_HIDDEN,
-	COMPLETELY_HIDDEN
+	PSEUDO_COLUMN_INVISIBLE,
+	COMPLETELY_INVISIBLE
 };
 
 /**

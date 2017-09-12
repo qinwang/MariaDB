@@ -3879,7 +3879,7 @@ public:
   Column_definition()
    :Type_handler_hybrid_field_type(&type_handler_null),
     comment(null_clex_str),
-    on_update(NULL), length(0),field_visibility(NOT_HIDDEN), decimals(0),
+    on_update(NULL), length(0),field_visibility(NOT_INVISIBLE), decimals(0),
     flags(0), pack_length(0), key_length(0), unireg_check(Field::NONE),
     interval(0), charset(&my_charset_bin),
     srid(0), geom_type(Field::GEOM_GEOMETRY),

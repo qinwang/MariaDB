@@ -2002,9 +2002,9 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
       uint temp= *field_properties++;
       reg_field->field_visibility= static_cast<field_visible_type> (temp & 3);
     }
-    if (reg_field->field_visibility == USER_DEFINED_HIDDEN)
+    if (reg_field->field_visibility == USER_DEFINED_INVISIBLE)
       status_var_increment(thd->status_var.feature_hidden_columns);
-    if (reg_field->field_visibility == NOT_HIDDEN)
+    if (reg_field->field_visibility == NOT_INVISIBLE)
       share->visible_fields++;
     if (field_type == MYSQL_TYPE_BIT && !f_bit_as_char(pack_flag))
     {

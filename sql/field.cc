@@ -1596,7 +1596,7 @@ Field::Field(uchar *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,
   unireg_check(unireg_check_arg), field_length(length_arg),
   null_bit(null_bit_arg), is_created_from_null_item(FALSE),
   read_stats(NULL), collected_stats(0), vcol_info(0), check_constraint(0),
-  default_value(0),field_visibility(NOT_HIDDEN)
+  default_value(0),field_visibility(NOT_INVISIBLE)
 {
   flags=null_ptr ? 0: NOT_NULL_FLAG;
   comment.str= (char*) "";
@@ -2154,7 +2154,7 @@ Field *Field::make_new_field(MEM_ROOT *root, TABLE *new_table,
   tmp->flags&= (NOT_NULL_FLAG | BLOB_FLAG | UNSIGNED_FLAG |
                 ZEROFILL_FLAG | BINARY_FLAG | ENUM_FLAG | SET_FLAG);
   tmp->reset_fields();
-  tmp->field_visibility= NOT_HIDDEN;
+  tmp->field_visibility= NOT_INVISIBLE;
   return tmp;
 }
 
@@ -10400,7 +10400,7 @@ Column_definition::Column_definition(THD *thd, Field *old_field,
   check_constraint= orig_field ? orig_field->check_constraint : 0;
   option_list= old_field->option_list;
   pack_flag= 0;
-  field_visibility= NOT_HIDDEN;
+  field_visibility= NOT_INVISIBLE;
 
   switch (real_field_type()) {
   case MYSQL_TYPE_TINY_BLOB:

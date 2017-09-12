@@ -5474,7 +5474,7 @@ find_field_in_table(THD *thd, TABLE *table, const char *name, uint length,
 
   if (field_ptr && *field_ptr)
   {
-    if ((*field_ptr)->field_visibility == COMPLETELY_HIDDEN)
+    if ((*field_ptr)->field_visibility == COMPLETELY_INVISIBLE)
        DBUG_RETURN((Field*) 0);
     *cached_field_index_ptr= field_ptr - table->field;
     field= *field_ptr;
@@ -7557,7 +7557,7 @@ insert_fields(THD *thd, Name_resolution_context *context, const char *db_name,
          select * from v1;
       */
       if ((field= field_iterator.field()) &&
-          field->field_visibility != NOT_HIDDEN)
+          field->field_visibility != NOT_INVISIBLE)
         continue;
       Item *item;
 
@@ -8195,7 +8195,7 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
     /* Ensure that all fields are from the same table */
     DBUG_ASSERT(field->table == table);
 
-    if (need_default_value && field->field_visibility != NOT_HIDDEN)
+    if (need_default_value && field->field_visibility != NOT_INVISIBLE)
       value = new (thd->mem_root) Item_default_value(thd,context);
     else
       value=v++;

@@ -6225,8 +6225,7 @@ vcol_attribute:
         | COMMENT_SYM TEXT_STRING_sys { Lex->last_field->comment= $2; }
         | INVISIBLE_SYM
           {
-              LEX *lex =Lex;
-              lex->last_field->field_visibility=USER_DEFINED_HIDDEN;
+              Lex->last_field->field_visibility= USER_DEFINED_INVISIBLE;
           }
         ;
 
