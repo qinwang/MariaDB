@@ -5656,7 +5656,7 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
     {
       if (buf.length())
         buf.append(STRING_WITH_LEN(","));
-      buf.append(STRING_WITH_LEN(" HIDDEN"),cs);
+      buf.append(STRING_WITH_LEN(" INVISIBLE"),cs);
     }
     table->field[17]->store(buf.ptr(), buf.length(), cs);
     table->field[19]->store(field->comment.str, field->comment.length, cs);
