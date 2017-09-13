@@ -674,6 +674,8 @@ public:
   { DBUG_ASSERT(0); }
 
   uchar		*ptr;			// Position to field in record
+
+  field_visible_type field_visibility;
   /**
      Byte where the @c NULL bit is stored inside a record. If this Field is a
      @c NOT @c NULL field, this member is @c NULL.
@@ -4042,6 +4044,7 @@ public:
     max number of characters. 
   */
   ulonglong length;
+  field_visible_type field_visibility;
   /*
     The value of `length' as set by parser: is the number of characters
     for most of the types, or of bytes for BLOBs or numeric types.
@@ -4072,7 +4075,7 @@ public:
    :Type_handler_hybrid_field_type(&type_handler_null),
     compression_method_ptr(0),
     comment(null_clex_str),
-    on_update(NULL), length(0), decimals(0),
+    on_update(NULL), length(0),field_visibility(NOT_INVISIBLE), decimals(0),
     flags(0), pack_length(0), key_length(0), unireg_check(Field::NONE),
     interval(0), charset(&my_charset_bin),
     srid(0), geom_type(Field::GEOM_GEOMETRY),

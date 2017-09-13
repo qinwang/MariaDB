@@ -2088,13 +2088,18 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
   */
   old_map= tmp_use_all_columns(table, table->read_set);
 
+  bool not_the_first_field= false;
   for (ptr=table->field ; (field= *ptr); ptr++)
   {
+
     uint flags = field->flags;
 
-    if (ptr != table->field)
+    if (field->field_visibility > USER_DEFINED_INVISIBLE)
+       continue;
+    if (not_the_first_field)
       packet->append(STRING_WITH_LEN(",\n"));
 
+    not_the_first_field= true;
     packet->append(STRING_WITH_LEN("  "));
     append_identifier(thd,packet,field->field_name.str,
                       field->field_name.length);
@@ -2147,6 +2152,10 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
         packet->append(STRING_WITH_LEN(" NULL"));
       }
 
+      if (field->field_visibility == USER_DEFINED_INVISIBLE)
+      {
+        packet->append(STRING_WITH_LEN(" HIDDEN"));
+      }
       def_value.set(def_value_buf, sizeof(def_value_buf), system_charset_info);
       if (get_field_default_value(thd, field, &def_value, 1))
       {
@@ -5616,6 +5625,8 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
 
   for (; (field= *ptr) ; ptr++)
   {
+    if(field->field_visibility > USER_DEFINED_INVISIBLE)
+      continue;
     uchar *pos;
     char tmp[MAX_FIELD_WIDTH];
     String type(tmp,sizeof(tmp), system_charset_info);
@@ -5673,11 +5684,11 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
     table->field[16]->store((const char*) pos,
                             strlen((const char*) pos), cs);
 
+    StringBuffer<256> buf;
     if (field->unireg_check == Field::NEXT_NUMBER)
-      table->field[17]->store(STRING_WITH_LEN("auto_increment"), cs);
+        buf.set(STRING_WITH_LEN("auto_increment"),cs);
     if (print_on_update_clause(field, &type, true))
-      table->field[17]->store(type.ptr(), type.length(), cs);
-
+        buf.set(type.ptr(), type.length(),cs);
     if (field->vcol_info)
     {
       String gen_s(tmp,sizeof(tmp), system_charset_info);
@@ -5688,13 +5699,20 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
       table->field[20]->store(STRING_WITH_LEN("ALWAYS"), cs);
 
       if (field->vcol_info->stored_in_db)
-        table->field[17]->store(STRING_WITH_LEN("STORED GENERATED"), cs);
+        buf.set(STRING_WITH_LEN("STORED GENERATED"), cs);
       else
-        table->field[17]->store(STRING_WITH_LEN("VIRTUAL GENERATED"), cs);
+        buf.set(STRING_WITH_LEN("VIRTUAL GENERATED"), cs);
     }
     else
       table->field[20]->store(STRING_WITH_LEN("NEVER"), cs);
-
+    /*hidden can coexist with auto_increment and virtual */
+    if(field->field_visibility == USER_DEFINED_INVISIBLE)
+    {
+      if (buf.length())
+        buf.append(STRING_WITH_LEN(","));
+      buf.append(STRING_WITH_LEN(" INVISIBLE"),cs);
+    }
+    table->field[17]->store(buf.ptr(), buf.length(), cs);
     table->field[19]->store(field->comment.str, field->comment.length, cs);
     if (schema_table_store_record(thd, table))
       DBUG_RETURN(1);

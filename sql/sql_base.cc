@@ -5502,7 +5502,9 @@ find_field_in_table(THD *thd, TABLE *table, const char *name, uint length,
 
   if (field_ptr && *field_ptr)
   {
-    *cached_field_index_ptr= (uint)(field_ptr - table->field);
+    if ((*field_ptr)->field_visibility == COMPLETELY_INVISIBLE)
+       DBUG_RETURN((Field*) 0);
+    *cached_field_index_ptr= field_ptr - table->field;
     field= *field_ptr;
   }
   else
@@ -7581,6 +7583,18 @@ insert_fields(THD *thd, Name_resolution_context *context, const char *db_name,
 
     for (; !field_iterator.end_of_fields(); field_iterator.next())
     {
+      /* field can be null here STODO->verify , shouldnt field be null for select * from table 
+         test case
+         create table t1 (empnum smallint, grp int);
+         create table t2 (empnum int, name char(5));
+         insert into t1 values(1,1);
+         insert into t2 values(1,'bob');
+         create view v1 as select * from t2 inner join t1 using (empnum);
+         select * from v1;
+      */
+      if ((field= field_iterator.field()) &&
+          field->field_visibility != NOT_INVISIBLE)
+        continue;
       Item *item;
 
       if (!(item= field_iterator.create_item(thd)))
@@ -8181,13 +8195,19 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
   List<TABLE> tbl_list;
   bool all_fields_have_values= true;
   Item *value;
-  Field *field;
+  Field *field, **f;
   bool abort_on_warning_saved= thd->abort_on_warning;
   uint autoinc_index= table->next_number_field
                         ? table->next_number_field->field_index
                         : ~0U;
+  uint field_count= 0;
+  bool need_default_value= false;
   DBUG_ENTER("fill_record");
-
+  //TODO will fields count be alwats equal to table->fields ?
+  for (f= ptr; f && (field= *f); f++)
+    field_count++;
+  if (field_count != values.elements)
+    need_default_value= true;
   if (!*ptr)
   {
     /* No fields to update, quite strange!*/
@@ -8205,12 +8225,16 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
     only one row.
   */
   table->auto_increment_field_not_null= FALSE;
+  Name_resolution_context *context= & thd->lex->select_lex.context;
   while ((field = *ptr++) && ! thd->is_error())
   {
     /* Ensure that all fields are from the same table */
     DBUG_ASSERT(field->table == table);
 
-    value=v++;
+    if (need_default_value && field->field_visibility != NOT_INVISIBLE)
+      value = new (thd->mem_root) Item_default_value(thd,context);
+    else
+      value=v++;
     if (field->field_index == autoinc_index)
       table->auto_increment_field_not_null= TRUE;
     if (field->vcol_info)
