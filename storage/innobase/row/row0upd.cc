@@ -460,7 +460,7 @@ func_exit:
 @param[in]	node	query node
 @param[in]	trx	transaction
 @return	whether the node cannot be ignored */
-static
+inline
 bool
 wsrep_must_process_fk(const upd_node_t* node, const trx_t* trx)
 {
@@ -469,10 +469,9 @@ wsrep_must_process_fk(const upd_node_t* node, const trx_t* trx)
 		return false;
 	}
 
-	const upd_cascade_t&	nodes = *static_cast<const upd_node_t*>(
-		node->common.parent)->cascade_upd_nodes;
-	const upd_cascade_t::const_iterator end = nodes.end();
-	return std::find(nodes.begin(), end, node) == end;
+	const upd_node_t* parent = static_cast<const upd_node_t*>(node->common.parent);
+
+	return parent->cascade_upd_nodes->empty();
 }
 #endif /* WITH_WSREP */
 
@@ -2435,10 +2434,6 @@ row_upd_sec_index_entry(
 		if (!rec_get_deleted_flag(
 			    rec, dict_table_is_comp(index->table))) {
 
-#ifdef WITH_WSREP
-			que_node_t *parent = que_node_get_parent(node);
-#endif /* WITH_WSREP */
-
 			err = btr_cur_del_mark_set_sec_rec(
 				flags, btr_cur, TRUE, thr, &mtr);
 
@@ -2447,11 +2442,9 @@ row_upd_sec_index_entry(
 			}
 #ifdef WITH_WSREP
 			if (!referenced && foreign &&
-			    wsrep_on(trx->mysql_thd) &&
-			    !wsrep_thd_is_BF(trx->mysql_thd, FALSE) &&
-			    (!parent || (que_node_get_type(parent) !=
-			     QUE_NODE_UPDATE)                     ||
-			    ((upd_node_t*)parent)->cascade_upd_nodes->empty())) {
+			    wsrep_must_process_fk(node, trx) &&
+			    !wsrep_thd_is_BF(trx->mysql_thd, FALSE)) {
+
 				ulint*	offsets = rec_get_offsets(
 					rec, index, NULL, ULINT_UNDEFINED,
 					&heap);
@@ -2670,9 +2663,6 @@ row_upd_clust_rec_by_insert(
 	rec_t*		rec;
 	ulint*		offsets			= NULL;
 
-#ifdef WITH_WSREP
-	que_node_t *parent = que_node_get_parent(node);
-#endif /* WITH_WSREP */
 	ut_ad(node);
 	ut_ad(dict_index_is_clust(index));
 
@@ -2760,9 +2750,8 @@ check_fk:
 				goto err_exit;
 			}
 #ifdef WITH_WSREP
-		} else if (foreign && wsrep_on(trx->mysql_thd) &&
-			 (!parent || (que_node_get_type(parent) != QUE_NODE_UPDATE) ||
-			 ((upd_node_t*)parent)->cascade_upd_nodes->empty())) {
+		} else if (foreign &&
+			   wsrep_must_process_fk(node, trx)) {
 
 			err = wsrep_row_upd_check_foreign_constraints(
 				node, pcur, table, index, offsets, thr, mtr);
@@ -2979,10 +2968,6 @@ row_upd_del_mark_clust_rec(
 	ut_ad(dict_index_is_clust(index));
 	ut_ad(node->is_delete);
 
-#ifdef WITH_WSREP
-	que_node_t *parent = que_node_get_parent(node);
-#endif /* WITH_WSREP */
-
 	pcur = node->pcur;
 	btr_cur = btr_pcur_get_btr_cur(pcur);
 
@@ -3008,9 +2993,8 @@ row_upd_del_mark_clust_rec(
 		err = row_upd_check_references_constraints(
 			node, pcur, index->table, index, offsets, thr, mtr);
 #ifdef WITH_WSREP
-	} else if (trx && wsrep_on(trx->mysql_thd)  &&
-	    (!parent || (que_node_get_type(parent) != QUE_NODE_UPDATE) ||
-	    ((upd_node_t*)parent)->cascade_upd_nodes->empty())) {
+	} else if (trx &&
+		   wsrep_must_process_fk(node, trx)) {
 
 		err = wsrep_row_upd_check_foreign_constraints(
 			node, pcur, index->table, index, offsets, thr, mtr);
