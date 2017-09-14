@@ -50,6 +50,10 @@
 #define WSREP_WARN(...)  WSREP_LOG(sql_print_warning,     ##__VA_ARGS__)
 #define WSREP_ERROR(...) WSREP_LOG(sql_print_error,       ##__VA_ARGS__)
 
+#define WSREP_SYNC_WAIT(thd_, before_)                                           \
+    { if (WSREP_CLIENT(thd_) &&                                                  \
+          wsrep_sync_wait(thd_, before_)) goto error; }
+
 #else
 #define IF_WSREP(A,B) B
 #define DBUG_ASSERT_IF_WSREP(A)
@@ -61,6 +65,7 @@
 #define WSREP_TO_ISOLATION_END
 #define WSREP_TO_ISOLATION_BEGIN_WRTCHK(db_, table_, table_list_)
 #define WSREP_SYNC_WAIT(thd_, before_)
-#endif
 
-#endif /* WSERP_INCLUDED */
+#endif /* WITH_WSREP */
+
+#endif /* WSREP_INCLUDED */

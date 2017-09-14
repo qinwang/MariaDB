@@ -359,7 +359,6 @@ log_reserve_and_open(
 
 loop:
 	ut_ad(log_mutex_own());
-	ut_ad(!recv_no_log_write);
 
 	if (log_sys->is_extending) {
 		log_mutex_exit();
@@ -416,7 +415,6 @@ log_write_low(
 
 	ut_ad(log_mutex_own());
 part_loop:
-	ut_ad(!recv_no_log_write);
 	/* Calculate a part length */
 
 	data_len = (log->buf_free % OS_FILE_LOG_BLOCK_SIZE) + str_len;
@@ -486,7 +484,6 @@ log_close(void)
 	lsn_t		checkpoint_age;
 
 	ut_ad(log_mutex_own());
-	ut_ad(!recv_no_log_write);
 
 	lsn = log->lsn;
 
@@ -1000,10 +997,6 @@ loop:
 	      || log_block_get_hdr_no(buf)
 		 == log_block_convert_lsn_to_no(start_lsn));
 
-	if (log_sys->is_encrypted()) {
-		log_crypt(buf, write_len);
-	}
-
 	/* Calculate the checksums for each log block and write them to
 	the trailer fields of the log blocks */
 
@@ -1267,6 +1260,12 @@ loop:
 			::memset(write_buf + area_end, 0, pad_size);
 		}
 	}
+
+	if (log_sys->is_encrypted()) {
+		log_crypt(write_buf + area_start, log_sys->write_lsn,
+			  area_end - area_start);
+	}
+
 	/* Do the write to the log files */
 	log_group_write_buf(
 		&log_sys->log, write_buf + area_start,
@@ -1940,12 +1939,14 @@ loop:
 		thread_name = "srv_monitor_thread";
 	} else if (srv_buf_resize_thread_active) {
 		thread_name = "buf_resize_thread";
+		goto wait_suspend_loop;
 	} else if (srv_dict_stats_thread_active) {
 		thread_name = "dict_stats_thread";
 	} else if (lock_sys && lock_sys->timeout_thread_active) {
 		thread_name = "lock_wait_timeout_thread";
 	} else if (srv_buf_dump_thread_active) {
 		thread_name = "buf_dump_thread";
+		goto wait_suspend_loop;
 	} else if (btr_defragment_thread_active) {
 		thread_name = "btr_defragment_thread";
 	} else if (srv_fast_shutdown != 2 && trx_rollback_or_clean_is_active) {
@@ -2291,6 +2292,7 @@ log_pad_current_log_block(void)
 	ulint		i;
 	lsn_t		lsn;
 
+	ut_ad(!recv_no_log_write);
 	/* We retrieve lsn only because otherwise gcc crashed on HP-UX */
 	lsn = log_reserve_and_open(OS_FILE_LOG_BLOCK_SIZE);
 

@@ -17,7 +17,7 @@
 
 /* Basic functions needed by many modules */
 
-#include <my_global.h>
+#include "mariadb.h"
 #include "sql_base.h"                           // setup_table_map
 #include "sql_priv.h"
 #include "unireg.h"
@@ -1146,10 +1146,10 @@ void update_non_unique_table_error(TABLE_LIST *update,
       update->view == duplicate->view ||
       update->view_name.length != duplicate->view_name.length ||
       update->view_db.length != duplicate->view_db.length ||
-      my_strcasecmp(table_alias_charset,
-                    update->view_name.str, duplicate->view_name.str) != 0 ||
-      my_strcasecmp(table_alias_charset,
-                    update->view_db.str, duplicate->view_db.str) != 0)
+      lex_string_cmp(table_alias_charset,
+                     &update->view_name, &duplicate->view_name) != 0 ||
+      lex_string_cmp(table_alias_charset,
+                     &update->view_db, &duplicate->view_db) != 0)
   {
     /*
       it is not the same view repeated (but it can be parts of the same copy
@@ -3137,7 +3137,7 @@ open_and_process_routine(THD *thd, Query_tables_list *prelocking_ctx,
         DEBUG_SYNC(thd, "after_shared_lock_pname");
 
         /* Ensures the routine is up-to-date and cached, if exists. */
-        if (sp_cache_routine(thd, rt, has_prelocking_list, &sp))
+        if (rt->sp_cache_routine(thd, has_prelocking_list, &sp))
           DBUG_RETURN(TRUE);
 
         /* Remember the version of the routine in the parse tree. */
@@ -3162,7 +3162,7 @@ open_and_process_routine(THD *thd, Query_tables_list *prelocking_ctx,
           Validating routine version is unnecessary, since CALL
           does not affect the prepared statement prelocked list.
         */
-        if (sp_cache_routine(thd, rt, FALSE, &sp))
+        if (rt->sp_cache_routine(thd, false, &sp))
           DBUG_RETURN(TRUE);
       }
     }
@@ -6126,8 +6126,8 @@ find_item_in_list(Item *find, List<Item> &items, uint *counter,
 	  item is not fix_field()'ed yet.
         */
         if (item_field->field_name.str && item_field->table_name &&
-	    !my_strcasecmp(system_charset_info, item_field->field_name.str,
-                           field_name->str) &&
+	    !lex_string_cmp(system_charset_info, &item_field->field_name,
+                            field_name) &&
             !my_strcasecmp(table_alias_charset, item_field->table_name, 
                            table_name) &&
             (!db_name || (item_field->db_name &&
@@ -6156,11 +6156,11 @@ find_item_in_list(Item *find, List<Item> &items, uint *counter,
       }
       else
       {
-        int fname_cmp= my_strcasecmp(system_charset_info,
-                                     item_field->field_name.str,
-                                     field_name->str);
-        if (!my_strcasecmp(system_charset_info,
-                           item_field->name.str,field_name->str))
+        bool fname_cmp= lex_string_cmp(system_charset_info,
+                                       &item_field->field_name,
+                                       field_name);
+        if (!lex_string_cmp(system_charset_info,
+                            &item_field->name, field_name))
         {
           /*
             If table name was not given we should scan through aliases
@@ -6206,7 +6206,7 @@ find_item_in_list(Item *find, List<Item> &items, uint *counter,
     { 
       if (is_ref_by_name && find->name.str && item->name.str &&
           find->name.length == item->name.length &&
-	  !my_strcasecmp(system_charset_info,item->name.str, find->name.str))
+	  !lex_string_cmp(system_charset_info, &item->name, &find->name))
       {
         found= li.ref();
         *counter= i;
@@ -6423,8 +6423,8 @@ mark_common_columns(THD *thd, TABLE_LIST *table_ref_1, TABLE_LIST *table_ref_2,
         here. These columns must be checked only on unqualified reference 
         by name (e.g. in SELECT list).
       */
-      if (!my_strcasecmp(system_charset_info, field_name_1->str,
-                         cur_field_name_2->str))
+      if (!lex_string_cmp(system_charset_info, field_name_1,
+                          cur_field_name_2))
       {
         DBUG_PRINT ("info", ("match c1.is_common=%d", nj_col_1->is_common));
         if (cur_nj_col_2->is_common ||
@@ -8398,7 +8398,7 @@ bool mysql_notify_thread_having_shared_lock(THD *thd, THD *in_use,
   if ((in_use->system_thread & SYSTEM_THREAD_DELAYED_INSERT) &&
       !in_use->killed)
   {
-    in_use->killed= KILL_SYSTEM_THREAD;
+    in_use->set_killed(KILL_SYSTEM_THREAD);
     mysql_mutex_lock(&in_use->mysys_var->mutex);
     if (in_use->mysys_var->current_cond)
     {
@@ -8661,7 +8661,7 @@ open_log_table(THD *thd, TABLE_LIST *one_table, Open_tables_backup *backup)
     DBUG_ASSERT(table->s->table_category == TABLE_CATEGORY_LOG);
     /* Make sure all columns get assigned to a default value */
     table->use_all_columns();
-    DBUG_ASSERT(table->no_replicate);
+    DBUG_ASSERT(table->s->no_replicate);
   }
   else
     thd->restore_backup_open_tables_state(backup);

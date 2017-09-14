@@ -211,6 +211,7 @@ struct buf_pools_list_size_t {
 	ulint	unzip_LRU_bytes;	/*!< unzip_LRU size in bytes */
 	ulint	flush_list_bytes;	/*!< flush_list size in bytes */
 };
+#endif /* !UNIV_INNOCHECKSUM */
 
 /** Page identifier. */
 class page_id_t {
@@ -333,6 +334,7 @@ operator<<(
 	std::ostream&		out,
 	const page_id_t&	page_id);
 
+#ifndef UNIV_INNOCHECKSUM
 /********************************************************************//**
 Acquire mutex on all buffer pool instances */
 UNIV_INLINE
@@ -823,9 +825,16 @@ buf_page_is_corrupted(
 	bool			check_lsn,
 	const byte*		read_buf,
 	const page_size_t&	page_size,
-	const fil_space_t* 	space = NULL)
-	MY_ATTRIBUTE((warn_unused_result));
 #ifndef UNIV_INNOCHECKSUM
+	const fil_space_t* 	space = NULL)
+#else
+	const void* 	 	space = NULL)
+#endif
+	MY_ATTRIBUTE((warn_unused_result));
+
+
+#ifndef UNIV_INNOCHECKSUM
+
 /**********************************************************************//**
 Gets the space id, page offset, and byte offset within page of a
 pointer pointing to a buffer frame containing a file page. */
@@ -884,24 +893,13 @@ buf_print(void);
 /*============*/
 #endif /* UNIV_DEBUG_PRINT || UNIV_DEBUG || UNIV_BUF_DEBUG */
 
-enum buf_page_print_flags {
-	/** Do not crash at the end of buf_page_print(). */
-	BUF_PAGE_PRINT_NO_CRASH	= 1,
-	/** Do not print the full page dump. */
-	BUF_PAGE_PRINT_NO_FULL = 2
-};
-
-/** Prints a page to stderr.
-@param[in]	read_buf	a database page
-@param[in]	page_size	page size
-@param[in]	flags		0 or BUF_PAGE_PRINT_NO_CRASH or
-BUF_PAGE_PRINT_NO_FULL */
+/** Dump a page to stderr.
+@param[in]	read_buf	database page
+@param[in]	page_size	page size */
+UNIV_INTERN
 void
-buf_page_print(
-	const byte*		read_buf,
-	const page_size_t&	page_size,
-	ulint			flags);
-
+buf_page_print(const byte* read_buf, const page_size_t& page_size)
+	ATTRIBUTE_COLD __attribute__((nonnull));
 /********************************************************************//**
 Decompress a block.
 @return TRUE if successful */

@@ -14,7 +14,7 @@
   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111-1301 USA */
 
 #define MYSQL_SERVER 1
-#include "my_config.h"
+#include <my_global.h>
 #include "mysql_version.h"
 #include "mysql/plugin.h"
 #include "sql_class.h"
@@ -43,12 +43,6 @@ static const LEX_STRING metadata_lock_info_lock_mode[] = {
   { C_STRING_WITH_LEN("MDL_SHARED_NO_WRITE") },
   { C_STRING_WITH_LEN("MDL_SHARED_NO_READ_WRITE") },
   { C_STRING_WITH_LEN("MDL_EXCLUSIVE") },
-};
-
-static const LEX_STRING metadata_lock_info_duration[] = {
-  { C_STRING_WITH_LEN("MDL_STATEMENT") },
-  { C_STRING_WITH_LEN("MDL_TRANSACTION") },
-  { C_STRING_WITH_LEN("MDL_EXPLICIT") },
 };
 
 static ST_FIELD_INFO i_s_metadata_lock_info_fields_info[] =
@@ -129,8 +123,6 @@ static int i_s_metadata_lock_info_init(
                       == MDL_key::NAMESPACE_END);
   compile_time_assert(sizeof(metadata_lock_info_lock_mode)/sizeof(LEX_STRING)
                       == MDL_TYPE_END);
-  compile_time_assert(sizeof(metadata_lock_info_duration)/sizeof(LEX_STRING)
-                      == MDL_DURATION_END);
 
   ST_SCHEMA_TABLE *schema = (ST_SCHEMA_TABLE *) p;
   DBUG_ENTER("i_s_metadata_lock_info_init");

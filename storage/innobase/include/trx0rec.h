@@ -56,22 +56,6 @@ trx_undo_rec_get_type(
 /*==================*/
 	const trx_undo_rec_t*	undo_rec);	/*!< in: undo log record */
 /**********************************************************************//**
-Reads from an undo log record the record compiler info.
-@return compiler info */
-UNIV_INLINE
-ulint
-trx_undo_rec_get_cmpl_info(
-/*=======================*/
-	const trx_undo_rec_t*	undo_rec);	/*!< in: undo log record */
-/**********************************************************************//**
-Returns TRUE if an undo log record contains an extern storage field.
-@return TRUE if extern */
-UNIV_INLINE
-ibool
-trx_undo_rec_get_extern_storage(
-/*============================*/
-	const trx_undo_rec_t*	undo_rec);	/*!< in: undo log record */
-/**********************************************************************//**
 Reads the undo log record number.
 @return undo no */
 UNIV_INLINE
@@ -114,7 +98,7 @@ trx_undo_rec_get_row_ref(
 				used, as we do NOT copy the data in the
 				record! */
 	dict_index_t*	index,	/*!< in: clustered index */
-	dtuple_t**	ref,	/*!< out, own: row reference */
+	const dtuple_t**ref,	/*!< out, own: row reference */
 	mem_heap_t*	heap);	/*!< in: memory heap from which the memory
 				needed is allocated */
 /**********************************************************************//**

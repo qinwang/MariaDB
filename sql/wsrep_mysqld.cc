@@ -2,7 +2,7 @@
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; version 2 of the License.
+   the Free Software Foundation; version 2 of the License.x1
 
    This program is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -13,6 +13,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02111-1301 USA */
 
+#include "mariadb.h"
 #include <mysqld.h>
 #include <transaction.h>
 #include <sql_class.h>
@@ -280,6 +281,17 @@ static void wsrep_log_cb(wsrep_log_level_t level, const char *msg) {
     break;
   }
 }
+
+void wsrep_log(void (*fun)(const char *, ...), const char *format, ...)
+{
+  va_list args;
+  char msg[1024];
+  va_start(args, format);
+  vsnprintf(msg, sizeof(msg) - 1, format, args);
+  va_end(args);
+  (fun)("WSREP: %s", msg);
+}
+
 
 static void wsrep_log_states (wsrep_log_level_t   const level,
                               const wsrep_uuid_t* const group_uuid,
@@ -1710,22 +1722,17 @@ create_view_query(THD *thd, uchar** buf, size_t* buf_len)
     SELECT_LEX *select_lex= &lex->select_lex;
     TABLE_LIST *first_table= select_lex->table_list.first;
     TABLE_LIST *views = first_table;
-
+    LEX_USER *definer;
     String buff;
     const LEX_STRING command[3]=
       {{ C_STRING_WITH_LEN("CREATE ") },
        { C_STRING_WITH_LEN("ALTER ") },
        { C_STRING_WITH_LEN("CREATE OR REPLACE ") }};
 
-    buff.append(command[thd->lex->create_view->mode].str,
-                command[thd->lex->create_view->mode].length);
-
-    LEX_USER *definer;
+    buff.append(&command[thd->lex->create_view->mode]);
 
     if (lex->definer)
-    {
       definer= get_current_user(thd, lex->definer);
-    }
     else
     {
       /*
@@ -2900,13 +2907,8 @@ void *start_wsrep_THD(void *arg)
     // at server shutdown
   }
 
-  if (thread_handling > SCHEDULER_ONE_THREAD_PER_CONNECTION)
-  {
-    mysql_mutex_lock(&LOCK_thread_count);
-    thd->unlink();
-    mysql_mutex_unlock(&LOCK_thread_count);
-    delete thd;
-  }
+  unlink_not_visible_thd(thd);
+  delete thd;
   my_thread_end();
   return(NULL);
 
@@ -2995,7 +2997,7 @@ static bool have_client_connections(THD *except_thd)
 
 static void wsrep_close_thread(THD *thd)
 {
-  thd->killed= KILL_CONNECTION;
+  thd->set_killed(KILL_CONNECTION);
   MYSQL_CALLBACK(thread_scheduler, post_kill_notification, (thd));
   if (thd->mysys_var)
   {
@@ -3088,7 +3090,7 @@ void wsrep_close_client_connections(my_bool wait_to_end, THD* except_caller_thd)
 
     if (is_replaying_connection(tmp))
     {
-      tmp->killed= KILL_CONNECTION;
+      tmp->set_killed(KILL_CONNECTION);
       continue;
     }
 
@@ -3242,25 +3244,23 @@ int wsrep_create_sp(THD *thd, uchar** buf, size_t* buf_len)
   sp_head *sp = thd->lex->sphead;
   sql_mode_t saved_mode= thd->variables.sql_mode;
   String retstr(64);
+  LEX_CSTRING returns= empty_clex_str;
   retstr.set_charset(system_charset_info);
 
   log_query.set_charset(system_charset_info);
 
-  if (sp->m_type == TYPE_ENUM_FUNCTION)
+  if (sp->m_handler->type() == TYPE_ENUM_FUNCTION)
   {
     sp_returns_type(thd, retstr, sp);
+    returns= retstr.lex_cstring();
   }
-
-  if (!show_create_sp(thd, &log_query,
-                     sp->m_type,
-                     (sp->m_explicit_name ? sp->m_db.str : NULL),
-                     (sp->m_explicit_name ? sp->m_db.length : 0),
-                     sp->m_name.str, sp->m_name.length,
-                     sp->m_params.str, sp->m_params.length,
-                     retstr.c_ptr(), retstr.length(),
-                     sp->m_body.str, sp->m_body.length,
-                     sp->chistics(), &(thd->lex->definer->user),
-                     &(thd->lex->definer->host),
+  if (sp->m_handler->
+      show_create_sp(thd, &log_query,
+                     sp->m_explicit_name ? sp->m_db : null_clex_str,
+                     sp->m_name, sp->m_params, returns,
+                     sp->m_body, sp->chistics(),
+                     thd->lex->definer[0],
+                     thd->lex->create_info,
                      saved_mode))
   {
     WSREP_WARN("SP create string failed: schema: %s, query: %s",
@@ -3692,3 +3692,48 @@ my_bool get_wsrep_certify_nonPK()
 {
   return wsrep_certify_nonPK;
 }
+
+#ifdedf MARIADB_10.3
+void wsrep_lock_rollback()
+{
+  mysql_mutex_lock(&LOCK_wsrep_rollback);
+}
+
+void wsrep_unlock_rollback()
+{
+  mysql_cond_signal(&COND_wsrep_rollback);
+  mysql_mutex_unlock(&LOCK_wsrep_rollback);
+}
+
+my_bool wsrep_aborting_thd_contains(THD *thd)
+{
+  mysql_mutex_assert_owner(&LOCK_wsrep_rollback);
+  wsrep_aborting_thd_t abortees = wsrep_aborting_thd;
+  while (abortees)
+  {
+    if (abortees->aborting_thd == thd)
+      return true;
+    abortees = abortees->next;
+  }
+  return false;
+}
+
+void wsrep_aborting_thd_enqueue(THD *thd)
+{
+  wsrep_aborting_thd_t aborting = (wsrep_aborting_thd_t)
+          my_malloc(sizeof(struct wsrep_aborting_thd), MYF(0));
+  aborting->aborting_thd  = thd;
+  aborting->next          = wsrep_aborting_thd;
+  wsrep_aborting_thd      = aborting;
+}
+
+bool wsrep_node_is_donor()
+{
+  return (WSREP_ON) ? (wsrep_config_state->get_status() == 2) : false;
+}
+
+bool wsrep_node_is_synced()
+{
+  return (WSREP_ON) ? (wsrep_config_state->get_status() == 4) : false;
+}
+#endif /* MARIADB_10.3 */

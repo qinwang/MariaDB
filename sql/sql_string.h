@@ -25,7 +25,7 @@
 #endif
 
 #include "m_ctype.h"                            /* my_charset_bin */
-#include "my_sys.h"              /* alloc_root, my_free, my_realloc */
+#include <my_sys.h>              /* alloc_root, my_free, my_realloc */
 #include "m_string.h"                           /* TRASH */
 
 class String;
@@ -471,6 +471,7 @@ public:
   bool append(const char *s);
   bool append(const LEX_STRING *ls) { return append(ls->str, ls->length); }
   bool append(const LEX_CSTRING *ls) { return append(ls->str, ls->length); }
+  bool append(const LEX_CSTRING &ls) { return append(ls.str, ls.length); }
   bool append(const char *s, uint32 arg_length);
   bool append(const char *s, uint32 arg_length, CHARSET_INFO *cs);
   bool append_ulonglong(ulonglong val);
@@ -573,6 +574,10 @@ public:
   void qs_append(const char *str)
   {
     qs_append(str, (uint32)strlen(str));
+  }
+  void qs_append(const LEX_CSTRING *str)
+  {
+    qs_append(str->str, str->length);
   }
   void qs_append(const char *str, uint32 len);
   void qs_append_hex(const char *str, uint32 len);

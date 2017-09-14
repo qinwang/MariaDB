@@ -469,8 +469,12 @@ trx_undo_page_report_insert(
 	ulint		i;
 
 	ut_ad(dict_index_is_clust(index));
-	ut_ad(*reinterpret_cast<uint16*>(TRX_UNDO_PAGE_HDR + TRX_UNDO_PAGE_TYPE
-					 + undo_page) == 0);
+	/* MariaDB 10.3.1+ in trx_undo_page_init() always initializes
+	TRX_UNDO_PAGE_TYPE as 0, but previous versions wrote
+	TRX_UNDO_INSERT == 1 into insert_undo pages,
+	or TRX_UNDO_UPDATE == 2 into update_undo pages. */
+	ut_ad(mach_read_from_2(TRX_UNDO_PAGE_HDR + TRX_UNDO_PAGE_TYPE
+			       + undo_page) <= 2);
 
 	first_free = mach_read_from_2(undo_page + TRX_UNDO_PAGE_HDR
 				      + TRX_UNDO_PAGE_FREE);
@@ -631,7 +635,7 @@ trx_undo_rec_get_row_ref(
 				used, as we do NOT copy the data in the
 				record! */
 	dict_index_t*	index,	/*!< in: clustered index */
-	dtuple_t**	ref,	/*!< out, own: row reference */
+	const dtuple_t**ref,	/*!< out, own: row reference */
 	mem_heap_t*	heap)	/*!< in: memory heap from which the memory
 				needed is allocated */
 {
@@ -643,17 +647,17 @@ trx_undo_rec_get_row_ref(
 
 	ref_len = dict_index_get_n_unique(index);
 
-	*ref = dtuple_create(heap, ref_len);
+	dtuple_t* tuple = dtuple_create(heap, ref_len);
+	*ref = tuple;
 
-	dict_index_copy_types(*ref, index, ref_len);
+	dict_index_copy_types(tuple, index, ref_len);
 
 	for (i = 0; i < ref_len; i++) {
-		dfield_t*	dfield;
 		const byte*	field;
 		ulint		len;
 		ulint		orig_len;
 
-		dfield = dtuple_get_nth_field(*ref, i);
+		dfield_t* dfield = dtuple_get_nth_field(tuple, i);
 
 		ptr = trx_undo_rec_get_col_val(ptr, &field, &len, &orig_len);
 
@@ -875,10 +879,12 @@ trx_undo_page_report_modify(
 
 	ut_a(dict_index_is_clust(index));
 	ut_ad(rec_offs_validate(rec, index, offsets));
-	ut_ad(*reinterpret_cast<uint16*>(TRX_UNDO_PAGE_HDR + TRX_UNDO_PAGE_TYPE
-					 + undo_page) == 0);
-	trx_undo_t*	undo = dict_table_is_temporary(table)
-		? NULL : trx->rsegs.m_redo.undo;
+	/* MariaDB 10.3.1+ in trx_undo_page_init() always initializes
+	TRX_UNDO_PAGE_TYPE as 0, but previous versions wrote
+	TRX_UNDO_INSERT == 1 into insert_undo pages,
+	or TRX_UNDO_UPDATE == 2 into update_undo pages. */
+	ut_ad(mach_read_from_2(TRX_UNDO_PAGE_HDR + TRX_UNDO_PAGE_TYPE
+			       + undo_page) <= 2);
 
 	first_free = mach_read_from_2(undo_page + TRX_UNDO_PAGE_HDR
 				      + TRX_UNDO_PAGE_FREE);
@@ -1103,13 +1109,6 @@ trx_undo_page_report_modify(
 					dict_table_page_size(table),
 					&field, &flen, SPATIAL_UNKNOWN);
 
-				/* Notify purge that it eventually has to
-				free the old externally stored field */
-
-				if (undo) {
-					undo->del_marks = TRUE;
-				}
-
 				*type_cmpl_ptr |= TRX_UNDO_UPD_EXTERN;
 			} else {
 				ptr += mach_write_compressed(ptr, flen);
@@ -1176,10 +1175,6 @@ trx_undo_page_report_modify(
 		byte*		old_ptr = ptr;
 		double		mbr[SPDIMS * 2];
 		mem_heap_t*	row_heap = NULL;
-
-		if (undo) {
-			undo->del_marks = TRUE;
-		}
 
 		if (trx_undo_left(undo_page, ptr) < 5) {
 

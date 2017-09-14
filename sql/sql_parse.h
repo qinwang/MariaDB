@@ -16,7 +16,6 @@
 #ifndef SQL_PARSE_INCLUDED
 #define SQL_PARSE_INCLUDED
 
-#include "my_global.h"                          /* NO_EMBEDDED_ACCESS_CHECKS */
 #include "sql_acl.h"                            /* GLOBAL_ACLS */
 
 class Comp_creator;
@@ -75,12 +74,12 @@ LEX_USER *create_default_definer(THD *thd, bool role);
 LEX_USER *create_definer(THD *thd, LEX_CSTRING *user_name, LEX_CSTRING *host_name);
 LEX_USER *get_current_user(THD *thd, LEX_USER *user, bool lock=true);
 bool sp_process_definer(THD *thd);
-bool check_string_byte_length(LEX_CSTRING *str, uint err_msg,
+bool check_string_byte_length(const LEX_CSTRING *str, uint err_msg,
                               uint max_byte_length);
-bool check_string_char_length(LEX_CSTRING *str, uint err_msg,
+bool check_string_char_length(const LEX_CSTRING *str, uint err_msg,
                               uint max_char_length, CHARSET_INFO *cs,
                               bool no_error);
-bool check_ident_length(LEX_CSTRING *ident);
+bool check_ident_length(const LEX_CSTRING *ident);
 CHARSET_INFO* merge_charset_and_collation(CHARSET_INFO *cs, CHARSET_INFO *cl);
 CHARSET_INFO *find_bin_collation(CHARSET_INFO *cs);
 bool check_host_name(LEX_CSTRING *str);
@@ -96,7 +95,7 @@ void mysql_parse(THD *thd, char *rawbuf, uint length,
                  Parser_state *parser_state, bool is_com_multi,
                  bool is_next_command);
 bool mysql_new_select(LEX *lex, bool move_down, SELECT_LEX *sel);
-void create_select_for_variable(const char *var_name);
+void create_select_for_variable(THD *thd, LEX_CSTRING *var_name);
 void create_table_set_open_action_and_adjust_tables(LEX *lex);
 void mysql_init_multi_delete(LEX *lex);
 bool multi_delete_set_locks_and_link_aux_tables(LEX *lex);
@@ -154,9 +153,10 @@ bool check_single_table_access(THD *thd, ulong privilege,
 			   TABLE_LIST *tables, bool no_errors);
 bool check_routine_access(THD *thd,ulong want_access,const char *db,
                           const char *name,
-			  bool is_proc, bool no_errors);
+                          const Sp_handler *sph, bool no_errors);
 bool check_some_access(THD *thd, ulong want_access, TABLE_LIST *table);
-bool check_some_routine_access(THD *thd, const char *db, const char *name, bool is_proc);
+bool check_some_routine_access(THD *thd, const char *db, const char *name,
+                               const Sp_handler *sph);
 bool check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,
                         bool any_combination_of_privileges_will_do,
                         uint number,
@@ -168,7 +168,8 @@ inline bool check_single_table_access(THD *thd, ulong privilege,
 			   TABLE_LIST *tables, bool no_errors)
 { return false; }
 inline bool check_routine_access(THD *thd,ulong want_access, const char *db,
-                                 const char *name, bool is_proc, bool no_errors)
+                                 const char *name,
+                                 const Sp_handler *sph, bool no_errors)
 { return false; }
 inline bool check_some_access(THD *thd, ulong want_access, TABLE_LIST *table)
 {
@@ -176,7 +177,8 @@ inline bool check_some_access(THD *thd, ulong want_access, TABLE_LIST *table)
   return false;
 }
 inline bool check_some_routine_access(THD *thd, const char *db,
-                                      const char *name, bool is_proc)
+                                      const char *name,
+                                      const Sp_handler *sph)
 { return false; }
 inline bool
 check_table_access(THD *thd, ulong requirements,TABLE_LIST *tables,

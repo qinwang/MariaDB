@@ -15,7 +15,7 @@
    along with this program; if not, write to the Free Software
    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
 
-#include <my_global.h>                          /* NO_EMBEDDED_ACCESS_CHECKS */
+#include "mariadb.h"                          /* NO_EMBEDDED_ACCESS_CHECKS */
 #include "sql_priv.h"
 #include "unireg.h"
 #include "sql_prepare.h"
@@ -480,7 +480,7 @@ sp_name::sp_name(const MDL_key *key, char *qname_buff)
 */
 
 bool
-check_routine_name(LEX_CSTRING *ident)
+check_routine_name(const LEX_CSTRING *ident)
 {
   DBUG_ASSERT(ident);
   DBUG_ASSERT(ident->str);
@@ -540,10 +540,10 @@ sp_head::operator delete(void *ptr, size_t size) throw()
 }
 
 
-sp_head::sp_head(stored_procedure_type type)
+sp_head::sp_head(const Sp_handler *sph)
   :Query_arena(&main_mem_root, STMT_INITIALIZED_FOR_SP),
    Database_qualified_name(&null_clex_str, &null_clex_str),
-   m_type(type),
+   m_handler(sph),
    m_flags(0),
    m_explicit_name(false),
    /*
@@ -558,7 +558,7 @@ sp_head::sp_head(stored_procedure_type type)
    m_defstr(null_clex_str),
    m_sp_cache_version(0),
    m_creation_ctx(0),
-   unsafe_flags(0),
+   unsafe_flags(0), m_select_number(1),
    m_created(0),
    m_modified(0),
    m_recursion_level(0),
@@ -610,7 +610,7 @@ sp_head::init(LEX *lex)
 
 
 void
-sp_head::init_sp_name(THD *thd, sp_name *spname)
+sp_head::init_sp_name(const sp_name *spname)
 {
   DBUG_ENTER("sp_head::init_sp_name");
 
@@ -619,17 +619,10 @@ sp_head::init_sp_name(THD *thd, sp_name *spname)
   DBUG_ASSERT(spname && spname->m_db.str && spname->m_db.length);
 
   /* We have to copy strings to get them into the right memroot. */
-
-  m_db.length= spname->m_db.length;
-  m_db.str= strmake_root(thd->mem_root, spname->m_db.str, spname->m_db.length);
-
-  m_name.length= spname->m_name.length;
-  m_name.str= strmake_root(thd->mem_root, spname->m_name.str,
-                           spname->m_name.length);
-
+  Database_qualified_name::copy(&main_mem_root, spname->m_db, spname->m_name);
   m_explicit_name= spname->m_explicit_name;
 
-  spname->make_qname(thd, &m_qname);
+  spname->make_qname(&main_mem_root, &m_qname);
 
   DBUG_VOID_RETURN;
 }
@@ -733,7 +726,7 @@ sp_head::~sp_head()
 
 Field *
 sp_head::create_result_field(uint field_max_length, const LEX_CSTRING *field_name,
-                             TABLE *table)
+                             TABLE *table) const
 {
   Field *field;
   LEX_CSTRING name;
@@ -960,28 +953,13 @@ subst_spvars(THD *thd, sp_instr *instr, LEX_STRING *query_str)
 }
 
 
-/**
-  Return appropriate error about recursion limit reaching
-
-  @param thd  Thread handle
-
-  @remark For functions and triggers we return error about
-          prohibited recursion. For stored procedures we
-          return about reaching recursion limit.
-*/
-
-void sp_head::recursion_level_error(THD *thd)
+void Sp_handler_procedure::recursion_level_error(THD *thd,
+                                                 const sp_head *sp) const
 {
-  if (m_type == TYPE_ENUM_PROCEDURE)
-  {
-    my_error(ER_SP_RECURSION_LIMIT, MYF(0),
-             static_cast<int>(thd->variables.max_sp_recursion_depth),
-             m_name.str);
-  }
-  else
-    my_error(ER_SP_NO_RECURSION, MYF(0));
+  my_error(ER_SP_RECURSION_LIMIT, MYF(0),
+           static_cast<int>(thd->variables.max_sp_recursion_depth),
+           sp->m_name.str);
 }
-
 
 
 /**
@@ -1398,7 +1376,6 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
 
   @param thd         thread handle
   @param sp          stored routine to change the context for
-  @param is_proc     TRUE is procedure, FALSE if function
   @param save_ctx    pointer to an old security context
 
   @todo
@@ -1413,8 +1390,7 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
 */
 
 bool
-set_routine_security_ctx(THD *thd, sp_head *sp, bool is_proc,
-                         Security_context **save_ctx)
+set_routine_security_ctx(THD *thd, sp_head *sp, Security_context **save_ctx)
 {
   *save_ctx= 0;
   if (sp->suid() != SP_IS_NOT_SUID &&
@@ -1436,7 +1412,7 @@ set_routine_security_ctx(THD *thd, sp_head *sp, bool is_proc,
   */
   if (*save_ctx &&
       check_routine_access(thd, EXECUTE_ACL,
-                           sp->m_db.str, sp->m_name.str, is_proc, FALSE))
+                           sp->m_db.str, sp->m_name.str, sp->m_handler, false))
   {
     sp->m_security_ctx.restore_security_context(thd, *save_ctx);
     *save_ctx= 0;
@@ -1448,6 +1424,14 @@ set_routine_security_ctx(THD *thd, sp_head *sp, bool is_proc,
 #endif // ! NO_EMBEDDED_ACCESS_CHECKS
 
 
+bool sp_head::check_execute_access(THD *thd) const
+{
+  return check_routine_access(thd, EXECUTE_ACL,
+                              m_db.str, m_name.str,
+                              m_handler, false);
+}
+
+
 /**
   Create rcontext using the routine security.
   This is important for sql_mode=ORACLE to make sure that the invoker has
@@ -1457,20 +1441,17 @@ set_routine_security_ctx(THD *thd, sp_head *sp, bool is_proc,
   so we can omit the security context switch for performance purposes.
 
   @param thd
-  @param sphead
-  @param is_proc
-  @param root_pctx
   @param ret_value
   @retval           NULL - error (access denided or EOM)
   @retval          !NULL - success (the invoker has rights to all %TYPE tables)
 */
-sp_rcontext *sp_head::rcontext_create(THD *thd, bool is_proc, Field *ret_value)
+sp_rcontext *sp_head::rcontext_create(THD *thd, Field *ret_value)
 {
   bool has_column_type_refs= m_flags & HAS_COLUMN_TYPE_REFS;
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   Security_context *save_security_ctx;
   if (has_column_type_refs &&
-      set_routine_security_ctx(thd, this, is_proc, &save_security_ctx))
+      set_routine_security_ctx(thd, this, &save_security_ctx))
     return NULL;
 #endif
   sp_rcontext *res= sp_rcontext::create(thd, m_pcont, ret_value,
@@ -1587,9 +1568,8 @@ sp_head::execute_trigger(THD *thd,
     goto err_with_cleanup;
   }
 
-#ifndef DBUG_OFF
+  /* Needed by slow log */
   nctx->sp= this;
-#endif
 
   thd->spcont= nctx;
 
@@ -1696,7 +1676,7 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
   init_sql_alloc(&call_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
-  if (!(nctx= rcontext_create(thd, false, return_value_fld)))
+  if (!(nctx= rcontext_create(thd, return_value_fld)))
   {
     thd->restore_active_arena(&call_arena, &backup_arena);
     err_status= TRUE;
@@ -1711,9 +1691,8 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
   */
   thd->restore_active_arena(&call_arena, &backup_arena);
 
-#ifndef DBUG_OFF
+  /* Needed by slow log */
   nctx->sp= this;
-#endif
 
   /* Pass arguments. */
   for (arg_no= 0; arg_no < argcount; arg_no++)
@@ -1767,7 +1746,7 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
 
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   Security_context *save_security_ctx;
-  if (set_routine_security_ctx(thd, this, FALSE, &save_security_ctx))
+  if (set_routine_security_ctx(thd, this, &save_security_ctx))
   {
     err_status= TRUE;
     goto err_with_cleanup;
@@ -1911,30 +1890,26 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
   if (! octx)
   {
     /* Create a temporary old context. */
-    if (!(octx= rcontext_create(thd, true, NULL)))
+    if (!(octx= rcontext_create(thd, NULL)))
     {
       DBUG_PRINT("error", ("Could not create octx"));
       DBUG_RETURN(TRUE);
     }
 
-#ifndef DBUG_OFF
     octx->sp= 0;
-#endif
     thd->spcont= octx;
 
     /* set callers_arena to thd, for upper-level function to work */
     thd->spcont->callers_arena= thd;
   }
 
-  if (!(nctx= rcontext_create(thd, true, NULL)))
+  if (!(nctx= rcontext_create(thd, NULL)))
   {
     delete nctx; /* Delete nctx if it was init() that failed. */
     thd->spcont= save_spcont;
     DBUG_RETURN(TRUE);
   }
-#ifndef DBUG_OFF
   nctx->sp= this;
-#endif
 
   if (params > 0)
   {
@@ -2031,13 +2006,32 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
     DBUG_PRINT("info",(" %.*s: eval args done", (int) m_name.length, 
                        m_name.str));
   }
+
   save_enable_slow_log= thd->enable_slow_log;
-  if (!(m_flags & LOG_SLOW_STATEMENTS) && save_enable_slow_log)
+
+  /*
+    Disable slow log if:
+    - Slow logging is enabled (no change needed)
+    - This is a normal SP (not event log)
+    - If we have not explicitely disabled logging of SP
+  */
+  if (save_enable_slow_log &&
+      ((!(m_flags & LOG_SLOW_STATEMENTS) &&
+        (thd->variables.log_slow_disabled_statements & LOG_SLOW_DISABLE_SP))))
   {
     DBUG_PRINT("info", ("Disabling slow log for the execution"));
     thd->enable_slow_log= FALSE;
   }
-  if (!(m_flags & LOG_GENERAL_LOG) && !(thd->variables.option_bits & OPTION_LOG_OFF))
+
+  /*
+    Disable general log if:
+    - If general log is enabled (no change needed)
+    - This is a normal SP (not event log)
+    - If we have not explicitely disabled logging of SP
+  */
+  if (!(thd->variables.option_bits & OPTION_LOG_OFF) &&
+      (!(m_flags & LOG_GENERAL_LOG) &&
+       (thd->variables.log_disabled_statements & LOG_DISABLE_SP)))
   {
     DBUG_PRINT("info", ("Disabling general log for the execution"));
     save_log_general= true;
@@ -2049,18 +2043,37 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   Security_context *save_security_ctx= 0;
   if (!err_status)
-    err_status= set_routine_security_ctx(thd, this, TRUE, &save_security_ctx);
+    err_status= set_routine_security_ctx(thd, this, &save_security_ctx);
 #endif
 
   if (!err_status)
   {
+    /*
+      Normally the counter is not reset between parsing and first execution,
+      but it is possible in case of error to have parsing on one CALL and
+      first execution (where VIEW will be parsed and added). So we store the
+      counter after parsing and restore it before execution just to avoid
+      repeating SELECT numbers.
+    */
+    thd->select_number= m_select_number;
+
     err_status= execute(thd, TRUE);
     DBUG_PRINT("info", ("execute returned %d", (int) err_status));
+    /*
+      This execution of the SP was aborted with an error (e.g. "Table not
+      found").  However it might still have consumed some numbers from the
+      thd->select_number counter.  The next sp->exec() call must not use the
+      consumed numbers, so we remember the first free number (We know that
+      nobody will use it as this execution has stopped with an error).
+    */
+    if (err_status)
+      set_select_number(thd->select_number);
   }
 
   if (save_log_general)
     thd->variables.option_bits &= ~OPTION_LOG_OFF;
   thd->enable_slow_log= save_enable_slow_log;
+
   /*
     In the case when we weren't able to employ reuse mechanism for
     OUT/INOUT paranmeters, we should reallocate memory. This
@@ -2315,9 +2328,7 @@ sp_head::backpatch_goto(THD *thd, sp_label *lab,sp_label *lab_begin_block)
       */
       continue;
     }
-    if (my_strcasecmp(system_charset_info,
-                      bp->lab->name.str,
-                      lab->name.str) == 0)
+    if (lex_string_cmp(system_charset_info, &bp->lab->name, &lab->name) == 0)
     {
       if (bp->instr_type == GOTO)
       {
@@ -2466,27 +2477,6 @@ sp_head::set_info(longlong created, longlong modified,
 
 
 void
-sp_head::set_definer(const char *definer, uint definerlen)
-{
-  char user_name_holder[USERNAME_LENGTH + 1];
-  LEX_CSTRING user_name= { user_name_holder, USERNAME_LENGTH };
-
-  char host_name_holder[HOSTNAME_LENGTH + 1];
-  LEX_CSTRING host_name= { host_name_holder, HOSTNAME_LENGTH };
-
-  if (parse_user(definer, definerlen, user_name_holder, &user_name.length,
-                 host_name_holder, &host_name.length) &&
-      user_name.length && !host_name.length)
-  {
-    // 'user@' -> 'user@%'
-    host_name= host_not_specified;
-  }
-
-  set_definer(&user_name, &host_name);
-}
-
-
-void
 sp_head::reset_thd_mem_root(THD *thd)
 {
   DBUG_ENTER("sp_head::reset_thd_mem_root");
@@ -2560,7 +2550,7 @@ bool check_show_routine_access(THD *thd, sp_head *sp, bool *full_access)
                           thd->security_ctx->priv_host)));
   if (!*full_access)
     return check_some_routine_access(thd, sp->m_db.str, sp->m_name.str,
-                                     sp->m_type == TYPE_ENUM_PROCEDURE);
+                                     sp->m_handler);
   return 0;
 }
 
@@ -2569,9 +2559,8 @@ bool check_show_routine_access(THD *thd, sp_head *sp, bool *full_access)
   Collect metadata for SHOW CREATE statement for stored routines.
 
   @param thd  Thread context.
-  @param type         Stored routine type
-  @param type         Stored routine type
-                      (TYPE_ENUM_PROCEDURE or TYPE_ENUM_FUNCTION)
+  @param sph          Stored routine handler
+  @param fields       Item list to populate
 
   @return Error status.
     @retval FALSE on success
@@ -2579,13 +2568,11 @@ bool check_show_routine_access(THD *thd, sp_head *sp, bool *full_access)
 */
 
 void
-sp_head::show_create_routine_get_fields(THD *thd, int type, List<Item> *fields)
+sp_head::show_create_routine_get_fields(THD *thd, const Sp_handler *sph,
+                                                  List<Item> *fields)
 {
-  const char *col1_caption= type == TYPE_ENUM_PROCEDURE ?
-                            "Procedure" : "Function";
-
-  const char *col3_caption= type == TYPE_ENUM_PROCEDURE ?
-                            "Create Procedure" : "Create Function";
+  const char *col1_caption= sph->show_create_routine_col1_caption();
+  const char *col3_caption= sph->show_create_routine_col3_caption();
 
   MEM_ROOT *mem_root= thd->mem_root;
 
@@ -2632,8 +2619,7 @@ sp_head::show_create_routine_get_fields(THD *thd, int type, List<Item> *fields)
   Implement SHOW CREATE statement for stored routines.
 
   @param thd  Thread context.
-  @param type         Stored routine type
-                      (TYPE_ENUM_PROCEDURE or TYPE_ENUM_FUNCTION)
+  @param sph  Stored routine handler
 
   @return Error status.
     @retval FALSE on success
@@ -2641,13 +2627,10 @@ sp_head::show_create_routine_get_fields(THD *thd, int type, List<Item> *fields)
 */
 
 bool
-sp_head::show_create_routine(THD *thd, int type)
+sp_head::show_create_routine(THD *thd, const Sp_handler *sph)
 {
-  const char *col1_caption= type == TYPE_ENUM_PROCEDURE ?
-                            "Procedure" : "Function";
-
-  const char *col3_caption= type == TYPE_ENUM_PROCEDURE ?
-                            "Create Procedure" : "Create Function";
+  const char *col1_caption= sph->show_create_routine_col1_caption();
+  const char *col3_caption= sph->show_create_routine_col3_caption();
 
   bool err_status;
 
@@ -2661,9 +2644,6 @@ sp_head::show_create_routine(THD *thd, int type)
 
   DBUG_ENTER("sp_head::show_create_routine");
   DBUG_PRINT("info", ("routine %s", m_name.str));
-
-  DBUG_ASSERT(type == TYPE_ENUM_PROCEDURE ||
-              type == TYPE_ENUM_FUNCTION);
 
   if (check_show_routine_access(thd, this, &full_access))
     DBUG_RETURN(TRUE);
@@ -2787,6 +2767,29 @@ bool sp_head::add_instr_jump_forward_with_backpatch(THD *thd,
   if (i == NULL || add_instr(i))
     return true;
   push_backpatch(thd, i, lab);
+  return false;
+}
+
+
+bool sp_head::add_instr_freturn(THD *thd, sp_pcontext *spcont,
+                                Item *item, LEX *lex)
+{
+  sp_instr_freturn *i= new (thd->mem_root)
+                       sp_instr_freturn(instructions(), spcont, item,
+                       m_return_field_def.type_handler(), thd->lex);
+  if (i == NULL || add_instr(i))
+    return true;
+  m_flags|= sp_head::HAS_RETURN;
+  return false;
+}
+
+
+bool sp_head::add_instr_preturn(THD *thd, sp_pcontext *spcont)
+{
+  sp_instr_preturn *i= new (thd->mem_root)
+                       sp_instr_preturn(instructions(), spcont);
+  if (i == NULL || add_instr(i))
+    return true;
   return false;
 }
 
@@ -3230,14 +3233,29 @@ int
 sp_instr_stmt::execute(THD *thd, uint *nextp)
 {
   int res;
+  bool save_enable_slow_log;
+  const CSET_STRING query_backup= thd->query_string;
+  QUERY_START_TIME_INFO time_info;
+  Sub_statement_state backup_state;
   DBUG_ENTER("sp_instr_stmt::execute");
   DBUG_PRINT("info", ("command: %d", m_lex_keeper.sql_command()));
 
-  const CSET_STRING query_backup= thd->query_string;
 #if defined(ENABLED_PROFILING)
   /* This s-p instr is profilable and will be captured. */
   thd->profiling.set_query_source(m_query.str, m_query.length);
 #endif
+
+  if ((save_enable_slow_log= thd->enable_slow_log))
+  {
+    /*
+      Save start time info for the CALL statement and overwrite it with the
+      current time for log_slow_statement() to log the individual query timing.
+    */
+    thd->get_time(&time_info);
+    thd->set_time();
+  }
+  thd->store_slow_query_state(&backup_state);
+
   if (!(res= alloc_query(thd, m_query.str, m_query.length)) &&
       !(res=subst_spvars(thd, this, &m_query)))
   {
@@ -3250,6 +3268,7 @@ sp_instr_stmt::execute(THD *thd, uint *nextp)
     if (query_cache_send_result_to_client(thd, thd->query(),
                                           thd->query_length()) <= 0)
     {
+      thd->reset_slow_query_state();
       res= m_lex_keeper.reset_lex_and_exec_core(thd, nextp, FALSE, this);
       bool log_slow= !res && thd->enable_slow_log;
 
@@ -3269,6 +3288,15 @@ sp_instr_stmt::execute(THD *thd, uint *nextp)
 
       if (log_slow)
         log_slow_statement(thd);
+
+      /*
+        Restore enable_slow_log, that can be changed by a admin or call
+        command
+      */
+      thd->enable_slow_log= save_enable_slow_log;
+
+      /* Add the number of rows to thd for the 'call' statistics */
+      thd->add_slow_query_state(&backup_state);
     }
     else
     {
@@ -3289,6 +3317,10 @@ sp_instr_stmt::execute(THD *thd, uint *nextp)
       thd->get_stmt_da()->reset_diagnostics_area();
     }
   }
+  /* Restore the original query start time */
+  if (thd->enable_slow_log)
+    thd->set_time(&time_info);
+
   DBUG_RETURN(res || thd->is_error());
 }
 
@@ -3391,7 +3423,7 @@ sp_instr_set::print(String *str)
   str->qs_append(STRING_WITH_LEN("set "));
   if (var)
   {
-    str->qs_append(var->name.str, var->name.length);
+    str->qs_append(&var->name);
     str->qs_append('@');
   }
   str->qs_append(m_offset);
@@ -3437,9 +3469,9 @@ sp_instr_set_row_field::print(String *str)
   if (str->reserve(rsrv))
     return;
   str->qs_append(STRING_WITH_LEN("set "));
-    str->qs_append(var->name.str, var->name.length);
+  str->qs_append(&var->name);
   str->qs_append('.');
-  str->qs_append(def->field_name.str, def->field_name.length);
+  str->qs_append(&def->field_name);
   str->qs_append('@');
   str->qs_append(m_offset);
   str->qs_append('[');
@@ -3495,13 +3527,13 @@ sp_instr_set_row_field_by_name::print(String *str)
   if (str->reserve(rsrv))
     return;
   str->qs_append(STRING_WITH_LEN("set "));
-    str->qs_append(var->name.str, var->name.length);
+  str->qs_append(&var->name);
   str->qs_append('.');
-  str->qs_append(m_field_name.str, m_field_name.length);
+  str->qs_append(&m_field_name);
   str->qs_append('@');
   str->qs_append(m_offset);
   str->qs_append("[\"",2);
-  str->qs_append(m_field_name.str, m_field_name.length);
+  str->qs_append(&m_field_name);
   str->qs_append("\"]",2);
   str->qs_append(' ');
   m_value->print(str, enum_query_type(QT_ORDINARY |
@@ -4154,7 +4186,7 @@ sp_instr_cfetch::print(String *str)
     if (str->reserve(pv->name.length+SP_INSTR_UINT_MAXLEN+2))
       return;
     str->qs_append(' ');
-    str->qs_append(pv->name.str, pv->name.length);
+    str->qs_append(&pv->name);
     str->qs_append('@');
     str->qs_append(pv->offset);
   }
@@ -4750,5 +4782,70 @@ sp_head::add_set_for_loop_cursor_param_variables(THD *thd,
                            param_lex, last))
       return true;
   }
+  return false;
+}
+
+
+bool sp_head::spvar_fill_row(THD *thd,
+                             sp_variable *spvar,
+                             Row_definition_list *defs)
+{
+  spvar->field_def.field_name= spvar->name;
+  if (fill_spvar_definition(thd, &spvar->field_def))
+    return true;
+  row_fill_field_definitions(thd, defs);
+  spvar->field_def.set_row_field_definitions(defs);
+  return false;
+}
+
+
+bool sp_head::spvar_fill_type_reference(THD *thd,
+                                        sp_variable *spvar,
+                                        const LEX_CSTRING &table,
+                                        const LEX_CSTRING &col)
+{
+  Qualified_column_ident *ref;
+  if (!(ref= new (thd->mem_root) Qualified_column_ident(&table, &col)))
+    return true;
+  fill_spvar_using_type_reference(spvar, ref);
+  return false;
+}
+
+
+bool sp_head::spvar_fill_type_reference(THD *thd,
+                                        sp_variable *spvar,
+                                        const LEX_CSTRING &db,
+                                        const LEX_CSTRING &table,
+                                        const LEX_CSTRING &col)
+{
+  Qualified_column_ident *ref;
+  if (!(ref= new (thd->mem_root) Qualified_column_ident(thd, &db, &table, &col)))
+    return true;
+  fill_spvar_using_type_reference(spvar, ref);
+  return false;
+}
+
+
+bool sp_head::spvar_fill_table_rowtype_reference(THD *thd,
+                                                 sp_variable *spvar,
+                                                 const LEX_CSTRING &table)
+{
+  Table_ident *ref;
+  if (!(ref= new (thd->mem_root) Table_ident(&table)))
+    return true;
+  fill_spvar_using_table_rowtype_reference(thd, spvar, ref);
+  return false;
+}
+
+
+bool sp_head::spvar_fill_table_rowtype_reference(THD *thd,
+                                                 sp_variable *spvar,
+                                                 const LEX_CSTRING &db,
+                                                 const LEX_CSTRING &table)
+{
+  Table_ident *ref;
+  if (!(ref= new (thd->mem_root) Table_ident(thd, &db, &table, false)))
+    return true;
+  fill_spvar_using_table_rowtype_reference(thd, spvar, ref);
   return false;
 }

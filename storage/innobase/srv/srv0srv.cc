@@ -172,10 +172,6 @@ my_bool	srv_numa_interleave;
 my_bool	srv_use_atomic_writes;
 /** innodb_compression_algorithm; used with page compression */
 ulong	innodb_compression_algorithm;
-/** innodb_mtflush_threads; number of threads used for multi-threaded flush */
-long srv_mtflush_threads;
-/** innodb_use_mtflush; whether to use multi threaded flush. */
-my_bool	srv_use_mtflush;
 
 #ifdef UNIV_DEBUG
 /** Used by SET GLOBAL innodb_master_thread_disabled_debug = X. */
@@ -465,12 +461,6 @@ ib_mutex_t	srv_monitor_file_mutex;
 
 /** Temporary file for innodb monitor output */
 FILE*	srv_monitor_file;
-/** Mutex for locking srv_dict_tmpfile. Not created if srv_read_only_mode.
-This mutex has a very high rank; threads reserving it should not
-be holding any InnoDB latches. */
-ib_mutex_t	srv_dict_tmpfile_mutex;
-/** Temporary file for output from the data dictionary */
-FILE*	srv_dict_tmpfile;
 /** Mutex for locking srv_misc_tmpfile. Not created if srv_read_only_mode.
 This mutex has a very low rank; threads reserving it should not
 acquire any further latches or sleep before releasing this one. */
@@ -1345,7 +1335,7 @@ srv_printf_innodb_monitor(
 		"Total large memory allocated " ULINTPF "\n"
 		"Dictionary memory allocated " ULINTPF "\n",
 		os_total_large_mem_allocated,
-		dict_sys->size);
+		dict_sys_get_size());
 
 	buf_print_io(file);
 

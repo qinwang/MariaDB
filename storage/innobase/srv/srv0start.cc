@@ -78,12 +78,11 @@ Created 2/16/1996 Heikki Tuuri
 #include "btr0defragment.h"
 #include "fsp0sysspace.h"
 #include "row0trunc.h"
-#include <mysql/service_wsrep.h>
+#include "mysql/service_wsrep.h" /* wsrep_recovery */
 #include "trx0rseg.h"
 #include "os0proc.h"
 #include "buf0flu.h"
 #include "buf0rea.h"
-#include "buf0mtflu.h"
 #include "dict0boot.h"
 #include "dict0load.h"
 #include "dict0stats_bg.h"
@@ -191,9 +190,7 @@ static ulint		n[SRV_MAX_N_IO_THREADS + 6];
 /** io_handler_thread identifiers, 32 is the maximum number of purge threads  */
 /** 6 is the ? */
 #define	START_OLD_THREAD_CNT	(SRV_MAX_N_IO_THREADS + 6 + 32)
-static os_thread_id_t	thread_ids[SRV_MAX_N_IO_THREADS + 6 + 32 + MTFLUSH_MAX_WORKER];
-/* Thread contex data for multi-threaded flush */
-void *mtflush_ctx=NULL;
+static os_thread_id_t	thread_ids[SRV_MAX_N_IO_THREADS + 6 + 32];
 
 /** Thead handles */
 static os_thread_t	thread_handles[SRV_MAX_N_IO_THREADS + 6 + 32];
@@ -890,12 +887,30 @@ srv_undo_tablespaces_init(bool create_new_db)
 	the system tablespace (0). If we are creating a new instance then
 	we build the undo_tablespace_ids ourselves since they don't
 	already exist. */
+	n_undo_tablespaces = create_new_db
+		|| srv_operation == SRV_OPERATION_BACKUP
+		|| srv_operation == SRV_OPERATION_RESTORE_DELTA
+		? srv_undo_tablespaces
+		: trx_rseg_get_n_undo_tablespaces(undo_tablespace_ids);
+	srv_undo_tablespaces_active = srv_undo_tablespaces;
 
-	if (!create_new_db && srv_operation == SRV_OPERATION_NORMAL) {
-		n_undo_tablespaces = trx_rseg_get_n_undo_tablespaces(
-			undo_tablespace_ids);
-
-		srv_undo_tablespaces_active = n_undo_tablespaces;
+	switch (srv_operation) {
+	case SRV_OPERATION_RESTORE_DELTA:
+	case SRV_OPERATION_BACKUP:
+		/* MDEV-13561 FIXME: Determine srv_undo_space_id_start
+		from the undo001 file. */
+		srv_undo_space_id_start = 1;
+		for (i = 0; i < n_undo_tablespaces; i++) {
+			undo_tablespace_ids[i] = i + srv_undo_space_id_start;
+		}
+		break;
+	case SRV_OPERATION_NORMAL:
+		if (create_new_db) {
+			break;
+		}
+		/* fall through */
+	case SRV_OPERATION_RESTORE:
+		ut_ad(!create_new_db);
 
 		/* Check if any of the UNDO tablespace needs fix-up because
 		server crashed while truncate was active on UNDO tablespace.*/
@@ -929,14 +944,7 @@ srv_undo_tablespaces_init(bool create_new_db)
 					undo_tablespace_ids[i]);
 			}
 		}
-	} else {
-		srv_undo_tablespaces_active = srv_undo_tablespaces;
-		n_undo_tablespaces = srv_undo_tablespaces;
-
-		if (n_undo_tablespaces != 0) {
-			srv_undo_space_id_start = undo_tablespace_ids[0];
-			prev_space_id = srv_undo_space_id_start - 1;
-		}
+		break;
 	}
 
 	/* Open all the undo tablespaces that are currently in use. If we
@@ -1296,10 +1304,6 @@ srv_shutdown_all_bg_threads()
 			}
 
 			os_event_set(buf_flush_event);
-
-			if (srv_use_mtflush) {
-				buf_mtflu_io_thread_exit();
-			}
 		}
 
 		if (!os_thread_count) {
@@ -1308,6 +1312,7 @@ srv_shutdown_all_bg_threads()
 
 		switch (srv_operation) {
 		case SRV_OPERATION_BACKUP:
+		case SRV_OPERATION_RESTORE_DELTA:
 			break;
 		case SRV_OPERATION_NORMAL:
 		case SRV_OPERATION_RESTORE:
@@ -1752,15 +1757,6 @@ innobase_start_or_create_for_mysql()
 			}
 		}
 
-		mutex_create(LATCH_ID_SRV_DICT_TMPFILE,
-			     &srv_dict_tmpfile_mutex);
-
-		srv_dict_tmpfile = os_file_create_tmpfile(NULL);
-
-		if (!srv_dict_tmpfile && err == DB_SUCCESS) {
-			err = DB_ERROR;
-		}
-
 		mutex_create(LATCH_ID_SRV_MISC_TMPFILE,
 			     &srv_misc_tmpfile_mutex);
 
@@ -2198,14 +2194,6 @@ files_checked:
 
 		recv_sys->dblwr.pages.clear();
 
-		if (err == DB_SUCCESS && !srv_read_only_mode) {
-			log_mutex_enter();
-			if (log_sys->is_encrypted() && !log_crypt_init()) {
-				err = DB_ERROR;
-			}
-			log_mutex_exit();
-		}
-
 		if (err == DB_SUCCESS) {
 			/* Initialize the change buffer. */
 			err = dict_boot();
@@ -2630,19 +2618,6 @@ files_checked:
 	if (!srv_read_only_mode) {
 		/* wake main loop of page cleaner up */
 		os_event_set(buf_flush_event);
-
-		if (srv_use_mtflush) {
-			/* Start multi-threaded flush threads */
-			mtflush_ctx = buf_mtflu_handler_init(
-				srv_mtflush_threads,
-				srv_buf_pool_instances);
-
-			/* Set up the thread ids */
-			buf_mtflu_set_thread_ids(
-				srv_mtflush_threads,
-				mtflush_ctx,
-				(thread_ids + 6 + 32));
-		}
 	}
 
 	if (srv_print_verbose_log) {
@@ -2677,6 +2652,7 @@ files_checked:
 		*/
 		if (!wsrep_recovery) {
 #endif /* WITH_WSREP */
+
 		/* Create the buffer pool dump/load thread */
 		srv_buf_dump_thread_active = true;
 		buf_dump_thread_handle=
@@ -2695,18 +2671,9 @@ files_checked:
 		will flush dirty pages and that might need e.g.
 		fil_crypt_threads_event. */
 		fil_system_enter();
+		btr_scrub_init();
 		fil_crypt_threads_init();
 		fil_system_exit();
-
-		/*
-		  Create a checkpoint before logging anything new, so that
-		  the current encryption key in use is definitely logged
-		  before any log blocks encrypted with that key.
-		*/
-		log_make_checkpoint_at(LSN_MAX, TRUE);
-
-		/* Init data for datafile scrub threads */
-		btr_scrub_init();
 
 		/* Initialize online defragmentation. */
 		btr_defragment_init();
@@ -2779,6 +2746,7 @@ innodb_shutdown()
 	switch (srv_operation) {
 	case SRV_OPERATION_BACKUP:
 	case SRV_OPERATION_RESTORE:
+	case SRV_OPERATION_RESTORE_DELTA:
 		fil_close_all_files();
 		break;
 	case SRV_OPERATION_NORMAL:
@@ -2802,11 +2770,6 @@ innodb_shutdown()
 			unlink(srv_monitor_file_name);
 			ut_free(srv_monitor_file_name);
 		}
-	}
-
-	if (srv_dict_tmpfile) {
-		fclose(srv_dict_tmpfile);
-		srv_dict_tmpfile = 0;
 	}
 
 	if (srv_misc_tmpfile) {
@@ -2872,7 +2835,6 @@ innodb_shutdown()
 	the temp files that the cover. */
 	if (!srv_read_only_mode) {
 		mutex_free(&srv_monitor_file_mutex);
-		mutex_free(&srv_dict_tmpfile_mutex);
 		mutex_free(&srv_misc_tmpfile_mutex);
 	}
 

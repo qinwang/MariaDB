@@ -51,12 +51,23 @@ bool wsrep_on_update (sys_var *self, THD* thd, enum_var_type var_type)
   return false;
 }
 
-bool wsrep_causal_reads_update (SV *sv)
+bool wsrep_causal_reads_update (sys_var *self, THD* thd, enum_var_type var_type)
 {
-  if (sv->wsrep_causal_reads) {
-    sv->wsrep_sync_wait |= WSREP_SYNC_WAIT_BEFORE_READ;
+  // global setting should not affect session setting.
+  // if (var_type == OPT_GLOBAL) {
+  //   thd->variables.wsrep_causal_reads = global_system_variables.wsrep_causal_reads;
+  // }
+  if (thd->variables.wsrep_causal_reads) {
+    thd->variables.wsrep_sync_wait |= WSREP_SYNC_WAIT_BEFORE_READ;
   } else {
-    sv->wsrep_sync_wait &= ~WSREP_SYNC_WAIT_BEFORE_READ;
+    thd->variables.wsrep_sync_wait &= ~WSREP_SYNC_WAIT_BEFORE_READ;
+  }
+
+  // update global settings too.
+  if (global_system_variables.wsrep_causal_reads) {
+      global_system_variables.wsrep_sync_wait |= WSREP_SYNC_WAIT_BEFORE_READ;
+  } else {
+      global_system_variables.wsrep_sync_wait &= ~WSREP_SYNC_WAIT_BEFORE_READ;
   }
 
   return false;
@@ -64,12 +75,17 @@ bool wsrep_causal_reads_update (SV *sv)
 
 bool wsrep_sync_wait_update (sys_var* self, THD* thd, enum_var_type var_type)
 {
-  if (var_type == OPT_GLOBAL)
-    global_system_variables.wsrep_causal_reads =
-      MY_TEST(global_system_variables.wsrep_sync_wait & WSREP_SYNC_WAIT_BEFORE_READ);
-  else
-    thd->variables.wsrep_causal_reads =
-      MY_TEST(thd->variables.wsrep_sync_wait & WSREP_SYNC_WAIT_BEFORE_READ);
+  // global setting should not affect session setting.
+  // if (var_type == OPT_GLOBAL) {
+  //   thd->variables.wsrep_sync_wait = global_system_variables.wsrep_sync_wait;
+  // }
+  thd->variables.wsrep_causal_reads = thd->variables.wsrep_sync_wait &
+          WSREP_SYNC_WAIT_BEFORE_READ;
+
+  // update global settings too
+  global_system_variables.wsrep_causal_reads = global_system_variables.wsrep_sync_wait &
+          WSREP_SYNC_WAIT_BEFORE_READ;
+
   return false;
 }
 

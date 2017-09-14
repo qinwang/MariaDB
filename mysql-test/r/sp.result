@@ -3211,7 +3211,7 @@ drop procedure bug10961|
 DROP PROCEDURE IF EXISTS bug6866|
 DROP VIEW IF EXISTS tv|
 Warnings:
-Note	4068	Unknown VIEW: 'test.tv'
+Note	4089	Unknown VIEW: 'test.tv'
 DROP TABLE IF EXISTS tt1,tt2,tt3|
 Warnings:
 Note	1051	Unknown table 'test.tt1'
@@ -5742,7 +5742,7 @@ SELECT @@max_sp_recursion_depth|
 CALL bug23760_test_row_count2(2)|
 SELECT ROW_COUNT()|
 ROW_COUNT()
-1
+16
 SELECT * FROM bug23760_log ORDER BY id|
 id	reason	ammount
 1	Test is working	7
@@ -7823,7 +7823,7 @@ ERROR 23000: Duplicate entry '2' for key 'PRIMARY'
 show warnings;
 Level	Code	Message
 Error	1062	Duplicate entry '2' for key 'PRIMARY'
-Note	4070	At line 5 in test.p1
+Note	4091	At line 5 in test.p1
 select * from t1;
 id
 1
@@ -8088,6 +8088,34 @@ CALL sp1();
 CALL sp1();
 drop user 'foo'@'%';
 drop procedure sp1;
+#
+# MDEV-10972: Insert from select / view / union --
+# repeatable crash in 10.1, 10.2 Linux/Mac/Windows
+#
+create table t (id int auto_increment primary key);
+insert into t values (9494),(9495),(9496),(9497),(9498),(9499),(9500),(9501),(9502),(9503);
+create VIEW v AS
+select id from t
+union
+select id from t
+;
+drop procedure if exists p;
+Warnings:
+Note	1305	PROCEDURE test.p does not exist
+create procedure p()
+insert into tmp_t select t.id from (
+select id from v
+union
+select id from v
+) sq
+inner join t on (sq.id = t.id);
+CALL p();
+ERROR 42S02: Table 'test.tmp_t' doesn't exist
+create table tmp_t (id int null);
+CALL p();
+drop procedure p;
+drop view v;
+drop table t, tmp_t;
 #End of 10.1 tests
 #
 # MDEV-11081: CURSOR for query with GROUP BY
@@ -8128,6 +8156,23 @@ v_name	v_total
 c	1
 DROP PROCEDURE p1;
 DROP TABLE t1;
+#
+# MDEV-13346: CURSOR a query with GROUP BY using derived table
+#
+CREATE PROCEDURE p1()
+BEGIN
+DECLARE c CURSOR FOR
+SELECT
+IFNULL(NULL,1) AS col
+FROM
+( select 1 as id ) AS t
+GROUP BY t.id
+;
+OPEN c;
+END
+|
+CALL p1();
+DROP PROCEDURE p1;
 #
 # Start of 10.3 tests
 #
@@ -8234,3 +8279,28 @@ rec=(10)
 c
 rec=(20)
 DROP PROCEDURE p1;
+# Test affected rows from an sp
+create table t1 (a int);
+create procedure p1()
+begin
+insert into t1 values(1);
+insert into t1 values(2);
+end;
+$$
+create procedure p2()
+begin
+insert into t1 values(1);
+call p1();
+select row_count();
+insert into t1 values(2);
+insert into t1 values(2);
+end;
+$$
+CALL p2();
+row_count()
+2
+affected rows: 1
+affected rows: 5
+DROP PROCEDURE p1;
+DROP PROCEDURE p2;
+drop table t1;

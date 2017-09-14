@@ -36,7 +36,6 @@ SET(INNOBASE_SOURCES
 	buf/buf0flu.cc
 	buf/buf0lru.cc
 	buf/buf0rea.cc
-	buf/buf0mtflu.cc
 	data/data0data.cc
 	data/data0type.cc
 	dict/dict0boot.cc
@@ -74,7 +73,6 @@ SET(INNOBASE_SOURCES
 	gis/gis0sea.cc
 	fts/fts0plugin.cc
 	handler/ha_innodb.cc
-#	handler/ha_innopart.cc
 	handler/handler0alter.cc
 	handler/i_s.cc
 	ibuf/ibuf0ibuf.cc
@@ -151,14 +149,7 @@ SET(INNOBASE_SOURCES
 	ut/ut0wqueue.cc
 	ut/ut0timer.cc)
 
-IF(WITH_INNODB)
-  # Legacy option
-  SET(WITH_INNOBASE_STORAGE_ENGINE TRUE)
-ENDIF()
-
 MYSQL_ADD_PLUGIN(innobase ${INNOBASE_SOURCES} STORAGE_ENGINE
-#  MODULE_ONLY
-#  MODULE_OUTPUT_NAME ha_innodb
   DEFAULT RECOMPILE_FOR_EMBEDDED
   LINK_LIBRARIES
 	${ZLIB_LIBRARY}
@@ -167,8 +158,8 @@ MYSQL_ADD_PLUGIN(innobase ${INNOBASE_SOURCES} STORAGE_ENGINE
 	${LIBSYSTEMD}
 	${LINKER_SCRIPT})
 
-IF(WITH_INNOBASE_STORAGE_ENGINE)
-  ADD_DEPENDENCIES(innobase GenError)
+IF(NOT TARGET innobase)
+  RETURN()
 ENDIF()
 
 # A GCC bug causes crash when compiling these files on ARM64 with -O1+

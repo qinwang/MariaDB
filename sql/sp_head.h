@@ -27,7 +27,6 @@
   are dependencies on include order for set_var.h and item.h. This
   will be resolved later.
 */
-#include "my_global.h"                          /* NO_EMBEDDED_ACCESS_CHECKS */
 #include "sql_class.h"                          // THD, set_var.h: THD
 #include "set_var.h"                            // Item
 #include "sp_pcontext.h"                        // sp_pcontext
@@ -39,11 +38,6 @@
   @ingroup Runtime_Environment
   @{
 */
-
-// Values for the type enum. This reflects the order of the enum declaration
-// in the CREATE TABLE command.
-//#define TYPE_ENUM_FUNCTION  1 #define TYPE_ENUM_PROCEDURE 2 #define
-//TYPE_ENUM_TRIGGER   3 #define TYPE_ENUM_PROXY     4
 
 Item::Type
 sp_map_item_type(enum enum_field_types type);
@@ -130,7 +124,7 @@ public:
 
 
 bool
-check_routine_name(LEX_CSTRING *ident);
+check_routine_name(const LEX_CSTRING *ident);
 
 class sp_head :private Query_arena,
                public Database_qualified_name
@@ -173,7 +167,7 @@ public:
     HAS_COLUMN_TYPE_REFS= 8192
   };
 
-  stored_procedure_type m_type;
+  const Sp_handler *m_handler;
   uint m_flags;                 // Boolean attributes of a stored routine
 
   Column_definition m_return_field_def; /**< This is used for FUNCTIONs only. */
@@ -220,7 +214,7 @@ public:
     m_sp_cache_version= version_arg;
   }
 
-  sp_rcontext *rcontext_create(THD *thd, bool is_proc, Field *ret_value);
+  sp_rcontext *rcontext_create(THD *thd, Field *retval);
 
 private:
   /**
@@ -241,6 +235,7 @@ private:
   */
   uint32 unsafe_flags;
 
+  uint m_select_number;
 public:
   inline Stored_program_creation_ctx *get_creation_ctx()
   {
@@ -317,7 +312,7 @@ public:
   static void
   operator delete(void *ptr, size_t size) throw ();
 
-  sp_head(stored_procedure_type type);
+  sp_head(const Sp_handler *handler);
 
   /// Initialize after we have reset mem_root
   void
@@ -325,7 +320,7 @@ public:
 
   /** Copy sp name from parser. */
   void
-  init_sp_name(THD *thd, sp_name *spname);
+  init_sp_name(const sp_name *spname);
 
   /** Set the body-definition start position. */
   void
@@ -350,10 +345,11 @@ public:
   execute_procedure(THD *thd, List<Item> *args);
 
   static void
-  show_create_routine_get_fields(THD *thd, int type, List<Item> *fields);
+  show_create_routine_get_fields(THD *thd, const Sp_handler *sph,
+                                 List<Item> *fields);
 
   bool
-  show_create_routine(THD *thd, int type);
+  show_create_routine(THD *thd, const Sp_handler *sph);
 
   MEM_ROOT *get_main_mem_root() { return &main_mem_root; }
 
@@ -375,6 +371,12 @@ public:
     return add_instr_jump_forward_with_backpatch(thd, spcont,
                                                  spcont->last_label());
   }
+
+  bool
+  add_instr_freturn(THD *thd, sp_pcontext *spcont, Item *item, LEX *lex);
+
+  bool
+  add_instr_preturn(THD *thd, sp_pcontext *spcont);
 
   Item *adjust_assignment_source(THD *thd, Item *val, Item *val2);
   /**
@@ -622,7 +624,7 @@ public:
   char *create_string(THD *thd, ulong *lenp);
 
   Field *create_result_field(uint field_max_length, const LEX_CSTRING *field_name,
-                             TABLE *table);
+                             TABLE *table) const;
 
 
   /**
@@ -674,6 +676,8 @@ public:
     def->field_name= *name;
     return fill_spvar_definition(thd, def);
   }
+
+private:
   /**
     Set a column type reference for a parameter definition
   */
@@ -685,11 +689,41 @@ public:
     m_flags|= sp_head::HAS_COLUMN_TYPE_REFS;
   }
 
+  void fill_spvar_using_table_rowtype_reference(THD *thd,
+                                                sp_variable *spvar,
+                                                Table_ident *ref)
+  {
+    spvar->field_def.set_table_rowtype_ref(ref);
+    spvar->field_def.field_name= spvar->name;
+    fill_spvar_definition(thd, &spvar->field_def);
+    m_flags|= sp_head::HAS_COLUMN_TYPE_REFS;
+  }
+
+public:
+  bool spvar_fill_row(THD *thd, sp_variable *spvar, Row_definition_list *def);
+  bool spvar_fill_type_reference(THD *thd, sp_variable *spvar,
+                                 const LEX_CSTRING &table,
+                                 const LEX_CSTRING &column);
+  bool spvar_fill_type_reference(THD *thd, sp_variable *spvar,
+                                 const LEX_CSTRING &db,
+                                 const LEX_CSTRING &table,
+                                 const LEX_CSTRING &column);
+  bool spvar_fill_table_rowtype_reference(THD *thd, sp_variable *spvar,
+                                          const LEX_CSTRING &table);
+  bool spvar_fill_table_rowtype_reference(THD *thd, sp_variable *spvar,
+                                          const LEX_CSTRING &db,
+                                          const LEX_CSTRING &table);
+
   void set_chistics(const st_sp_chistics &chistics);
   void set_info(longlong created, longlong modified,
 		const st_sp_chistics &chistics, sql_mode_t sql_mode);
 
-  void set_definer(const char *definer, uint definerlen);
+  void set_definer(const char *definer, uint definerlen)
+  {
+    AUTHID tmp;
+    tmp.parse(definer, definerlen);
+    m_definer.copy(mem_root, &tmp.user, &tmp.host);
+  }
   void set_definer(const LEX_CSTRING *user_name, const LEX_CSTRING *host_name)
   {
     m_definer.copy(mem_root, user_name, host_name);
@@ -712,8 +746,6 @@ public:
     represents the code, during flow analysis.
   */
   void add_mark_lead(uint ip, List<sp_instr> *leads);
-
-  void recursion_level_error(THD *thd);
 
   inline sp_instr *
   get_instr(uint i)
@@ -785,6 +817,10 @@ public:
   }
 
   sp_pcontext *get_parse_context() { return m_pcont; }
+
+  void set_select_number(uint num) { m_select_number= num; }
+
+  bool check_execute_access(THD *thd) const;
 
 private:
 
@@ -1859,8 +1895,7 @@ void
 sp_restore_security_context(THD *thd, Security_context *backup);
 
 bool
-set_routine_security_ctx(THD *thd, sp_head *sp, bool is_proc,
-                         Security_context **save_ctx);
+set_routine_security_ctx(THD *thd, sp_head *sp, Security_context **save_ctx);
 #endif /* NO_EMBEDDED_ACCESS_CHECKS */
 
 TABLE_LIST *

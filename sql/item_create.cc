@@ -22,7 +22,7 @@
   Functions to create an item. Used by sql_yac.yy
 */
 
-#include <my_global.h>
+#include "mariadb.h"
 #include "sql_priv.h"
 /*
   It is necessary to include set_var.h instead of item.h because there
@@ -2624,6 +2624,19 @@ protected:
 };
 
 
+class Create_func_replace_oracle : public Create_func_arg3
+{
+public:
+  virtual Item *create_3_arg(THD *thd, Item *arg1, Item *arg2, Item *arg3);
+
+  static Create_func_replace_oracle s_singleton;
+
+protected:
+  Create_func_replace_oracle() {}
+  virtual ~Create_func_replace_oracle() {}
+};
+
+
 class Create_func_reverse : public Create_func_arg1
 {
 public:
@@ -3463,7 +3476,7 @@ Create_sp_func::create_with_db(THD *thd, LEX_CSTRING *db, LEX_CSTRING *name,
     arg_count= item_list->elements;
 
   qname= new (thd->mem_root) sp_name(db, name, use_explicit_name);
-  sp_add_used_routine(lex, thd, qname, TYPE_ENUM_FUNCTION);
+  sp_handler_function.add_used_routine(lex, thd, qname);
 
   if (arg_count > 0)
     func= new (thd->mem_root) Item_func_sp(thd, lex->current_context(), qname,
@@ -6253,6 +6266,16 @@ Create_func_release_lock::create_1_arg(THD *thd, Item *arg1)
 }
 
 
+Create_func_replace_oracle Create_func_replace_oracle::s_singleton;
+
+Item*
+Create_func_replace_oracle::create_3_arg(THD *thd, Item *arg1, Item *arg2,
+                                        Item *arg3)
+{
+  return new (thd->mem_root) Item_func_replace_oracle(thd, arg1, arg2, arg3);
+}
+
+
 Create_func_reverse Create_func_reverse::s_singleton;
 
 Item*
@@ -6898,6 +6921,7 @@ static Native_func_registry func_array[] =
   { { C_STRING_WITH_LEN("CENTROID") }, GEOM_BUILDER(Create_func_centroid)},
   { { C_STRING_WITH_LEN("CHARACTER_LENGTH") }, BUILDER(Create_func_char_length)},
   { { C_STRING_WITH_LEN("CHAR_LENGTH") }, BUILDER(Create_func_char_length)},
+  { { C_STRING_WITH_LEN("CHR") }, BUILDER(Create_func_chr)},
   { { C_STRING_WITH_LEN("COERCIBILITY") }, BUILDER(Create_func_coercibility)},
   { { C_STRING_WITH_LEN("COLUMN_CHECK") }, BUILDER(Create_func_dyncol_check)},
   { { C_STRING_WITH_LEN("COLUMN_EXISTS") }, BUILDER(Create_func_dyncol_exists)},
@@ -6911,7 +6935,6 @@ static Native_func_registry func_array[] =
   { { C_STRING_WITH_LEN("CONV") }, BUILDER(Create_func_conv)},
   { { C_STRING_WITH_LEN("CONVERT_TZ") }, BUILDER(Create_func_convert_tz)},
   { { C_STRING_WITH_LEN("CONVEXHULL") }, GEOM_BUILDER(Create_func_convexhull)},
-  { { C_STRING_WITH_LEN("CHR") }, BUILDER(Create_func_chr)},
   { { C_STRING_WITH_LEN("COS") }, BUILDER(Create_func_cos)},
   { { C_STRING_WITH_LEN("COT") }, BUILDER(Create_func_cot)},
   { { C_STRING_WITH_LEN("CRC32") }, BUILDER(Create_func_crc32)},
@@ -7086,6 +7109,8 @@ static Native_func_registry func_array[] =
   { { C_STRING_WITH_LEN("RADIANS") }, BUILDER(Create_func_radians)},
   { { C_STRING_WITH_LEN("RAND") }, BUILDER(Create_func_rand)},
   { { C_STRING_WITH_LEN("RELEASE_LOCK") }, BUILDER(Create_func_release_lock)},
+  { { C_STRING_WITH_LEN("REPLACE_ORACLE") },
+      BUILDER(Create_func_replace_oracle)},
   { { C_STRING_WITH_LEN("REVERSE") }, BUILDER(Create_func_reverse)},
   { { C_STRING_WITH_LEN("ROUND") }, BUILDER(Create_func_round)},
   { { C_STRING_WITH_LEN("RPAD") }, BUILDER(Create_func_rpad)},

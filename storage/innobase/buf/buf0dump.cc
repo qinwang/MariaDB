@@ -47,6 +47,8 @@ Created April 08, 2011 Vasil Dimov
 extern my_bool wsrep_recovery;
 #endif /* WITH_WSREP */
 
+#include "mysql/service_wsrep.h" /* wsrep_recovery */
+
 enum status_severity {
 	STATUS_VERBOSE,
 	STATUS_INFO,
@@ -810,12 +812,13 @@ DECLARE_THREAD(buf_dump_thread)(void*)
 	buf_load_status(STATUS_VERBOSE, "Loading of buffer pool not started");
 
 	if (srv_buffer_pool_load_at_startup) {
+
 #ifdef WITH_WSREP
 		if (!wsrep_recovery) {
 #endif /* WITH_WSREP */
-		buf_load();
+			buf_load();
 #ifdef WITH_WSREP
-                }
+		}
 #endif /* WITH_WSREP */
 	}
 
@@ -843,6 +846,7 @@ DECLARE_THREAD(buf_dump_thread)(void*)
 #ifdef WITH_WSREP
 		if (!wsrep_recovery) {
 #endif /* WITH_WSREP */
+
 		buf_dump(FALSE /* ignore shutdown down flag,
 		keep going even if we are in a shutdown state */);
 #ifdef WITH_WSREP

@@ -46,6 +46,9 @@ extern wsp::node_status local_status;
 /* returns the length of the host part of the address string */
 size_t wsrep_host_len(const char* addr, size_t addr_len);
 
+/* returns the length of the host part of the address string */
+size_t wsrep_host_len(const char* addr, size_t addr_len);
+
 namespace wsp {
 
 class Address {

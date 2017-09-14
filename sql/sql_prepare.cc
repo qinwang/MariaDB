@@ -84,7 +84,7 @@ When one supplies long data for a placeholder:
     at statement execute.
 */
 
-#include <my_global.h>                          /* NO_EMBEDDED_ACCESS_CHECKS */
+#include "mariadb.h"                          /* NO_EMBEDDED_ACCESS_CHECKS */
 #include "sql_priv.h"
 #include "unireg.h"
 #include "sql_class.h"                          // set_var.h: THD
@@ -2040,13 +2040,14 @@ static int mysql_test_show_binlogs(Prepared_statement *stmt)
     TRUE              error, error message is set in THD
 */
 
-static int mysql_test_show_create_routine(Prepared_statement *stmt, int type)
+static int mysql_test_show_create_routine(Prepared_statement *stmt,
+                                          const Sp_handler *sph)
 {
   DBUG_ENTER("mysql_test_show_binlogs");
   THD *thd= stmt->thd;
   List<Item> fields;
 
-  sp_head::show_create_routine_get_fields(thd, type, &fields);
+  sp_head::show_create_routine_get_fields(thd, sph, &fields);
     
   DBUG_RETURN(send_stmt_metadata(thd, stmt, &fields));
 }
@@ -2084,11 +2085,11 @@ static bool mysql_test_create_view(Prepared_statement *stmt)
   if (thd->open_temporary_tables(tables))
     goto err;
 
+  lex->context_analysis_only|= CONTEXT_ANALYSIS_ONLY_VIEW;
   if (open_normal_and_derived_tables(thd, tables, MYSQL_OPEN_FORCE_SHARED_MDL,
                                      DT_PREPARE))
     goto err;
 
-  lex->context_analysis_only|=  CONTEXT_ANALYSIS_ONLY_VIEW;
   res= select_like_stmt_test(stmt, 0, 0);
 
 err:
@@ -2436,14 +2437,14 @@ static bool check_prepared_statement(Prepared_statement *stmt)
     break;
 #endif /* EMBEDDED_LIBRARY */
   case SQLCOM_SHOW_CREATE_PROC:
-    if ((res= mysql_test_show_create_routine(stmt, TYPE_ENUM_PROCEDURE)) == 2)
+    if ((res= mysql_test_show_create_routine(stmt, &sp_handler_procedure)) == 2)
     {
       /* Statement and field info has already been sent */
       DBUG_RETURN(FALSE);
     }
     break;
   case SQLCOM_SHOW_CREATE_FUNC:
-    if ((res= mysql_test_show_create_routine(stmt, TYPE_ENUM_FUNCTION)) == 2)
+    if ((res= mysql_test_show_create_routine(stmt, &sp_handler_function)) == 2)
     {
       /* Statement and field info has already been sent */
       DBUG_RETURN(FALSE);
@@ -2952,7 +2953,7 @@ void reinit_stmt_before_use(THD *thd, LEX *lex)
       for (order= sl->order_list.first; order; order= order->next)
         order->item= &order->item_ptr;
       {
-#ifndef DBUG_OFF
+#ifdef DBUG_ASSERT_EXISTS
         bool res=
 #endif
           sl->handle_derived(lex, DT_REINIT);
@@ -4253,7 +4254,7 @@ Prepared_statement::execute_bulk_loop(String *expanded_query,
   packet_end= packet_end_arg;
   iterations= TRUE;
   start_param= true;
-#ifndef DBUG_OFF
+#ifdef DBUG_ASSERT_EXISTS
   Item *free_list_state= thd->free_list;
 #endif
   thd->select_number= select_number_after_prepare;
@@ -4478,7 +4479,7 @@ Prepared_statement::reprepare()
   {
     swap_prepared_statement(&copy);
     swap_parameter_array(param_array, copy.param_array, param_count);
-#ifndef DBUG_OFF
+#ifdef DBUG_ASSERT_EXISTS
     is_reprepared= TRUE;
 #endif
     /*

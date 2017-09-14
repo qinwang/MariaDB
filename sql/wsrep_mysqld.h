@@ -326,6 +326,7 @@ extern wsrep_seqno_t wsrep_locked_seqno;
     ? wsrep_forced_binlog_format : (ulong)(my_format))
 
 // prefix all messages with "WSREP"
+#ifdef WITH_WSREP
 #define WSREP_LOG(fun, ...)                                       \
     do {                                                          \
         char msg[1024] = {'\0'};                                  \
@@ -340,6 +341,11 @@ extern wsrep_seqno_t wsrep_locked_seqno;
 #define WSREP_ERROR(...) WSREP_LOG(sql_print_error,       ##__VA_ARGS__)
 
 
+#else
+// this is new way in MariDB 10.3, but it does not build currently 
+void wsrep_log(void (*fun)(const char *, ...), const char *format, ...);
+#define WSREP_LOG(fun, ...) wsrep_log(fun,  ## __VA_ARGS__)
+#endif
 #define WSREP_LOG_CONFLICT_THD(thd, role)                                      \
     WSREP_LOG(sql_print_information, 	                                       \
       "%s: \n "       	                                                       \
@@ -365,8 +371,7 @@ extern wsrep_seqno_t wsrep_locked_seqno;
 #define WSREP_PROVIDER_EXISTS                                                  \
   (wsrep_provider && strncasecmp(wsrep_provider, WSREP_NONE, FN_REFLEN))
 
-#define WSREP_QUERY(thd)                                \
-  (thd->query())
+#define WSREP_QUERY(thd) (thd->query())
 
 extern void wsrep_ready_wait();
 

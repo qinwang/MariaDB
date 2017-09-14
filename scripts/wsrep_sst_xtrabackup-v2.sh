@@ -35,6 +35,7 @@ XTRABACKUP_PID=""
 SST_PORT=""
 REMOTEIP=""
 REMOTEHOST=""
+tca=""
 tcert=""
 tpem=""
 tkey=""
@@ -262,15 +263,25 @@ get_transfer()
             wsrep_log_error "nc(netcat) not found in path: $PATH"
             exit 2
         fi
+
+        if [[ $encrypt -eq 2 || $encrypt -eq 3 || $encrypt -eq 4 ]]; then
+            wsrep_log_error "******** FATAL ERROR *********************** "
+            wsrep_log_error "* Using SSL encryption (encrypt= 2, 3, or 4) "
+            wsrep_log_error "* is not supported when using nc(netcat).    "
+            wsrep_log_error "******************************************** "
+            exit 22
+        fi
+
         wsrep_log_info "Using netcat as streamer"
         if [[ "$WSREP_SST_OPT_ROLE"  == "joiner" ]];then
-            if nc -h 2>&1 | grep -q ncat;then 
-                tcmd="nc -l ${TSST_PORT}"
+            if nc -h 2>&1 | grep -q ncat; then
+                tcmd="nc $sockopt -l ${TSST_PORT}"
             else 
-                tcmd="nc -dl ${TSST_PORT}"
+                tcmd="nc $sockopt -dl ${TSST_PORT}"
             fi
         else
-            tcmd="nc ${REMOTEIP} ${TSST_PORT}"
+            # netcat doesn't understand [] around IPv6 address
+            tcmd="nc ${REMOTEIP//[\[\]]/} ${TSST_PORT}"
         fi
     else
         tfmt='socat'
@@ -280,74 +291,112 @@ get_transfer()
             exit 2
         fi
 
-        if [[ $encrypt -eq 2 || $encrypt -eq 3 ]] && ! socat -V | grep -q "WITH_OPENSSL 1";then
-            wsrep_log_error "Encryption requested, but socat is not OpenSSL enabled (encrypt=$encrypt)"
-            exit 2
+        donor_extra=""
+        joiner_extra=""
+        if [[ $encrypt -eq 2 || $encrypt -eq 3 || $encrypt -eq 4 ]]; then
+            if ! socat -V | grep -q WITH_OPENSSL; then
+                wsrep_log_error "******** FATAL ERROR ****************** "
+                wsrep_log_error "* socat is not openssl enabled.         "
+                wsrep_log_error "* Unable to encrypt SST communications. "
+                wsrep_log_error "*************************************** "
+                exit 2
+            fi
+
+            # Determine the socat version
+            SOCAT_VERSION=`socat -V 2>&1 | grep -oe '[0-9]\.[0-9][\.0-9]*' | head -n1`
+            if [[ -z "$SOCAT_VERSION" ]]; then
+                wsrep_log_error "******** FATAL ERROR **************** "
+                wsrep_log_error "* Cannot determine the socat version. "
+                wsrep_log_error "************************************* "
+                exit 2
+            fi
+
+            # socat versions < 1.7.3 will have 512-bit dhparams (too small)
+            #       so create 2048-bit dhparams and send that as a parameter
+            # socat version >= 1.7.3, checks to see if the peername matches the hostname
+            #       set commonname="" to disable the peername checks
+            #
+            if ! check_for_version "$SOCAT_VERSION" "1.7.3"; then
+                if [[ "$WSREP_SST_OPT_ROLE"  == "joiner" ]]; then
+                    # dhparams check (will create ssl_dhparams if needed)
+                    check_for_dhparams
+                    joiner_extra=",dhparam=$ssl_dhparams"
+                fi
+            fi
+            if check_for_version "$SOCAT_VERSION" "1.7.3"; then
+                donor_extra=',commonname=""'
+            fi
         fi
 
-        if [[ $encrypt -eq 2 ]];then 
-            wsrep_log_info "Using openssl based encryption with socat: with crt and pem"
-            if [[ -z $tpem || -z $tcert ]];then 
-                wsrep_log_error "Both PEM and CRT files required"
-                exit 22
-            fi
+        if [[ $encrypt -eq 2 ]]; then
+            wsrep_log_warning "**** WARNING **** encrypt=2 is deprecated and will be removed in a future release"
+            wsrep_log_info "Using openssl based encryption with socat: with crt and ca"
+
+            verify_file_exists "$tcert" "Both certificate and CA files are required." \
+                                        "Please check the 'tcert' option.           "
+            verify_file_exists "$tca" "Both certificate and CA files are required." \
+                                      "Please check the 'tca' option.             "
+
             stagemsg+="-OpenSSL-Encrypted-2"
             if [[ "$WSREP_SST_OPT_ROLE"  == "joiner" ]];then
-                wsrep_log_info "Decrypting with cert=${tpem}, cafile=${tcert}"
-                tcmd="socat -u openssl-listen:${TSST_PORT},reuseaddr,cert=${tpem},cafile=${tcert}${sockopt} stdio"
+                wsrep_log_info "Decrypting with CERT: $tcert, CA: $tca"
+                tcmd="socat -u openssl-listen:${TSST_PORT},reuseaddr,cert=${tcert},cafile=${tca}${joiner_extra}${sockopt} stdio"
             else
-                wsrep_log_info "Encrypting with cert=${tpem}, cafile=${tcert}"
-                tcmd="socat -u stdio openssl-connect:${REMOTEHOST}:${TSST_PORT},cert=${tpem},cafile=${tcert}${sockopt}"
+                wsrep_log_info "Encrypting with CERT: $tcert, CA: $tca"
+                tcmd="socat -u stdio openssl-connect:${REMOTEIP}:${TSST_PORT},cert=${tcert},cafile=${tca}${donor_extra}${sockopt}"
             fi
         elif [[ $encrypt -eq 3 ]];then
+            wsrep_log_warning "**** WARNING **** encrypt=3 is deprecated and will be removed in a future release"
             wsrep_log_info "Using openssl based encryption with socat: with key and crt"
-            if [[ -z $tpem || -z $tkey ]];then
-                wsrep_log_error "Both certificate and key files required"
-                exit 22
-            fi
+
+            verify_file_exists "$tcert" "Both certificate and key files are required." \
+                                        "Please check the 'tcert' option.            "
+            verify_file_exists "$tkey" "Both certificate and key files are required." \
+                                       "Please check the 'tkey' option.             "
+
             stagemsg+="-OpenSSL-Encrypted-3"
             if [[ "$WSREP_SST_OPT_ROLE"  == "joiner" ]];then
-                if [[ -z $tcert ]];then
-                    wsrep_log_info "Decrypting with cert=${tpem}, key=${tkey}, verify=0"
+                wsrep_log_info "Decrypting with CERT: $tcert, KEY: $tkey"
+                tcmd="socat -u openssl-listen:${TSST_PORT},reuseaddr,cert=${tcert},key=${tkey},verify=0${joiner_extra}${sockopt} stdio"
                     tcmd="socat -u openssl-listen:${TSST_PORT},reuseaddr,cert=${tpem},key=${tkey},verify=0${sockopt} stdio"
                 else
-                    wsrep_log_info "Decrypting with cert=${tpem}, key=${tkey}, cafile=${tcert}"
-                    tcmd="socat -u openssl-listen:${TSST_PORT},reuseaddr,cert=${tpem},key=${tkey},cafile=${tcert}${sockopt} stdio"
-                fi
+                wsrep_log_info "Encrypting with CERT: $tcert, KEY: $tkey"
+                tcmd="socat -u stdio openssl-connect:${REMOTEIP}:${TSST_PORT},cert=${tcert},key=${tkey},verify=0${sockopt}"
+            fi
+        elif [[ $encrypt -eq 4 ]]; then
+            wsrep_log_info "Using openssl based encryption with socat: with key, crt, and ca"
+
+            verify_file_exists "$ssl_ca" "CA, certificate, and key files are required." \
+                                         "Please check the 'ssl-ca' option.           "
+            verify_file_exists "$ssl_cert" "CA, certificate, and key files are required." \
+                                           "Please check the 'ssl-cert' option.         "
+            verify_file_exists "$ssl_key" "CA, certificate, and key files are required." \
+                                          "Please check the 'ssl-key' option.          "
+
+            # Check to see that the key matches the cert
+            verify_cert_matches_key $ssl_cert $ssl_key
+
+            stagemsg+="-OpenSSL-Encrypted-4"
+            if [[ "$WSREP_SST_OPT_ROLE"  == "joiner" ]]; then
+                wsrep_log_info "Decrypting with CERT: $ssl_cert, KEY: $ssl_key, CA: $ssl_ca"
+                tcmd="socat -u openssl-listen:${TSST_PORT},reuseaddr,cert=${ssl_cert},key=${ssl_key},cafile=${ssl_ca},verify=1${joiner_extra}${sockopt} stdio"
             else
-                if [[ -z $tcert ]];then
-                    wsrep_log_info "Encrypting with cert=${tpem}, key=${tkey}, verify=0"
-                    tcmd="socat -u stdio openssl-connect:${REMOTEIP}:${TSST_PORT},cert=${tpem},key=${tkey},verify=0${sockopt}"
-                else
-                    wsrep_log_info "Encrypting with cert=${tpem}, key=${tkey}, cafile=${tcert}"
-                    tcmd="socat -u stdio openssl-connect:${REMOTEHOST}:${TSST_PORT},cert=${tpem},key=${tkey},cafile=${tcert}${sockopt}"
-                fi
+                wsrep_log_info "Encrypting with CERT: $ssl_cert, KEY: $ssl_key, CA: $ssl_ca"
+                tcmd="socat -u stdio openssl-connect:${REMOTEIP}:${TSST_PORT},cert=${ssl_cert},key=${ssl_key},cafile=${ssl_ca},verify=1${donor_extra}${sockopt}"
             fi
 
-        else 
-            if [[ "$WSREP_SST_OPT_ROLE"  == "joiner" ]];then
+        else
+            if [[ $encrypt -eq 1 ]]; then
+                wsrep_log_warning "**** WARNING **** encrypt=1 is deprecated and will be removed in a future release"
+            fi
+
+            if [[ "$WSREP_SST_OPT_ROLE"  == "joiner" ]]; then
                 tcmd="socat -u TCP-LISTEN:${TSST_PORT},reuseaddr${sockopt} stdio"
             else
                 tcmd="socat -u stdio TCP:${REMOTEIP}:${TSST_PORT}${sockopt}"
             fi
         fi
     fi
-
-}
-
-parse_cnf()
-{
-    local group=$1
-    local var=$2
-    # print the default settings for given group using my_print_default.
-    # normalize the variable names specified in cnf file (user can use _ or - for example log-bin or log_bin)
-    # then grep for needed variable
-    # finally get the variable value (if variables has been specified multiple time use the last value only)
-    reval=$($MY_PRINT_DEFAULTS $group | awk -F= '{if ($1 ~ /_/) { gsub(/_/,"-",$1); print $1"="$2 } else { print $0 }}' | grep -- "--$var=" | cut -d= -f2- | tail -1)
-    if [[ -z $reval ]];then 
-        [[ -n $3 ]] && reval=$3
-    fi
-    echo $reval
 }
 
 get_footprint()
@@ -444,13 +493,8 @@ read_cnf()
     ssystag=$(parse_cnf mysqld_safe syslog-tag "${SST_SYSLOG_TAG:-}")
     ssystag+="-"
 
-    if [[ $speciald -eq 0 ]];then 
-        wsrep_log_error "sst-special-dirs equal to 0 is not supported, falling back to 1"
-        speciald=1
-    fi 
-
     if [[ $ssyslog -ne -1 ]];then 
-        if $MY_PRINT_DEFAULTS mysqld_safe | tr '_' '-' | grep -q -- "--syslog";then 
+        if $MY_PRINT_DEFAULTS -c $WSREP_SST_OPT_CONF mysqld_safe | tr '_' '-' | grep -q -- "--syslog";then
             ssyslog=1
         fi
     fi
@@ -596,32 +640,30 @@ kill_xtrabackup()
 setup_ports()
 {
     if [[ "$WSREP_SST_OPT_ROLE"  == "donor" ]];then
-        SST_PORT=$(echo $WSREP_SST_OPT_ADDR | awk -F '[:/]' '{ print $2 }')
-        REMOTEIP=$(echo $WSREP_SST_OPT_ADDR | awk -F ':' '{ print $1 }')
-        REMOTEHOST=$(getent hosts $REMOTEIP | awk '{ print $2 }')
-        if [[ -z $REMOTEHOST ]];then
-            REMOTEHOST=$REMOTEIP
-        fi
-        lsn=$(echo $WSREP_SST_OPT_ADDR | awk -F '[:/]' '{ print $4 }')
-        sst_ver=$(echo $WSREP_SST_OPT_ADDR | awk -F '[:/]' '{ print $5 }')
+        SST_PORT=$WSREP_SST_OPT_PORT
+        REMOTEIP=$WSREP_SST_OPT_HOST
+        lsn=$(echo $WSREP_SST_OPT_PATH | awk -F '[/]' '{ print $2 }')
+        sst_ver=$(echo $WSREP_SST_OPT_PATH | awk -F '[/]' '{ print $3 }')
     else
-        SST_PORT=$(echo ${WSREP_SST_OPT_ADDR} | awk -F ':' '{ print $2 }')
+        SST_PORT=$WSREP_SST_OPT_PORT
     fi
 }
 
-# waits ~10 seconds for nc to open the port and then reports ready
+# waits ~1 minute for nc/socat to open the port and then reports ready
 # (regardless of timeout)
 wait_for_listen()
 {
-    local PORT=$1
-    local ADDR=$2
+    local HOST=$1
+    local PORT=$2
     local MODULE=$3
-    for i in {1..50}
+
+    for i in {1..300}
     do
         ss -p state listening "( sport = :$PORT )" | grep -qE 'socat|nc' && break
         sleep 0.2
     done
-    echo "ready ${ADDR}/${MODULE}//$sst_ver"
+
+    echo "ready ${HOST}:${PORT}/${MODULE}//$sst_ver"
 }
 
 check_extra()
@@ -629,7 +671,7 @@ check_extra()
     local use_socket=1
     if [[ $uextra -eq 1 ]];then 
         if $MY_PRINT_DEFAULTS --mysqld | tr '_' '-' | grep -- "--thread-handling=" | grep -q 'pool-of-threads';then 
-            local eport=$($MY_PRINT_DEFAULTS --mysqld | tr '_' '-' | grep -- "--extra-port=" | cut -d= -f2)
+            local eport=$($MY_PRINT_DEFAULTS -c $WSREP_SST_OPT_CONF mysqld | tr '_' '-' | grep -- "--extra-port=" | cut -d= -f2)
             if [[ -n $eport ]];then 
                 # Xtrabackup works only locally.
                 # Hence, setting host to 127.0.0.1 unconditionally. 
@@ -825,13 +867,13 @@ if [[ $ssyslog -eq 1 ]];then
         }
 
         INNOAPPLY="${INNOBACKUPEX_BIN} $disver $iapts --apply-log \$rebuildcmd \${DATA} 2>&1  | logger -p daemon.err -t ${ssystag}innobackupex-apply "
-        INNOMOVE="${INNOBACKUPEX_BIN} ${WSREP_SST_OPT_CONF} $disver $impts  --move-back --force-non-empty-directories \${DATA} 2>&1 | logger -p daemon.err -t ${ssystag}innobackupex-move "
+        INNOMOVE="${INNOBACKUPEX_BIN} --defaults-file=${WSREP_SST_OPT_CONF} $disver $impts --datadir=${DATA} --move-back --force-non-empty-directories \${DATA} 2>&1 | logger -p daemon.err -t ${ssystag}innobackupex-move "
         INNOBACKUP="${INNOBACKUPEX_BIN} ${WSREP_SST_OPT_CONF} $disver $iopts \$tmpopts \$INNOEXTRA --galera-info --stream=\$sfmt \$itmpdir 2> >(logger -p daemon.err -t ${ssystag}innobackupex-backup)"
     fi
 
 else 
     INNOAPPLY="${INNOBACKUPEX_BIN} $disver $iapts --apply-log \$rebuildcmd \${DATA} &>\${DATA}/innobackup.prepare.log"
-    INNOMOVE="${INNOBACKUPEX_BIN} ${WSREP_SST_OPT_CONF} $disver $impts  --move-back --force-non-empty-directories \${DATA} &>\${DATA}/innobackup.move.log"
+    INNOMOVE="${INNOBACKUPEX_BIN} --defaults-file=${WSREP_SST_OPT_CONF}  --defaults-group=mysqld${WSREP_SST_OPT_CONF_SUFFIX} $disver $impts --datadir=${DATA} --move-back --force-non-empty-directories \${DATA} &>\${DATA}/innobackup.move.log"
     INNOBACKUP="${INNOBACKUPEX_BIN} ${WSREP_SST_OPT_CONF} $disver $iopts \$tmpopts \$INNOEXTRA --galera-info --stream=\$sfmt \$itmpdir 2>\${DATA}/innobackup.backup.log"
 fi
 

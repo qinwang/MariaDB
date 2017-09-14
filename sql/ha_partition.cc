@@ -46,7 +46,7 @@
   if this file.
 */
 
-#include <my_global.h>
+#include "mariadb.h"
 #include "sql_priv.h"
 #include "sql_parse.h"                          // append_file_to_dir
 #include "create_options.h"
@@ -422,8 +422,12 @@ ha_partition::~ha_partition()
   destroy_record_priority_queue();
   my_free(m_part_ids_sorted_by_num_of_records);
 
+  if (m_added_file)
+  {
+    for (handler **ph= m_added_file; *ph; ph++)
+      delete (*ph);
+  }
   clear_handler_file();
-
   free_root(&m_mem_root, MYF(0));
 
   DBUG_VOID_RETURN;
@@ -7913,7 +7917,7 @@ uint32 ha_partition::calculate_key_hash_value(Field **field_array)
       case MYSQL_TYPE_BLOB:
       case MYSQL_TYPE_VAR_STRING:
       case MYSQL_TYPE_GEOMETRY:
-        /* fall through. */
+        /* fall through */
       default:
         DBUG_ASSERT(0);                    // New type?
         /* Fall through for default hashing (5.5). */

@@ -17,7 +17,7 @@
 
 /* Function with list databases, tables or fields */
 
-#include "sql_plugin.h"                         // Includes my_global.h
+#include "sql_plugin.h"                         // SHOW_MY_BOOL
 #include "sql_priv.h"
 #include "unireg.h"
 #include "sql_acl.h"                        // fill_schema_*_privileges
@@ -1773,7 +1773,7 @@ static void append_create_options(THD *thd, String *packet,
     if (opt->quoted_value)
       append_unescaped(packet, opt->value.str, opt->value.length);
     else
-      packet->append(opt->value.str, opt->value.length);
+      packet->append(&opt->value);
   }
   if (in_comment)
     packet->append(STRING_WITH_LEN(" */"));
@@ -2169,7 +2169,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
     bool found_primary=0;
     packet->append(STRING_WITH_LEN(",\n  "));
 
-    if (i == primary_key && !strcmp(key_info->name, primary_key_name))
+    if (i == primary_key && !strcmp(key_info->name.str, primary_key_name))
     {
       found_primary=1;
       /*
@@ -2188,7 +2188,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
       packet->append(STRING_WITH_LEN("KEY "));
 
     if (!found_primary)
-     append_identifier(thd, packet, key_info->name, strlen(key_info->name));
+     append_identifier(thd, packet, key_info->name.str, key_info->name.length);
 
     packet->append(STRING_WITH_LEN(" ("));
 
@@ -5876,16 +5876,11 @@ bool store_schema_params(THD *thd, TABLE *table, TABLE *proc_table,
   TABLE_SHARE share;
   TABLE tbl;
   CHARSET_INFO *cs= system_charset_info;
-  char params_buff[MAX_FIELD_WIDTH], returns_buff[MAX_FIELD_WIDTH],
-    sp_db_buff[NAME_LEN], sp_name_buff[NAME_LEN], path[FN_REFLEN],
-    definer_buff[DEFINER_LENGTH + 1];
-  String params(params_buff, sizeof(params_buff), cs);
-  String returns(returns_buff, sizeof(returns_buff), cs);
-  String sp_db(sp_db_buff, sizeof(sp_db_buff), cs);
-  String sp_name(sp_name_buff, sizeof(sp_name_buff), cs);
-  String definer(definer_buff, sizeof(definer_buff), cs);
+  LEX_CSTRING definer, params, returns= empty_clex_str;
+  LEX_CSTRING db, name;
+  char path[FN_REFLEN];
   sp_head *sp;
-  stored_procedure_type routine_type;
+  const Sp_handler *sph;
   bool free_sp_head;
   bool error= 0;
   DBUG_ENTER("store_schema_params");
@@ -5894,48 +5889,44 @@ bool store_schema_params(THD *thd, TABLE *table, TABLE *proc_table,
   (void) build_table_filename(path, sizeof(path), "", "", "", 0);
   init_tmp_table_share(thd, &share, "", 0, "", path);
 
-  get_field(thd->mem_root, proc_table->field[MYSQL_PROC_FIELD_DB], &sp_db);
-  get_field(thd->mem_root, proc_table->field[MYSQL_PROC_FIELD_NAME], &sp_name);
-  get_field(thd->mem_root,proc_table->field[MYSQL_PROC_FIELD_DEFINER],&definer);
-  routine_type= (stored_procedure_type) proc_table->field[MYSQL_PROC_MYSQL_TYPE]->val_int();
+  proc_table->field[MYSQL_PROC_FIELD_DB]->val_str_nopad(thd->mem_root, &db);
+  proc_table->field[MYSQL_PROC_FIELD_NAME]->val_str_nopad(thd->mem_root, &name);
+  proc_table->field[MYSQL_PROC_FIELD_DEFINER]->val_str_nopad(thd->mem_root, &definer);
+  sph= Sp_handler::handler((stored_procedure_type) proc_table->field[MYSQL_PROC_MYSQL_TYPE]->val_int());
+  if (!sph)
+    sph= &sp_handler_procedure;
 
   if (!full_access)
-    full_access= !strcmp(sp_user, definer.ptr());
+    full_access= !strcmp(sp_user, definer.str);
   if (!full_access &&
-      check_some_routine_access(thd, sp_db.ptr(),sp_name.ptr(),
-                                routine_type == TYPE_ENUM_PROCEDURE))
+      check_some_routine_access(thd, db.str, name.str, sph))
     DBUG_RETURN(0);
 
-  params.length(0);
-  get_field(thd->mem_root, proc_table->field[MYSQL_PROC_FIELD_PARAM_LIST],
-            &params);
-  returns.length(0);
-  if (routine_type == TYPE_ENUM_FUNCTION)
-    get_field(thd->mem_root, proc_table->field[MYSQL_PROC_FIELD_RETURNS],
-              &returns);
-
-  sp= sp_load_for_information_schema(thd, proc_table, &sp_db, &sp_name,
-                                     (ulong) proc_table->
-                                     field[MYSQL_PROC_FIELD_SQL_MODE]->val_int(),
-                                     routine_type,
-                                     returns.c_ptr_safe(),
-                                     params.c_ptr_safe(),
-                                     &free_sp_head);
-
+  proc_table->field[MYSQL_PROC_FIELD_PARAM_LIST]->val_str_nopad(thd->mem_root,
+                                                                &params);
+  if (sph->type() == TYPE_ENUM_FUNCTION)
+    proc_table->field[MYSQL_PROC_FIELD_RETURNS]->val_str_nopad(thd->mem_root,
+                                                               &returns);
+  sp= sph->sp_load_for_information_schema(thd, proc_table, db, name,
+                                          params, returns,
+                                          (ulong) proc_table->
+                                          field[MYSQL_PROC_FIELD_SQL_MODE]->
+                                          val_int(),
+                                          &free_sp_head);
   if (sp)
   {
     Field *field;
-    String tmp_string;
-    if (routine_type == TYPE_ENUM_FUNCTION)
+    LEX_CSTRING tmp_string;
+    if (sph->type() == TYPE_ENUM_FUNCTION)
     {
       restore_record(table, s->default_values);
       table->field[0]->store(STRING_WITH_LEN("def"), cs);
-      table->field[1]->store(sp_db.ptr(), sp_db.length(), cs);
-      table->field[2]->store(sp_name.ptr(), sp_name.length(), cs);
+      table->field[1]->store(db, cs);
+      table->field[2]->store(name, cs);
       table->field[3]->store((longlong) 0, TRUE);
-      get_field(thd->mem_root, proc_table->field[MYSQL_PROC_MYSQL_TYPE],
-                &tmp_string);
-      table->field[15]->store(tmp_string.ptr(), tmp_string.length(), cs);
+      proc_table->field[MYSQL_PROC_MYSQL_TYPE]->val_str_nopad(thd->mem_root,
+                                                              &tmp_string);
+      table->field[15]->store(tmp_string, cs);
       field= sp->m_return_field_def.make_field(&share, thd->mem_root,
                                                &empty_clex_str);
       field->table= &tbl;
@@ -5973,16 +5964,16 @@ bool store_schema_params(THD *thd, TABLE *table, TABLE *proc_table,
 
       restore_record(table, s->default_values);
       table->field[0]->store(STRING_WITH_LEN("def"), cs);
-      table->field[1]->store(sp_db.ptr(), sp_db.length(), cs);
-      table->field[2]->store(sp_name.ptr(), sp_name.length(), cs);
+      table->field[1]->store(db, cs);
+      table->field[2]->store(name, cs);
       table->field[3]->store((longlong) i + 1, TRUE);
       table->field[4]->store(tmp_buff, strlen(tmp_buff), cs);
       table->field[4]->set_notnull();
       table->field[5]->store(spvar->name.str, spvar->name.length, cs);
       table->field[5]->set_notnull();
-      get_field(thd->mem_root, proc_table->field[MYSQL_PROC_MYSQL_TYPE],
-                &tmp_string);
-      table->field[15]->store(tmp_string.ptr(), tmp_string.length(), cs);
+      proc_table->field[MYSQL_PROC_MYSQL_TYPE]->val_str_nopad(thd->mem_root,
+                                                              &tmp_string);
+      table->field[15]->store(tmp_string, cs);
 
       field= spvar->field_def.make_field(&share, thd->mem_root,
                                          &spvar->name);
@@ -6009,63 +6000,57 @@ bool store_schema_proc(THD *thd, TABLE *table, TABLE *proc_table,
   MYSQL_TIME time;
   LEX *lex= thd->lex;
   CHARSET_INFO *cs= system_charset_info;
-  char sp_db_buff[SAFE_NAME_LEN + 1], sp_name_buff[NAME_LEN + 1],
-    definer_buff[DEFINER_LENGTH + 1],
-    returns_buff[MAX_FIELD_WIDTH];
+  const Sp_handler *sph;
+  LEX_CSTRING db, name, definer, returns= empty_clex_str;
 
-  String sp_db(sp_db_buff, sizeof(sp_db_buff), cs);
-  String sp_name(sp_name_buff, sizeof(sp_name_buff), cs);
-  String definer(definer_buff, sizeof(definer_buff), cs);
-  String returns(returns_buff, sizeof(returns_buff), cs);
-
-  proc_table->field[MYSQL_PROC_FIELD_DB]->val_str(&sp_db);
-  proc_table->field[MYSQL_PROC_FIELD_NAME]->val_str(&sp_name);
-  proc_table->field[MYSQL_PROC_FIELD_DEFINER]->val_str(&definer);
+  proc_table->field[MYSQL_PROC_FIELD_DB]->val_str_nopad(thd->mem_root, &db);
+  proc_table->field[MYSQL_PROC_FIELD_NAME]->val_str_nopad(thd->mem_root, &name);
+  proc_table->field[MYSQL_PROC_FIELD_DEFINER]->val_str_nopad(thd->mem_root, &definer);
+  sph= Sp_handler::handler((stored_procedure_type)
+                           proc_table->field[MYSQL_PROC_MYSQL_TYPE]->val_int());
+  if (!sph)
+    sph= &sp_handler_procedure;
 
   if (!full_access)
-    full_access= !strcmp(sp_user, definer.c_ptr_safe());
+    full_access= !strcmp(sp_user, definer.str);
   if (!full_access &&
-      check_some_routine_access(thd, sp_db.c_ptr_safe(), sp_name.c_ptr_safe(),
-                                proc_table->field[MYSQL_PROC_MYSQL_TYPE]->
-                                val_int() == TYPE_ENUM_PROCEDURE))
+      check_some_routine_access(thd, db.str, name.str, sph))
     return 0;
 
   if ((lex->sql_command == SQLCOM_SHOW_STATUS_PROC &&
-      proc_table->field[MYSQL_PROC_MYSQL_TYPE]->val_int() ==
-      TYPE_ENUM_PROCEDURE) ||
+      sph->type() == TYPE_ENUM_PROCEDURE) ||
       (lex->sql_command == SQLCOM_SHOW_STATUS_FUNC &&
-      proc_table->field[MYSQL_PROC_MYSQL_TYPE]->val_int() ==
-      TYPE_ENUM_FUNCTION) ||
+      sph->type() == TYPE_ENUM_FUNCTION) ||
       (sql_command_flags[lex->sql_command] & CF_STATUS_COMMAND) == 0)
   {
     restore_record(table, s->default_values);
     if (!wild || !wild[0] || !wild_case_compare(system_charset_info,
-                                                sp_name.c_ptr_safe(), wild))
+                                                name.str, wild))
     {
       int enum_idx= (int) proc_table->field[MYSQL_PROC_FIELD_ACCESS]->val_int();
-      table->field[3]->store(sp_name.ptr(), sp_name.length(), cs);
+      table->field[3]->store(name, cs);
 
       copy_field_as_string(table->field[0],
                            proc_table->field[MYSQL_PROC_FIELD_SPECIFIC_NAME]);
       table->field[1]->store(STRING_WITH_LEN("def"), cs);
-      table->field[2]->store(sp_db.ptr(), sp_db.length(), cs);
+      table->field[2]->store(db, cs);
       copy_field_as_string(table->field[4],
                            proc_table->field[MYSQL_PROC_MYSQL_TYPE]);
 
-      if (proc_table->field[MYSQL_PROC_MYSQL_TYPE]->val_int() ==
-          TYPE_ENUM_FUNCTION)
+      if (sph->type() == TYPE_ENUM_FUNCTION)
       {
         sp_head *sp;
         bool free_sp_head;
-        proc_table->field[MYSQL_PROC_FIELD_RETURNS]->val_str(&returns);
-        sp= sp_load_for_information_schema(thd, proc_table, &sp_db, &sp_name,
-                                           (ulong) proc_table->
-                                           field[MYSQL_PROC_FIELD_SQL_MODE]->
-                                           val_int(),
-                                           TYPE_ENUM_FUNCTION,
-                                           returns.c_ptr_safe(),
-                                           "", &free_sp_head);
-
+        proc_table->field[MYSQL_PROC_FIELD_RETURNS]->val_str_nopad(thd->mem_root,
+                                                                   &returns);
+        sp= sph->sp_load_for_information_schema(thd, proc_table,
+                                                db, name,
+                                                empty_clex_str /*params*/,
+                                                returns,
+                                                (ulong) proc_table->
+                                                field[MYSQL_PROC_FIELD_SQL_MODE]->
+                                                val_int(),
+                                                &free_sp_head);
         if (sp)
         {
           char path[FN_REFLEN];
@@ -6115,7 +6100,7 @@ bool store_schema_proc(THD *thd, TABLE *table, TABLE *proc_table,
       copy_field_as_string(table->field[26],
                            proc_table->field[MYSQL_PROC_FIELD_COMMENT]);
 
-      table->field[27]->store(definer.ptr(), definer.length(), cs);
+      table->field[27]->store(definer, cs);
       copy_field_as_string(table->field[28],
                            proc_table->
                            field[MYSQL_PROC_FIELD_CHARACTER_SET_CLIENT]);
@@ -6250,7 +6235,7 @@ static int get_schema_stat_record(THD *thd, TABLE_LIST *tables,
         table->field[3]->store((longlong) ((key_info->flags &
                                             HA_NOSAME) ? 0 : 1), TRUE);
         table->field[4]->store(db_name->str, db_name->length, cs);
-        table->field[5]->store(key_info->name, strlen(key_info->name), cs);
+        table->field[5]->store(key_info->name.str, key_info->name.length, cs);
         table->field[6]->store((longlong) (j+1), TRUE);
         str= (key_part->field ? &key_part->field->field_name :
               &unknown);
@@ -6498,17 +6483,17 @@ static int get_schema_constraints_record(THD *thd, TABLE_LIST *tables,
       if (i != primary_key && !(key_info->flags & HA_NOSAME))
         continue;
 
-      if (i == primary_key && !strcmp(key_info->name, primary_key_name))
+      if (i == primary_key && !strcmp(key_info->name.str, primary_key_name))
       {
-        if (store_constraints(thd, table, db_name, table_name, key_info->name,
-                              strlen(key_info->name),
+        if (store_constraints(thd, table, db_name, table_name,
+                              key_info->name.str, key_info->name.length,
                               STRING_WITH_LEN("PRIMARY KEY")))
           DBUG_RETURN(1);
       }
       else if (key_info->flags & HA_NOSAME)
       {
-        if (store_constraints(thd, table, db_name, table_name, key_info->name,
-                              strlen(key_info->name),
+        if (store_constraints(thd, table, db_name, table_name,
+                              key_info->name.str, key_info->name.length,
                               STRING_WITH_LEN("UNIQUE")))
           DBUG_RETURN(1);
       }
@@ -6704,8 +6689,7 @@ static int get_schema_key_column_usage_record(THD *thd,
           f_idx++;
           restore_record(table, s->default_values);
           store_key_column_usage(table, db_name, table_name,
-                                 key_info->name,
-                                 strlen(key_info->name),
+                                 key_info->name.str, key_info->name.length,
                                  key_part->field->field_name.str,
                                  key_part->field->field_name.length,
                                  (longlong) f_idx);
@@ -7104,7 +7088,7 @@ static int get_schema_partitions_record(THD *thd, TABLE_LIST *tables,
         tmp_res.length(0);
         if (part_elem->has_null_value)
         {
-          tmp_str.append("NULL");
+          tmp_str.append(STRING_WITH_LEN("NULL"));
           if (num_items > 0)
             tmp_str.append(",");
         }
@@ -7113,7 +7097,7 @@ static int get_schema_partitions_record(THD *thd, TABLE_LIST *tables,
           if (part_info->column_list)
           {
             if (part_info->part_field_list.elements > 1U)
-              tmp_str.append("(");
+              tmp_str.append(STRING_WITH_LEN("("));
             if (get_partition_column_description(thd,
                                                  part_info,
                                                  list_value,

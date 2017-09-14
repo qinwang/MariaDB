@@ -31,7 +31,6 @@ Created 11/11/1995 Heikki Tuuri
 
 #include "buf0flu.h"
 #include "buf0buf.h"
-#include "buf0mtflu.h"
 #include "buf0checksum.h"
 #include "srv0start.h"
 #include "srv0srv.h"
@@ -1884,8 +1883,6 @@ buf_flush_batch(
 
 	buf_pool_mutex_enter(buf_pool);
 
-	ulint	count __attribute__((unused))= 0;
-
 	/* Note: The buffer pool mutex is released and reacquired within
 	the flush functions. */
 	switch (flush_type) {
@@ -1902,8 +1899,7 @@ buf_flush_batch(
 
 	buf_pool_mutex_exit(buf_pool);
 
-	DBUG_PRINT("ib_buf", ("flush %u completed, %u pages",
-			      unsigned(flush_type), unsigned(count)));
+	DBUG_LOG("ib_buf", "flush " << flush_type << " completed");
 }
 
 /******************************************************************//**
@@ -2145,10 +2141,6 @@ buf_flush_lists(
 	ulint		n_flushed = 0;
 	bool		success = true;
 
-	if (buf_mtflu_init_done()) {
-		return(buf_mtflu_flush_list(min_n, lsn_limit, n_processed));
-	}
-
 	if (n_processed) {
 		*n_processed = 0;
 	}
@@ -2306,11 +2298,6 @@ buf_flush_LRU_list(
 	flush_counters_t	n;
 
 	memset(&n, 0, sizeof(flush_counters_t));
-
-	if(buf_mtflu_init_done())
-	{
-		return(buf_mtflu_flush_LRU_tail());
-	}
 
 	ut_ad(buf_pool);
 	/* srv_LRU_scan_depth can be arbitrarily large value.
