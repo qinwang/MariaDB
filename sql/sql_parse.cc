@@ -1533,9 +1533,9 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
       {
         mysql_mutex_unlock(&thd->LOCK_wsrep_thd);
         thd->reset_killed();
-        thd->mysys_var->abort     = 0;
-        thd->wsrep_conflict_state = NO_CONFLICT;
-        thd->wsrep_retry_counter  = 0;
+        thd->mysys_var->abort       = 0;
+        thd->set_wsrep_conflict_state(NO_CONFLICT);
+        thd->wsrep_retry_counter    = 0;
         goto dispatch_end;
       }
     }
@@ -6088,18 +6088,12 @@ end_with_restore_list:
       break;
     }
   case SQLCOM_SHOW_CREATE_PROC:
-    {
-      WSREP_SYNC_WAIT(thd, WSREP_SYNC_WAIT_BEFORE_SHOW);
-      if (sp_show_create_routine(thd, TYPE_ENUM_PROCEDURE, lex->spname))
-        goto error;
-      break;
-    }
   case SQLCOM_SHOW_CREATE_FUNC:
     {
       WSREP_SYNC_WAIT(thd, WSREP_SYNC_WAIT_BEFORE_SHOW);
-      if (sp_show_create_routine(thd, TYPE_ENUM_FUNCTION, lex->spname))
-	goto error;
-      break;
+      const Sp_handler *sph= Sp_handler::handler(lex->sql_command);
+      if (sph->sp_show_create_routine(thd, lex->spname))
+        goto error;
     }
   case SQLCOM_SHOW_PROC_CODE:
   case SQLCOM_SHOW_FUNC_CODE:
@@ -7940,8 +7934,8 @@ static bool wsrep_mysql_parse(THD *thd, char *rawbuf, uint length,
                       thd->variables.wsrep_retry_autocommit, WSREP_QUERY(thd));
           my_message(ER_LOCK_DEADLOCK, "wsrep aborted transaction", MYF(0));
           thd->reset_killed();
-          thd->wsrep_conflict_state= NO_CONFLICT;
-          if (thd->wsrep_conflict_state != REPLAYING)
+          thd->set_wsrep_conflict_state(NO_CONFLICT);
+          if (thd->wsrep_conflict_state() != REPLAYING)
             thd->wsrep_retry_counter= 0;             //  reset
         }
       }

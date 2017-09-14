@@ -3693,7 +3693,7 @@ my_bool get_wsrep_certify_nonPK()
   return wsrep_certify_nonPK;
 }
 
-#ifdedf MARIADB_10.3
+#ifdef MARIADB_10_3
 void wsrep_lock_rollback()
 {
   mysql_mutex_lock(&LOCK_wsrep_rollback);
