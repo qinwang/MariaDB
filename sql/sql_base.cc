@@ -1793,7 +1793,11 @@ retry_share:
       my_error(ER_WRONG_MRG_TABLE, MYF(0));
       goto err_lock;
     }
-
+    if (table_list->sequence)
+    {
+      my_error(ER_NOT_SEQUENCE, MYF(0), table_list->db, table_list->alias);
+      goto err_lock;
+    }
     /*
       This table is a view. Validate its metadata version: in particular,
       that it was a view when the statement was prepared.
@@ -1946,8 +1950,8 @@ retry_share:
 #endif
   if (table_list->sequence && table->s->table_type != TABLE_TYPE_SEQUENCE)
   {
-      my_error(ER_NOT_SEQUENCE, MYF(0), table_list->db, table_list->alias);
-      DBUG_RETURN(true);
+    my_error(ER_NOT_SEQUENCE, MYF(0), table_list->db, table_list->alias);
+    DBUG_RETURN(true);
   }
 
   table->init(thd, table_list);
@@ -4825,7 +4829,7 @@ bool open_tables_only_view_structure(THD *thd, TABLE_LIST *table_list,
                                            MYSQL_OPEN_GET_NEW_TABLE |
                                            (can_deadlock ?
                                             MYSQL_OPEN_FAIL_ON_MDL_CONFLICT : 0)),
-                                          DT_PREPARE | DT_CREATE));
+                                          DT_INIT | DT_PREPARE | DT_CREATE));
   /*
     Restore old value of sql_command back as it is being looked at in
     process_table() function.

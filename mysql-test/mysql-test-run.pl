@@ -2269,10 +2269,15 @@ sub environment_setup {
   $ENV{'MYSQL_EMBEDDED'}=           $exe_mysql_embedded;
 
   my $client_config_exe=
-    native_path("$bindir/libmariadb/mariadb_config$opt_vs_config/mariadb_config");
-  my $tls_info= `$client_config_exe --tlsinfo`;
-  ($ENV{CLIENT_TLS_LIBRARY},$ENV{CLIENT_TLS_LIBRARY_VERSION})=
-    split(/ /, $tls_info, 2);
+    mtr_exe_maybe_exists(
+        "$bindir/libmariadb/mariadb_config$opt_vs_config/mariadb_config",
+               "$bindir/bin/mariadb_config");
+  if ($client_config_exe)
+  {
+    my $tls_info= `$client_config_exe --tlsinfo`;
+    ($ENV{CLIENT_TLS_LIBRARY},$ENV{CLIENT_TLS_LIBRARY_VERSION})=
+      split(/ /, $tls_info, 2);
+  }
   my $exe_mysqld= find_mysqld($basedir);
   $ENV{'MYSQLD'}= $exe_mysqld;
   my $extra_opts= join (" ", @opt_extra_mysqld_opt);
@@ -3074,6 +3079,7 @@ sub mysql_install_db {
   my $args;
   mtr_init_args(\$args);
   mtr_add_arg($args, "--no-defaults");
+  mtr_add_arg($args, "--disable-getopt-prefix-matching");
   mtr_add_arg($args, "--bootstrap");
   mtr_add_arg($args, "--basedir=%s", $install_basedir);
   mtr_add_arg($args, "--datadir=%s", $install_datadir);
@@ -5225,6 +5231,7 @@ sub server_need_restart {
     if (!My::Options::same($started_opts, $extra_opts) ||
         exists $server->{'restart_opts'})
     {
+      delete $server->{'restart_opts'};
       my $use_dynamic_option_switch= 0;
       if (!$use_dynamic_option_switch)
       {

@@ -540,15 +540,32 @@ sp_head::operator delete(void *ptr, size_t size) throw()
 }
 
 
-sp_head::sp_head()
+sp_head::sp_head(stored_procedure_type type)
   :Query_arena(&main_mem_root, STMT_INITIALIZED_FOR_SP),
    Database_qualified_name(&null_clex_str, &null_clex_str),
+   m_type(type),
    m_flags(0),
+   m_explicit_name(false),
+   /*
+     FIXME: the only use case when name is NULL is events, and it should
+     be rewritten soon. Remove the else part and replace 'if' with
+     an assert when this is done.
+   */
+   m_qname(null_clex_str),
+   m_params(null_clex_str),
+   m_body(null_clex_str),
+   m_body_utf8(null_clex_str),
+   m_defstr(null_clex_str),
    m_sp_cache_version(0),
    m_creation_ctx(0),
    unsafe_flags(0),
+   m_created(0),
+   m_modified(0),
    m_recursion_level(0),
    m_next_cached_sp(0),
+   m_param_begin(NULL),
+   m_param_end(NULL),
+   m_body_begin(NULL),
    m_cont_level(0)
 {
   m_first_instance= this;
@@ -556,12 +573,6 @@ sp_head::sp_head()
   m_last_cached_sp= this;
 
   m_return_field_def.charset = NULL;
-  /*
-    FIXME: the only use case when name is NULL is events, and it should
-    be rewritten soon. Remove the else part and replace 'if' with
-    an assert when this is done.
-  */
-  m_qname= null_clex_str;
 
   DBUG_ENTER("sp_head::sp_head");
 
@@ -572,9 +583,6 @@ sp_head::sp_head()
   my_hash_init(&m_sptabs, system_charset_info, 0, 0, 0, sp_table_key, 0, 0);
   my_hash_init(&m_sroutines, system_charset_info, 0, 0, 0, sp_sroutine_key,
                0, 0);
-
-  m_body_utf8.str= NULL;
-  m_body_utf8.length= 0;
 
   DBUG_VOID_RETURN;
 }
@@ -596,33 +604,6 @@ sp_head::init(LEX *lex)
   */
   lex->trg_table_fields.empty();
   my_init_dynamic_array(&m_instr, sizeof(sp_instr *), 16, 8, MYF(0));
-
-  m_param_begin= NULL;
-  m_param_end= NULL;
-
-  m_body_begin= NULL ;
-
-  m_qname.str= NULL;
-  m_qname.length= 0;
-
-  m_explicit_name= false;
-
-  m_db.str= NULL;
-  m_db.length= 0;
-
-  m_name.str= NULL;
-  m_name.length= 0;
-
-  m_params.str= NULL;
-  m_params.length= 0;
-
-  m_body.str= NULL;
-  m_body.length= 0;
-
-  m_defstr.str= NULL;
-  m_defstr.length= 0;
-
-  m_return_field_def.charset= NULL;
 
   DBUG_VOID_RETURN;
 }
@@ -1436,9 +1417,9 @@ set_routine_security_ctx(THD *thd, sp_head *sp, bool is_proc,
                          Security_context **save_ctx)
 {
   *save_ctx= 0;
-  if (sp->m_chistics->suid != SP_IS_NOT_SUID &&
-      sp->m_security_ctx.change_security_context(thd, &sp->m_definer_user,
-                                                 &sp->m_definer_host,
+  if (sp->suid() != SP_IS_NOT_SUID &&
+      sp->m_security_ctx.change_security_context(thd, &sp->m_definer.user,
+                                                 &sp->m_definer.host,
                                                  &sp->m_db,
                                                  save_ctx))
     return TRUE;
@@ -1548,10 +1529,10 @@ sp_head::execute_trigger(THD *thd,
   Security_context *save_ctx= NULL;
 
 
-  if (m_chistics->suid != SP_IS_NOT_SUID &&
+  if (suid() != SP_IS_NOT_SUID &&
       m_security_ctx.change_security_context(thd,
-                                             &m_definer_user,
-                                             &m_definer_host,
+                                             &m_definer.user,
+                                             &m_definer.host,
                                              &m_db,
                                              &save_ctx))
     DBUG_RETURN(TRUE);
@@ -2461,19 +2442,25 @@ sp_head::sp_add_instr_cpush_for_cursors(THD *thd, sp_pcontext *pcontext)
 
 
 void
+sp_head::set_chistics(const st_sp_chistics &chistics)
+{
+  m_chistics.set(chistics);
+  if (m_chistics.comment.length == 0)
+    m_chistics.comment.str= 0;
+  else
+    m_chistics.comment.str= strmake_root(mem_root,
+                                         m_chistics.comment.str,
+                                         m_chistics.comment.length);
+}
+
+
+void
 sp_head::set_info(longlong created, longlong modified,
-                  st_sp_chistics *chistics, sql_mode_t sql_mode)
+                  const st_sp_chistics &chistics, sql_mode_t sql_mode)
 {
   m_created= created;
   m_modified= modified;
-  m_chistics= (st_sp_chistics *) memdup_root(mem_root, (char*) chistics,
-                                             sizeof(*chistics));
-  if (m_chistics->comment.length == 0)
-    m_chistics->comment.str= 0;
-  else
-    m_chistics->comment.str= strmake_root(mem_root,
-                                          m_chistics->comment.str,
-                                          m_chistics->comment.length);
+  set_chistics(chistics);
   m_sql_mode= sql_mode;
 }
 
@@ -2496,17 +2483,6 @@ sp_head::set_definer(const char *definer, uint definerlen)
   }
 
   set_definer(&user_name, &host_name);
-}
-
-
-void
-sp_head::set_definer(const LEX_CSTRING *user_name, const LEX_CSTRING *host_name)
-{
-  m_definer_user.str= strmake_root(mem_root, user_name->str, user_name->length);
-  m_definer_user.length= user_name->length;
-
-  m_definer_host.str= strmake_root(mem_root, host_name->str, host_name->length);
-  m_definer_host.length= host_name->length;
 }
 
 
@@ -2578,9 +2554,9 @@ bool check_show_routine_access(THD *thd, sp_head *sp, bool *full_access)
   *full_access= ((!check_table_access(thd, SELECT_ACL, &tables, FALSE,
                                      1, TRUE) &&
                   (tables.grant.privilege & SELECT_ACL) != 0) ||
-                 (!strcmp(sp->m_definer_user.str,
+                 (!strcmp(sp->m_definer.user.str,
                           thd->security_ctx->priv_user) &&
-                  !strcmp(sp->m_definer_host.str,
+                  !strcmp(sp->m_definer.host.str,
                           thd->security_ctx->priv_host)));
   if (!*full_access)
     return check_some_routine_access(thd, sp->m_db.str, sp->m_name.str,

@@ -68,7 +68,7 @@ c-function and its parameters are written to the log to
 reduce the size of the log.
 
   3a) You should not add parameters to these kind of functions
-  (e.g. trx_undo_header_create(), trx_undo_insert_header_reuse())
+  (e.g. trx_undo_header_create())
 
   3b) You should not add such functionality which either change
   working when compared with the old or are dependent on data
@@ -549,23 +549,6 @@ function_exit:
 }
 
 /******************************************************//**
-Calculates the data capacity of a log group, when the log file headers are not
-included.
-@return capacity in bytes */
-static
-lsn_t
-log_group_get_capacity(
-/*===================*/
-	const log_group_t*	group)	/*!< in: log group */
-{
-	/* The lsn parameters are updated while holding both the mutexes
-	and it is ok to have either of them while reading */
-	ut_ad(log_mutex_own() || log_write_mutex_own());
-
-	return((group->file_size - LOG_FILE_HDR_SIZE) * group->n_files);
-}
-
-/******************************************************//**
 Calculates the offset within a log group, when the log file headers are not
 included.
 @return size offset (<= offset) */
@@ -628,7 +611,7 @@ log_group_calc_lsn_offset(
 	gr_lsn_size_offset = log_group_calc_size_offset(
 		group->lsn_offset, group);
 
-	group_size = log_group_get_capacity(group);
+	group_size = group->capacity();
 
 	if (lsn >= gr_lsn) {
 
@@ -669,18 +652,17 @@ log_group_set_fields(
 
 /** Calculate the recommended highest values for lsn - last_checkpoint_lsn
 and lsn - buf_get_oldest_modification().
+@param[in]	file_size	requested innodb_log_file_size
 @retval true on success
 @retval false if the smallest log group is too small to
 accommodate the number of OS threads in the database server */
 bool
-log_set_capacity()
+log_set_capacity(ulonglong file_size)
 {
 	lsn_t		margin;
 	ulint		free;
 
-	lsn_t smallest_capacity = ((srv_log_file_size_requested
-				    << srv_page_size_shift)
-				   - LOG_FILE_HDR_SIZE)
+	lsn_t smallest_capacity = (file_size - LOG_FILE_HDR_SIZE)
 		* srv_n_log_files;
 	/* Add extra safety */
 	smallest_capacity -= smallest_capacity / 10;
@@ -798,10 +780,9 @@ log_sys_init()
 }
 
 /** Initialize the redo log.
-@param[in]	n_files		number of files
-@param[in]	file_size	file size in bytes */
+@param[in]	n_files		number of files */
 void
-log_init(ulint n_files, lsn_t file_size)
+log_init(ulint n_files)
 {
 	ulint	i;
 	log_group_t*	group = &log_sys->log;
@@ -810,7 +791,7 @@ log_init(ulint n_files, lsn_t file_size)
 	group->format = srv_encrypt_log
 		? LOG_HEADER_FORMAT_CURRENT | LOG_HEADER_FORMAT_ENCRYPTED
 		: LOG_HEADER_FORMAT_CURRENT;
-	group->file_size = file_size;
+	group->file_size = srv_log_file_size;
 	group->state = LOG_GROUP_OK;
 	group->lsn = LOG_START_LSN;
 	group->lsn_offset = LOG_FILE_HDR_SIZE;
@@ -1920,6 +1901,12 @@ loop:
 		} else {
 			ut_ad(!srv_dict_stats_thread_active);
 		}
+		if (recv_sys && recv_sys->flush_start) {
+			/* This is in case recv_writer_thread was never
+			started, or buf_flush_page_cleaner_coordinator
+			failed to notice its termination. */
+			os_event_set(recv_sys->flush_start);
+		}
 	}
 	os_thread_sleep(100000);
 
@@ -2261,11 +2248,9 @@ log_group_close_all(void)
 	log_group_close(&log_sys->log);
 }
 
-/********************************************************//**
-Shutdown the log system but do not release all the memory. */
+/** Shut down the redo log subsystem. */
 void
-log_shutdown(void)
-/*==============*/
+log_shutdown()
 {
 	log_group_close_all();
 
@@ -2289,20 +2274,8 @@ log_shutdown(void)
 	}
 
 	recv_sys_close();
-}
-
-/********************************************************//**
-Free the log system data structures. */
-void
-log_mem_free(void)
-/*==============*/
-{
-	if (log_sys != NULL) {
-		recv_sys_mem_free();
-		ut_free(log_sys);
-
-		log_sys = NULL;
-	}
+	ut_free(log_sys);
+	log_sys = NULL;
 }
 
 /******************************************************//**

@@ -1,3 +1,4 @@
+Windows bug: happens when a new line is exactly at the right offset
 The following options may be given as the first argument:
 --print-defaults Print the program argument list and exit.
 --no-defaults Don't read default options from any option file.
@@ -257,6 +258,13 @@ The following options may be given as the first argument:
  applied; this means it is the responsibility of the user
  to ensure that GTID sequence numbers are strictly
  increasing.
+ --gtid-pos-auto-engines=name 
+ List of engines for which to automatically create a
+ mysql.gtid_slave_pos_ENGINE table, if a transaction using
+ that engine is replicated. This can be used to avoid
+ introducing cross-engine transactions, if engines are
+ used different from that used by table
+ mysql.gtid_slave_pos
  --gtid-strict-mode  Enforce strict seq_no ordering of events in the binary
  log. Slave stops with an error if it encounters an event
  that would cause it to generate an out-of-order binlog if
@@ -1151,9 +1159,17 @@ The following options may be given as the first argument:
  --time-format=name  The TIME format (ignored)
  --timed-mutexes     Specify whether to time mutexes. Deprecated, has no
  effect.
- --tmp-table-size=#  If an internal in-memory temporary table exceeds this
+ --tmp-disk-table-size=# 
+ Max size for data for an internal temporary on-disk
+ MyISAM or Aria table.
+ --tmp-memory-table-size=# 
+ If an internal in-memory temporary table exceeds this
  size, MySQL will automatically convert it to an on-disk
- MyISAM or Aria table
+ MyISAM or Aria table. Same as tmp_table_size.
+ --tmp-table-size=#  Alias for tmp_memory_table_size. If an internal in-memory
+ temporary table exceeds this size, MySQL will
+ automatically convert it to an on-disk MyISAM or Aria
+ table.
  -t, --tmpdir=name   Path for temporary files. Several paths may be specified,
  separated by a colon (:), in this case they are used in a
  round-robin fashion
@@ -1255,10 +1271,11 @@ ft-query-expansion-limit 20
 ft-stopword-file (No default value)
 gdb FALSE
 general-log FALSE
-getopt-prefix-matching TRUE
+getopt-prefix-matching FALSE
 group-concat-max-len 1048576
 gtid-domain-id 0
 gtid-ignore-duplicates FALSE
+gtid-pos-auto-engines 
 gtid-strict-mode FALSE
 help TRUE
 histogram-size 0
@@ -1507,6 +1524,8 @@ thread-pool-stall-limit 500
 thread-stack 299008
 time-format %H:%i:%s
 timed-mutexes FALSE
+tmp-disk-table-size 18446744073709551615
+tmp-memory-table-size 16777216
 tmp-table-size 16777216
 transaction-alloc-block-size 8192
 transaction-isolation REPEATABLE-READ

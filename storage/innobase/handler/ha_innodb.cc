@@ -132,6 +132,7 @@ void destroy_thd(MYSQL_THD thd);
 void reset_thd(MYSQL_THD thd);
 TABLE *open_purge_table(THD *thd, const char *db, size_t dblen,
 			const char *tb, size_t tblen);
+TABLE *get_purge_table(THD *thd);
 
 #ifdef MYSQL_DYNAMIC_PLUGIN
 #define tc_size  400
@@ -206,7 +207,7 @@ static ulong innobase_commit_concurrency = 0;
 static ulong innobase_read_io_threads;
 static ulong innobase_write_io_threads;
 
-static long long innobase_buffer_pool_size, innobase_log_file_size;
+static long long innobase_buffer_pool_size;
 
 /** Percentage of the buffer pool to reserve for 'old' blocks.
 Connected to buf_LRU_old_ratio. */
@@ -270,6 +271,11 @@ void set_my_errno(int err)
 	errno = err;
 }
 
+static uint mysql_fields(const TABLE *table)
+{
+	return table->s->frm_version < FRM_VER_EXPRESSSIONS
+		? table->s->stored_fields : table->s->fields;
+}
 
 /** Checks whether the file name belongs to a partition of a table.
 @param[in]	file_name	file name
@@ -387,7 +393,7 @@ static TYPELIB innodb_stats_method_typelib = {
 };
 
 /** Possible values of the parameter innodb_checksum_algorithm */
-static const char* innodb_checksum_algorithm_names[] = {
+const char* innodb_checksum_algorithm_names[] = {
 	"crc32",
 	"strict_crc32",
 	"innodb",
@@ -399,7 +405,7 @@ static const char* innodb_checksum_algorithm_names[] = {
 
 /** Used to define an enumerate type of the system variable
 innodb_checksum_algorithm. */
-static TYPELIB innodb_checksum_algorithm_typelib = {
+TYPELIB innodb_checksum_algorithm_typelib = {
 	array_elements(innodb_checksum_algorithm_names) - 1,
 	"innodb_checksum_algorithm_typelib",
 	innodb_checksum_algorithm_names,
@@ -4050,8 +4056,6 @@ innobase_change_buffering_inited_ok:
 
 	srv_file_flush_method_str = innobase_file_flush_method;
 
-	srv_log_file_size = (ib_uint64_t) innobase_log_file_size;
-
 	if (UNIV_PAGE_SIZE_DEF != srv_page_size) {
 		ib::info() << "innodb_page_size=" << srv_page_size;
 
@@ -5774,14 +5778,6 @@ innobase_match_index_columns(
 			spatial index on it and we intend to use DATA_GEOMETRY
 			for legacy GIS data types which are of var-length. */
 			switch (col_type) {
-			case DATA_POINT:
-			case DATA_VAR_POINT:
-				if (DATA_POINT_MTYPE(mtype)
-				    || mtype == DATA_GEOMETRY
-				    || mtype == DATA_BLOB) {
-					break;
-				}
-				/* Fall through */
 			case DATA_GEOMETRY:
 				if (mtype == DATA_BLOB) {
 					break;
@@ -6305,16 +6301,17 @@ ha_innobase::open(const char* name, int, uint)
 
 	ib_table = open_dict_table(name, norm_name, is_part, ignore_err);
 
+	uint n_fields = mysql_fields(table);
+
 	if (ib_table != NULL
 	    && ((!DICT_TF2_FLAG_IS_SET(ib_table, DICT_TF2_FTS_HAS_DOC_ID)
-		 && table->s->fields != dict_table_get_n_tot_u_cols(ib_table))
+		 && n_fields != dict_table_get_n_tot_u_cols(ib_table))
 		|| (DICT_TF2_FLAG_IS_SET(ib_table, DICT_TF2_FTS_HAS_DOC_ID)
-		    && (table->s->fields
-			!= dict_table_get_n_tot_u_cols(ib_table) - 1)))) {
+		    && (n_fields != dict_table_get_n_tot_u_cols(ib_table) - 1)))) {
 
 		ib::warn() << "Table " << norm_name << " contains "
-			<< dict_table_get_n_user_cols(ib_table) << " user"
-			" defined columns in InnoDB, but " << table->s->fields
+			<< dict_table_get_n_tot_u_cols(ib_table) << " user"
+			" defined columns in InnoDB, but " << n_fields
 			<< " columns in MariaDB. Please check"
 			" INFORMATION_SCHEMA.INNODB_SYS_COLUMNS and " REFMAN
 			"innodb-troubleshooting.html for how to resolve the"
@@ -7761,12 +7758,6 @@ build_template_field(
 		prebuilt->templ_contains_blob = TRUE;
 	}
 
-	if (templ->type == DATA_POINT) {
-		/* We set this only when it's DATA_POINT, but not
-		DATA_VAR_POINT */
-		prebuilt->templ_contains_fixed_point = TRUE;
-	}
-
 	return(templ);
 }
 
@@ -7839,7 +7830,7 @@ ha_innobase::build_template(
 	/* Below we check column by column if we need to access
 	the clustered index. */
 
-	n_fields = (ulint) table->s->fields; /* number of columns */
+	n_fields = (ulint) mysql_fields(table);
 
 	if (!m_prebuilt->mysql_template) {
 		m_prebuilt->mysql_template = (mysql_row_templ_t*)
@@ -7852,7 +7843,6 @@ ha_innobase::build_template(
 
 	/* Prepare to build m_prebuilt->mysql_template[]. */
 	m_prebuilt->templ_contains_blob = FALSE;
-	m_prebuilt->templ_contains_fixed_point = FALSE;
 	m_prebuilt->mysql_prefix_len = 0;
 	m_prebuilt->n_template = 0;
 	m_prebuilt->idx_cond_n_cols = 0;
@@ -8645,6 +8635,7 @@ calc_row_difference(
 	trx_t* const	trx = prebuilt->trx;
 	doc_id_t	doc_id = FTS_NULL_DOC_ID;
 	ulint		num_v = 0;
+	uint		n_fields = mysql_fields(table);
 
 	ut_ad(!srv_read_only_mode);
 
@@ -8654,7 +8645,7 @@ calc_row_difference(
 	/* We use upd_buff to convert changed fields */
 	buf = (byte*) upd_buff;
 
-	for (i = 0; i < table->s->fields; i++) {
+	for (i = 0; i < n_fields; i++) {
 		field = table->field[i];
 		bool		is_virtual = innobase_is_v_fld(field);
 		dict_col_t*	col;
@@ -8687,8 +8678,6 @@ calc_row_difference(
 		switch (col_type) {
 
 		case DATA_BLOB:
-		case DATA_POINT:
-		case DATA_VAR_POINT:
 		case DATA_GEOMETRY:
 			o_ptr = row_mysql_read_blob_ref(&o_len, o_ptr, o_len);
 			n_ptr = row_mysql_read_blob_ref(&n_len, n_ptr, n_len);
@@ -9038,7 +9027,7 @@ wsrep_calc_row_hash(
 	void *ctx = alloca(my_md5_context_size());
 	my_md5_init(ctx);
 
-	n_fields = table->s->fields;
+	n_fields = mysql_fields(table);
 
 	for (i = 0; i < n_fields; i++) {
 		byte null_byte=0;
@@ -11110,7 +11099,9 @@ create_table_check_doc_id_col(
 					ULINT_UNDEFINED if column is of the
 					wrong type/name/size */
 {
-	for (ulint i = 0; i < form->s->fields; i++) {
+	uint		n_fields = mysql_fields(form);
+
+	for (ulint i = 0; i < n_fields; i++) {
 		const Field*	field;
 		ulint		col_type;
 		ulint		col_len;
@@ -11454,10 +11445,6 @@ create_table_info_t::create_table_def()
 			if (((Field_varstring*) field)->length_bytes == 2) {
 				long_true_varchar = DATA_LONG_TRUE_VARCHAR;
 			}
-		}
-
-		if (col_type == DATA_POINT) {
-			col_len = DATA_POINT_LEN;
 		}
 
 		is_virtual = (innobase_is_v_fld(field)) ? DATA_VIRTUAL : 0;
@@ -12716,8 +12703,6 @@ create_table_info_t::set_tablespace_type(
 int
 create_table_info_t::initialize()
 {
-	trx_t*		parent_trx __attribute__((unused));
-
 	DBUG_ENTER("create_table_info_t::initialize");
 
 	ut_ad(m_thd != NULL);
@@ -12739,7 +12724,7 @@ create_table_info_t::initialize()
 	/* Get the transaction associated with the current thd, or create one
 	if not yet created */
 
-	parent_trx = check_trx_exists(m_thd);
+	check_trx_exists(m_thd);
 
 	DBUG_RETURN(0);
 }
@@ -20508,10 +20493,12 @@ static MYSQL_SYSVAR_LONG(log_buffer_size, innobase_log_buffer_size,
   "The size of the buffer which InnoDB uses to write log to the log files on disk.",
   NULL, NULL, 16*1024*1024L, 256*1024L, LONG_MAX, 1024);
 
-static MYSQL_SYSVAR_LONGLONG(log_file_size, innobase_log_file_size,
+static MYSQL_SYSVAR_ULONGLONG(log_file_size, srv_log_file_size,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
   "Size of each log file in a log group.",
-  NULL, NULL, 48 << 20, 1 << 20, 512ULL << 30, 1 << 20);
+  NULL, NULL, 48 << 20, 1 << 20, 512ULL << 30, UNIV_PAGE_SIZE_MAX);
+/* OS_FILE_LOG_BLOCK_SIZE would be more appropriate than UNIV_PAGE_SIZE_MAX,
+but fil_space_t is being used for the redo log, and it uses data pages. */
 
 static MYSQL_SYSVAR_ULONG(log_files_in_group, srv_n_log_files,
   PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
@@ -21442,8 +21429,17 @@ innobase_find_mysql_table_for_vc(
 	THD*		thd,
 	dict_table_t*	table)
 {
-	if (table->vc_templ->mysql_table_query_id == thd_get_query_id(thd)) {
-		return table->vc_templ->mysql_table;
+	TABLE *mysql_table;
+	bool	bg_thread = THDVAR(thd, background_thread);
+
+	if (bg_thread) {
+		if ((mysql_table = get_purge_table(thd))) {
+			return mysql_table;
+		}
+	} else {
+		if (table->vc_templ->mysql_table_query_id == thd_get_query_id(thd)) {
+			return table->vc_templ->mysql_table;
+		}
 	}
 
 	char	dbname[MAX_DATABASE_NAME_LEN + 1];
@@ -21473,14 +21469,13 @@ innobase_find_mysql_table_for_vc(
 	tbnamelen = filename_to_tablename(tbname, t_tbname,
 					  MAX_TABLE_NAME_LEN + 1);
 
-	TABLE *mysql_table = find_fk_open_table(thd, t_dbname, dbnamelen,
-						t_tbname, tbnamelen);
-
-	if (!mysql_table && THDVAR(thd, background_thread)) {
-		/* only open the table in background purge threads */
-		mysql_table = open_purge_table(thd, t_dbname, dbnamelen,
-					       t_tbname, tbnamelen);
+	if (bg_thread) {
+		return open_purge_table(thd, t_dbname, dbnamelen,
+					t_tbname, tbnamelen);
 	}
+
+	mysql_table = find_fk_open_table(thd, t_dbname, dbnamelen,
+					t_tbname, tbnamelen);
 
 	table->vc_templ->mysql_table = mysql_table;
 	table->vc_templ->mysql_table_query_id = thd_get_query_id(thd);

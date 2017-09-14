@@ -327,6 +327,12 @@ static plugin_ref intern_plugin_lock(LEX *lex, plugin_ref plugin);
 static void intern_plugin_unlock(LEX *lex, plugin_ref plugin);
 static void reap_plugins(void);
 
+bool plugin_is_forced(struct st_plugin_int *p)
+{
+  return p->load_option == PLUGIN_FORCE ||
+         p->load_option == PLUGIN_FORCE_PLUS_PERMANENT;
+}
+
 static void report_error(int where_to, uint error, ...)
 {
   va_list args;
@@ -941,6 +947,10 @@ SHOW_COMP_OPTION plugin_status(const char *name, size_t len, int type)
 }
 
 
+/*
+  If LEX is passed non-NULL, an automatic unlock of the plugin will happen
+  in the LEX destructor.
+*/
 static plugin_ref intern_plugin_lock(LEX *lex, plugin_ref rc)
 {
   st_plugin_int *pi= plugin_ref_to_int(rc);
@@ -984,6 +994,16 @@ static plugin_ref intern_plugin_lock(LEX *lex, plugin_ref rc)
 }
 
 
+/*
+  Notes on lifetime:
+
+  If THD is passed as non-NULL (and with a non-NULL thd->lex), an entry is made
+  in the thd->lex which will cause an automatic unlock of the plugin in the LEX
+  destructor. In this case, no manual unlock must be done.
+
+  Otherwise, when passing a NULL THD, the caller must arrange that plugin
+  unlock happens later.
+*/
 plugin_ref plugin_lock(THD *thd, plugin_ref ptr)
 {
   LEX *lex= thd ? thd->lex : 0;
@@ -1020,6 +1040,16 @@ plugin_ref plugin_lock(THD *thd, plugin_ref ptr)
 }
 
 
+/*
+  Notes on lifetime:
+
+  If THD is passed as non-NULL (and with a non-NULL thd->lex), an entry is made
+  in the thd->lex which will cause an automatic unlock of the plugin in the LEX
+  destructor. In this case, no manual unlock must be done.
+
+  Otherwise, when passing a NULL THD, the caller must arrange that plugin
+  unlock happens later.
+*/
 plugin_ref plugin_lock_by_name(THD *thd, const LEX_CSTRING *name, int type)
 {
   LEX *lex= thd ? thd->lex : 0;
@@ -1400,7 +1430,7 @@ static int plugin_initialize(MEM_ROOT *tmp_root, struct st_plugin_int *plugin,
 
   if (options_only || state == PLUGIN_IS_DISABLED)
   {
-    ret= 0;
+    ret= !options_only && plugin_is_forced(plugin);
     state= PLUGIN_IS_DISABLED;
     goto err;
   }
@@ -1715,8 +1745,7 @@ int plugin_init(int *argc, char **argv, int flags)
   while ((plugin_ptr= *(--reap)))
   {
     mysql_mutex_unlock(&LOCK_plugin);
-    if (plugin_ptr->load_option == PLUGIN_FORCE ||
-        plugin_ptr->load_option == PLUGIN_FORCE_PLUS_PERMANENT)
+    if (plugin_is_forced(plugin_ptr))
       reaped_mandatory_plugin= TRUE;
     plugin_deinitialize(plugin_ptr, true);
     mysql_mutex_lock(&LOCK_plugin);
@@ -1935,6 +1964,12 @@ void plugin_shutdown(void)
 
   if (initialized)
   {
+    if (opt_gtid_pos_auto_plugins)
+    {
+      free_engine_list(opt_gtid_pos_auto_plugins);
+      opt_gtid_pos_auto_plugins= NULL;
+    }
+
     mysql_mutex_lock(&LOCK_plugin);
 
     reap_needed= true;
@@ -3673,8 +3708,7 @@ static int construct_options(MEM_ROOT *mem_root, struct st_plugin_int *tmp,
                                                   plugin_dash.length + 1);
   strxmov(plugin_name_with_prefix_ptr, plugin_dash.str, plugin_name_ptr, NullS);
 
-  if (tmp->load_option != PLUGIN_FORCE &&
-      tmp->load_option != PLUGIN_FORCE_PLUS_PERMANENT)
+  if (!plugin_is_forced(tmp))
   {
     /* support --skip-plugin-foo syntax */
     options[0].name= plugin_name_ptr;
@@ -4061,8 +4095,11 @@ static int test_plugin_options(MEM_ROOT *tmp_root, struct st_plugin_int *tmp,
       my_afree(tmp_backup);
     }
 
-    if (tmp->load_option != PLUGIN_FORCE &&
-        tmp->load_option != PLUGIN_FORCE_PLUS_PERMANENT)
+    /*
+      We adjust the default value to account for the hardcoded exceptions
+      we have set for the federated and ndbcluster storage engines.
+    */
+    if (!plugin_is_forced(tmp))
       opts[0].def_value= opts[1].def_value= plugin_load_option;
 
     error= handle_options(argc, &argv, opts, mark_changed);
@@ -4078,8 +4115,7 @@ static int test_plugin_options(MEM_ROOT *tmp_root, struct st_plugin_int *tmp,
      Set plugin loading policy from option value. First element in the option
      list is always the <plugin name> option value.
     */
-    if (tmp->load_option != PLUGIN_FORCE &&
-        tmp->load_option != PLUGIN_FORCE_PLUS_PERMANENT)
+    if (!plugin_is_forced(tmp))
       plugin_load_option= (enum_plugin_load_option) *(ulong*) opts[0].value;
   }
 

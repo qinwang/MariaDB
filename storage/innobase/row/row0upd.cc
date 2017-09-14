@@ -2582,8 +2582,7 @@ row_upd_clust_rec_by_insert_inherit_func(
 		data[BTR_EXTERN_LEN] &= ~BTR_EXTERN_OWNER_FLAG;
 		data[BTR_EXTERN_LEN] |= BTR_EXTERN_INHERITED_FLAG;
 		/* The BTR_EXTERN_INHERITED_FLAG only matters in
-		rollback of a fresh insert (insert_undo log).
-		Purge (operating on update_undo log) will always free
+		rollback of a fresh insert. Purge will always free
 		the extern fields of a delete-marked row. */
 
 		inherit = true;
@@ -2663,7 +2662,8 @@ row_upd_clust_rec_by_insert(
 			marked, then we are here after a DB_LOCK_WAIT.
 			Skip delete marking clustered index and disowning
 			its blobs. */
-			ut_ad(rec_get_trx_id(rec, index) == trx->id);
+			ut_ad(row_get_rec_trx_id(rec, index, offsets)
+			      == trx->id);
 			ut_ad(!trx_undo_roll_ptr_is_insert(
 			              row_get_rec_roll_ptr(rec, index,
 							   offsets)));

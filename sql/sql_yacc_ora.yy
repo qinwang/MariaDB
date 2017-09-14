@@ -237,6 +237,7 @@ void ORAerror(THD *thd, const char *s)
   st_trg_execution_order trg_execution_order;
 
   /* enums */
+  enum enum_view_suid view_suid;
   enum sub_select_type unit_type;
   enum Condition_information_item::Name cond_info_item_name;
   enum enum_diag_condition_item_name diag_condition_item_name;
@@ -1095,10 +1096,9 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         case_stmt_body opt_bin_mod
         opt_if_exists_table_element opt_if_not_exists_table_element
 	opt_recursive
-        type_or_rowtype
 
 %type <object_ddl_options>
-        create_or_replace 
+        create_or_replace
         opt_if_not_exists
         opt_if_exists
 
@@ -1313,11 +1313,9 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         statement sp_suid
         sp_c_chistics sp_a_chistics sp_chistic sp_c_chistic xa
         opt_field_or_var_spec fields_or_vars opt_load_data_set_spec
-        view_algorithm view_or_trigger_or_sp_or_event
-        definer_tail no_definer_tail
-        view_suid view_tail view_list_opt view_list view_select
-        view_check_option trigger_tail sp_tail sf_tail event_tail
-        udf_tail udf_tail2
+        view_list_opt view_list view_select
+        trigger_tail sp_tail sf_tail event_tail
+        udf_tail create_function_tail
         install uninstall partition_entry binlog_base64_event
         normal_key_options normal_key_opts all_key_opt 
         spatial_key_options fulltext_key_options normal_key_opt 
@@ -1352,7 +1350,11 @@ END_OF_INPUT
 %type <NONE> case_stmt_specification
 %type <NONE> loop_body while_body repeat_body
 
-%type <num>  sp_decl_idents sp_handler_type sp_hcond_list
+%type <num> view_algorithm view_check_option
+%type <view_suid> view_suid opt_view_suid
+
+%type <num> sp_decl_idents sp_decl_idents_init_vars
+%type <num> sp_handler_type sp_hcond_list
 %type <spcondvalue> sp_cond sp_hcond sqlstate signal_value opt_signal_value
 %type <spblock> sp_decl_body_list opt_sp_decl_body_list
 %type <spblock> sp_decl_non_handler sp_decl_non_handler_list
@@ -1387,7 +1389,7 @@ END_OF_INPUT
 %type <cond_info_list> condition_information;
 
 %type <spvar_definition> row_field_name row_field_definition
-%type <spvar_definition_list> row_field_definition_list field_type_row
+%type <spvar_definition_list> row_field_definition_list row_type_body
 
 %type <NONE> opt_window_clause window_def_list window_def window_spec
 %type <lex_str_ptr> window_name
@@ -2022,15 +2024,50 @@ create:
                MYSQL_YYABORT;
             lex->name= $4;
           }
-        | create_or_replace
+        | create_or_replace definer_opt opt_view_suid VIEW_SYM
+          opt_if_not_exists table_ident
+          {
+            if (Lex->add_create_view(thd, $1 | $5,
+                                     DTYPE_ALGORITHM_UNDEFINED, $3, $6))
+              MYSQL_YYABORT;
+          }
+          view_list_opt AS view_select
+          { }
+        | create_or_replace view_algorithm definer_opt opt_view_suid VIEW_SYM
+          opt_if_not_exists table_ident
+          {
+            if (Lex->add_create_view(thd, $1 | $6, $2, $4, $7))
+              MYSQL_YYABORT;
+          }
+          view_list_opt AS view_select
+          { }
+        | create_or_replace definer_opt TRIGGER_SYM
+          { Lex->create_info.set($1); }
+          trigger_tail
+          { }
+        | create_or_replace definer_opt PROCEDURE_SYM
+          { Lex->create_info.set($1); }
+          sp_tail_standalone
+          { }
+        | create_or_replace definer_opt EVENT_SYM
+          { Lex->create_info.set($1); }
+          event_tail
+          { }
+        | create_or_replace definer FUNCTION_SYM
+          { Lex->create_info.set($1); }
+          sf_tail_standalone
+          { }
+        | create_or_replace no_definer FUNCTION_SYM
+          { Lex->create_info.set($1); }
+          create_function_tail
+          { }
+        | create_or_replace no_definer AGGREGATE_SYM FUNCTION_SYM
           {
             Lex->create_info.set($1);
-            Lex->create_view_mode= ($1.or_replace() ? VIEW_CREATE_OR_REPLACE :
-                                                      VIEW_CREATE_NEW);
-            Lex->create_view_algorithm= DTYPE_ALGORITHM_UNDEFINED;
-            Lex->create_view_suid= TRUE;
+            Lex->udf.type= UDFTYPE_AGGREGATE;
           }
-          view_or_trigger_or_sp_or_event { }
+          udf_tail
+          { }
         | create_or_replace USER_SYM opt_if_not_exists clear_privileges grant_list
           opt_require_clause opt_resource_options
           {
@@ -2054,6 +2091,11 @@ create:
         | create_or_replace { Lex->set_command(SQLCOM_CREATE_SERVER, $1); }
           server_def
           { }
+        ;
+
+create_function_tail:
+          sf_tail_standalone { }
+        | udf_tail { Lex->udf.type= UDFTYPE_FUNCTION; }
         ;
 
 opt_sequence:
@@ -2209,16 +2251,16 @@ server_option:
         ;
 
 event_tail:
-          remember_name EVENT_SYM opt_if_not_exists sp_name
+          remember_name opt_if_not_exists sp_name
           {
             LEX *lex=Lex;
 
             lex->stmt_definition_begin= $1;
-            if (lex->add_create_options_with_check($3))
+            if (lex->add_create_options_with_check($2))
               MYSQL_YYABORT;
             if (!(lex->event_parse_data= Event_parse_data::new_instance(thd)))
               MYSQL_YYABORT;
-            lex->event_parse_data->identifier= $4;
+            lex->event_parse_data->identifier= $3;
             lex->event_parse_data->on_completion=
                                   Event_parse_data::ON_COMPLETION_DROP;
 
@@ -2350,7 +2392,6 @@ ev_sql_stmt:
                                         TYPE_ENUM_PROCEDURE))
               MYSQL_YYABORT;
 
-            lex->sp_chistics.suid= SP_IS_SUID;  //always the definer!
             lex->sphead->set_body_start(thd, lip->get_cpp_ptr());
           }
           sp_proc_stmt
@@ -2507,13 +2548,13 @@ sp_param_name_and_type:
           {
             Lex->sphead->fill_spvar_using_type_reference($$= $1, $2);
           }
-        | sp_param_name field_type_row
+        | sp_param_name ROW_SYM row_type_body
           {
             $$= $1;
             $$->field_def.field_name= $$->name;
             Lex->sphead->fill_spvar_definition(thd, &$$->field_def);
-            Lex->sphead->row_fill_field_definitions(thd, $2);
-            $$->field_def.set_row_field_definitions($2);
+            Lex->sphead->row_fill_field_definitions(thd, $3);
+            $$->field_def.set_row_field_definitions($3);
           }
         ;
 
@@ -2539,13 +2580,13 @@ sp_pdparam:
           {
             Lex->sphead->fill_spvar_using_type_reference($1, $3);
           }
-        | sp_param_name sp_opt_inout field_type_row
+        | sp_param_name sp_opt_inout ROW_SYM row_type_body
           {
             $1->mode= $2;
             $1->field_def.field_name= $1->name;
             Lex->sphead->fill_spvar_definition(thd, &$1->field_def);
-            Lex->sphead->row_fill_field_definitions(thd, $3);
-            $1->field_def.set_row_field_definitions($3);
+            Lex->sphead->row_fill_field_definitions(thd, $4);
+            $1->field_def.set_row_field_definitions($4);
           }
         ;
 
@@ -2728,46 +2769,45 @@ row_field_definition_list:
           }
         ;
 
-field_type_row:
-          ROW_SYM '(' row_field_definition_list ')' { $$= $3; }
+row_type_body:
+          '(' row_field_definition_list ')' { $$= $2; }
         ;
 
-type_or_rowtype:
-          TYPE_SYM     { $$= 0; }
-        | ROWTYPE_SYM  { $$= 1; }
-        ;
-
-sp_decl_non_handler:
+sp_decl_idents_init_vars:
           sp_decl_idents
           {
             Lex->sp_variable_declarations_init(thd, $1);
           }
+        ;
+
+sp_decl_non_handler:
+          sp_decl_idents_init_vars
           type_with_opt_collate
           sp_opt_default
           {
             if (Lex->sp_variable_declarations_finalize(thd, $1,
-                                                       &Lex->last_field[0], $4))
+                                                       &Lex->last_field[0], $3))
               MYSQL_YYABORT;
             $$.init_using_vars($1);
           }
-        | sp_decl_idents
-          {
-            Lex->sp_variable_declarations_init(thd, $1);
-          }
-          optionally_qualified_column_ident '%' type_or_rowtype
+        | sp_decl_idents_init_vars
+          optionally_qualified_column_ident '%' TYPE_SYM
           sp_opt_default
           {
-            if ($5 ?
-                Lex->sp_variable_declarations_rowtype_finalize(thd, $1, $3, $6) :
-                Lex->sp_variable_declarations_with_ref_finalize(thd, $1, $3, $6))
+            if (Lex->sp_variable_declarations_with_ref_finalize(thd, $1, $2, $5))
               MYSQL_YYABORT;
             $$.init_using_vars($1);
           }
-        | sp_decl_idents
+        | sp_decl_idents_init_vars
+          optionally_qualified_column_ident '%' ROWTYPE_SYM
+          sp_opt_default
           {
-            Lex->sp_variable_declarations_init(thd, $1);
+            if (Lex->sp_variable_declarations_rowtype_finalize(thd, $1, $2, $5))
+              MYSQL_YYABORT;
+            $$.init_using_vars($1);
           }
-          field_type_row
+        | sp_decl_idents_init_vars
+          ROW_SYM row_type_body
           sp_opt_default
           {
             if (Lex->sp_variable_declarations_row_finalize(thd, $1, $3, $4))
@@ -4610,9 +4650,11 @@ size_number:
                 case 'g':
                 case 'G':
                   text_shift_number+=10;
+                  /* fall through */
                 case 'm':
                 case 'M':
                   text_shift_number+=10;
+                  /* fall through */
                 case 'k':
                 case 'K':
                   text_shift_number+=10;
@@ -6412,8 +6454,9 @@ field_type_lob:
           { $$.set(&type_handler_long_blob); }
         | LONG_SYM opt_binary
           { $$.set(&type_handler_medium_blob); }
+        | JSON_SYM opt_binary
+          { $$.set(&type_handler_blob); }
         ;
-
 
 field_type_misc:
           ENUM '(' string_list ')' opt_binary
@@ -6601,19 +6644,7 @@ serial_attribute:
             lex->last_field->flags|= PRI_KEY_FLAG | NOT_NULL_FLAG;
             lex->alter_info.flags|= Alter_info::ALTER_ADD_INDEX;
           }
-        | UNIQUE_SYM
-          {
-            LEX *lex=Lex;
-            lex->last_field->flags|= UNIQUE_KEY_FLAG;
-            lex->alter_info.flags|= Alter_info::ALTER_ADD_INDEX;
-          }
-        | UNIQUE_SYM KEY_SYM
-          {
-            LEX *lex=Lex;
-            lex->last_field->flags|= UNIQUE_KEY_FLAG;
-            lex->alter_info.flags|= Alter_info::ALTER_ADD_INDEX; 
-          }
-        | COMMENT_SYM TEXT_STRING_sys { Lex->last_field->comment= $2; }
+        | vcol_attribute
         | IDENT_sys equal TEXT_STRING_sys
           {
             if ($3.length > ENGINE_OPTION_MAX_LENGTH)
@@ -7180,7 +7211,7 @@ alter:
 
             if (lex->sphead)
               my_yyabort_error((ER_SP_NO_DROP_SP, MYF(0), "PROCEDURE"));
-            bzero((char *)&lex->sp_chistics, sizeof(st_sp_chistics));
+            lex->sp_chistics.init();
           }
           sp_a_chistics
           {
@@ -7195,7 +7226,7 @@ alter:
 
             if (lex->sphead)
               my_yyabort_error((ER_SP_NO_DROP_SP, MYF(0), "FUNCTION"));
-            bzero((char *)&lex->sp_chistics, sizeof(st_sp_chistics));
+            lex->sp_chistics.init();
           }
           sp_a_chistics
           {
@@ -7204,31 +7235,24 @@ alter:
             lex->sql_command= SQLCOM_ALTER_FUNCTION;
             lex->spname= $3;
           }
-        | ALTER view_algorithm definer_opt
+        | ALTER view_algorithm definer_opt opt_view_suid VIEW_SYM table_ident
           {
-            LEX *lex= Lex;
-
-            if (lex->sphead)
-              my_yyabort_error((ER_SP_BADSTATEMENT, MYF(0), "ALTER VIEW"));
-            lex->create_view_mode= VIEW_ALTER;
+            if (Lex->add_alter_view(thd, $2, $4, $6))
+              MYSQL_YYABORT;
           }
-          view_tail
+          view_list_opt AS view_select
           {}
-        | ALTER definer_opt
+        | ALTER definer_opt opt_view_suid VIEW_SYM table_ident
           /*
             We have two separate rules for ALTER VIEW rather that
             optional view_algorithm above, to resolve the ambiguity
             with the ALTER EVENT below.
           */
           {
-            LEX *lex= Lex;
-
-            if (lex->sphead)
-              my_yyabort_error((ER_SP_BADSTATEMENT, MYF(0), "ALTER VIEW"));
-            lex->create_view_algorithm= VIEW_ALGORITHM_INHERIT;
-            lex->create_view_mode= VIEW_ALTER;
+            if (Lex->add_alter_view(thd, VIEW_ALGORITHM_INHERIT, $3, $5))
+              MYSQL_YYABORT;
           }
-          view_tail
+          view_list_opt AS view_select
           {}
         | ALTER definer_opt remember_name EVENT_SYM sp_name
           {
@@ -14609,7 +14633,7 @@ ident_or_text:
 user_maybe_role:
           ident_or_text
           {
-            if (!($$=(LEX_USER*) thd->alloc(sizeof(st_lex_user))))
+            if (!($$=(LEX_USER*) thd->alloc(sizeof(LEX_USER))))
               MYSQL_YYABORT;
             $$->user = $1;
             $$->host= null_clex_str; // User or Role, see get_current_user()
@@ -14622,7 +14646,7 @@ user_maybe_role:
           }
         | ident_or_text '@' ident_or_text
           {
-            if (!($$=(LEX_USER*) thd->alloc(sizeof(st_lex_user))))
+            if (!($$=(LEX_USER*) thd->alloc(sizeof(LEX_USER))))
               MYSQL_YYABORT;
             $$->user = $1; $$->host=$3;
             $$->reset_auth();
@@ -14772,24 +14796,13 @@ keyword_directly_assignable:
           CREATE TRIGGER .. FOR EACH ROW FOLLOWS tr1 a:= 10;
 */
 keyword_directly_not_assignable:
-          CONTAINS_SYM          { /* SP characteristic               */ }
-        | LANGUAGE_SYM          { /* SP characteristic               */ }
-        | NO_SYM                { /* SP characteristic               */ }
-        | CHARSET               { /* SET CHARSET utf8;               */ }
-        | DO_SYM                { /* Verb clause                     */ }
-        | REPAIR                { /* Verb clause                     */ }
-        | HANDLER_SYM           { /* Verb clause                     */ }
-        | CLOSE_SYM             { /* Verb clause. Reserved in Oracle */ }
-        | OPEN_SYM              { /* Verb clause. Reserved in Oracle */ }
-        | SAVEPOINT_SYM         { /* Verb clause. Reserved in Oracle */ }
-        | TRUNCATE_SYM          { /* Verb clause. Reserved in Oracle */ }
-        | BEGIN_SYM             { /* Compound.    Reserved in Oracle */ }
-        | END                   { /* Compound.    Reserved in Oracle */ }
-        | FOLLOWS_SYM           { /* Conflicts with assignment in FOR EACH */}
-        | PRECEDES_SYM          { /* Conflicts with assignment in FOR EACH */}
-        | COMMIT_SYM            { /* Verb clause. Reserved in Oracle */ }
-        | ROLLBACK_SYM          { /* Verb clause. Reserver in Oracle */ }
-        | SHUTDOWN              { /* Verb clause                     */ }
+          CONTAINS_SYM           { /* SP characteristic               */ }
+        | LANGUAGE_SYM           { /* SP characteristic               */ }
+        | NO_SYM                 { /* SP characteristic               */ }
+        | CHARSET                { /* SET CHARSET utf8;               */ }
+        | FOLLOWS_SYM            { /* Conflicts with assignment in FOR EACH */}
+        | PRECEDES_SYM           { /* Conflicts with assignment in FOR EACH */}
+        | keyword_sp_verb_clause { }
         ;
 
 /*
@@ -14802,6 +14815,29 @@ keyword_sp:
           keyword_sp_data_type
         | keyword_sp_not_data_type
         ;
+
+
+/*
+  Keywords that start a statement.
+  Generally allowed as identifiers (e.g. table, column names)
+  - not allowed as SP label names
+  - not allowed as variable names in Oracle-style assignments:
+    xxx:=10
+*/
+keyword_sp_verb_clause:
+          BEGIN_SYM             { /* Compound.    Reserved in Oracle */ }
+        | CLOSE_SYM             { /* Verb clause. Reserved in Oracle */ }
+        | COMMIT_SYM            { /* Verb clause. Reserved in Oracle */ }
+        | DO_SYM                { /* Verb clause                     */ }
+        | END                   { /* Compound.    Reserved in Oracle */ }
+        | HANDLER_SYM           { /* Verb clause                     */ }
+        | OPEN_SYM              { /* Verb clause. Reserved in Oracle */ }
+        | REPAIR                { /* Verb clause                     */ }
+        | ROLLBACK_SYM          { /* Verb clause. Reserved in Oracle */ }
+        | SAVEPOINT_SYM         { /* Verb clause. Reserved in Oracle */ }
+        | SHUTDOWN              { /* Verb clause                     */ }
+        | TRUNCATE_SYM          { /* Verb clause. Reserved in Oracle */ }
+      ;
 
 
 /*
@@ -14819,6 +14855,7 @@ keyword_sp_data_type:
         | FIXED_SYM                {}
         | GEOMETRYCOLLECTION       {}
         | GEOMETRY_SYM             {}
+        | JSON_SYM                 {}
         | LINESTRING               {}
         | MEDIUM_SYM               {}
         | MULTILINESTRING          {}
@@ -14954,7 +14991,6 @@ keyword_sp_not_data_type:
         | ISOLATION                {}
         | ISOPEN_SYM               {}
         | ISSUER_SYM               {}
-        | JSON_SYM                 {}
         | INSERT_METHOD            {}
         | KEY_BLOCK_SIZE           {}
         | LAST_VALUE               {}
@@ -15224,8 +15260,9 @@ set_stmt_option_value_following_option_type_list:
        */
           option_value_following_option_type
         | set_stmt_option_value_following_option_type_list ',' option_value_following_option_type
+        ;
 
-// Start of option value list
+/* Start of option value list */
 start_option_value_list:
           option_value_no_option_type
           {
@@ -15250,7 +15287,7 @@ start_option_value_list:
         ;
 
 
-// Start of option value list, option_type was given
+/* Start of option value list, option_type was given */
 start_option_value_list_following_option_type:
           option_value_following_option_type
           {
@@ -15265,13 +15302,13 @@ start_option_value_list_following_option_type:
           }
         ;
 
-// Remainder of the option value list after first option value.
+/* Remainder of the option value list after first option value. */
 option_value_list_continued:
           /* empty */
         | ',' option_value_list
         ;
 
-// Repeating list of option values after first option value.
+/* Repeating list of option values after first option value. */
 option_value_list:
           {
             sp_create_assignment_lex(thd, yychar == YYEMPTY);
@@ -15292,7 +15329,7 @@ option_value_list:
           }
         ;
 
-// Wrapper around option values following the first option value in the stmt.
+/* Wrapper around option values following the first option value in the stmt. */
 option_value:
           option_type
           {
@@ -15322,7 +15359,7 @@ opt_var_ident_type:
         | SESSION_SYM '.' { $$=OPT_SESSION; }
         ;
 
-// Option values with preceding option_type.
+/* Option values with preceding option_type. */
 option_value_following_option_type:
           internal_variable_name equal set_expr_or_default
           {
@@ -15346,7 +15383,7 @@ option_value_following_option_type:
           }
         ;
 
-// Option values without preceding option_type.
+/* Option values without preceding option_type. */
 option_value_no_option_type:
           ident equal set_expr_or_default
           {
@@ -15964,7 +16001,7 @@ grant_role:
             ((char*) $1.str)[$1.length] = '\0';
             if ($1.length == 0)
               my_yyabort_error((ER_INVALID_ROLE, MYF(0), ""));
-            if (!($$=(LEX_USER*) thd->alloc(sizeof(st_lex_user))))
+            if (!($$=(LEX_USER*) thd->alloc(sizeof(LEX_USER))))
               MYSQL_YYABORT;
             $$->user= $1;
             $$->host= empty_clex_str;
@@ -16621,38 +16658,6 @@ query_expression_option:
 
 /**************************************************************************
 
- CREATE VIEW | TRIGGER | PROCEDURE statements.
-
-**************************************************************************/
-
-view_or_trigger_or_sp_or_event:
-          definer definer_tail
-          {}
-        | no_definer no_definer_tail
-          {}
-        | view_algorithm definer_opt view_tail
-          {}
-        ;
-
-definer_tail:
-          view_tail
-        | trigger_tail
-        | sp_tail_standalone
-        | sf_tail_standalone
-        | event_tail
-        ;
-
-no_definer_tail:
-          view_tail
-        | trigger_tail
-        | sp_tail_standalone
-        | sf_tail_standalone
-        | udf_tail
-        | event_tail
-        ;
-
-/**************************************************************************
-
  DEFINER clause support.
 
 **************************************************************************/
@@ -16693,39 +16698,19 @@ definer:
 **************************************************************************/
 
 view_algorithm:
-          ALGORITHM_SYM '=' UNDEFINED_SYM
-          { Lex->create_view_algorithm= DTYPE_ALGORITHM_UNDEFINED; }
-        | ALGORITHM_SYM '=' MERGE_SYM
-          { Lex->create_view_algorithm= VIEW_ALGORITHM_MERGE; }
-        | ALGORITHM_SYM '=' TEMPTABLE_SYM
-          { Lex->create_view_algorithm= VIEW_ALGORITHM_TMPTABLE; }
+          ALGORITHM_SYM '=' UNDEFINED_SYM { $$= DTYPE_ALGORITHM_UNDEFINED; }
+        | ALGORITHM_SYM '=' MERGE_SYM     { $$= VIEW_ALGORITHM_MERGE; }
+        | ALGORITHM_SYM '=' TEMPTABLE_SYM { $$= VIEW_ALGORITHM_TMPTABLE; }
+        ;
+
+opt_view_suid:
+          /* empty */                      { $$= VIEW_SUID_DEFAULT; }
+        | view_suid                        { $$= $1; }
         ;
 
 view_suid:
-          /* empty */
-          { Lex->create_view_suid= VIEW_SUID_DEFAULT; }
-        | SQL_SYM SECURITY_SYM DEFINER_SYM
-          { Lex->create_view_suid= VIEW_SUID_DEFINER; }
-        | SQL_SYM SECURITY_SYM INVOKER_SYM
-          { Lex->create_view_suid= VIEW_SUID_INVOKER; }
-        ;
-
-view_tail:
-          view_suid VIEW_SYM opt_if_not_exists table_ident
-          {
-            LEX *lex= thd->lex;
-            if (lex->add_create_options_with_check($3))
-              MYSQL_YYABORT;
-            lex->sql_command= SQLCOM_CREATE_VIEW;
-            /* first table in list is target VIEW name */
-            if (!lex->select_lex.add_table_to_list(thd, $4, NULL,
-                                                   TL_OPTION_UPDATING,
-                                                   TL_IGNORE,
-                                                   MDL_EXCLUSIVE))
-              MYSQL_YYABORT;
-            lex->query_tables->open_strategy= TABLE_LIST::OPEN_STUB;
-          }
-          view_list_opt AS view_select
+          SQL_SYM SECURITY_SYM DEFINER_SYM { $$= VIEW_SUID_DEFINER; }
+        | SQL_SYM SECURITY_SYM INVOKER_SYM { $$= VIEW_SUID_INVOKER; }
         ;
 
 view_list_opt:
@@ -16753,19 +16738,20 @@ view_select:
           {
             LEX *lex= Lex;
             lex->parsing_options.allows_variable= FALSE;
-            lex->create_view_select.str= (char *) YYLIP->get_cpp_ptr();
+            lex->create_view->select.str= (char *) YYLIP->get_cpp_ptr();
           }
           opt_with_clause query_expression_body_view view_check_option
           {
             LEX *lex= Lex;
-            uint len= YYLIP->get_cpp_ptr() - lex->create_view_select.str;
+            uint len= YYLIP->get_cpp_ptr() - lex->create_view->select.str;
             uint not_used;
-            void *create_view_select= thd->memdup(lex->create_view_select.str, len);
-            lex->create_view_select.length= len;
-            lex->create_view_select.str= (char *) create_view_select;
+            void *create_view_select= thd->memdup(lex->create_view->select.str, len);
+            lex->create_view->select.length= len;
+            lex->create_view->select.str= (char *) create_view_select;
             trim_whitespace(thd->charset(),
-                            &lex->create_view_select,
+                            &lex->create_view->select,
                             &not_used);
+            lex->create_view->check= $4;
             lex->parsing_options.allows_variable= TRUE;
             lex->current_select->set_with_clause($2);
           }
@@ -16783,14 +16769,10 @@ query_expression_body_view:
         ;
 
 view_check_option:
-          /* empty */
-          { Lex->create_view_check= VIEW_CHECK_NONE; }
-        | WITH CHECK_SYM OPTION
-          { Lex->create_view_check= VIEW_CHECK_CASCADED; }
-        | WITH CASCADED CHECK_SYM OPTION
-          { Lex->create_view_check= VIEW_CHECK_CASCADED; }
-        | WITH LOCAL_SYM CHECK_SYM OPTION
-          { Lex->create_view_check= VIEW_CHECK_LOCAL; }
+          /* empty */                     { $$= VIEW_CHECK_NONE; }
+        | WITH CHECK_SYM OPTION           { $$= VIEW_CHECK_CASCADED; }
+        | WITH CASCADED CHECK_SYM OPTION  { $$= VIEW_CHECK_CASCADED; }
+        | WITH LOCAL_SYM CHECK_SYM OPTION { $$= VIEW_CHECK_LOCAL; }
         ;
 
 /**************************************************************************
@@ -16822,25 +16804,24 @@ trigger_follows_precedes_clause:
           ;
 
 trigger_tail:
-          TRIGGER_SYM
           remember_name
           opt_if_not_exists
           {
-            if (Lex->add_create_options_with_check($3))
+            if (Lex->add_create_options_with_check($2))
               MYSQL_YYABORT;
           }
           sp_name
           trg_action_time
           trg_event
           ON
-          remember_name /* $9 */
-          { /* $10 */
+          remember_name /* $8 */
+          { /* $9 */
             Lex->raw_trg_on_table_name_begin= YYLIP->get_tok_start();
           }
-          table_ident /* $11 */
+          table_ident /* $10 */
           FOR_SYM
-          remember_name /* $13 */
-          { /* $14 */
+          remember_name /* $12 */
+          { /* $13 */
             Lex->raw_trg_on_table_name_end= YYLIP->get_tok_start();
           }
           EACH_SYM
@@ -16848,28 +16829,28 @@ trigger_tail:
           {
             Lex->trg_chistics.ordering_clause_begin= YYLIP->get_cpp_ptr();
           }
-          trigger_follows_precedes_clause /* $18 */
-          { /* $19 */
+          trigger_follows_precedes_clause /* $17 */
+          { /* $18 */
             LEX *lex= thd->lex;
             Lex_input_stream *lip= YYLIP;
 
             if (lex->sphead)
               my_yyabort_error((ER_SP_NO_RECURSIVE_CREATE, MYF(0), "TRIGGER"));
 
-            lex->stmt_definition_begin= $2;
-            lex->ident.str= $9;
-            lex->ident.length= $13 - $9;
-            lex->spname= $5;
-            (*static_cast<st_trg_execution_order*>(&lex->trg_chistics))= ($18);
+            lex->stmt_definition_begin= $1;
+            lex->ident.str= $8;
+            lex->ident.length= $12 - $8;
+            lex->spname= $4;
+            (*static_cast<st_trg_execution_order*>(&lex->trg_chistics))= ($17);
             lex->trg_chistics.ordering_clause_end= lip->get_cpp_ptr();
 
-            if (!lex->make_sp_head(thd, $5, TYPE_ENUM_TRIGGER))
+            if (!lex->make_sp_head(thd, $4, TYPE_ENUM_TRIGGER))
               MYSQL_YYABORT;
 
             lex->sphead->set_body_start(thd, lip->get_cpp_tok_start());
           }
-          sp_proc_stmt /* $20 */
-          { /* $21 */
+          sp_proc_stmt /* $19 */
+          { /* $20 */
             LEX *lex= Lex;
             sp_head *sp= lex->sphead;
             if (sp->check_unresolved_goto())
@@ -16887,7 +16868,7 @@ trigger_tail:
               sp_proc_stmt alternatives are not saving/restoring LEX, so
               lex->query_tables can be wiped out.
             */
-            if (!lex->select_lex.add_table_to_list(thd, $11,
+            if (!lex->select_lex.add_table_to_list(thd, $10,
                                                    (LEX_CSTRING*) 0,
                                                    TL_OPTION_UPDATING,
                                                    TL_READ_NO_INSERT,
@@ -16903,58 +16884,57 @@ trigger_tail:
 **************************************************************************/
 
 udf_tail:
-          AGGREGATE_SYM udf_tail2 { thd->lex->udf.type= UDFTYPE_AGGREGATE; }
-        | udf_tail2               { thd->lex->udf.type= UDFTYPE_FUNCTION;  }
-        ;
-
-udf_tail2:
-          FUNCTION_SYM opt_if_not_exists ident
+          opt_if_not_exists ident
           RETURNS_SYM udf_type SONAME_SYM TEXT_STRING_sys
           {
             LEX *lex= thd->lex;
-            if (lex->add_create_options_with_check($2))
+            if (lex->add_create_options_with_check($1))
               MYSQL_YYABORT;
-            if (is_native_function(thd, & $3))
-              my_yyabort_error((ER_NATIVE_FCT_NAME_COLLISION, MYF(0), $3.str));
+            if (is_native_function(thd, & $2))
+              my_yyabort_error((ER_NATIVE_FCT_NAME_COLLISION, MYF(0), $2.str));
             lex->sql_command= SQLCOM_CREATE_FUNCTION;
-            lex->udf.name= $3;
-            lex->udf.returns= (Item_result) $5;
-            lex->udf.dl= $7.str;
+            lex->udf.name= $2;
+            lex->udf.returns= (Item_result) $4;
+            lex->udf.dl= $6.str;
           }
         ;
 
-sf_tail:
-          FUNCTION_SYM /* $1 */
-          opt_if_not_exists /* $2 */
-          sp_name /* $3 */
-          { /* $4 */
-            if (!Lex->make_sp_head_no_recursive(thd, $2, $3,
-                                                TYPE_ENUM_FUNCTION))
-              MYSQL_YYABORT;
-            Lex->spname= $3;
-          }
-          opt_sp_parenthesized_fdparam_list /* $5 */
-          RETURN_SYM /* $6 */
-          { /* $7 */
+
+sf_return_type:
+          RETURN_SYM
+          {
             LEX *lex= Lex;
             lex->init_last_field(&lex->sphead->m_return_field_def,
                                  &empty_clex_str,
                                  thd->variables.collation_database);
           }
-          sp_param_type_with_opt_collate /* $8 */
-          { /* $9 */
+          sp_param_type_with_opt_collate
+          {
             if (Lex->sphead->fill_field_definition(thd, Lex->last_field))
               MYSQL_YYABORT;
           }
-          sp_c_chistics /* $10 */
-          { /* $11 */
+        ;
+
+sf_tail:
+          opt_if_not_exists
+          sp_name
+          {
+            if (!Lex->make_sp_head_no_recursive(thd, $1, $2,
+                                                TYPE_ENUM_FUNCTION))
+              MYSQL_YYABORT;
+          }
+          opt_sp_parenthesized_fdparam_list
+          sf_return_type
+          sp_c_chistics
+          {
             LEX *lex= thd->lex;
             Lex_input_stream *lip= YYLIP;
 
+            lex->sphead->set_chistics(lex->sp_chistics);
             lex->sphead->set_body_start(thd, lip->get_cpp_tok_start());
           }
-          sp_tail_is /* $12 */
-          sp_body /* $13 */
+          sp_tail_is
+          sp_body
           {
             LEX *lex= thd->lex;
             sp_head *sp= lex->sphead;
@@ -16975,16 +16955,16 @@ sf_tail:
         ;
 
 sp_tail:
-          PROCEDURE_SYM opt_if_not_exists sp_name
+          opt_if_not_exists sp_name
           {
-            if (!Lex->make_sp_head_no_recursive(thd, $2, $3,
+            if (!Lex->make_sp_head_no_recursive(thd, $1, $2,
                                                 TYPE_ENUM_PROCEDURE))
               MYSQL_YYABORT;
-            Lex->spname= $3;
           }
           opt_sp_parenthesized_pdparam_list
           sp_c_chistics
           {
+            Lex->sphead->set_chistics(Lex->sp_chistics);
             Lex->sphead->set_body_start(thd, YYLIP->get_cpp_tok_start());
           }
           sp_tail_is

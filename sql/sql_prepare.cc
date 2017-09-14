@@ -1496,6 +1496,7 @@ static bool mysql_test_delete(Prepared_statement *stmt,
   uint table_count= 0;
   THD *thd= stmt->thd;
   LEX *lex= stmt->lex;
+  bool delete_while_scanning;
   DBUG_ENTER("mysql_test_delete");
 
   if (delete_precheck(thd, table_list) ||
@@ -1524,7 +1525,8 @@ static bool mysql_test_delete(Prepared_statement *stmt,
   DBUG_RETURN(mysql_prepare_delete(thd, table_list, 
                                    lex->select_lex.with_wild, 
                                    lex->select_lex.item_list,
-                                   &lex->select_lex.where));
+                                   &lex->select_lex.where,
+                                   &delete_while_scanning));
 error:
   DBUG_RETURN(TRUE);
 }
@@ -1576,7 +1578,7 @@ static int mysql_test_select(Prepared_statement *stmt,
   }
 
   if (open_normal_and_derived_tables(thd, tables,  MYSQL_OPEN_FORCE_SHARED_MDL,
-                                     DT_PREPARE | DT_CREATE))
+                                     DT_INIT | DT_PREPARE | DT_CREATE))
     goto error;
 
   thd->lex->used_tables= 0;                        // Updated by setup_fields
@@ -2072,7 +2074,7 @@ static bool mysql_test_create_view(Prepared_statement *stmt)
   TABLE_LIST *view= lex->unlink_first_table(&link_to_local);
   TABLE_LIST *tables= lex->query_tables;
 
-  if (create_view_precheck(thd, tables, view, lex->create_view_mode))
+  if (create_view_precheck(thd, tables, view, lex->create_view->mode))
     goto err;
 
   /*
@@ -2448,7 +2450,7 @@ static bool check_prepared_statement(Prepared_statement *stmt)
     }
     break;
   case SQLCOM_CREATE_VIEW:
-    if (lex->create_view_mode == VIEW_ALTER)
+    if (lex->create_view->mode == VIEW_ALTER)
     {
       my_message(ER_UNSUPPORTED_PS, ER_THD(thd, ER_UNSUPPORTED_PS), MYF(0));
       goto error;

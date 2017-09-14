@@ -4424,6 +4424,15 @@ void select_create::store_values(List<Item> &values)
 bool select_create::send_eof()
 {
   DBUG_ENTER("select_create::send_eof");
+
+  /*
+    The routine that writes the statement in the binary log
+    is in select_insert::prepare_eof(). For that reason, we
+    mark the flag at this point.
+  */
+  if (table->s->tmp_table)
+    thd->transaction.stmt.mark_created_temp_table();
+
   if (prepare_eof())
   {
     abort_result_set();
@@ -4459,6 +4468,8 @@ bool select_create::send_eof()
   if (!table->s->tmp_table)
   {
 #ifdef WITH_WSREP
+    if ( WSREP(thd))
+    {
       if (thd->wsrep_trx_id() == WSREP_UNDEFINED_TRX_ID)
       {
         (void) wsrep_ws_handle_for_trx(&thd->wsrep_ws_handle,
@@ -4494,12 +4505,13 @@ bool select_create::send_eof()
       }
       /* If commit fails, we should be able to reset the OK status. */
       thd->get_stmt_da()->set_overwrite_status(true);
+    }
 #endif /* WITH_WSREP */
     trans_commit_stmt(thd);
     if (!(thd->variables.option_bits & OPTION_GTID_BEGIN))
       trans_commit_implicit(thd);
 #ifdef WITH_WSREP
-    if (WSREP_ON)
+    if (WSREP(thd))
     {
       mysql_mutex_lock(&thd->LOCK_wsrep_thd);
       if (thd->wsrep_conflict_state() != NO_CONFLICT)

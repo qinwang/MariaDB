@@ -179,7 +179,15 @@ public:
   Column_definition m_return_field_def; /**< This is used for FUNCTIONs only. */
 
   const char *m_tmp_query;	///< Temporary pointer to sub query string
-  st_sp_chistics *m_chistics;
+private:
+  /*
+    Private to guarantee that m_chistics.comment is properly set to:
+    - a string which is alloced on this->mem_root
+    - or (NULL,0)
+    set_chistics() makes sure this.
+  */
+  Sp_chistics m_chistics;
+public:
   sql_mode_t m_sql_mode;		///< For SHOW CREATE and execution
   bool       m_explicit_name;                   /**< Prepend the db name? */
   LEX_CSTRING m_qname;		///< db.name
@@ -187,9 +195,14 @@ public:
   LEX_CSTRING m_body;
   LEX_CSTRING m_body_utf8;
   LEX_CSTRING m_defstr;
-  LEX_CSTRING m_definer_user;
-  LEX_CSTRING m_definer_host;
+  AUTHID      m_definer;
 
+  const st_sp_chistics &chistics() const { return m_chistics; }
+  const LEX_CSTRING &comment() const { return m_chistics.comment; }
+  void set_suid(enum_sp_suid_behaviour suid) { m_chistics.suid= suid; }
+  enum_sp_suid_behaviour suid() const { return m_chistics.suid; }
+  bool detistic() const { return m_chistics.detistic; }
+  enum_sp_data_access daccess() const { return m_chistics.daccess; }
   /**
     Is this routine being executed?
   */
@@ -304,7 +317,7 @@ public:
   static void
   operator delete(void *ptr, size_t size) throw ();
 
-  sp_head();
+  sp_head(stored_procedure_type type);
 
   /// Initialize after we have reset mem_root
   void
@@ -672,11 +685,15 @@ public:
     m_flags|= sp_head::HAS_COLUMN_TYPE_REFS;
   }
 
+  void set_chistics(const st_sp_chistics &chistics);
   void set_info(longlong created, longlong modified,
-		st_sp_chistics *chistics, sql_mode_t sql_mode);
+		const st_sp_chistics &chistics, sql_mode_t sql_mode);
 
   void set_definer(const char *definer, uint definerlen);
-  void set_definer(const LEX_CSTRING *user_name, const LEX_CSTRING *host_name);
+  void set_definer(const LEX_CSTRING *user_name, const LEX_CSTRING *host_name)
+  {
+    m_definer.copy(mem_root, user_name, host_name);
+  }
 
   void reset_thd_mem_root(THD *thd);
 

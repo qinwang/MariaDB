@@ -538,7 +538,8 @@ typedef struct system_variables
   uint dynamic_variables_size;    /* how many bytes are in use */
   
   ulonglong max_heap_table_size;
-  ulonglong tmp_table_size;
+  ulonglong tmp_memory_table_size;
+  ulonglong tmp_disk_table_size;
   ulonglong long_query_time;
   ulonglong max_statement_time;
   ulonglong optimizer_switch;
@@ -4109,12 +4110,12 @@ public:
   void get_definer(LEX_USER *definer, bool role);
   void set_invoker(const LEX_CSTRING *user, const LEX_CSTRING *host)
   {
-    invoker_user= *user;
-    invoker_host= *host;
+    invoker.user= *user;
+    invoker.host= *host;
   }
-  LEX_CSTRING get_invoker_user() { return invoker_user; }
-  LEX_CSTRING get_invoker_host() { return invoker_host; }
-  bool has_invoker() { return invoker_user.length > 0; }
+  LEX_CSTRING get_invoker_user() { return invoker.user; }
+  LEX_CSTRING get_invoker_host() { return invoker.host; }
+  bool has_invoker() { return invoker.user.length > 0; }
 
   void print_aborted_warning(uint threshold, const char *reason)
   {
@@ -4213,8 +4214,7 @@ private:
     TRIGGER or VIEW statements or current user in account management
     statements if it is not NULL.
    */
-  LEX_CSTRING invoker_user;
-  LEX_CSTRING invoker_host;
+  AUTHID invoker;
 
 public:
 #ifndef EMBEDDED_LIBRARY
@@ -4665,7 +4665,16 @@ public:
   {
     main_lex.restore_set_statement_var();
   }
-
+  /* Copy relevant `stmt` transaction flags to `all` transaction. */
+  void merge_unsafe_rollback_flags()
+  {
+    if (transaction.stmt.modified_non_trans_table)
+      transaction.all.modified_non_trans_table= TRUE;
+    transaction.all.m_unsafe_rollback_flags|=
+      (transaction.stmt.m_unsafe_rollback_flags &
+       (THD_TRANS::DID_WAIT | THD_TRANS::CREATED_TEMP_TABLE |
+        THD_TRANS::DROPPED_TEMP_TABLE | THD_TRANS::DID_DDL));
+  }
   /*
     Reset current_linfo
     Setting current_linfo to 0 needs to be done with LOCK_thread_count to

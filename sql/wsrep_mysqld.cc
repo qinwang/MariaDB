@@ -1717,8 +1717,8 @@ create_view_query(THD *thd, uchar** buf, size_t* buf_len)
        { C_STRING_WITH_LEN("ALTER ") },
        { C_STRING_WITH_LEN("CREATE OR REPLACE ") }};
 
-    buff.append(command[thd->lex->create_view_mode].str,
-                command[thd->lex->create_view_mode].length);
+    buff.append(command[thd->lex->create_view->mode].str,
+                command[thd->lex->create_view->mode].length);
 
     LEX_USER *definer;
 
@@ -1746,9 +1746,9 @@ create_view_query(THD *thd, uchar** buf, size_t* buf_len)
       return 1;
     }
 
-    views->algorithm    = lex->create_view_algorithm;
-    views->view_suid    = lex->create_view_suid;
-    views->with_check   = lex->create_view_check;
+    views->algorithm    = lex->create_view->algorithm;
+    views->view_suid    = lex->create_view->suid;
+    views->with_check   = lex->create_view->check;
 
     view_store_options(thd, views, &buff);
     buff.append(STRING_WITH_LEN("VIEW "));
@@ -1777,8 +1777,8 @@ create_view_query(THD *thd, uchar** buf, size_t* buf_len)
     }
     buff.append(STRING_WITH_LEN(" AS "));
     //buff.append(views->source.str, views->source.length);
-    buff.append(thd->lex->create_view_select.str,
-                thd->lex->create_view_select.length);
+    buff.append(thd->lex->create_view->select.str,
+                thd->lex->create_view->select.length);
     //int errcode= query_error_code(thd, TRUE);
     //if (thd->binlog_query(THD::STMT_QUERY_TYPE,
     //                      buff.ptr(), buff.length(), FALSE, FALSE, FALSE, errcod
@@ -3259,7 +3259,7 @@ int wsrep_create_sp(THD *thd, uchar** buf, size_t* buf_len)
                      sp->m_params.str, sp->m_params.length,
                      retstr.c_ptr(), retstr.length(),
                      sp->m_body.str, sp->m_body.length,
-                     sp->m_chistics, &(thd->lex->definer->user),
+                     sp->chistics(), &(thd->lex->definer->user),
                      &(thd->lex->definer->host),
                      saved_mode))
   {

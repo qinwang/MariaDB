@@ -346,6 +346,9 @@ row_ins_clust_index_entry_by_modify(
 
 	ut_ad(rec_get_deleted_flag(rec,
 				   dict_table_is_comp(cursor->index->table)));
+	/* In delete-marked records, DB_TRX_ID must
+	always refer to an existing undo log record. */
+	ut_ad(rec_get_trx_id(rec, cursor->index));
 
 	/* Build an update vector containing all the fields to be modified;
 	NOTE that this vector may NOT contain system columns trx_id or
@@ -1266,6 +1269,9 @@ row_ins_foreign_check_on_constraint(
 	}
 
 	if (rec_get_deleted_flag(clust_rec, dict_table_is_comp(table))) {
+		/* In delete-marked records, DB_TRX_ID must
+		always refer to an existing undo log record. */
+		ut_ad(rec_get_trx_id(clust_rec, clust_index));
 		/* This can happen if there is a circular reference of
 		rows such that cascading delete comes to delete a row
 		already in the process of being delete marked */
@@ -1273,7 +1279,6 @@ row_ins_foreign_check_on_constraint(
 
 		goto nonstandard_exit_func;
 	}
-
 
 	if (table->fts) {
 		doc_id = fts_get_doc_id_from_rec(table, clust_rec,
@@ -1434,11 +1439,12 @@ row_ins_foreign_check_on_constraint(
 
 #ifdef WITH_WSREP
 	err = wsrep_append_foreign_key(
-				       thr_get_trx(thr),
-				       foreign,
-				       clust_rec,
-				       clust_index,
-				       FALSE, FALSE);
+					thr_get_trx(thr),
+					foreign,
+					clust_rec,
+					clust_index,
+					FALSE,
+					(node) ? TRUE : FALSE);
 	if (err != DB_SUCCESS) {
 		fprintf(stderr,
 			"WSREP: foreign key append failed: %d\n", err);
@@ -1604,6 +1610,10 @@ row_ins_check_foreign_constraint(
 
 	rec_offs_init(offsets_);
 
+#ifdef WITH_WSREP
+	upd_node= NULL;
+#endif /* WITH_WSREP */
+
 	ut_ad(rw_lock_own(dict_operation_lock, RW_LOCK_S));
 
 	err = DB_SUCCESS;
@@ -1758,6 +1768,12 @@ row_ins_check_foreign_constraint(
 
 			if (rec_get_deleted_flag(rec,
 						 rec_offs_comp(offsets))) {
+				/* In delete-marked records, DB_TRX_ID must
+				always refer to an existing undo log record. */
+				ut_ad(!dict_index_is_clust(check_index)
+				      || row_get_rec_trx_id(rec, check_index,
+							    offsets));
+
 				err = row_ins_set_shared_rec_lock(
 					lock_type, block,
 					rec, check_index, offsets, thr);
@@ -1791,9 +1807,10 @@ row_ins_check_foreign_constraint(
 					err = wsrep_append_foreign_key(
 						thr_get_trx(thr),
 						foreign,
-						rec, 
-						check_index, 
-						check_ref, TRUE);
+						rec,
+						check_index,
+						check_ref,
+						(upd_node) ? TRUE : FALSE);
 #endif /* WITH_WSREP */
 					goto end_scan;
 				} else if (foreign->type != 0) {

@@ -79,6 +79,10 @@
 #include "sql_callback.h"
 #include "threadpool.h"
 
+#ifdef HAVE_OPENSSL
+#include <ssl_compat.h>
+#endif
+
 #ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
 #include "../storage/perfschema/pfs_server.h"
 #endif /* WITH_PERFSCHEMA_STORAGE_ENGINE */
@@ -331,12 +335,8 @@ static PSI_thread_key key_thread_handle_con_sockets;
 static PSI_thread_key key_thread_handle_shutdown;
 #endif /* __WIN__ */
 
-#ifdef HAVE_OPENSSL
-#include <ssl_compat.h>
-
 #ifdef HAVE_OPENSSL10
 static PSI_rwlock_key key_rwlock_openssl;
-#endif
 #endif
 #endif /* HAVE_PSI_INTERFACE */
 
@@ -358,6 +358,7 @@ static bool volatile select_thread_in_use, signal_thread_in_use;
 static volatile bool ready_to_exit;
 static my_bool opt_debugging= 0, opt_external_locking= 0, opt_console= 0;
 static my_bool opt_short_log_format= 0, opt_silent_startup= 0;
+bool my_disable_leak_check= false;
 
 uint kill_cached_threads;
 static uint wake_thread;
@@ -372,6 +373,8 @@ char *my_bind_addr_str;
 static char *default_collation_name;
 char *default_storage_engine, *default_tmp_storage_engine;
 char *enforced_storage_engine=NULL;
+char *gtid_pos_auto_engines;
+plugin_ref *opt_gtid_pos_auto_plugins;
 static char compiled_default_collation_name[]= MYSQL_DEFAULT_COLLATION_NAME;
 static I_List<CONNECT> thread_cache;
 static bool binlog_format_used= false;
@@ -523,6 +526,9 @@ ulong max_connections, max_connect_errors;
 ulong extra_max_connections;
 uint max_digest_length= 0;
 ulong slave_retried_transactions;
+ulong transactions_multi_engine;
+ulong rpl_transactions_multi_engine;
+ulong transactions_gtid_foreign_engine;
 ulonglong slave_skipped_errors;
 ulong feature_files_opened_with_delayed_keys= 0, feature_check_constraint= 0;
 ulonglong denied_connections;
@@ -2161,7 +2167,7 @@ static void mysqld_exit(int exit_code)
   shutdown_performance_schema();        // we do it as late as possible
 #endif
   set_malloc_size_cb(NULL);
-  if (!opt_debugging)
+  if (!opt_debugging && !my_disable_leak_check)
   {
     DBUG_ASSERT(global_status_var.global_memory_used == 0);
   }
@@ -4046,8 +4052,9 @@ static void my_malloc_size_cb_func(long long size, my_bool is_thread_specific)
                         (longlong) thd->status_var.local_memory_used,
                         size));
     thd->status_var.local_memory_used+= size;
-    if (thd->status_var.local_memory_used > (int64)thd->variables.max_mem_used &&
-        !thd->killed)
+    if (size > 0 &&
+        thd->status_var.local_memory_used > (int64)thd->variables.max_mem_used &&
+        !thd->killed && !thd->get_stmt_da()->is_set())
     {
       char buf[1024];
       thd->killed= KILL_QUERY;
@@ -4136,7 +4143,6 @@ static int init_common_variables()
   init_libstrings();
   tzset();			// Set tzname
 
-  sf_leaking_memory= 0; // no memory leaks from now on
 #ifdef SAFEMALLOC
   sf_malloc_dbug_id= mariadb_dbug_id;
 #endif
@@ -4157,23 +4163,22 @@ static int init_common_variables()
   if (!global_rpl_filter || !binlog_filter)
   {
     sql_perror("Could not allocate replication and binlog filters");
-    return 1;
+    exit(1);
   }
 
 #ifdef HAVE_OPENSSL
   if (check_openssl_compatibility())
   {
     sql_print_error("Incompatible OpenSSL version. Cannot continue...");
-    return 1;
+    exit(1);
   }
 #endif
 
-  if (init_thread_environment() ||
-      mysql_init_variables())
-    return 1;
+  if (init_thread_environment() || mysql_init_variables())
+    exit(1);
 
   if (ignore_db_dirs_init())
-    return 1;
+    exit(1);
 
 #ifdef HAVE_TZNAME
   struct tm tm_tmp;
@@ -4227,7 +4232,7 @@ static int init_common_variables()
   if (!IS_TIME_T_VALID_FOR_TIMESTAMP(server_start_time))
   {
     sql_print_error("This MySQL server doesn't support dates later then 2038");
-    return 1;
+    exit(1);
   }
 
   opt_log_basename= const_cast<char *>("mysql");
@@ -4268,6 +4273,7 @@ static int init_common_variables()
   default_storage_engine= const_cast<char *>("MyISAM");
 #endif
   default_tmp_storage_engine= NULL;
+  gtid_pos_auto_engines= const_cast<char *>("");
 
   /*
     Add server status variables to the dynamic list of
@@ -4276,7 +4282,7 @@ static int init_common_variables()
     new entries could be added to that list.
   */
   if (add_status_vars(status_vars))
-    return 1; // an error was already reported
+    exit(1); // an error was already reported
 
 #ifndef DBUG_OFF
   /*
@@ -4307,7 +4313,7 @@ static int init_common_variables()
 #endif
 
   if (get_options(&remaining_argc, &remaining_argv))
-    return 1;
+    exit(1);
   if (IS_SYSVAR_AUTOSIZE(&server_version_ptr))
     set_server_version(server_version, sizeof(server_version));
 
@@ -4325,6 +4331,8 @@ static int init_common_variables()
                             (ulong) getpid());
     }
   }
+
+  sf_leaking_memory= 0; // no memory leaks from now on
 
 #ifndef EMBEDDED_LIBRARY
   if (opt_abort && !opt_verbose)
@@ -4947,6 +4955,34 @@ static int init_default_storage_engine_impl(const char *opt_name,
   return 0;
 }
 
+
+static int
+init_gtid_pos_auto_engines(void)
+{
+  plugin_ref *plugins;
+
+  /*
+    For the command-line option --gtid_pos_auto_engines, we allow (and ignore)
+    engines that are unknown. This is convenient, since it allows to set
+    default auto-create engines that might not be used by particular users.
+    The option sets a list of storage engines that will have gtid position
+    table auto-created for them if needed. And if the engine is not available,
+    then it will certainly not be needed.
+  */
+  if (gtid_pos_auto_engines)
+    plugins= resolve_engine_list(NULL, gtid_pos_auto_engines,
+                                 strlen(gtid_pos_auto_engines), false, false);
+  else
+    plugins= resolve_engine_list(NULL, "", 0, false, false);
+  if (!plugins)
+    return 1;
+  mysql_mutex_lock(&LOCK_global_system_variables);
+  opt_gtid_pos_auto_plugins= plugins;
+  mysql_mutex_unlock(&LOCK_global_system_variables);
+  return 0;
+}
+
+
 static int init_server_components()
 {
   DBUG_ENTER("init_server_components");
@@ -5382,6 +5418,9 @@ static int init_server_components()
     unireg_abort(1);
 
   if (init_default_storage_engine(enforced_storage_engine, enforced_table_plugin))
+    unireg_abort(1);
+
+  if (init_gtid_pos_auto_engines())
     unireg_abort(1);
 
 #ifdef USE_ARIA_FOR_TMP_TABLES
@@ -7374,6 +7413,14 @@ struct my_option my_long_options[]=
    "Set up signals usable for debugging. Deprecated, use --debug-gdb instead.",
    &opt_debugging, &opt_debugging,
    0, GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+  {"gtid-pos-auto-engines", 0,
+   "List of engines for which to automatically create a "
+   "mysql.gtid_slave_pos_ENGINE table, if a transaction using that engine "
+   "is replicated. This can be used to avoid introducing cross-engine "
+   "transactions, if engines are used different from that used by table "
+   "mysql.gtid_slave_pos",
+   &gtid_pos_auto_engines, 0, 0, GET_STR, REQUIRED_ARG,
+   0, 0, 0, 0, 0, 0 },
 #ifdef HAVE_LARGE_PAGE_OPTION
   {"super-large-pages", 0, "Enable support for super large pages.",
    &opt_super_large_pages, &opt_super_large_pages, 0,
@@ -7771,7 +7818,7 @@ static int show_slaves_running(THD *thd, SHOW_VAR *var, char *buff)
   var->type= SHOW_LONGLONG;
   var->value= buff;
 
-  *((longlong *)buff)= any_slave_sql_running();
+  *((longlong *)buff)= any_slave_sql_running(false);
 
   return 0;
 }
@@ -8546,6 +8593,9 @@ SHOW_VAR status_vars[]= {
   {"Threads_connected",        (char*) &connection_count,       SHOW_INT},
   {"Threads_created",	       (char*) &thread_created,		SHOW_LONG_NOFLUSH},
   {"Threads_running",          (char*) &thread_running,         SHOW_INT},
+  {"Transactions_multi_engine", (char*) &transactions_multi_engine, SHOW_LONG},
+  {"Rpl_transactions_multi_engine", (char*) &rpl_transactions_multi_engine, SHOW_LONG},
+  {"Transactions_gtid_foreign_engine", (char*) &transactions_gtid_foreign_engine, SHOW_LONG},
   {"Update_scan",	       (char*) offsetof(STATUS_VAR, update_scan_count), SHOW_LONG_STATUS},
   {"Uptime",                   (char*) &show_starttime,         SHOW_SIMPLE_FUNC},
 #ifdef ENABLED_PROFILING
@@ -8789,6 +8839,9 @@ static int mysql_init_variables(void)
   report_user= report_password = report_host= 0;	/* TO BE DELETED */
   opt_relay_logname= opt_relaylog_index_name= 0;
   slave_retried_transactions= 0;
+  transactions_multi_engine= 0;
+  rpl_transactions_multi_engine= 0;
+  transactions_gtid_foreign_engine= 0;
   log_bin_basename= NULL;
   log_bin_index= NULL;
 

@@ -3418,6 +3418,7 @@ void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
   table_map remaining_tables= 0;
   table_map handled_tabs= 0;
   join->sjm_lookup_tables= 0;
+  join->sjm_scan_tables= 0;
   for (tablenr= table_count - 1 ; tablenr != join->const_tables - 1; tablenr--)
   {
     POSITION *pos= join->best_positions + tablenr;
@@ -3474,6 +3475,9 @@ void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
       table_map rem_tables= remaining_tables;
       for (i= tablenr; i != (first + sjm->tables - 1); i--)
         rem_tables |= join->best_positions[i].table->table->map;
+
+      for (i= first; i < first+ sjm->tables; i++)
+        join->sjm_scan_tables |= join->best_positions[i].table->table->map;
 
       POSITION dummy;
       join->cur_sj_inner_tables= 0;
@@ -4214,13 +4218,13 @@ SJ_TMP_TABLE::create_sj_weedout_tmp_table(THD *thd)
     field->set_table_name(&table->alias);
   }
 
-  if (thd->variables.tmp_table_size == ~ (ulonglong) 0)		// No limit
+  if (thd->variables.tmp_memory_table_size == ~ (ulonglong) 0)	// No limit
     share->max_rows= ~(ha_rows) 0;
   else
     share->max_rows= (ha_rows) (((share->db_type() == heap_hton) ?
-                                 MY_MIN(thd->variables.tmp_table_size,
-                                     thd->variables.max_heap_table_size) :
-                                 thd->variables.tmp_table_size) /
+                                 MY_MIN(thd->variables.tmp_memory_table_size,
+                                        thd->variables.max_heap_table_size) :
+                                 thd->variables.tmp_memory_table_size) /
 			         share->reclength);
   set_if_bigger(share->max_rows,1);		// For dummy start options
 

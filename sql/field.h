@@ -638,7 +638,7 @@ public:
     in_partitioning_expr= TRUE;
   }
   inline bool is_equal(const Virtual_column_info* vcol) const;
-  void print(String*);
+  inline void print(String*);
 };
 
 class Field: public Value_source
@@ -818,6 +818,8 @@ public:
   { return store(ls->str, ls->length, cs); }
   int store(const LEX_CSTRING *ls, CHARSET_INFO *cs)
   { return store(ls->str, ls->length, cs); }
+  int store(const LEX_CSTRING &ls, CHARSET_INFO *cs)
+  { return store(ls.str, ls.length, cs); }
   virtual double val_real(void)=0;
   virtual longlong val_int(void)=0;
   virtual bool val_bool(void)= 0;
@@ -4011,7 +4013,7 @@ public:
                         field_name_arg);
   }
   Field *make_field(TABLE_SHARE *share, MEM_ROOT *mem_root,
-                    const LEX_CSTRING *field_name_arg)
+                    const LEX_CSTRING *field_name_arg) const
   {
     return make_field(share, mem_root, (uchar *) 0, (uchar *) "", 0,
                       field_name_arg);

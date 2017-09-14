@@ -3052,6 +3052,10 @@ static bool fix_sql_mode(sys_var *self, THD *thd, enum_var_type type)
       thd->server_status|= SERVER_STATUS_NO_BACKSLASH_ESCAPES;
     else
       thd->server_status&= ~SERVER_STATUS_NO_BACKSLASH_ESCAPES;
+    if (thd->variables.sql_mode & MODE_ANSI_QUOTES)
+      thd->server_status|= SERVER_STATUS_ANSI_QUOTES;
+    else
+      thd->server_status&= ~SERVER_STATUS_ANSI_QUOTES;
   }
   return false;
 }
@@ -3421,10 +3425,28 @@ static Sys_var_tx_read_only Sys_tx_read_only(
 
 static Sys_var_ulonglong Sys_tmp_table_size(
        "tmp_table_size",
+       "Alias for tmp_memory_table_size. "
        "If an internal in-memory temporary table exceeds this size, MySQL "
-       "will automatically convert it to an on-disk MyISAM or Aria table",
-       SESSION_VAR(tmp_table_size), CMD_LINE(REQUIRED_ARG),
+       "will automatically convert it to an on-disk MyISAM or Aria table.",
+       SESSION_VAR(tmp_memory_table_size), CMD_LINE(REQUIRED_ARG),
        VALID_RANGE(1024, (ulonglong)~(intptr)0), DEFAULT(16*1024*1024),
+       BLOCK_SIZE(1));
+
+static Sys_var_ulonglong Sys_tmp_memory_table_size(
+       "tmp_memory_table_size",
+       "If an internal in-memory temporary table exceeds this size, MySQL "
+       "will automatically convert it to an on-disk MyISAM or Aria table. "
+       "Same as tmp_table_size.",
+       SESSION_VAR(tmp_memory_table_size), CMD_LINE(REQUIRED_ARG),
+       VALID_RANGE(1024, (ulonglong)~(intptr)0), DEFAULT(16*1024*1024),
+       BLOCK_SIZE(1));
+
+static Sys_var_ulonglong Sys_tmp_disk_table_size(
+       "tmp_disk_table_size",
+       "Max size for data for an internal temporary on-disk MyISAM or Aria table.",
+       SESSION_VAR(tmp_disk_table_size), CMD_LINE(REQUIRED_ARG),
+       VALID_RANGE(1024, (ulonglong)~(intptr)0),
+       DEFAULT((ulonglong)~(intptr)0),
        BLOCK_SIZE(1));
 
 static Sys_var_mybool Sys_timed_mutexes(
@@ -3555,6 +3577,45 @@ static Sys_var_plugin Sys_enforce_storage_engine(
        SESSION_VAR(enforced_table_plugin),
        NO_CMD_LINE, MYSQL_STORAGE_ENGINE_PLUGIN,
        DEFAULT(&enforced_storage_engine), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(check_has_super));
+
+
+#ifdef HAVE_REPLICATION
+/*
+  Check
+   1. Value for gtid_pos_auto_engines is not NULL.
+   2. No slave SQL thread is running.
+*/
+static bool
+check_gtid_pos_auto_engines(sys_var *self, THD *thd, set_var *var)
+{
+  bool running;
+  bool err= false;
+
+  DBUG_ASSERT(var->type == OPT_GLOBAL);
+  if (var->value && var->value->is_null())
+    err= true;
+  else
+  {
+    running= give_error_if_slave_running(false);
+    if (running)
+      err= true;
+  }
+  return err;
+}
+
+
+static Sys_var_pluginlist Sys_gtid_pos_auto_engines(
+       "gtid_pos_auto_engines",
+       "List of engines for which to automatically create a "
+       "mysql.gtid_slave_pos_ENGINE table, if a transaction using that engine "
+       "is replicated. This can be used to avoid introducing cross-engine "
+       "transactions, if engines are used different from that used by table "
+       "mysql.gtid_slave_pos",
+       GLOBAL_VAR(opt_gtid_pos_auto_plugins), NO_CMD_LINE,
+       DEFAULT(&gtid_pos_auto_engines),
+       NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(check_gtid_pos_auto_engines));
+#endif
+
 
 #if defined(ENABLED_DEBUG_SYNC)
 /*

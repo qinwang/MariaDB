@@ -1143,8 +1143,6 @@ int main(int argc,char *argv[])
   outfile[0]=0;			// no (default) outfile
   strmov(pager, "stdout");	// the default, if --pager wasn't given
 
-  mysql_init(&mysql);
-
   {
     char *tmp=getenv("PAGER");
     if (tmp && strlen(tmp))
@@ -1183,7 +1181,11 @@ int main(int argc,char *argv[])
   }
   defaults_argv=argv;
   if ((status.exit_status= get_options(argc, (char **) argv)))
-    mysql_end(-1);
+  {
+    free_defaults(defaults_argv);
+    my_end(0);
+    exit(status.exit_status);
+  }
 
   if (status.batch && !status.line_buff &&
       !(status.line_buff= batch_readline_init(MAX_BATCH_BUFFER_SIZE, stdin)))
@@ -2319,8 +2321,10 @@ static bool add_line(String &buffer, char *line, ulong line_length,
       continue;
     }
 #endif
-    if (!*ml_comment && inchar == '\\' &&
-        !(*in_string && 
+    if (!*ml_comment && inchar == '\\' && *in_string != '`' &&
+        !(*in_string == '"' &&
+          (mysql.server_status & SERVER_STATUS_ANSI_QUOTES)) &&
+        !(*in_string &&
           (mysql.server_status & SERVER_STATUS_NO_BACKSLASH_ESCAPES)))
     {
       // Found possbile one character command like \c
@@ -4800,10 +4804,11 @@ com_status(String *buffer __attribute__((unused)),
     tee_fprintf(stdout, "Protocol:\t\tCompressed\n");
 #endif
 
-  if ((status_str= mysql_stat(&mysql)) && !mysql_error(&mysql)[0])
+  const char *pos;
+  if ((status_str= mysql_stat(&mysql)) && !mysql_error(&mysql)[0] &&
+      (pos= strchr(status_str,' ')))
   {
     ulong sec;
-    const char *pos= strchr(status_str,' ');
     /* print label */
     tee_fprintf(stdout, "%.*s\t\t\t", (int) (pos-status_str), status_str);
     if ((status_str= str2int(pos,10,0,LONG_MAX,(long*) &sec)))

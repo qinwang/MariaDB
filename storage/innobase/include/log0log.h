@@ -2,7 +2,7 @@
 
 Copyright (c) 1995, 2017, Oracle and/or its affiliates. All rights reserved.
 Copyright (c) 2009, Google Inc.
-Copyright (c) 2017, MariaDB Corporation. All Rights Reserved.
+Copyright (c) 2017, MariaDB Corporation.
 
 Portions of this file contain modifications contributed and copyrighted by
 Google, Inc. Those modifications are gratefully acknowledged and are described
@@ -39,6 +39,7 @@ Created 12/9/1995 Heikki Tuuri
 #include "sync0rw.h"
 #include "log0types.h"
 #include "os0event.h"
+#include "os0file.h"
 
 /** Redo log group */
 struct log_group_t;
@@ -156,17 +157,17 @@ void
 log_sys_init();
 
 /** Initialize the redo log.
-@param[in]	n_files		number of files
-@param[in]	file_size	file size in bytes */
+@param[in]	n_files		number of files */
 void
-log_init(ulint n_files, lsn_t file_size);
+log_init(ulint n_files);
 /** Calculate the recommended highest values for lsn - last_checkpoint_lsn
 and lsn - buf_get_oldest_modification().
+@param[in]	file_size	requested innodb_log_file_size
 @retval true on success
 @retval false if the smallest log group is too small to
 accommodate the number of OS threads in the database server */
 bool
-log_set_capacity()
+log_set_capacity(ulonglong file_size)
 	MY_ATTRIBUTE((warn_unused_result));
 
 /******************************************************//**
@@ -407,16 +408,9 @@ Closes all log groups. */
 void
 log_group_close_all(void);
 /*=====================*/
-/********************************************************//**
-Shutdown the log system but do not release all the memory. */
+/** Shut down the redo log subsystem. */
 void
-log_shutdown(void);
-/*==============*/
-/********************************************************//**
-Free the log system data structures. */
-void
-log_mem_free(void);
-/*==============*/
+log_shutdown();
 
 /** Whether to generate and require checksums on the redo log pages */
 extern my_bool	innodb_log_checksums;
@@ -516,9 +510,13 @@ or the MySQL version that created the redo log file. */
 	IB_TO_STR(MYSQL_VERSION_MINOR) "."	\
 	IB_TO_STR(MYSQL_VERSION_PATCH)
 
+/** The original (not version-tagged) InnoDB redo log format */
+#define LOG_HEADER_FORMAT_3_23		0
+/** The MySQL 5.7.9/MariaDB 10.2.2 log format */
+#define LOG_HEADER_FORMAT_10_2		1
 /** The redo log format identifier corresponding to the current format version.
 Stored in LOG_HEADER_FORMAT. */
-#define LOG_HEADER_FORMAT_CURRENT	1
+#define LOG_HEADER_FORMAT_CURRENT	103
 /** Encrypted MariaDB redo log */
 #define LOG_HEADER_FORMAT_ENCRYPTED	(1U<<31)
 
@@ -581,6 +579,12 @@ struct log_group_t{
 	bool is_encrypted() const
 	{
 		return((format & LOG_HEADER_FORMAT_ENCRYPTED) != 0);
+	}
+
+	/** @return capacity in bytes */
+	inline lsn_t capacity() const
+	{
+		return((file_size - LOG_FILE_HDR_SIZE) * n_files);
 	}
 };
 

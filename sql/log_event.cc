@@ -3477,7 +3477,8 @@ void Log_event::print_base64(IO_CACHE* file,
 #ifdef WHEN_FLASHBACK_REVIEW_READY
   if (print_event_info->verbose || need_flashback_review)
 #else
-  if (print_event_info->verbose)
+  // Flashback need the table_map to parse the event
+  if (print_event_info->verbose || is_flashback)
 #endif
   {
     Rows_log_event *ev= NULL;
@@ -3564,7 +3565,8 @@ void Log_event::print_base64(IO_CACHE* file,
         close_cached_file(&tmp_cache);
       }
 #else
-      ev->print_verbose(file, print_event_info);
+      if (print_event_info->verbose)
+        ev->print_verbose(file, print_event_info);
 #endif
       delete ev;
     }
@@ -5027,6 +5029,7 @@ int Query_log_event::do_apply_event(rpl_group_info *rgi,
   int expected_error,actual_error= 0;
   Schema_specification_st db_options;
   uint64 sub_id= 0;
+  void *hton= NULL;
   rpl_gtid gtid;
   Relay_log_info const *rli= rgi->rli;
   Rpl_filter *rpl_filter= rli->mi->rpl_filter;
@@ -5197,7 +5200,7 @@ int Query_log_event::do_apply_event(rpl_group_info *rgi,
 
           gtid= rgi->current_gtid;
           if (rpl_global_gtid_slave_state->record_gtid(thd, &gtid, sub_id,
-                                                       true, false))
+                                                       true, false, &hton))
           {
             int errcode= thd->get_stmt_da()->sql_errno();
             if (!is_parallel_retry_error(rgi, errcode))
@@ -5426,7 +5429,7 @@ compare_errors:
 
 end:
   if (sub_id && !thd->is_slave_error)
-    rpl_global_gtid_slave_state->update_state_hash(sub_id, &gtid, rgi);
+    rpl_global_gtid_slave_state->update_state_hash(sub_id, &gtid, hton, rgi);
 
   /*
     Probably we have set thd->query, thd->db, thd->catalog to point to places
@@ -7459,8 +7462,10 @@ Gtid_log_event::Gtid_log_event(THD *thd_arg, uint64 seq_no_arg,
   if (thd_arg->transaction.stmt.trans_did_wait() ||
       thd_arg->transaction.all.trans_did_wait())
     flags2|= FL_WAITED;
-  if (sql_command_flags[thd->lex->sql_command] &
-      (CF_DISALLOW_IN_RO_TRANS | CF_AUTO_COMMIT_TRANS))
+  if (thd_arg->transaction.stmt.trans_did_ddl() ||
+      thd_arg->transaction.stmt.has_created_dropped_temp_table() ||
+      thd_arg->transaction.all.trans_did_ddl() ||
+      thd_arg->transaction.all.has_created_dropped_temp_table())
     flags2|= FL_DDL;
   else if (is_transactional)
     flags2|= FL_TRANSACTIONAL;
@@ -7909,15 +7914,17 @@ Gtid_list_log_event::do_apply_event(rpl_group_info *rgi)
   int ret;
   if (gl_flags & FLAG_IGN_GTIDS)
   {
+    void *hton= NULL;
     uint32 i;
+
     for (i= 0; i < count; ++i)
     {
       if ((ret= rpl_global_gtid_slave_state->record_gtid(thd, &list[i],
-                                                        sub_id_list[i],
-                                                        false, false)))
+                                                         sub_id_list[i],
+                                                         false, false, &hton)))
         return ret;
       rpl_global_gtid_slave_state->update_state_hash(sub_id_list[i], &list[i],
-                                                    NULL);
+                                                     hton, NULL);
     }
   }
   ret= Log_event::do_apply_event(rgi);
@@ -8398,6 +8405,7 @@ int Xid_log_event::do_apply_event(rpl_group_info *rgi)
   rpl_gtid gtid;
   uint64 sub_id= 0;
   Relay_log_info const *rli= rgi->rli;
+  void *hton= NULL;
 
   /*
     XID_EVENT works like a COMMIT statement. And it also updates the
@@ -8422,7 +8430,7 @@ int Xid_log_event::do_apply_event(rpl_group_info *rgi)
 
     gtid= rgi->current_gtid;
     err= rpl_global_gtid_slave_state->record_gtid(thd, &gtid, sub_id, true,
-                                                  false);
+                                                  false, &hton);
     if (err)
     {
       int ec= thd->get_stmt_da()->sql_errno();
@@ -8455,7 +8463,7 @@ int Xid_log_event::do_apply_event(rpl_group_info *rgi)
   thd->mdl_context.release_transactional_locks();
 
   if (!res && sub_id)
-    rpl_global_gtid_slave_state->update_state_hash(sub_id, &gtid, rgi);
+    rpl_global_gtid_slave_state->update_state_hash(sub_id, &gtid, hton, rgi);
 
   /*
     Increment the global status commit count variable
@@ -10261,6 +10269,7 @@ Rows_log_event::Rows_log_event(const char *buf, uint event_len,
     post_start+= RW_FLAGS_OFFSET;
   }
 
+  m_flags_pos= post_start - buf;
   m_flags= uint2korr(post_start);
   post_start+= 2;
 
@@ -11316,18 +11325,18 @@ void Rows_log_event::print_helper(FILE *file,
 
   if (get_flags(STMT_END_F))
   {
-    reinit_io_cache(head, READ_CACHE, 0L, FALSE, FALSE);
-    output_buf.append(head, head->end_of_file);
-    reinit_io_cache(head, WRITE_CACHE, 0, FALSE, TRUE);
+    LEX_STRING tmp_str;
 
-    reinit_io_cache(body, READ_CACHE, 0L, FALSE, FALSE);
-    output_buf.append(body, body->end_of_file);
-    reinit_io_cache(body, WRITE_CACHE, 0, FALSE, TRUE);
-
+    copy_event_cache_to_string_and_reinit(head, &tmp_str);
+    output_buf.append(&tmp_str);
+    my_free(tmp_str.str);
+    copy_event_cache_to_string_and_reinit(body, &tmp_str);
+    output_buf.append(&tmp_str);
+    my_free(tmp_str.str);
 #ifdef WHEN_FLASHBACK_REVIEW_READY
-    reinit_io_cache(sql, READ_CACHE, 0L, FALSE, FALSE);
-    output_buf.append(sql, sql->end_of_file);
-    reinit_io_cache(sql, WRITE_CACHE, 0, FALSE, TRUE);
+    copy_event_cache_to_string_and_reinit(sql, &tmp_str);
+    output_buf.append(&tmp_str);
+    my_free(tmp_str.str);
 #endif
   }
 }

@@ -40,6 +40,44 @@ matrix:
   include:
     - os: linux
       compiler: gcc
+      addons:
+        apt:
+          packages: # make sure these match debian/control contents
+            - bison
+            - chrpath
+            - cmake
+            - debhelper
+            - dh-apparmor
+            - dpatch
+            - gdb
+            - libaio-dev
+            - libboost-dev
+            - libcurl3-dev
+            - libdbd-mysql
+            - libjudy-dev
+            - libncurses5-dev
+            - libpam0g-dev
+            - libpcre3-dev
+            - libreadline-gplv2-dev
+            - libstemmer-dev
+            - libssl-dev
+            - libnuma-dev
+            - libxml2-dev
+            - lsb-release
+            - perl
+            - po-debconf
+            - psmisc
+            - zlib1g-dev
+            - libcrack2-dev
+            - cracklib-runtime
+            - libjemalloc-dev
+            - libsnappy-dev
+            - liblzma-dev
+            - libzmq-dev
+            - libdistro-info-perl
+            - uuid-dev
+            - devscripts
+            - fakeroot
       script:
         - ${CC} --version ; ${CXX} --version
         - source .travis.compiler.sh
@@ -60,13 +98,6 @@ matrix:
       compiler: clang
       env: GCC_VERSION=6   TYPE=RelWithDebInfo MYSQL_TEST_SUITES=binlog,binlog_encryption,encryption,rocksdb
     - os: osx
-      compiler: clang
-      env: GCC_VERSION=6   TYPE=RelWithDebInfo MYSQL_TEST_SUITES=csv,federated,funcs_1,funcs_2,gcol,handler,heap,json,maria,percona,perfschema,plugins,multi_source,roles
-    # MDEV-13002 plugins.server_audit and plugins.thread_pool_server_audit test fail due to mysqltest error
-    - os: linux
-      compiler: gcc
-      env: GCC_VERSION=6   TYPE=RelWithDebInfo MYSQL_TEST_SUITES=csv,federated,funcs_1,funcs_2,gcol,handler,heap,json,maria,percona,perfschema,plugins,multi_source,roles
-    - os: linux
       compiler: clang
       env: GCC_VERSION=6   TYPE=RelWithDebInfo MYSQL_TEST_SUITES=csv,federated,funcs_1,funcs_2,gcol,handler,heap,json,maria,percona,perfschema,plugins,multi_source,roles
 
@@ -108,7 +139,7 @@ addons:
       - llvm-toolchain-trusty
       - llvm-toolchain-trusty-3.9
       - llvm-toolchain-trusty-4.0
-    packages: # make sure these match debian/control contents
+    packages: # make sure these match the build requirements
       - gcc-5
       - g++-5
       - gcc-6
@@ -121,9 +152,6 @@ addons:
       - bison
       - chrpath
       - cmake
-      - debhelper
-      - dh-apparmor
-      - dpatch
       - gdb
       - libaio-dev
       - libboost-dev
@@ -140,17 +168,15 @@ addons:
       - libxml2-dev
       - lsb-release
       - perl
-      - po-debconf
       - psmisc
       - zlib1g-dev
       - libcrack2-dev
+      - cracklib-runtime
       - libjemalloc-dev
       - libsnappy-dev
       - liblzma-dev
       - libzmq-dev
-      - libdistro-info-perl
       - uuid-dev
-      - devscripts # implicit for any build on Ubuntu
 
 # libsystemd-daemon-dev # https://github.com/travis-ci/apt-package-whitelist/issues/3882
 

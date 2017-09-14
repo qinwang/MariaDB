@@ -742,6 +742,7 @@ THD::THD(my_thread_id id, bool is_wsrep_applier)
    debug_sync_control(0),
 #endif /* defined(ENABLED_DEBUG_SYNC) */
    wait_for_commit_ptr(0),
+   m_internal_handler(0),
    main_da(0, false, false),
    m_stmt_da(&main_da),
    tdc_hash_pins(0),
@@ -948,10 +949,8 @@ THD::THD(my_thread_id id, bool is_wsrep_applier)
                                               MYF(MY_WME|MY_THREAD_SPECIFIC));
   }
 
-  m_internal_handler= NULL;
   m_binlog_invoker= INVOKER_NONE;
-  memset(&invoker_user, 0, sizeof(invoker_user));
-  memset(&invoker_host, 0, sizeof(invoker_host));
+  invoker.init();
   prepare_derived_at_open= FALSE;
   create_tmp_table_for_derived= FALSE;
   save_prep_leaf_list= FALSE;
@@ -1296,6 +1295,8 @@ void THD::init(void)
   server_status= SERVER_STATUS_AUTOCOMMIT;
   if (variables.sql_mode & MODE_NO_BACKSLASH_ESCAPES)
     server_status|= SERVER_STATUS_NO_BACKSLASH_ESCAPES;
+  if (variables.sql_mode & MODE_ANSI_QUOTES)
+    server_status|= SERVER_STATUS_ANSI_QUOTES;
 
   transaction.all.modified_non_trans_table=
     transaction.stmt.modified_non_trans_table= FALSE;
@@ -4237,7 +4238,7 @@ void Security_context::destroy()
   if (external_user)
   {
     my_free(external_user);
-    user= NULL;
+    external_user= NULL;
   }
 
   my_free((char*) ip);
@@ -4455,6 +4456,10 @@ extern "C" enum thd_kill_levels thd_kill_level(const MYSQL_THD thd)
    however not more often than global.progress_report_time.
    If global.progress_report_time is 0, then don't send progress reports, but
    check every second if the value has changed
+
+  We clear any errors that we get from sending the progress packet to
+  the client as we don't want to set an error without the caller knowing
+  about it.
 */
 
 static void thd_send_progress(THD *thd)
@@ -4471,8 +4476,12 @@ static void thd_send_progress(THD *thd)
     thd->progress.next_report_time= (report_time +
                                      seconds_to_next * 1000000000ULL);
     if (global_system_variables.progress_report_time &&
-        thd->variables.progress_report_time)
+        thd->variables.progress_report_time && !thd->is_error())
+    {
       net_send_progress_packet(thd);
+      if (thd->is_error())
+        thd->clear_error();
+    }
   }
 }
 
@@ -4645,6 +4654,14 @@ TABLE *open_purge_table(THD *thd, const char *db, size_t dblen,
 
   DBUG_RETURN(error ? NULL : tl->table);
 }
+
+TABLE *get_purge_table(THD *thd)
+{
+  /* see above, at most one table can be opened */
+  DBUG_ASSERT(thd->open_tables == NULL || thd->open_tables->next == NULL);
+  return thd->open_tables;
+}
+
 
 /** Find an open table in the list of prelocked tabled
 
@@ -5480,8 +5497,8 @@ void THD::get_definer(LEX_USER *definer, bool role)
   if (slave_thread && has_invoker())
 #endif
   {
-    definer->user= invoker_user;
-    definer->host= invoker_host;
+    definer->user= invoker.user;
+    definer->host= invoker.host;
     definer->reset_auth();
   }
   else
@@ -7568,5 +7585,17 @@ bool Discrete_intervals_list::append(Discrete_interval *new_interval)
   elements++;
   DBUG_RETURN(0);
 }
+
+
+void AUTHID::copy(MEM_ROOT *mem_root, const LEX_CSTRING *user_name,
+                                      const LEX_CSTRING *host_name)
+{
+  user.str= strmake_root(mem_root, user_name->str, user_name->length);
+  user.length= user_name->length;
+
+  host.str= strmake_root(mem_root, host_name->str, host_name->length);
+  host.length= host_name->length;
+}
+
 
 #endif /* !defined(MYSQL_CLIENT) */

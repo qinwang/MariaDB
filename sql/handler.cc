@@ -1575,6 +1575,7 @@ static int
 commit_one_phase_2(THD *thd, bool all, THD_TRANS *trans, bool is_real_trans)
 {
   int error= 0;
+  uint count= 0;
   Ha_trx_info *ha_info= trans->ha_list, *ha_info_next;
   DBUG_ENTER("commit_one_phase_2");
   if (is_real_trans)
@@ -1592,6 +1593,8 @@ commit_one_phase_2(THD *thd, bool all, THD_TRANS *trans, bool is_real_trans)
       }
       /* Should this be done only if is_real_trans is set ? */
       status_var_increment(thd->status_var.ha_commit_count);
+      if (is_real_trans && ht != binlog_hton && ha_info->is_trx_read_write())
+        ++count;
       ha_info_next= ha_info->next();
       ha_info->reset(); /* keep it conveniently zero-filled */
     }
@@ -1610,6 +1613,8 @@ commit_one_phase_2(THD *thd, bool all, THD_TRANS *trans, bool is_real_trans)
   {
     thd->has_waiter= false;
     thd->transaction.cleanup();
+    if (count >= 2)
+      statistic_increment(transactions_multi_engine, LOCK_status);
   }
 
   DBUG_RETURN(error);
@@ -2164,12 +2169,12 @@ int ha_rollback_to_savepoint(THD *thd, SAVEPOINT *sv)
 int ha_savepoint(THD *thd, SAVEPOINT *sv)
 {
 #ifdef WITH_WSREP
+#ifdef OUT
   /*
     Register binlog hton for savepoint processing if wsrep binlog
     emulation is on.
    */
   wsrep_register_binlog_handler(thd, thd->in_multi_stmt_transaction_mode());
-#ifdef OUT
   if (WSREP_EMULATE_BINLOG(thd) && thd->wsrep_exec_mode != REPL_RECV)
   {
     WSREP_DEBUG("ha_savepoint: register binlog handler");
@@ -4955,7 +4960,12 @@ static my_bool discover_handlerton(THD *thd, plugin_ref plugin,
     {
       if (error)
       {
-        DBUG_ASSERT(share->error); // tdc_lock_share needs that
+        if (!share->error)
+        {
+          share->error= OPEN_FRM_ERROR_ALREADY_ISSUED;
+          plugin_unlock(0, share->db_plugin);
+        }
+
         /*
           report an error, unless it is "generic" and a more
           specific one was already reported

@@ -38,6 +38,12 @@ struct dict_table_t;
 only one buffer pool instance is used. */
 #define BUF_POOL_SIZE_THRESHOLD		(1024 * 1024 * 1024)
 
+/** Open the configured number of dedicated undo tablespaces.
+@param[in]	create_new_db	whether the database is being initialized
+@return DB_SUCCESS or error code */
+dberr_t
+srv_undo_tablespaces_init(bool create_new_db);
+
 /****************************************************************//**
 Starts Innobase and creates a new database if database files
 are not found and the user wants.
@@ -105,22 +111,6 @@ extern	bool	srv_startup_is_before_trx_rollback_phase;
 /** TRUE if a raw partition is in use */
 extern	ibool	srv_start_raw_disk_in_use;
 
-/** Undo tablespaces starts with space_id. */
-extern	ulint	srv_undo_space_id_start;
-
-/** Check whether given space id is undo tablespace id
-@param[in]	space_id	space id to check
-@return true if it is undo tablespace else false. */
-inline
-bool
-srv_is_undo_tablespace(ulint space_id)
-{
-	return srv_undo_space_id_start > 0
-		&& space_id >= srv_undo_space_id_start
-		&& space_id < (srv_undo_space_id_start
-			       + srv_undo_tablespaces_open);
-}
-
 /** Shutdown state */
 enum srv_shutdown_t {
 	SRV_SHUTDOWN_NONE = 0,	/*!< Database running normally */
@@ -143,4 +133,7 @@ extern bool srv_undo_sources;
 /** At a shutdown this value climbs from SRV_SHUTDOWN_NONE to
 SRV_SHUTDOWN_CLEANUP and then to SRV_SHUTDOWN_LAST_PHASE, and so on */
 extern	enum srv_shutdown_t	srv_shutdown_state;
+
+/** Files comprising the system tablespace */
+extern pfs_os_file_t	files[1000];
 #endif

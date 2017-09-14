@@ -565,8 +565,7 @@ Item::Item(THD *thd):
   {
     enum_parsing_place place= 
       thd->lex->current_select->parsing_place;
-    if (place == SELECT_LIST ||
-	place == IN_HAVING)
+    if (place == SELECT_LIST || place == IN_HAVING)
       thd->lex->current_select->select_n_having_items++;
   }
 }
@@ -1012,13 +1011,6 @@ bool Item_field::check_field_expression_processor(void *arg)
   Field *org_field= (Field*) arg;
   if (field->flags & NO_DEFAULT_VALUE_FLAG)
     return 0;
-  if (field->flags & AUTO_INCREMENT_FLAG)
-  {
-      my_error(ER_EXPRESSION_REFERS_TO_UNINIT_FIELD,
-               MYF(0),
-               org_field->field_name.str, field->field_name.str);
-      return 1;
-  }
   if ((field->default_value && field->default_value->flags) || field->vcol_info)
   {
     if (field == org_field ||
@@ -2193,6 +2185,9 @@ void Item::split_sum_func2(THD *thd, Ref_ptr_array ref_pointer_array,
       point to the temporary table.
     */
     split_sum_func(thd, ref_pointer_array, fields, split_flags);
+    if (type() == FUNC_ITEM) {
+      return;
+    }
   }
   else
   {
@@ -2252,9 +2247,6 @@ void Item::split_sum_func2(THD *thd, Ref_ptr_array ref_pointer_array,
                                      &name))))
       return;                                   // fatal_error is set
   }
-  else if (type() == FUNC_ITEM && 
-           ((Item_func *) this)->with_window_func)
-    return;
   else
   {
     if (!(item_ref= (new (thd->mem_root)
@@ -2942,22 +2934,21 @@ void Item_ident::print(String *str, enum_query_type query_type)
     use_db_name= !(cached_table && cached_table->belong_to_view &&
                    cached_table->belong_to_view->compact_view_format);
 
-  if (!use_db_name && use_table_name &&
-      (query_type & QT_ITEM_IDENT_SKIP_TABLE_NAMES))
+  if (use_table_name && (query_type & QT_ITEM_IDENT_SKIP_TABLE_NAMES))
   {
     /*
       Don't print the table name if it's the only table in the context
       XXX technically, that's a sufficient, but too strong condition
     */
     if (!context)
-      use_table_name= false;
+      use_db_name= use_table_name= false;
     else if (context->outer_context)
       use_table_name= true;
     else if (context->last_name_resolution_table == context->first_name_resolution_table)
-      use_table_name= false;
+      use_db_name= use_table_name= false;
     else if (!context->last_name_resolution_table &&
              !context->first_name_resolution_table->next_name_resolution_table)
-      use_table_name= false;
+      use_db_name= use_table_name= false;
   }
 
   if (!field_name.str || !field_name.str[0])
@@ -5488,6 +5479,12 @@ Item_field::fix_outer_field(THD *thd, Field **from_field, Item **reference)
                             ((ref_type == REF_ITEM || ref_type == FIELD_ITEM) ?
                              (Item_ident*) (*reference) :
                              0));
+          if (thd->lex->in_sum_func &&
+              thd->lex->in_sum_func->nest_level >= select->nest_level)
+          {
+            set_if_bigger(thd->lex->in_sum_func->max_arg_level,
+                          select->nest_level);
+          }
           /*
             A reference to a view field had been found and we
             substituted it instead of this Item (find_field_in_tables
@@ -10229,15 +10226,4 @@ void Item::register_in(THD *thd)
 {
   next= thd->free_list;
   thd->free_list= this;
-}
-
-void Virtual_column_info::print(String *str)
-{
-  expr->print_parenthesised(str,
-                   (enum_query_type)(QT_ITEM_ORIGINAL_FUNC_NULLIF |
-                                     QT_ITEM_IDENT_SKIP_DB_NAMES |
-                                     QT_ITEM_IDENT_SKIP_TABLE_NAMES |
-                                     QT_NO_DATA_EXPANSION |
-                                     QT_TO_SYSTEM_CHARSET),
-                   LOWEST_PRECEDENCE);
 }

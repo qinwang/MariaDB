@@ -124,8 +124,8 @@ mysql_pfs_key_t	trx_rollback_clean_thread_key;
 mysql_pfs_key_t	recv_writer_thread_key;
 #endif /* UNIV_PFS_THREAD */
 
-/** Flag indicating if recv_writer thread is active. */
-static volatile bool	recv_writer_thread_active;
+/** Is recv_writer_thread active? */
+bool	recv_writer_thread_active;
 
 #ifndef	DBUG_OFF
 /** Return string name of the redo log record type.
@@ -415,31 +415,9 @@ fil_name_parse(
 	return(end_ptr);
 }
 
-/********************************************************//**
-Creates the recovery system. */
+/** Clean up after recv_sys_init() */
 void
-recv_sys_create(void)
-/*=================*/
-{
-	if (recv_sys != NULL) {
-
-		return;
-	}
-
-	recv_sys = static_cast<recv_sys_t*>(ut_zalloc_nokey(sizeof(*recv_sys)));
-
-	mutex_create(LATCH_ID_RECV_SYS, &recv_sys->mutex);
-	mutex_create(LATCH_ID_RECV_WRITER, &recv_sys->writer_mutex);
-
-	recv_sys->heap = NULL;
-	recv_sys->addr_hash = NULL;
-}
-
-/********************************************************//**
-Release recovery system mutexes. */
-void
-recv_sys_close(void)
-/*================*/
+recv_sys_close()
 {
 	if (recv_sys != NULL) {
 		recv_sys->dblwr.pages.clear();
@@ -578,56 +556,41 @@ DECLARE_THREAD(recv_writer_thread)(
 	OS_THREAD_DUMMY_RETURN;
 }
 
-/************************************************************
-Inits the recovery system for a recovery operation. */
+/** Initialize the redo log recovery subsystem. */
 void
-recv_sys_init(
-/*==========*/
-	ulint	available_memory)	/*!< in: available memory in bytes */
+recv_sys_init()
 {
-	if (recv_sys->heap != NULL) {
+	ut_ad(recv_sys == NULL);
 
-		return;
-	}
+	recv_sys = static_cast<recv_sys_t*>(ut_zalloc_nokey(sizeof(*recv_sys)));
 
-	mutex_enter(&(recv_sys->mutex));
+	mutex_create(LATCH_ID_RECV_SYS, &recv_sys->mutex);
+	mutex_create(LATCH_ID_RECV_WRITER, &recv_sys->writer_mutex);
 
-	recv_sys->heap = mem_heap_create_typed(256,
-					MEM_HEAP_FOR_RECV_SYS);
+	recv_sys->heap = mem_heap_create_typed(256, MEM_HEAP_FOR_RECV_SYS);
 
 	if (!srv_read_only_mode) {
 		recv_sys->flush_start = os_event_create(0);
 		recv_sys->flush_end = os_event_create(0);
 	}
 
+	ulint size = buf_pool_get_curr_size();
 	/* Set appropriate value of recv_n_pool_free_frames. */
-	if (buf_pool_get_curr_size() >= (10 * 1024 * 1024)) {
+	if (size >= 10 << 20) {
 		/* Buffer pool of size greater than 10 MB. */
 		recv_n_pool_free_frames = 512;
 	}
 
 	recv_sys->buf = static_cast<byte*>(
 		ut_malloc_nokey(RECV_PARSING_BUF_SIZE));
-	recv_sys->len = 0;
-	recv_sys->recovered_offset = 0;
 
-	recv_sys->addr_hash = hash_create(available_memory / 512);
-	recv_sys->n_addrs = 0;
-
-	recv_sys->apply_log_recs = FALSE;
-	recv_sys->apply_batch_on = FALSE;
-
-	recv_sys->found_corrupt_log = false;
-	recv_sys->found_corrupt_fs = false;
-	recv_sys->mlog_checkpoint_lsn = 0;
+	recv_sys->addr_hash = hash_create(size / 512);
 	recv_sys->progress_time = ut_time();
 
 	recv_max_page_lsn = 0;
 
 	/* Call the constructor for recv_sys_t::dblwr member */
 	new (&recv_sys->dblwr) recv_dblwr_t();
-
-	mutex_exit(&(recv_sys->mutex));
 }
 
 /** Empty a fully processed hash table. */
@@ -677,7 +640,6 @@ recv_sys_debug_free(void)
 @param[in]	start_lsn	read area start
 @param[in]	end_lsn		read area end
 @return	valid end_lsn */
-static
 lsn_t
 log_group_read_log_seg(
 	byte*			buf,
@@ -918,9 +880,6 @@ recv_log_format_0_recover(lsn_t lsn)
 	static const char* NO_UPGRADE_RECOVERY_MSG =
 		"Upgrade after a crash is not supported."
 		" This redo log was created before MariaDB 10.2.2";
-	static const char* NO_UPGRADE_RTFM_MSG =
-		". Please follow the instructions at "
-		REFMAN "upgrading.html";
 
 	fil_io(IORequestLogRead, true,
 	       page_id_t(SRV_LOG_SPACE_FIRST_ID, page_no),
@@ -933,15 +892,65 @@ recv_log_format_0_recover(lsn_t lsn)
 	    != log_block_get_checksum(buf)
 	    && !log_crypt_101_read_block(buf)) {
 		ib::error() << NO_UPGRADE_RECOVERY_MSG
-			<< ", and it appears corrupted"
-			<< NO_UPGRADE_RTFM_MSG;
+			<< ", and it appears corrupted.";
 		return(DB_CORRUPTION);
 	}
 
 	if (log_block_get_data_len(buf)
 	    != (source_offset & (OS_FILE_LOG_BLOCK_SIZE - 1))) {
-		ib::error() << NO_UPGRADE_RECOVERY_MSG
-			<< NO_UPGRADE_RTFM_MSG;
+		ib::error() << NO_UPGRADE_RECOVERY_MSG << ".";
+		return(DB_ERROR);
+	}
+
+	/* Mark the redo log for upgrading. */
+	srv_log_file_size = 0;
+	recv_sys->parse_start_lsn = recv_sys->recovered_lsn
+		= recv_sys->scanned_lsn
+		= recv_sys->mlog_checkpoint_lsn = lsn;
+	log_sys->last_checkpoint_lsn = log_sys->next_checkpoint_lsn
+		= log_sys->lsn = log_sys->write_lsn
+		= log_sys->current_flush_lsn = log_sys->flushed_to_disk_lsn
+		= lsn;
+	log_sys->next_checkpoint_no = 0;
+	return(DB_SUCCESS);
+}
+
+/** Determine if a redo log from MySQL 5.7.9/MariaDB 10.2.2 is clean.
+@return error code
+@retval	DB_SUCCESS	if the redo log is clean
+@retval	DB_CORRUPTION	if the redo log is corrupted
+@retval DB_ERROR	if the redo log is not empty */
+static
+dberr_t
+recv_log_recover_10_2()
+{
+	log_group_t*	group = &log_sys->log;
+	const lsn_t	lsn = group->lsn;
+	const lsn_t	source_offset = log_group_calc_lsn_offset(lsn, group);
+	const ulint	page_no
+		= (ulint) (source_offset / univ_page_size.physical());
+	byte*		buf = log_sys->buf;
+
+	fil_io(IORequestLogRead, true,
+	       page_id_t(SRV_LOG_SPACE_FIRST_ID, page_no),
+	       univ_page_size,
+	       (ulint) ((source_offset & ~(OS_FILE_LOG_BLOCK_SIZE - 1))
+			% univ_page_size.physical()),
+	       OS_FILE_LOG_BLOCK_SIZE, buf, NULL);
+
+	if (log_block_calc_checksum(buf) != log_block_get_checksum(buf)) {
+		return(DB_CORRUPTION);
+	}
+
+	if (group->is_encrypted()) {
+		log_crypt(buf, OS_FILE_LOG_BLOCK_SIZE, true);
+	}
+
+	/* On a clean shutdown, the redo log will be logically empty
+	after the checkpoint lsn. */
+
+	if (log_block_get_data_len(buf)
+	    != (source_offset & (OS_FILE_LOG_BLOCK_SIZE - 1))) {
 		return(DB_ERROR);
 	}
 
@@ -983,31 +992,29 @@ recv_find_max_checkpoint(ulint* max_field)
 	/* Check the header page checksum. There was no
 	checksum in the first redo log format (version 0). */
 	group->format = mach_read_from_4(buf + LOG_HEADER_FORMAT);
-	if (group->format != 0
+	if (group->format != LOG_HEADER_FORMAT_3_23
 	    && !recv_check_log_header_checksum(buf)) {
 		ib::error() << "Invalid redo log header checksum.";
 		return(DB_CORRUPTION);
 	}
 
+	char creator[LOG_HEADER_CREATOR_END - LOG_HEADER_CREATOR + 1];
+
+	memcpy(creator, buf + LOG_HEADER_CREATOR, sizeof creator);
+	/* Ensure that the string is NUL-terminated. */
+	creator[LOG_HEADER_CREATOR_END - LOG_HEADER_CREATOR] = 0;
+
 	switch (group->format) {
-	case 0:
+	case LOG_HEADER_FORMAT_3_23:
 		return(recv_find_max_checkpoint_0(&group, max_field));
+	case LOG_HEADER_FORMAT_10_2:
+	case LOG_HEADER_FORMAT_10_2 | LOG_HEADER_FORMAT_ENCRYPTED:
 	case LOG_HEADER_FORMAT_CURRENT:
 	case LOG_HEADER_FORMAT_CURRENT | LOG_HEADER_FORMAT_ENCRYPTED:
 		break;
 	default:
-		/* Ensure that the string is NUL-terminated. */
-		buf[LOG_HEADER_CREATOR_END] = 0;
 		ib::error() << "Unsupported redo log format."
-			" The redo log was created"
-			" with " << buf + LOG_HEADER_CREATOR <<
-			". Please follow the instructions at "
-			REFMAN "upgrading-downgrading.html";
-		/* Do not issue a message about a possibility
-		to cleanly shut down the newer server version
-		and to remove the redo logs, because the
-		format of the system data structures may
-		radically change after MySQL 5.7. */
+			" The redo log was created with " << creator << ".";
 		return(DB_ERROR);
 	}
 
@@ -1066,6 +1073,21 @@ recv_find_max_checkpoint(ulint* max_field)
 			" You can try --innodb-force-recovery=6"
 			" as a last resort.";
 		return(DB_ERROR);
+	}
+
+	switch (group->format) {
+	case LOG_HEADER_FORMAT_10_2:
+	case LOG_HEADER_FORMAT_10_2 | LOG_HEADER_FORMAT_ENCRYPTED:
+		dberr_t err = recv_log_recover_10_2();
+		if (err != DB_SUCCESS) {
+			ib::error()
+				<< "Upgrade after a crash is not supported."
+				" The redo log was created with " << creator
+				<< (err == DB_ERROR
+				    ? "." : ", and it appears corrupted.");
+			break;
+		}
+		return(err);
 	}
 
 	return(DB_SUCCESS);
@@ -1402,10 +1424,8 @@ parse_log:
 		ptr = trx_undo_parse_discard_latest(ptr, end_ptr, page, mtr);
 		break;
 	case MLOG_UNDO_HDR_CREATE:
-	case MLOG_UNDO_HDR_REUSE:
 		ut_ad(!page || page_type == FIL_PAGE_UNDO_LOG);
-		ptr = trx_undo_parse_page_header(type, ptr, end_ptr,
-						 page, mtr);
+		ptr = trx_undo_parse_page_header(ptr, end_ptr, page, mtr);
 		break;
 	case MLOG_REC_MIN_MARK: case MLOG_COMP_REC_MIN_MARK:
 		ut_ad(!page || fil_page_type_is_index(page_type));
@@ -1473,6 +1493,12 @@ parse_log:
 			ptr = page_zip_parse_compress_no_data(
 				ptr, end_ptr, page, page_zip, index);
 		}
+		break;
+	case MLOG_ZIP_WRITE_TRX_ID:
+		/* This must be a clustered index leaf page. */
+		ut_ad(!page || page_type == FIL_PAGE_INDEX);
+		ptr = page_zip_parse_write_trx_id(ptr, end_ptr,
+						  page, page_zip);
 		break;
 	case MLOG_FILE_WRITE_CRYPT_DATA:
 		dberr_t err;
@@ -1968,27 +1994,29 @@ recv_read_in_area(
 void
 recv_apply_hashed_log_recs(bool last_batch)
 {
-	for (;;) {
-		mutex_enter(&recv_sys->mutex);
+	ut_ad(srv_operation == SRV_OPERATION_NORMAL
+	      || srv_operation == SRV_OPERATION_RESTORE);
 
-		if (!recv_sys->apply_batch_on) {
-			break;
-		}
+	mutex_enter(&recv_sys->mutex);
 
-		if (recv_sys->found_corrupt_log) {
-			mutex_exit(&recv_sys->mutex);
+	while (recv_sys->apply_batch_on) {
+		bool abort = recv_sys->found_corrupt_log;
+		mutex_exit(&recv_sys->mutex);
+
+		if (abort) {
 			return;
 		}
 
-		mutex_exit(&recv_sys->mutex);
 		os_thread_sleep(500000);
+		mutex_enter(&recv_sys->mutex);
 	}
 
 	ut_ad(!last_batch == log_mutex_own());
 
-	if (!last_batch) {
-		recv_no_ibuf_operations = true;
-	}
+	recv_no_ibuf_operations = !last_batch
+		|| srv_operation == SRV_OPERATION_RESTORE;
+
+	ut_d(recv_no_log_write = recv_no_ibuf_operations);
 
 	if (ulint n = recv_sys->n_addrs) {
 		const char* msg = last_batch
@@ -2060,10 +2088,11 @@ recv_apply_hashed_log_recs(bool last_batch)
 	/* Wait until all the pages have been processed */
 
 	while (recv_sys->n_addrs != 0) {
+		bool abort = recv_sys->found_corrupt_log;
 
 		mutex_exit(&(recv_sys->mutex));
 
-		if (recv_sys->found_corrupt_log) {
+		if (abort) {
 			return;
 		}
 
@@ -2076,7 +2105,6 @@ recv_apply_hashed_log_recs(bool last_batch)
 		/* Flush all the file pages to disk and invalidate them in
 		the buffer pool */
 
-		ut_d(recv_no_log_write = true);
 		mutex_exit(&(recv_sys->mutex));
 		log_mutex_exit();
 
@@ -2099,9 +2127,6 @@ recv_apply_hashed_log_recs(bool last_batch)
 
 		log_mutex_enter();
 		mutex_enter(&(recv_sys->mutex));
-		ut_d(recv_no_log_write = false);
-
-		recv_no_ibuf_operations = false;
 	}
 
 	recv_sys->apply_log_recs = FALSE;
@@ -2451,6 +2476,13 @@ loop:
 					recv_sys->recovered_lsn);
 			}
 			/* fall through */
+		case MLOG_INDEX_LOAD:
+			/* Mariabackup FIXME: Report an error
+			when encountering MLOG_INDEX_LOAD on
+			--prepare or already on --backup. */
+			ut_a(type != MLOG_INDEX_LOAD
+			     || srv_operation == SRV_OPERATION_NORMAL);
+			/* fall through */
 		case MLOG_FILE_NAME:
 		case MLOG_FILE_DELETE:
 		case MLOG_FILE_CREATE2:
@@ -2459,7 +2491,6 @@ loop:
 			/* These were already handled by
 			recv_parse_log_rec() and
 			recv_parse_or_apply_log_rec_body(). */
-		case MLOG_INDEX_LOAD:
 			DBUG_PRINT("ib_log",
 				("scan " LSN_PF ": log rec %s"
 				" len " ULINTPF
@@ -2597,11 +2628,16 @@ loop:
 				for something else. */
 				break;
 #endif /* UNIV_LOG_LSN_DEBUG */
+			case MLOG_INDEX_LOAD:
+				/* Mariabackup FIXME: Report an error
+				when encountering MLOG_INDEX_LOAD on
+				--prepare or already on --backup. */
+				ut_a(srv_operation == SRV_OPERATION_NORMAL);
+				break;
 			case MLOG_FILE_NAME:
 			case MLOG_FILE_DELETE:
 			case MLOG_FILE_CREATE2:
 			case MLOG_FILE_RENAME2:
-			case MLOG_INDEX_LOAD:
 			case MLOG_TRUNCATE:
 				/* These were already handled by
 				recv_parse_log_rec() and
@@ -2806,7 +2842,24 @@ recv_scan_log_recs(
 
 		scanned_lsn += data_len;
 
+		if (data_len == LOG_BLOCK_HDR_SIZE + SIZE_OF_MLOG_CHECKPOINT
+		    && scanned_lsn == checkpoint_lsn + SIZE_OF_MLOG_CHECKPOINT
+		    && log_block[LOG_BLOCK_HDR_SIZE] == MLOG_CHECKPOINT
+		    && checkpoint_lsn == mach_read_from_8(LOG_BLOCK_HDR_SIZE
+							  + 1 + log_block)) {
+			/* The redo log is logically empty. */
+			ut_ad(recv_sys->mlog_checkpoint_lsn == 0
+			      || recv_sys->mlog_checkpoint_lsn
+			      == checkpoint_lsn);
+			recv_sys->mlog_checkpoint_lsn = checkpoint_lsn;
+			DBUG_PRINT("ib_log", ("found empty log; LSN=" LSN_PF,
+					      scanned_lsn));
+			finished = true;
+			break;
+		}
+
 		if (scanned_lsn > recv_sys->scanned_lsn) {
+			ut_ad(!srv_log_files_created);
 			if (!recv_needed_recovery) {
 				recv_needed_recovery = true;
 
@@ -2980,6 +3033,14 @@ static
 dberr_t
 recv_init_missing_space(dberr_t err, const recv_spaces_t::const_iterator& i)
 {
+	if (srv_operation == SRV_OPERATION_RESTORE) {
+		ib::warn() << "Tablespace " << i->first << " was not"
+			" found at " << i->second.name << " when"
+			" restoring a (partial?) backup. All redo log"
+			" for this file will be ignored!";
+		return(err);
+	}
+
 	if (srv_force_recovery == 0) {
 		ib::error() << "Tablespace " << i->first << " was not"
 			" found at " << i->second.name << ".";
@@ -3129,6 +3190,9 @@ recv_recovery_from_checkpoint_start(lsn_t flush_lsn)
 	byte*		buf;
 	dberr_t		err = DB_SUCCESS;
 
+	ut_ad(srv_operation == SRV_OPERATION_NORMAL
+	      || srv_operation == SRV_OPERATION_RESTORE);
+
 	/* Initialize red-black tree for fast insertions into the
 	flush_list during recovery process. */
 	buf_flush_init_flush_rbt();
@@ -3244,10 +3308,14 @@ recv_recovery_from_checkpoint_start(lsn_t flush_lsn)
 	there is something wrong we will print a message to the
 	user about recovery: */
 
-	if (checkpoint_lsn != flush_lsn) {
+	if (flush_lsn == checkpoint_lsn + SIZE_OF_MLOG_CHECKPOINT
+	    && recv_sys->mlog_checkpoint_lsn == checkpoint_lsn) {
+		/* The redo log is logically empty. */
+	} else if (checkpoint_lsn != flush_lsn) {
+		ut_ad(!srv_log_files_created);
 
 		if (checkpoint_lsn + SIZE_OF_MLOG_CHECKPOINT < flush_lsn) {
-			ib::warn() << " Are you sure you are using the"
+			ib::warn() << "Are you sure you are using the"
 				" right ib_logfiles to start up the database?"
 				" Log sequence number in the ib_logfiles is "
 				<< checkpoint_lsn << ", less than the"
@@ -3341,9 +3409,11 @@ recv_recovery_from_checkpoint_start(lsn_t flush_lsn)
 
 	log_sys->last_checkpoint_lsn = checkpoint_lsn;
 
-	if (!srv_read_only_mode) {
+	if (!srv_read_only_mode && srv_operation == SRV_OPERATION_NORMAL) {
 		/* Write a MLOG_CHECKPOINT marker as the first thing,
-		before generating any other redo log. */
+		before generating any other redo log. This ensures
+		that subsequent crash recovery will be possible even
+		if the server were killed soon after this. */
 		fil_names_clear(log_sys->last_checkpoint_lsn, true);
 	}
 
@@ -3593,9 +3663,6 @@ get_mlog_string(mlog_id_t type)
 	case MLOG_UNDO_HDR_DISCARD:
 		return("MLOG_UNDO_HDR_DISCARD");
 
-	case MLOG_UNDO_HDR_REUSE:
-		return("MLOG_UNDO_HDR_REUSE");
-
 	case MLOG_UNDO_HDR_CREATE:
 		return("MLOG_UNDO_HDR_CREATE");
 
@@ -3675,6 +3742,9 @@ get_mlog_string(mlog_id_t type)
 
 	case MLOG_ZIP_PAGE_REORGANIZE:
 		return("MLOG_ZIP_PAGE_REORGANIZE");
+
+	case MLOG_ZIP_WRITE_TRX_ID:
+		return("MLOG_ZIP_WRITE_TRX_ID");
 
 	case MLOG_FILE_RENAME2:
 		return("MLOG_FILE_RENAME2");

@@ -689,6 +689,7 @@ void LEX::start(THD *thd_arg)
   curr_with_clause= 0;
   with_clauses_list= 0;
   with_clauses_list_last_next= &with_clauses_list;
+  create_view= NULL;
   value_list.empty();
   update_list.empty();
   set_var_list.empty();
@@ -2758,18 +2759,8 @@ bool st_select_lex::setup_ref_array(THD *thd, uint order_group_num)
       MIN/MAX rewrite in Item_in_subselect::single_value_transformer.
       In the usual case we can reuse the array from the prepare phase.
       If we need a bigger array, we must allocate a new one.
-    */
-    if (ref_pointer_array.size() == n_elems)
-      return false;
-
-    /*
-      We need to take 'n_sum_items' into account when allocating the array,
-      and this may actually increase during the optimization phase due to
-      MIN/MAX rewrite in Item_in_subselect::single_value_transformer.
-      In the usual case we can reuse the array from the prepare phase.
-      If we need a bigger array, we must allocate a new one.
      */
-    if (ref_pointer_array.size() == n_elems)
+    if (ref_pointer_array.size() >= n_elems)
       return false;
    }
   Item **array= static_cast<Item**>(arena->alloc(sizeof(Item*) * n_elems));
@@ -5834,17 +5825,15 @@ sp_head *LEX::make_sp_head(THD *thd, sp_name *name,
   sp_head *sp;
 
   /* Order is important here: new - reset - init */
-  if ((sp= new sp_head()))
+  if ((sp= new sp_head(type)))
   {
     sp->reset_thd_mem_root(thd);
     sp->init(this);
-    sp->m_type= type;
     if (name)
       sp->init_sp_name(thd, name);
-    sp->m_chistics= &sp_chistics;
     sphead= sp;
   }
-  bzero(&sp_chistics, sizeof(sp_chistics));
+  sp_chistics.init();
   return sp;
 }
 
@@ -6134,7 +6123,7 @@ bool LEX::maybe_start_compound_statement(THD *thd)
   {
     if (!make_sp_head(thd, NULL, TYPE_ENUM_PROCEDURE))
       return true;
-    sp_chistics.suid= SP_IS_NOT_SUID;
+    sphead->set_suid(SP_IS_NOT_SUID);
     sphead->set_body_start(thd, thd->m_parser_state->m_lip.get_cpp_ptr());
   }
   return false;
@@ -6461,7 +6450,10 @@ Item *LEX::create_item_ident(THD *thd,
                              uint pos_in_q, uint length_in_q)
 {
   sp_variable *spv;
-  if (spcont && (spv= spcont->find_variable(a, false)))
+  if (spcont && (spv= spcont->find_variable(a, false)) &&
+      (spv->field_def.is_row() ||
+       spv->field_def.is_table_rowtype_ref() ||
+       spv->field_def.is_cursor_rowtype_ref()))
     return create_item_spvar_row_field(thd, a, b, spv, pos_in_q, length_in_q);
 
   if ((thd->variables.sql_mode & MODE_ORACLE) && b->length == 7)
@@ -7086,4 +7078,50 @@ bool LEX::sp_add_cfetch(THD *thd, const LEX_CSTRING *name)
   if (i == NULL || sphead->add_instr(i))
     return true;
   return false;
+}
+
+
+bool LEX::create_or_alter_view_finalize(THD *thd, Table_ident *table_ident)
+{
+  sql_command= SQLCOM_CREATE_VIEW;
+  /* first table in list is target VIEW name */
+  if (!select_lex.add_table_to_list(thd, table_ident, NULL,
+                                    TL_OPTION_UPDATING,
+                                    TL_IGNORE,
+                                    MDL_EXCLUSIVE))
+    return true;
+  query_tables->open_strategy= TABLE_LIST::OPEN_STUB;
+  return false;
+}
+
+
+bool LEX::add_alter_view(THD *thd, uint16 algorithm,
+                         enum_view_suid suid,
+                         Table_ident *table_ident)
+{
+  if (sphead)
+  {
+    my_error(ER_SP_BADSTATEMENT, MYF(0), "ALTER VIEW");
+    return true;
+  }
+  if (!(create_view= new (thd->mem_root)
+                     Create_view_info(VIEW_ALTER, algorithm, suid)))
+    return true;
+  return create_or_alter_view_finalize(thd, table_ident);
+}
+
+
+bool LEX::add_create_view(THD *thd, DDL_options_st ddl,
+                          uint16 algorithm, enum_view_suid suid,
+                          Table_ident *table_ident)
+{
+  if (set_create_options_with_check(ddl))
+    return true;
+  if (!(create_view= new (thd->mem_root)
+                     Create_view_info(ddl.or_replace() ?
+                                      VIEW_CREATE_OR_REPLACE :
+                                      VIEW_CREATE_NEW,
+                                      algorithm, suid)))
+    return true;
+  return create_or_alter_view_finalize(thd, table_ident);
 }
