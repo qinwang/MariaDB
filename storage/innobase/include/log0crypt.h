@@ -28,6 +28,7 @@ MDEV-11782: Rewritten for MariaDB 10.2 by Marko Mäkelä, MariaDB Corporation.
 #define log0crypt_h
 
 #include "log0log.h"
+#include "os0file.h"
 
 /** innodb_encrypt_log: whether to encrypt the redo log */
 extern my_bool srv_encrypt_log;
@@ -82,4 +83,45 @@ UNIV_INTERN
 void
 log_crypt(byte* buf, lsn_t lsn, ulint size, bool decrypt = false);
 
+/** Encrypt temporary log block.
+@param[in]	src_block	block to encrypt or decrypt
+@param[in]	size		size of the block
+@param[out]	dst_block	destination block
+@param[in]	offs		offset to block
+@param[in]	space_id	tablespace id
+@return true if successfull, false in case of failure
+*/
+UNIV_INTERN
+bool
+log_tmp_block_encrypt(
+	const byte*		src_block,
+	ulint			size,
+	byte*			dst_block,
+	os_offset_t		offs,
+	ulint			space_id)
+	MY_ATTRIBUTE((warn_unused_result));
+
+/** Decrypt temporary log block.
+@param[in]	src_block	block to encrypt or decrypt
+@param[in]	size		size of the block
+@param[out]	dst_block	destination block
+@param[in]	offs		offset to block
+@param[in]	space_id	tablespace id
+@return true if successfull, false in case of failure
+*/
+UNIV_INTERN
+bool
+log_tmp_block_decrypt(
+	const byte*		src_block,
+	ulint			size,
+	byte*			dst_block,
+	os_offset_t		offs,
+	ulint			space_id)
+	MY_ATTRIBUTE((warn_unused_result));
+
+/** Find out is temporary log files encrypted.
+@return true if temporary log file should be encrypted, false if not */
+UNIV_INTERN
+bool
+log_tmp_is_encrypted() MY_ATTRIBUTE((warn_unused_result));
 #endif  // log0crypt.h

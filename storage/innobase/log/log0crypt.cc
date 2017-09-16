@@ -161,6 +161,128 @@ log_crypt(byte* buf, lsn_t lsn, ulint size, bool decrypt)
 	}
 }
 
+/** Encrypt/decrypt temporary log blocks.
+
+@param[in]	src_block	block to encrypt or decrypt
+@param[in]	size		size of the block
+@param[out]	dst_block	destination block
+@param[in]	what		ENCRYPTION_FLAG_ENCRYPT or
+				ENCRYPTION_FLAG_DECRYPT
+@param[in]	offs		offset to block
+@param[in]	space_id	tablespace id
+@return true if successfull, false in case of failure
+*/
+static
+bool
+log_tmp_blocks_crypt(
+	const byte*		src_block,
+	ulint			size,
+	byte*			dst_block,
+	int			what,
+	os_offset_t		offs,
+	ulint			space_id)
+{
+	uint dst_len;
+	byte aes_ctr_counter[MY_AES_BLOCK_SIZE];
+	byte is_encrypt= what == ENCRYPTION_FLAG_ENCRYPT;
+	const crypt_info_t* info = static_cast<const crypt_info_t*>(&infos[0]);
+
+	// AES_CTR_COUNTER = space_id + offs
+
+	bzero(aes_ctr_counter, MY_AES_BLOCK_SIZE);
+	mach_write_to_8(aes_ctr_counter, space_id);
+	mach_write_to_8(aes_ctr_counter + 8, offs);
+
+	int rc = encryption_crypt(src_block, size,
+				dst_block, &dst_len,
+				const_cast<byte*>(info->crypt_key.bytes), 16,
+				aes_ctr_counter, MY_AES_BLOCK_SIZE,
+				what | ENCRYPTION_FLAG_NOPAD,
+				LOG_DEFAULT_ENCRYPTION_KEY,
+				info->key_version);
+
+	if (rc != MY_AES_OK) {
+		ib::error() << (is_encrypt ? "Encryption" : "Decryption")
+			    << " failed for temporary log file with rc = " << rc;
+		return false;
+	}
+
+	return true;
+}
+
+/** Get crypt info
+@return pointer to log crypt info or NULL
+*/
+inline
+const crypt_info_t*
+get_crypt_info()
+{
+	mutex_enter(&log_sys->mutex);
+	const crypt_info_t* info = get_crypt_info(log_sys->next_checkpoint_no);
+	mutex_exit(&log_sys->mutex);
+
+	return info;
+}
+
+/** Find out is temporary log files encrypted.
+@return true if temporary log file should be encrypted, false if not */
+UNIV_INTERN
+bool
+log_tmp_is_encrypted()
+{
+	const crypt_info_t* info = get_crypt_info();
+
+	if (info == NULL ||
+	    info->key_version == ENCRYPTION_KEY_VERSION_INVALID ||
+	    !info->key_version) {
+		return false;
+	}
+
+	return true;
+}
+
+/** Encrypt temporary log block.
+@param[in]	src_block	block to encrypt or decrypt
+@param[in]	size		size of the block
+@param[out]	dst_block	destination block
+@param[in]	offs		offset to block
+@param[in]	space_id	tablespace id
+@return true if successfull, false in case of failure
+*/
+UNIV_INTERN
+bool
+log_tmp_block_encrypt(
+	const byte*		src_block,
+	ulint			size,
+	byte*			dst_block,
+	os_offset_t		offs,
+	ulint			space_id)
+{
+	return (log_tmp_blocks_crypt(src_block, size, dst_block,
+				ENCRYPTION_FLAG_ENCRYPT, offs, space_id));
+}
+
+/** Decrypt temporary log block.
+@param[in]	src_block	block to encrypt or decrypt
+@param[in]	size		size of the block
+@param[out]	dst_block	destination block
+@param[in]	offs		offset to block
+@param[in]	space_id	tablespace id
+@return true if successfull, false in case of failure
+*/
+UNIV_INTERN
+bool
+log_tmp_block_decrypt(
+	const byte*		src_block,
+	ulint			size,
+	byte*			dst_block,
+	os_offset_t		offs,
+	ulint			space_id)
+{
+	return (log_tmp_blocks_crypt(src_block, size, dst_block,
+				     ENCRYPTION_FLAG_DECRYPT, offs, space_id));
+}
+
 /** Generate crypt key from crypt msg.
 @param[in,out]	info	encryption key
 @param[in]	upgrade	whether to use the key in MariaDB 10.1 format
