@@ -3264,7 +3264,37 @@ bool Column_definition::prepare_stage1_check_typelib_default()
   return false;
 }
 
-
+/*
+   This function create a hidden field.
+   SYNOPSIS
+    mysql_create_hidden_field()
+      thd                      Thread Object
+      field_name
+      type_handler             field data type
+      field_visibility
+      default value
+    RETURN VALUE
+      Create_field object
+*/
+static
+Create_field * mysql_create_hidden_field(THD *thd, const char *field_name,
+        Type_handler *type_handler, field_visible_type field_visibility,
+        Item* default_value)
+{
+  Create_field *fld= new(thd->mem_root)Create_field();
+  fld->set_handler(type_handler);
+  fld->field_name.str= thd->strmake(field_name, strlen(field_name));
+  fld->field_name.length= strlen(field_name);
+  fld->field_visibility= field_visibility;
+  if (default_value)
+  {
+    Virtual_column_info *v= new (thd->mem_root) Virtual_column_info();
+    v->expr= default_value;
+    v->utf8= 0;
+    fld->default_value= v;
+  }
+  return fld;
+}
 /*
   Preparation for table creation
 
@@ -3312,6 +3342,16 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
   bool tmp_table= create_table_mode == C_ALTER_TABLE;
   DBUG_ENTER("mysql_prepare_create_table");
 
+  DBUG_EXECUTE_IF("test_pseudo_invisible",{
+          alter_info->create_list.push_front(mysql_create_hidden_field(thd,
+                      "hidden", &type_handler_long, PSEUDO_COLUMN_INVISIBLE,
+                      new (thd->mem_root)Item_int(thd, 9)), thd->mem_root);
+          });
+  DBUG_EXECUTE_IF("test_completely_invisible",{
+          alter_info->create_list.push_front(mysql_create_hidden_field(thd,
+                      "hidden", &type_handler_long, COMPLETELY_INVISIBLE,
+                      new (thd->mem_root)Item_int(thd, 9)), thd->mem_root);
+          });
   LEX_CSTRING* connect_string = &create_info->connect_string;
   if (connect_string->length != 0 &&
       connect_string->length > CONNECT_STRING_MAXLEN &&
@@ -7556,7 +7596,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
           !my_strcasecmp(system_charset_info,field->field_name.str, drop->name))
         break;
     }
-    if (drop)
+    if (drop && field->field_visibility < PSEUDO_COLUMN_INVISIBLE)
     {
       /* Reset auto_increment value if it was dropped */
       if (MTYP_TYPENR(field->unireg_check) == Field::NEXT_NUMBER &&
@@ -7581,7 +7621,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
                           &def->change))
 	break;
     }
-    if (def)
+    if (def && field->field_visibility < PSEUDO_COLUMN_INVISIBLE)
     {						// Field is changed
       def->field=field;
       /*

@@ -417,3 +417,159 @@ a	int(11)	YES	UNI	NULL
 hid	int(11)	YES		NULL	 INVISIBLE
 c	int(11)	YES		NULL	
 drop table t1;
+set debug_dbug= "+d,test_pseudo_invisible";
+create table t1(a int);
+set debug_dbug="";
+desc t1;
+Field	Type	Null	Key	Default	Extra
+a	int(11)	YES		NULL	
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+insert into t1 values(1);
+select * from t1;
+a
+1
+select hidden ,a from t1;
+hidden	a
+9	1
+drop table t1;
+set debug_dbug= "+d,test_completely_invisible";
+create table t1(a int);
+set debug_dbug="";
+desc t1;
+Field	Type	Null	Key	Default	Extra
+a	int(11)	YES		NULL	
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=MyISAM DEFAULT CHARSET=latin1
+insert into t1 values(1);
+select * from t1;
+a
+1
+select hidden ,a from t1;
+ERROR 42S22: Unknown column 'hidden' in 'field list'
+set debug_dbug= "+d,test_completely_invisible";
+select hidden ,a from t1;
+hidden	a
+9	1
+set debug_dbug="";
+drop table t1;
+set debug_dbug= "+d,test_pseudo_invisible";
+create table t1(a int);
+set debug_dbug="";
+desc t1;
+Field	Type	Null	Key	Default	Extra
+a	int(11)	YES		NULL	
+insert into t1 values(1);
+select * from t1;
+a
+1
+select hidden ,a from t1;
+hidden	a
+9	1
+ALTER table t1 change hidden b int;
+ERROR 42S22: Unknown column 'hidden' in 't1'
+select * from t1;
+a
+1
+select hidden ,a from t1;
+hidden	a
+9	1
+ALTER table t1 modify hidden char;
+ERROR 42S22: Unknown column 'hidden' in 't1'
+select * from t1;
+a
+1
+select hidden ,a from t1;
+hidden	a
+9	1
+ALTER table t1 drop hidden;
+ERROR 42000: Can't DROP COLUMN `hidden`; check that it exists
+select * from t1;
+a
+1
+select hidden ,a from t1;
+hidden	a
+9	1
+ALTER table t1 add hidden int;
+ERROR 42S21: Duplicate column name 'hidden'
+select * from t1;
+a
+1
+select hidden ,a from t1;
+hidden	a
+9	1
+ALTER table t1 add hidden2 int default 2;
+select * from t1;
+hidden	a	hidden2
+9	1	2
+select hidden ,a from t1;
+hidden	a
+9	1
+drop table t1;
+set debug_dbug= "+d,test_completely_invisible";
+create table t1(a int);
+desc t1;
+Field	Type	Null	Key	Default	Extra
+a	int(11)	YES		NULL	
+insert into t1 values(1);
+select * from t1;
+a
+1
+select hidden ,a from t1;
+hidden	a
+9	1
+ALTER table t1 change hidden b int;
+ERROR 42S22: Unknown column 'hidden' in 't1'
+select * from t1;
+a
+1
+select hidden ,a from t1;
+hidden	a
+9	1
+ALTER table t1 modify hidden char;
+ERROR 42S22: Unknown column 'hidden' in 't1'
+select * from t1;
+a
+1
+select hidden ,a from t1;
+hidden	a
+9	1
+ALTER table t1 drop hidden;
+ERROR 42000: Can't DROP COLUMN `hidden`; check that it exists
+select * from t1;
+a
+1
+select hidden ,a from t1;
+hidden	a
+9	1
+ALTER table t1 add hidden int;
+ERROR 42S21: Duplicate column name 'hidden'
+select * from t1;
+a
+1
+select hidden ,a from t1;
+hidden	a
+9	1
+set debug_dbug="";
+ALTER table t1 add hid int default 2;
+set debug_dbug= "+d,test_completely_invisible";
+select * from t1;
+hidden	a	hid
+9	1	2
+select hidden ,a from t1;
+hidden	a
+9	1
+drop table t1;
+set debug_dbug="";
+Create table t1( a int default(99) , b int);
+insert into t1 values(default,2);
+select * from t1;
+a	b
+99	2
+drop table t1;
