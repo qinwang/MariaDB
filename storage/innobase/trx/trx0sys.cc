@@ -245,7 +245,6 @@ trx_sys_update_wsrep_checkpoint(
 		    xid_seqno != -1)
 #endif
 		if (!memcmp(xid_uuid, trx_sys_cur_xid_uuid, 8)) {
-			trx_sys_cur_xid_seqno = xid_seqno;
 			/*
 			This check is a protection against the initial seqno (-1)
 			assigned in read_wsrep_xid_uuid(), which, if not checked,

@@ -2172,7 +2172,9 @@ static void mysqld_exit(int exit_code)
   set_malloc_size_cb(NULL);
   if (!opt_debugging && !my_disable_leak_check)
   {
-    DBUG_SLOW_ASSERT(global_status_var.global_memory_used == 0);
+    fprintf(stderr, "Seppo Warning: Memory not freed: %ld\n",
+            (long) global_status_var.global_memory_used);
+    //DBUG_SLOW_ASSERT(global_status_var.global_memory_used == 0);
   }
   cleanup_tls();
   DBUG_LEAVE;
