@@ -3344,12 +3344,12 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 
   DBUG_EXECUTE_IF("test_pseudo_invisible",{
           alter_info->create_list.push_front(mysql_create_hidden_field(thd,
-                      "hidden", &type_handler_long, PSEUDO_COLUMN_INVISIBLE,
+                      "invisible", &type_handler_long, PSEUDO_COLUMN_INVISIBLE,
                       new (thd->mem_root)Item_int(thd, 9)), thd->mem_root);
           });
   DBUG_EXECUTE_IF("test_completely_invisible",{
           alter_info->create_list.push_front(mysql_create_hidden_field(thd,
-                      "hidden", &type_handler_long, COMPLETELY_INVISIBLE,
+                      "invisible", &type_handler_long, COMPLETELY_INVISIBLE,
                       new (thd->mem_root)Item_int(thd, 9)), thd->mem_root);
           });
   LEX_CSTRING* connect_string = &create_info->connect_string;
@@ -3775,11 +3775,25 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
                             &column->field_name,
                             &sql_field->field_name))
 	field++;
+      /*
+         Either field is not present or field visibility is >
+         USER_DEFINED_INVISIBLE and system_generated_invisible
+         flag is off
+      */
       if (!sql_field)
       {
 	my_error(ER_KEY_COLUMN_DOES_NOT_EXITS, MYF(0), column->field_name.str);
 	DBUG_RETURN(TRUE);
       }
+      DBUG_EVALUATE_IF("test_invisible_index",{},
+        {
+          if (sql_field->field_visibility > USER_DEFINED_INVISIBLE
+                    && !key->system_generated_invisible)
+          {
+	        my_error(ER_KEY_COLUMN_DOES_NOT_EXITS, MYF(0), column->field_name.str);
+	        DBUG_RETURN(TRUE);
+          }
+        });
       while ((dup_column= cols2++) != column)
       {
         if (!lex_string_cmp(system_charset_info,
@@ -7820,7 +7834,8 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
 	  !my_strcasecmp(system_charset_info,key_name, drop->name))
 	break;
     }
-    if (drop)
+    /* You are not allowed to drop system generated invisible index */
+    if (drop && !(key_info->flags & HA_INVISIBLE_SYSTEM_KEY ))
     {
       if (table->s->tmp_table == NO_TMP_TABLE)
       {
@@ -7970,6 +7985,8 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
       key= new Key(key_type, &tmp_name, &key_create_info,
                    MY_TEST(key_info->flags & HA_GENERATED_KEY),
                    &key_parts, key_info->option_list, DDL_options());
+      if (key_info->flags & HA_INVISIBLE_SYSTEM_KEY)
+        key->system_generated_invisible= true;
       new_key_list.push_back(key, thd->mem_root);
     }
   }

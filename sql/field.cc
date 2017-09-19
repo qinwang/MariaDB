@@ -10595,7 +10595,7 @@ Column_definition::Column_definition(THD *thd, Field *old_field,
   option_list= old_field->option_list;
   pack_flag= 0;
   compression_method_ptr= 0;
-  field_visibility= NOT_INVISIBLE;
+  field_visibility= old_field->field_visibility;
 
   if (orig_field)
   {

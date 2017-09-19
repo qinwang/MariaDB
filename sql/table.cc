@@ -2247,6 +2247,8 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
 
         field= key_part->field= share->field[key_part->fieldnr-1];
         key_part->type= field->key_type();
+        if (field->field_visibility > USER_DEFINED_INVISIBLE)
+          keyinfo->flags |= HA_INVISIBLE_SYSTEM_KEY;
         if (field->null_ptr)
         {
           key_part->null_offset=(uint) ((uchar*) field->null_ptr -

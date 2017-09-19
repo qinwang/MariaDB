@@ -5504,12 +5504,9 @@ find_field_in_table(THD *thd, TABLE *table, const char *name, uint length,
   {
     if ((*field_ptr)->field_visibility == COMPLETELY_INVISIBLE)
     {
-       DBUG_EXECUTE_IF("test_completely_invisible",{
-                goto all_rigth;
-               });
-       DBUG_RETURN((Field*) 0);
+       DBUG_EVALUATE_IF("test_completely_invisible", {},
+               {DBUG_RETURN((Field*) 0);});
     }
-all_rigth:
     *cached_field_index_ptr= field_ptr - table->field;
     field= *field_ptr;
   }

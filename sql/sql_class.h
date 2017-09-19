@@ -304,22 +304,25 @@ public:
   LEX_CSTRING name;
   engine_option_value *option_list;
   bool generated;
+  bool system_generated_invisible;
 
   Key(enum Keytype type_par, const LEX_CSTRING *name_arg,
       ha_key_alg algorithm_arg, bool generated_arg, DDL_options_st ddl_options)
     :DDL_options(ddl_options),
      type(type_par), key_create_info(default_key_create_info),
-    name(*name_arg), option_list(NULL), generated(generated_arg)
+    name(*name_arg), option_list(NULL), generated(generated_arg),
+    system_generated_invisible(false)
   {
     key_create_info.algorithm= algorithm_arg;
-  } 
+  }
   Key(enum Keytype type_par, const LEX_CSTRING *name_arg,
       KEY_CREATE_INFO *key_info_arg,
       bool generated_arg, List<Key_part_spec> *cols,
       engine_option_value *create_opt, DDL_options_st ddl_options)
     :DDL_options(ddl_options),
      type(type_par), key_create_info(*key_info_arg), columns(*cols),
-    name(*name_arg), option_list(create_opt), generated(generated_arg)
+    name(*name_arg), option_list(create_opt), generated(generated_arg),
+    system_generated_invisible(false)
   {}
   Key(const Key &rhs, MEM_ROOT *mem_root);
   virtual ~Key() {}

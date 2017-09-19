@@ -2154,7 +2154,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
 
       if (field->field_visibility == USER_DEFINED_INVISIBLE)
       {
-        packet->append(STRING_WITH_LEN(" HIDDEN"));
+        packet->append(STRING_WITH_LEN(" INVISIBLE"));
       }
       def_value.set(def_value_buf, sizeof(def_value_buf), system_charset_info);
       if (get_field_default_value(thd, field, &def_value, 1))
@@ -2197,6 +2197,8 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
 
   for (uint i=0 ; i < share->keys ; i++,key_info++)
   {
+    if (key_info->flags & HA_INVISIBLE_SYSTEM_KEY)
+      continue;
     KEY_PART_INFO *key_part= key_info->key_part;
     bool found_primary=0;
     packet->append(STRING_WITH_LEN(",\n  "));
@@ -6292,6 +6294,8 @@ static int get_schema_stat_record(THD *thd, TABLE_LIST *tables,
     }
     for (uint i=0 ; i < show_table->s->keys ; i++,key_info++)
     {
+      if (key_info->flags & HA_INVISIBLE_SYSTEM_KEY)
+        DBUG_EVALUATE_IF("test_invisible_index",{},{continue;});
       KEY_PART_INFO *key_part= key_info->key_part;
       LEX_CSTRING *str;
       LEX_CSTRING unknown= {STRING_WITH_LEN("?unknown field?") };
