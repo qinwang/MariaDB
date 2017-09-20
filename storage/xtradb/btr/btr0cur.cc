@@ -5190,9 +5190,9 @@ alloc_another:
 				       - c_stream.avail_out,
 				       0, c_stream.avail_out);
 				mlog_log_string(page
-						+ FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION,
+						+ FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID,
 						page_zip_get_size(page_zip)
-						- FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION,
+						- FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID,
 						&mtr);
 				/* Copy the page to compressed storage,
 				because it will be flushed to disk

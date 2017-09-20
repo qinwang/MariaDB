@@ -130,6 +130,8 @@ extern fil_addr_t	fil_addr_null;
 					used to encrypt the page + 32-bit checksum
 					or 64 bits of zero if no encryption
 					*/
+#define FIL_PAGE_ENCRYPTION_POST_CHECKSUM 30 /*!< 32-bit checksum for encrypted
+					pages, see above. */
 #define FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID  34 /*!< starting from 4.1.x this
 					contains the space id of the page */
 #define FIL_PAGE_SPACE_ID  FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID

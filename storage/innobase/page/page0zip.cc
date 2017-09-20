@@ -3029,10 +3029,21 @@ page_zip_decompress(
 		memcpy(page, page_zip->data, PAGE_DATA);
 	} else {
 		/* Check that the bytes that we skip are identical. */
+		/* Note that field FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION
+		is repurposed in encryption for key_version and post
+		encryption checksum. Encryption is done after the
+		compression. Here we need to maintain the original
+		key_version as it is used to determine need for
+		key rotation. Post encryption checksum will
+		be recalculated anyway, so that field can be
+		copied. */
 #if defined UNIV_DEBUG || defined UNIV_ZIP_DEBUG
 		ut_a(!memcmp(FIL_PAGE_TYPE + page,
 			     FIL_PAGE_TYPE + page_zip->data,
-			     PAGE_HEADER - FIL_PAGE_TYPE));
+			     2));
+		ut_a(!memcmp(FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID + page,
+			     FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID + page_zip->data,
+			     PAGE_HEADER - FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID));
 		ut_a(!memcmp(PAGE_HEADER + PAGE_LEVEL + page,
 			     PAGE_HEADER + PAGE_LEVEL + page_zip->data,
 			     PAGE_DATA - (PAGE_HEADER + PAGE_LEVEL)));
@@ -3040,12 +3051,17 @@ page_zip_decompress(
 
 		/* Copy the mutable parts of the page header. */
 		memcpy(page, page_zip->data, FIL_PAGE_TYPE);
+		memcpy(page+FIL_PAGE_ENCRYPTION_POST_CHECKSUM,
+		       page_zip->data+FIL_PAGE_ENCRYPTION_POST_CHECKSUM,4);
 		memcpy(PAGE_HEADER + page, PAGE_HEADER + page_zip->data,
 		       PAGE_LEVEL - PAGE_N_DIR_SLOTS);
 
 #if defined UNIV_DEBUG || defined UNIV_ZIP_DEBUG
 		/* Check that the page headers match after copying. */
-		ut_a(!memcmp(page, page_zip->data, PAGE_DATA));
+		ut_a(!memcmp(page, page_zip->data, FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION));
+		ut_a(!memcmp(page+FIL_PAGE_ENCRYPTION_POST_CHECKSUM,
+			     page_zip->data+FIL_PAGE_ENCRYPTION_POST_CHECKSUM,
+			     PAGE_DATA-FIL_PAGE_ENCRYPTION_POST_CHECKSUM));
 #endif /* UNIV_DEBUG || UNIV_ZIP_DEBUG */
 	}
 
