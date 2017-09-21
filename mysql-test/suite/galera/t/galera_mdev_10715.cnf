@@ -7,5 +7,9 @@ log-slave-updates
 binlog-format=ROW
 [mysqld.1]
 gtid-domain-id=2
+wsrep_gtid_mode=1
+wsrep_gtid_domain_id=2
 [mysqld.2]
 gtid-domain-id=3
+wsrep_gtid_mode=1
+wsrep_gtid_domain_id=3

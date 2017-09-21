@@ -5652,6 +5652,7 @@ sub gdb_arguments {
   mtr_add_arg($$args, "$$exe");
 
   $$exe= "xterm";
+  #print(@$args);
 }
 
 #

@@ -10,7 +10,8 @@ return "WSREP is not compiled in" unless defined $::mysqld_variables{'wsrep-on'}
 
 my ($provider) = grep { -f $_ } $ENV{WSREP_PROVIDER},
                                 "/usr/lib/galera/libgalera_smm.so",
-                                "/usr/lib64/galera/libgalera_smm.so";
+                                "/usr/lib64/galera/libgalera_smm.so",
+                                "/home/sachin/galera/libgalera_smm.so";
 
 return "No wsrep provider library" unless -f $provider;
 

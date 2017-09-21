@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "debug_sync.h"
+#include "log_event.h"
 
 extern ulonglong thd_to_trx_id(THD *thd);
 
@@ -427,7 +428,11 @@ wsrep_run_wsrep_commit(THD *thd, bool all)
   rcode = 0;
   if (cache) {
     thd->binlog_flush_pending_rows_event(true);
-    rcode = wsrep_write_cache(wsrep, thd, cache, &data_len);
+/*Gtid_log_event gtid_event(thd, thd->variables.gtid_seq_no, thd->variables.gtid_domain_id, true,
+                          LOG_EVENT_SUPPRESS_USE_F, true,
+                          0);
+    mysql_bin_log.write_gtid_event(thd, true, true, 0);
+*/    rcode = wsrep_write_cache(wsrep, thd, cache, &data_len);
     if (WSREP_OK != rcode) {
       WSREP_ERROR("rbr write fail, data_len: %zu, %d", data_len, rcode);
       DBUG_RETURN(WSREP_TRX_SIZE_EXCEEDED);
