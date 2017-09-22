@@ -233,3 +233,18 @@ select count(*) from t force index(primary) where d ='2017-09-15';
 count(*)
 16386
 DROP TABLE t;
+CREATE TABLE t ( 
+a bigint(20) unsigned NOT NULL AUTO_INCREMENT, 
+c bigint(20) unsigned NOT NULL, 
+PRIMARY KEY (a) 
+) ENGINE=InnoDB ;
+ALTER TABLE t CHANGE a b BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, ADD KEY uk (c);
+SHOW CREATE TABLE t;
+Table	Create Table
+t	CREATE TABLE `t` (
+  `b` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `c` bigint(20) unsigned NOT NULL,
+  PRIMARY KEY (`b`),
+  KEY `uk` (`c`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+DROP TABLE t;

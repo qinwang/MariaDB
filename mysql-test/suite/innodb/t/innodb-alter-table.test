@@ -208,3 +208,16 @@ select count(*) from t force index(primary) where d ='2017-09-15';
 
 DROP TABLE t;
 
+#
+# MDEV-13640: ALTER TABLE CHANGE and ADD INDEX on auto_increment column fails with "Incorrect key file for table..."
+#
+
+CREATE TABLE t ( 
+a bigint(20) unsigned NOT NULL AUTO_INCREMENT, 
+c bigint(20) unsigned NOT NULL, 
+PRIMARY KEY (a) 
+) ENGINE=InnoDB ;
+ 
+ALTER TABLE t CHANGE a b BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, ADD KEY uk (c);
+SHOW CREATE TABLE t;
+DROP TABLE t;
