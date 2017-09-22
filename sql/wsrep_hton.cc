@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include "debug_sync.h"
 #include "log_event.h"
+#include "log.cc"
 
 extern ulonglong thd_to_trx_id(THD *thd);
 
@@ -428,11 +429,33 @@ wsrep_run_wsrep_commit(THD *thd, bool all)
   rcode = 0;
   if (cache) {
     thd->binlog_flush_pending_rows_event(true);
-/*Gtid_log_event gtid_event(thd, thd->variables.gtid_seq_no, thd->variables.gtid_domain_id, true,
-                          LOG_EVENT_SUPPRESS_USE_F, true,
-                          0);
-    mysql_bin_log.write_gtid_event(thd, true, true, 0);
-*/    rcode = wsrep_write_cache(wsrep, thd, cache, &data_len);
+    /* Get domain id only when gtid mode is set*/
+    if (wsrep_gtid_mode)
+    {
+      Gtid_log_event gtid_event(thd, 0, 0, true,
+                            LOG_EVENT_SUPPRESS_USE_F, true,
+                            0);
+      /*
+        If this event is replicate through a master then ,
+        we will forward the same gtid another nodes
+      */
+      if (thd->variables.gtid_seq_no)
+      {
+        gtid_event.domain_id= thd->variables.gtid_domain_id;
+        gtid_event.seq_no= thd->variables.gtid_seq_no;
+      }
+      else
+      {
+        gtid_event.domain_id= wsrep_gtid_domain_id;
+        /* Get the latest sequence no stored and then add one */
+        rpl_gtid *current_gtid= rpl_global_gtid_binlog_state.find_most_recent(
+                                                  gtid_event.domain_id);
+        gtid_event.seq_no= current_gtid->seq_no;
+      }
+      gtid_event.server_id= thd->variables.server_id;
+      mysql_bin_log.write_event(&gtid_event);
+    }
+    rcode = wsrep_write_cache(wsrep, thd, cache, &data_len);
     if (WSREP_OK != rcode) {
       WSREP_ERROR("rbr write fail, data_len: %zu, %d", data_len, rcode);
       DBUG_RETURN(WSREP_TRX_SIZE_EXCEEDED);

@@ -26,20 +26,20 @@ INSERT INTO t1 VALUES(1);
 SELECT @@global.gtid_binlog_state;
 
 --connection node_2
---let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
---source include/wait_condition.inc
+#--let $wait_condition = SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
+#--source include/wait_condition.inc
 
---let $wait_condition = SELECT COUNT(*) = 1 FROM t1;
---source include/wait_condition.inc
-
+#--let $wait_condition = SELECT COUNT(*) = 1 FROM t1;
+#--source include/wait_condition.inc
+--sleep 1000
 INSERT INTO t1 VALUES(2);
 INSERT INTO t1 VALUES(3);
 SELECT @@global.gtid_binlog_state;
 
 --connect node_3, 127.0.0.1, root, , test, $NODE_MYPORT_3
-
---let $wait_condition = SELECT COUNT(*) = 3 FROM t1;
---source include/wait_condition.inc
+--sleep 1
+#--let $wait_condition = SELECT COUNT(*) = 3 FROM t1;
+#--source include/wait_condition.inc
 
 SELECT COUNT(*) = 1 FROM t1;
 SELECT @@global.gtid_binlog_state;
@@ -57,12 +57,12 @@ DROP TABLE t1;
 --sleep 1
 
 --connection node_3
---let $wait_condition = SELECT COUNT(*) = 0 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
---source include/wait_condition.inc
+#--let $wait_condition = SELECT COUNT(*) = 0 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
+#--source include/wait_condition.inc
 
 --connection node_2
---let $wait_condition = SELECT COUNT(*) = 0 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
---source include/wait_condition.inc
+#--let $wait_condition = SELECT COUNT(*) = 0 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 't1';
+#--source include/wait_condition.inc
 
 STOP SLAVE;
 RESET SLAVE ALL;
