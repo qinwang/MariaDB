@@ -900,6 +900,7 @@ int wsrep_init()
   if (strcmp(wsrep_start_position, WSREP_START_POSITION_ZERO) &&
       wsrep_start_position_init(wsrep_start_position))
   {
+    assert(0);
     return 1;
   }
 
@@ -3026,6 +3027,8 @@ void *start_wsrep_THD(void *arg)
 
   thd_args->fun()(thd, thd_args->args());
 
+  thd->store_globals();
+  
   WSREP_DEBUG("wsrep system thread: %lld closing", thd->thread_id);
   close_connection(thd, 0);
   delete thd_args;
@@ -3884,7 +3887,7 @@ bool wsrep_node_is_synced()
 #endif /* MARIADB_10.3 */
 bool wsrep_provider_is_SR_capable()
 {
-  return wsrep->capabilities(wsrep) & WSREP_CAP_STREAMING;
+  return (wsrep && wsrep->capabilities(wsrep) & WSREP_CAP_STREAMING);
 }
 
 wsrep_status_t wsrep_tc_log_commit(THD* thd)
