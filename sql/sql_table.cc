@@ -3263,7 +3263,27 @@ bool Column_definition::prepare_stage1_check_typelib_default()
   }
   return false;
 }
-
+/*
+  COMPLETELY_INVISIBLE are internally created. They are completely invisible
+  to Alter command (Opposite of PSEUDO_COLUMN_INVISIBLE which through
+  error when same name column is added by Alter). So in the case of when
+  user added a same column name as of COMPLETELY_INVISIBLE , we change
+  COMPLETELY_INVISIBLE name.
+*/
+char * get_unique_invisible_field(char * name, List<Create_field> *fields, MEM_ROOT *mem_root)
+{
+  Field *fld;
+  int counter= 1;
+  List_iterator_fast<Create_field> it(*fields);
+  char *tmp= (char *)alloc_root
+  it.rewind();
+  while (fld = it++)
+  {
+    if (my_strcasecmp(system_charset_info,
+                name, fld->field_name))
+      
+  }
+}
 /*
    This function create a hidden field.
    SYNOPSIS
@@ -3276,15 +3296,30 @@ bool Column_definition::prepare_stage1_check_typelib_default()
     RETURN VALUE
       Create_field object
 */
-static
-Create_field * mysql_create_hidden_field(THD *thd, const char *field_name,
+Create_field * mysql_create_invisible_field(THD *thd, const char *field_name,
         Type_handler *type_handler, field_visible_type field_visibility,
         Item* default_value)
 {
   Create_field *fld= new(thd->mem_root)Create_field();
+  const char *new_name= NULL;
+  /* Get unique field name if field_visibility == COMPLETELY_INVISIBLE */
+  if (field_visibility == COMPLETELY_INVISIBLE)
+  {
+    if ((new_name= make_unique_invisible_field_name(thd, field_name, thd->lex->
+                alter_info->create_list))
+    {
+      fld->field_name.str= new_name;
+      fld->field_name.length= strlen(new_name);
+    }
+    else
+      assert(0);  //Should not never happen
+  }
+  else
+  {
+    fld->field_name.str= thd->strmake(field_name, strlen(field_name));
+    fld->field_name.length= strlen(field_name);
+  }
   fld->set_handler(type_handler);
-  fld->field_name.str= thd->strmake(field_name, strlen(field_name));
-  fld->field_name.length= strlen(field_name);
   fld->field_visibility= field_visibility;
   if (default_value)
   {
@@ -5114,6 +5149,21 @@ check_if_keyname_exists(const char *name, KEY *start, KEY *end)
   return 0;
 }
 
+/**
+ Returns 1 if field name exists other wise 0
+*/
+static bool
+check_if_field_name_exists(char *name, List<Create_field> * fields)
+{
+  Field *fld;
+  List_iterator<Create_field>it(*fields);
+  while ((fld = it++))
+  {
+    if (!my_strcasecmp(system_charset_info, fld->field_name, name))
+      return 1;
+  }
+  return 0;
+}
 
 static char *
 make_unique_key_name(THD *thd, const char *field_name,KEY *start,KEY *end)
@@ -5171,6 +5221,32 @@ static void make_unique_constraint_name(THD *thd, LEX_CSTRING *name,
   }
 }
 
+/**
+  COMPLETELY_INVISIBLE are internally created. They are completely invisible
+  to Alter command (Opposite of PSEUDO_COLUMN_INVISIBLE which through
+  error when same name column is added by Alter). So in the case of when
+  user added a same column name as of COMPLETELY_INVISIBLE , we change
+  COMPLETELY_INVISIBLE name.
+*/
+static
+char * make_unique_invisible_field_name(THD *thd, const char *field_name,
+                        List<Create_field> *fields)
+{
+  if (!check_if_field_name_exists(field_name, fields))
+    return field_name;
+  char buff[MAX_FIELD_NAME], *buff_end;
+  Field *fld;
+  buff_end= strmov(buff, field_name);
+
+  for (uint i=1 ; i < 1000; i++)
+  {
+    char *real_end= int10_to_str(i, buff_end, 10);
+    if (check_if_field_name_exists(buff, fields))
+      count;
+    return (const char *)thd->strmake(buff, real_end - buff);
+  }
+  return NULL; //Should not happen
+}
 
 /****************************************************************************
 ** Alter a table definition

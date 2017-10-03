@@ -278,7 +278,7 @@ enum ha_base_keytype {
 */
 #define HA_KEY_HAS_PART_KEY_SEG 65536
 /* Internal Flag Can be calcaluted */
-#define HA_INVISIBLE_SYSTEM_KEY 2<<18 /* Is it a *Invisible* key */
+#define HA_INVISIBLE_KEY 2<<18 /* An invisible key */
 	/* Automatic bits in key-flag */
 
 #define HA_SPACE_PACK_USED	 4	/* Test for if SPACE_PACK used */

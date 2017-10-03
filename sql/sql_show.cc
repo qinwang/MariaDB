@@ -5708,11 +5708,11 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
     else
       table->field[20]->store(STRING_WITH_LEN("NEVER"), cs);
     /*hidden can coexist with auto_increment and virtual */
-    if(field->field_visibility == USER_DEFINED_INVISIBLE)
+    if (field->field_visibility == USER_DEFINED_INVISIBLE)
     {
       if (buf.length())
-        buf.append(STRING_WITH_LEN(","));
-      buf.append(STRING_WITH_LEN(" INVISIBLE"),cs);
+        buf.append(STRING_WITH_LEN(", "));
+      buf.append(STRING_WITH_LEN("INVISIBLE"),cs);
     }
     table->field[17]->store(buf.ptr(), buf.length(), cs);
     table->field[19]->store(field->comment.str, field->comment.length, cs);
