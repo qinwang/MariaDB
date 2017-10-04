@@ -2,10 +2,11 @@ FLUSH STATUS;
 create table t1(abc int primary key, xyz int invisible);
 SHOW STATUS LIKE 'Feature_invisible_columns';
 Variable_name	Value
+Feature_invisible_columns	1
 desc t1;
 Field	Type	Null	Key	Default	Extra
 abc	int(11)	NO	PRI	NULL	
-xyz	int(11)	YES		NULL	 INVISIBLE
+xyz	int(11)	YES		NULL	INVISIBLE
 show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
@@ -16,16 +17,16 @@ t1	CREATE TABLE `t1` (
 select * from INFORMATION_SCHEMA.COLUMNS where TABLE_SCHEMA='test' and TABLE_NAME='t1';
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	DATETIME_PRECISION	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	IS_GENERATED	GENERATION_EXPRESSION
 def	test	t1	abc	1	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	NULL	int(11)	PRI		select,insert,update,references		NEVER	NULL
-def	test	t1	xyz	2	NULL	YES	int	NULL	NULL	10	0	NULL	NULL	NULL	int(11)		 INVISIBLE	select,insert,update,references		NEVER	NULL
+def	test	t1	xyz	2	NULL	YES	int	NULL	NULL	10	0	NULL	NULL	NULL	int(11)		INVISIBLE	select,insert,update,references		NEVER	NULL
 drop table t1;
 create table t1(a1 int invisible);
 ERROR 42000: A table must have at least 1 column
 create table t1(a1 blob,invisible(a1));
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '(a1))' at line 1
 create table t1(a1 int primary key invisible ,a2 int unique invisible , a3 blob,a4 int not null invisible unique);
-ERROR HY000: Hidden column 'a1' must either have a default value or allow null values
+ERROR HY000: Invisible column `a1` must have a default value
 create table t1(abc int not null invisible);
-ERROR HY000: Hidden column 'abc' must either have a default value or allow null values
+ERROR HY000: Invisible column `abc` must have a default value
 create table t1(a int invisible, b int);
 insert into t1 values(1);
 insert into t1(a) values(2);
@@ -63,7 +64,7 @@ create table t1(a int , b int invisible , c int invisible auto_increment unique,
 desc t1;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	YES		NULL	
-b	int(11)	YES		NULL	 INVISIBLE
+b	int(11)	YES		NULL	INVISIBLE
 c	int(11)	NO	PRI	NULL	auto_increment, INVISIBLE
 d	blob	YES		NULL	
 e	int(11)	YES	UNI	NULL	
@@ -76,6 +77,13 @@ a	d	e	f
 1	d blob	2	1
 1	d blob	3	1
 1	d blob	41	1
+select a,b,c,d,e,f from t1;
+a	b	c	d	e	f
+1	NULL	1	d blob	1	1
+1	NULL	2	d blob	11	1
+1	NULL	3	d blob	2	1
+1	NULL	4	d blob	3	1
+1	NULL	5	d blob	41	1
 drop table t1;
 create table sdsdsd(a int , b int, invisible(a,b));
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '(a,b))' at line 1
@@ -147,7 +155,7 @@ ERROR 21S01: Column count doesn't match value count at row 1
 alter table t1 modify column abc  int invisible;
 desc t1;
 Field	Type	Null	Key	Default	Extra
-abc	int(11)	YES		NULL	 INVISIBLE
+abc	int(11)	YES		NULL	INVISIBLE
 xyz	int(11)	YES		NULL	
 insert into t1 values(12);
 drop table t1;
@@ -157,7 +165,7 @@ create table t1(a int , b int invisible , c int invisible auto_increment unique,
 desc t1;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	YES		NULL	
-b	int(11)	YES		NULL	 INVISIBLE
+b	int(11)	YES		NULL	INVISIBLE
 c	int(11)	NO	PRI	NULL	auto_increment, INVISIBLE
 d	blob	YES		NULL	
 e	int(11)	YES	UNI	NULL	
@@ -177,7 +185,7 @@ a	b	c	d	e	f
 1	NULL	3	d blob	2	1
 1	NULL	4	d blob	3	1
 1	NULL	5	d blob	41	1
-#this wont copy invisible fields and keys;
+#this won't copy invisible fields and keys;
 create table t2 as select * from t1;
 desc t2;
 Field	Type	Null	Key	Default	Extra
@@ -386,14 +394,14 @@ t1	CREATE TABLE `t1` (
 desc t1;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	NO	PRI	NULL	
-b	int(11)	YES		NULL	 INVISIBLE
-c	int(11)	YES	UNI	NULL	 INVISIBLE
+b	int(11)	YES		NULL	INVISIBLE
+c	int(11)	YES	UNI	NULL	INVISIBLE
 alter table t1 modify column b int;
 desc t1;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	NO	PRI	NULL	
 b	int(11)	YES		NULL	
-c	int(11)	YES	UNI	NULL	 INVISIBLE
+c	int(11)	YES	UNI	NULL	INVISIBLE
 alter table t1 change column c d int;
 desc t1;
 Field	Type	Null	Key	Default	Extra
@@ -403,290 +411,18 @@ d	int(11)	YES	UNI	NULL
 drop table t1;
 SHOW STATUS LIKE 'Feature_invisible_columns';
 Variable_name	Value
+Feature_invisible_columns	46
 #invisible is non reserved
 create table t1(a int unique , invisible int invisible, c int );
 desc t1;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	YES	UNI	NULL	
-invisible	int(11)	YES		NULL	 INVISIBLE
+invisible	int(11)	YES		NULL	INVISIBLE
 c	int(11)	YES		NULL	
 alter table t1 change column invisible hid int invisible;
 desc t1;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	YES	UNI	NULL	
-hid	int(11)	YES		NULL	 INVISIBLE
+hid	int(11)	YES		NULL	INVISIBLE
 c	int(11)	YES		NULL	
-drop table t1;
-set debug_dbug= "+d,test_pseudo_invisible";
-create table t1(a int);
-set debug_dbug="";
-desc t1;
-Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	
-show create table t1;
-Table	Create Table
-t1	CREATE TABLE `t1` (
-  `a` int(11) DEFAULT NULL
-) ENGINE=MyISAM DEFAULT CHARSET=latin1
-insert into t1 values(1);
-select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-drop table t1;
-set debug_dbug= "+d,test_completely_invisible";
-create table t1(a int);
-set debug_dbug="";
-desc t1;
-Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	
-show create table t1;
-Table	Create Table
-t1	CREATE TABLE `t1` (
-  `a` int(11) DEFAULT NULL
-) ENGINE=MyISAM DEFAULT CHARSET=latin1
-insert into t1 values(1);
-select * from t1;
-a
-1
-select invisible ,a from t1;
-ERROR 42S22: Unknown column 'invisible' in 'field list'
-set debug_dbug= "+d,test_completely_invisible";
-select invisible ,a from t1;
-invisible	a
-9	1
-set debug_dbug="";
-drop table t1;
-set debug_dbug= "+d,test_pseudo_invisible";
-create table t1(a int);
-set debug_dbug="";
-desc t1;
-Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	
-insert into t1 values(1);
-select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-ALTER table t1 change invisible b int;
-ERROR 42S22: Unknown column 'invisible' in 't1'
-select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-ALTER table t1 modify invisible char;
-ERROR 42S22: Unknown column 'invisible' in 't1'
-select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-ALTER table t1 drop invisible;
-ERROR 42000: Can't DROP COLUMN `invisible`; check that it exists
-select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-ALTER table t1 add invisible int;
-ERROR 42S21: Duplicate column name 'invisible'
-select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-ALTER table t1 add invisible2 int default 2;
-select * from t1;
-a	invisible2
-1	2
-select invisible ,a from t1;
-invisible	a
-9	1
-drop table t1;
-set debug_dbug= "+d,test_completely_invisible";
-create table t1(a int);
-desc t1;
-Field	Type	Null	Key	Default	Extra
-a	int(11)	YES		NULL	
-insert into t1 values(1);
-select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-ALTER table t1 change invisible b int;
-ERROR 42S22: Unknown column 'invisible' in 't1'
-select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-ALTER table t1 modify invisible char;
-ERROR 42S22: Unknown column 'invisible' in 't1'
-select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-ALTER table t1 drop invisible;
-ERROR 42000: Can't DROP COLUMN `invisible`; check that it exists
-select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-ALTER table t1 add invisible int;
-ERROR 42S21: Duplicate column name 'invisible'
-select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-set debug_dbug="";
-ALTER table t1 add hid int default 2;
-set debug_dbug= "+d,test_completely_invisible";
-select * from t1;
-a	hid
-1	2
-select invisible ,a from t1;
-invisible	a
-9	1
-drop table t1;
-set debug_dbug="";
-Create table t1( a int default(99) invisible, b int);
-insert into t1 values(1);
-insert into t1 values(2);
-insert into t1 values(3);
-insert into t1 values(4);
-select * from t1;
-b
-1
-2
-3
-4
-alter table t1 add index(a);
-alter table t1 add index(a,b);
-show index from t1;
-Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment
-t1	1	a	1	a	A	NULL	NULL	NULL	YES	BTREE		
-t1	1	a_2	1	a	A	NULL	NULL	NULL	YES	BTREE		
-t1	1	a_2	2	b	A	NULL	NULL	NULL	YES	BTREE		
-drop table t1;
-set debug_dbug= "+d,test_pseudo_invisible";
-Create table t1( a int default(99) invisible, b int);
-Create table t2( a int default(99) invisible, b int, unique(invisible));
-ERROR 42000: Key column 'invisible' doesn't exist in table
-set debug_dbug="";
-insert into t1 values(1);
-insert into t1 values(2);
-insert into t1 values(3);
-insert into t1 values(4);
-select * from t1;
-b
-1
-2
-3
-4
-select invisible, a, b from t1;
-invisible	a	b
-9	99	1
-9	99	2
-9	99	3
-9	99	4
-alter table t1 add index(invisible);
-ERROR 42000: Key column 'invisible' doesn't exist in table
-alter table t1 add index(b,invisible);
-ERROR 42000: Key column 'invisible' doesn't exist in table
-show index from t1;
-Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment
-drop table t1;
-set debug_dbug= "+d,test_completely_invisible";
-Create table t1( a int default(99) invisible, b int);
-Create table t2( a int default(99) invisible, b int, unique(invisible));
-ERROR 42000: Key column 'invisible' doesn't exist in table
-insert into t1 values(1);
-insert into t1 values(2);
-insert into t1 values(3);
-insert into t1 values(4);
-select * from t1;
-b
-1
-2
-3
-4
-select invisible, a, b from t1;
-invisible	a	b
-9	99	1
-9	99	2
-9	99	3
-9	99	4
-set debug_dbug="";
-alter table t1 add index(invisible);
-ERROR 42000: Key column 'invisible' doesn't exist in table
-alter table t1 add index(b,invisible);
-ERROR 42000: Key column 'invisible' doesn't exist in table
-show index from t1;
-Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment
-drop table t1;
-set debug_dbug= "+d,test_completely_invisible,test_invisible_index";
-Create table t1( a int default(99) , b int, index system_gen (invisible), index(b));
-set debug_dbug="";
-Show index from t1;
-Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment
-t1	1	b	1	b	A	NULL	NULL	NULL	YES	BTREE		
-select * from INFORMATION_SCHEMA.STATISTICS where TABLE_SCHEMA ='test' and table_name='t1';
-TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	NON_UNIQUE	INDEX_SCHEMA	INDEX_NAME	SEQ_IN_INDEX	COLUMN_NAME	COLLATION	CARDINALITY	SUB_PART	PACKED	NULLABLE	INDEX_TYPE	COMMENT	INDEX_COMMENT
-def	test	t1	1	test	b	1	b	A	NULL	NULL	NULL	YES	BTREE		
-show create table t1;
-Table	Create Table
-t1	CREATE TABLE `t1` (
-  `a` int(11) DEFAULT 99,
-  `b` int(11) DEFAULT NULL,
-  KEY `b` (`b`)
-) ENGINE=MyISAM DEFAULT CHARSET=latin1
-insert into t1 values(1,1);
-insert into t1 values(1,1);
-insert into t1 values(1,1);
-insert into t1 values(1,1);
-set debug_dbug= "+d,test_completely_invisible";
-select invisible, a ,b from t1;
-invisible	a	b
-9	1	1
-9	1	1
-9	1	1
-9	1	1
-explain select * from t1 where invisible =9;
-id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	ref	system_gen	system_gen	5	const	3	
-set debug_dbug="";
-alter table t1 add x int default 3;
-set debug_dbug= "+d,test_completely_invisible";
-select invisible, a ,b from t1;
-invisible	a	b
-9	1	1
-9	1	1
-9	1	1
-9	1	1
-set debug_dbug="";
-Show index from t1;
-Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment
-t1	1	b	1	b	A	NULL	NULL	NULL	YES	BTREE		
-create index a1 on t1(invisible);
-ERROR 42000: Key column 'invisible' doesn't exist in table
-drop index system_gen on t1;
-ERROR 42000: Can't DROP INDEX `system_gen`; check that it exists
 drop table t1;

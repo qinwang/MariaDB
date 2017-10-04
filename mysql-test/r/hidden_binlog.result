@@ -11,33 +11,31 @@ a	b
 desc t1;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	YES		NULL	
-b	int(11)	YES		NULL	 INVISIBLE
+b	int(11)	YES		NULL	INVISIBLE
 create table t2(a int , b int invisible default 5);
-insert into t1 values(1);
-insert into t1(a,b) values(2,2);
+insert into t2 values(1);
+insert into t2(a,b) values(2,2);
 select a,b from t2;
 a	b
+1	5
+2	2
 desc t2;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	YES		NULL	
-b	int(11)	YES		5	 INVISIBLE
+b	int(11)	YES		5	INVISIBLE
 connection slave;
 select * from t1;
 a
-1
-2
 1
 2
 select a,b from t1;
 a	b
 1	NULL
 2	2
-1	NULL
-2	2
 desc t1;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	YES		NULL	
-b	int(11)	YES		NULL	 INVISIBLE
+b	int(11)	YES		NULL	INVISIBLE
 show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
@@ -46,12 +44,16 @@ t1	CREATE TABLE `t1` (
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 select * from t2;
 a
+1
+2
 select a,b from t2;
 a	b
+1	5
+2	2
 desc t2;
 Field	Type	Null	Key	Default	Extra
 a	int(11)	YES		NULL	
-b	int(11)	YES		5	 INVISIBLE
+b	int(11)	YES		5	INVISIBLE
 show create table t2;
 Table	Create Table
 t2	CREATE TABLE `t2` (
