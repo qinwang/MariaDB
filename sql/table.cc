@@ -1990,10 +1990,10 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
     if(field_properties!=NULL)
     {
       uint temp= *field_properties++;
-      reg_field->field_visibility= static_cast<field_visible_type> (temp & 3);
+      reg_field->field_visibility= f_visibility(temp);
     }
     if (reg_field->field_visibility == USER_DEFINED_INVISIBLE)
-      status_var_increment(thd->status_var.feature_hidden_columns);
+      status_var_increment(thd->status_var.feature_invisible_columns);
     if (reg_field->field_visibility == NOT_INVISIBLE)
       share->visible_fields++;
     if (field_type == MYSQL_TYPE_BIT && !f_bit_as_char(pack_flag))
@@ -2248,7 +2248,7 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
         field= key_part->field= share->field[key_part->fieldnr-1];
         key_part->type= field->key_type();
         if (field->field_visibility > USER_DEFINED_INVISIBLE)
-          keyinfo->flags |= HA_INVISIBLE_SYSTEM_KEY;
+          keyinfo->flags |= HA_INVISIBLE_KEY;
         if (field->null_ptr)
         {
           key_part->null_offset=(uint) ((uchar*) field->null_ptr -

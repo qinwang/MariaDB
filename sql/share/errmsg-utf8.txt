@@ -7801,4 +7801,4 @@ ER_ARGUMENT_OUT_OF_RANGE
 ER_WRONG_TYPE_OF_ARGUMENT
         eng "%s function only accepts arguments that can be converted to numerical types"
 ER_INVISIBLE_NOT_NULL_WITHOUT_DEFAULT
-        eng "Hidden column '%s' must either have a default value or allow null values"
+        eng "Invisible column %`s must have a default value"

@@ -8,8 +8,8 @@ select a,b from t1;
 desc t1;
 
 create table t2(a int , b int invisible default 5);
-insert into t1 values(1);
-insert into t1(a,b) values(2,2);
+insert into t2 values(1);
+insert into t2(a,b) values(2,2);
 select a,b from t2;
 desc t2;
 
