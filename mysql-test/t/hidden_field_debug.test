@@ -98,12 +98,11 @@ ALTER table t1 drop invisible;
 select * from t1;
 select invisible ,a from t1;
 
---error ER_DUP_FIELDNAME
 ALTER table t1 add invisible int;
 select * from t1;
-select invisible ,a from t1;
+select invisible1, invisible ,a from t1;
 
-set debug_dbug=@old_debug;
+#set debug_dbug=@old_debug;
 ALTER table t1 add hid int default 2;
 set debug_dbug= "+d,test_completely_invisible";
 select * from t1;
@@ -179,12 +178,10 @@ insert into t1 values(1,1);
 insert into t1 values(1,1);
 insert into t1 values(1,1);
 insert into t1 values(1,1);
-set debug_dbug= "+d,test_completely_invisible";
+set debug_dbug= "+d,test_completely_invisible,test_invisible_index";
 select invisible, a ,b from t1;
 explain select * from t1 where invisible =9;
-set debug_dbug=@old_debug;
 alter table t1 add x int default 3;
-set debug_dbug= "+d,test_completely_invisible";
 select invisible, a ,b from t1;
 set debug_dbug=@old_debug;
 Show index from t1;

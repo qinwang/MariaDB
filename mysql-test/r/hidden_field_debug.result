@@ -131,22 +131,20 @@ select invisible ,a from t1;
 invisible	a
 9	1
 ALTER table t1 add invisible int;
-ERROR 42S21: Duplicate column name 'invisible'
 select * from t1;
-a
-1
-select invisible ,a from t1;
-invisible	a
-9	1
-set debug_dbug=@old_debug;
+a	invisible
+1	NULL
+select invisible1, invisible ,a from t1;
+invisible1	invisible	a
+9	NULL	1
 ALTER table t1 add hid int default 2;
 set debug_dbug= "+d,test_completely_invisible";
 select * from t1;
-a	hid
-1	2
+a	invisible	hid
+1	NULL	2
 select invisible ,a from t1;
 invisible	a
-9	1
+NULL	1
 drop table t1;
 set debug_dbug=@old_debug;
 Create table t1( a int default(99) invisible, b int);
@@ -244,7 +242,7 @@ insert into t1 values(1,1);
 insert into t1 values(1,1);
 insert into t1 values(1,1);
 insert into t1 values(1,1);
-set debug_dbug= "+d,test_completely_invisible";
+set debug_dbug= "+d,test_completely_invisible,test_invisible_index";
 select invisible, a ,b from t1;
 invisible	a	b
 9	1	1
@@ -254,9 +252,7 @@ invisible	a	b
 explain select * from t1 where invisible =9;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ref	system_gen	system_gen	5	const	3	
-set debug_dbug=@old_debug;
 alter table t1 add x int default 3;
-set debug_dbug= "+d,test_completely_invisible";
 select invisible, a ,b from t1;
 invisible	a	b
 9	1	1

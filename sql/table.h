@@ -342,7 +342,7 @@ enum  field_visible_type{
 	USER_DEFINED_INVISIBLE,
     /* automatically added by the server. Can be queried explicitly
       in SELECT, otherwise hidden from anything" */
-	PSEUDO_COLUMN_INVISIBLE,
+	SYSTEM_INVISIBLE,
 	COMPLETELY_INVISIBLE
 };
 
