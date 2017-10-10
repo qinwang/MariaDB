@@ -2163,6 +2163,7 @@ bool mysql_install_plugin(THD *thd, const LEX_CSTRING *name,
   tables.init_one_table("mysql", 5, "plugin", 6, "plugin", TL_WRITE);
   if (!opt_noacl && check_table_access(thd, INSERT_ACL, &tables, FALSE, 1, FALSE))
     DBUG_RETURN(TRUE);
+  WSREP_TO_ISOLATION_BEGIN(WSREP_MYSQL_DB, NULL, NULL);
 
   WSREP_TO_ISOLATION_BEGIN(WSREP_MYSQL_DB, NULL, NULL)
 
@@ -2289,6 +2290,10 @@ static bool do_uninstall(THD *thd, TABLE *table, const LEX_CSTRING *name)
     }
   }
   return 0;
+#ifdef WITH_WSREP
+ error:
+#endif /* WITH_WSREP */
+  return 1;
 }
 
 
@@ -2307,6 +2312,7 @@ bool mysql_uninstall_plugin(THD *thd, const LEX_CSTRING *name,
 
   if (!opt_noacl && check_table_access(thd, DELETE_ACL, &tables, FALSE, 1, FALSE))
     DBUG_RETURN(TRUE);
+  WSREP_TO_ISOLATION_BEGIN(WSREP_MYSQL_DB, NULL, NULL);
 
   WSREP_TO_ISOLATION_BEGIN(WSREP_MYSQL_DB, NULL, NULL)
 
