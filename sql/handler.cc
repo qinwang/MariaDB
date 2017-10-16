@@ -5911,8 +5911,6 @@ static int write_locked_table_maps(THD *thd)
 }
 
 
-static int check_wsrep_max_ws_rows();
-
 static int binlog_log_row_internal(TABLE* table,
                                    const uchar *before_record,
                                    const uchar *after_record,
@@ -5950,13 +5948,6 @@ static int binlog_log_row_internal(TABLE* table,
     bool const has_trans= thd->lex->sql_command == SQLCOM_CREATE_TABLE ||
       table->file->has_transactions();
     error= (*log_func)(thd, table, has_trans, before_record, after_record);
-
-    /*
-      Now that the record has been logged, increment wsrep_affected_rows and
-      also check whether its within the allowable limits (wsrep_max_ws_rows).
-    */
-    if (error == 0)
-      error= check_wsrep_max_ws_rows();
   }
   return error ? HA_ERR_RBR_LOGGING_FAILED : 0;
 }
@@ -6100,30 +6091,6 @@ static int wsrep_after_row(THD *thd)
 }
 #endif /* WITH_WSREP */
 
-static int check_wsrep_max_ws_rows()
-{
-#ifdef WITH_WSREP
-  if (wsrep_max_ws_rows)
-  {
-    THD *thd= current_thd;
-
-    if (!WSREP(thd))
-      return 0;
-
-    thd->wsrep_affected_rows++;
-    if (thd->wsrep_exec_mode != REPL_RECV &&
-        thd->wsrep_affected_rows > wsrep_max_ws_rows)
-    {
-      trans_rollback_stmt(thd) || trans_rollback(thd);
-      my_message(ER_ERROR_DURING_COMMIT, "wsrep_max_ws_rows exceeded", MYF(0));
-      return ER_ERROR_DURING_COMMIT;
-    }
-  }
-#endif /* WITH_WSREP */
-  return 0;
-}
-
-
 int handler::ha_write_row(uchar *buf)
 {
   int error;
@@ -6194,7 +6161,7 @@ int handler::ha_update_row(const uchar *old_data, const uchar *new_data)
     return error;
   }
 #endif /* WITH_WSREP */
-  return error ? error : check_wsrep_max_ws_rows();
+  return 0;
 }
 
 /*
@@ -6257,7 +6224,7 @@ int handler::ha_delete_row(const uchar *buf)
     return error;
   }
 #endif /* WITH_WSREP */
-  return error ? error : check_wsrep_max_ws_rows();
+  return 0;
 }
 
 
