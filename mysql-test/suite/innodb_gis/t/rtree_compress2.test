@@ -3,9 +3,7 @@
 
 # Restarting is not supported in embedded
 --source include/not_embedded.inc
-
---source include/have_innodb.inc
---source include/have_innodb_zip.inc
+--source include/innodb_page_size_small.inc
 --source include/big_test.inc
 # Valgrind takes too much time on PB2 even in the --big-test runs.
 --source include/not_valgrind.inc
@@ -51,7 +49,7 @@ CALL insert_t1(5000);
 
 COMMIT;
 
---source include/kill_and_restart_mysqld.inc
+--source include/restart_mysqld.inc
 
 # Clean up.
 drop procedure insert_t1;

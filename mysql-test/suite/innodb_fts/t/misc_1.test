@@ -1,5 +1,5 @@
 --source include/have_innodb.inc
-
+--source include/innodb_page_size_small.inc
 #------------------------------------------------------------------------------
 # FTS with FK and update cascade
 #-------------------------------------------------------------------------------
