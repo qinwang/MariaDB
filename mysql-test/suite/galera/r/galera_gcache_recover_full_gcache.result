@@ -15,5 +15,11 @@ Using --wsrep-start-position when starting mysqld ...
 include/diff_servers.inc [servers=1 2]
 DROP TABLE t1;
 CALL mtr.add_suppression("Skipped GCache ring buffer recovery");
+call mtr.add_suppression("Resizing redo log from *");
+call mtr.add_suppression("Starting to delete and rewrite log files.");
+call mtr.add_suppression("New log files created, LSN=*");
 include/assert_grep.inc [IST first seqno 2 not found from cache, falling back to SST]
 CALL mtr.add_suppression("Skipped GCache ring buffer recovery");
+call mtr.add_suppression("Resizing redo log from *");
+call mtr.add_suppression("Starting to delete and rewrite log files.");
+call mtr.add_suppression("New log files created, LSN=*");
