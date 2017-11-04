@@ -876,7 +876,10 @@ sub collect_one_test_case {
     if (not $config)
     {
       # Suite has no config, autodetect which one to use
-      if ($tinfo->{rpl_test}) {
+      if ($::opt_default_server_options) {
+        $config= "include/hard_default_my.cnf";
+      }
+      elsif ($tinfo->{rpl_test}) {
         $config= "suite/rpl/my.cnf";
       } else {
         $config= "include/default_my.cnf";

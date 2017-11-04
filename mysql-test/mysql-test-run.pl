@@ -131,6 +131,7 @@ our $plugindir;
 my $path_vardir_trace;          # unix formatted opt_vardir for trace files
 my $opt_tmpdir;                 # Path to use for tmp/ dir
 my $opt_tmpdir_pid;
+our $opt_default_server_options;
 
 my $opt_start;
 my $opt_start_dirty;
@@ -1105,6 +1106,9 @@ sub command_line_setup {
 	     'defaults-file=s'          => \&collect_option,
 	     # Extra config file to append to all generated configs
 	     'defaults-extra-file=s'    => \&collect_option,
+
+	     # Use hard defaults instead of heavily modified MTR configuration
+	     'default-server-options'    => \$opt_default_server_options,
 
              # Control what test suites or cases to run
              'force+'                   => \$opt_force,
@@ -3473,11 +3477,15 @@ sub sql_to_bootstrap {
 sub default_mysqld {
   # Generate new config file from template
   environment_setup();
+  my $config_template= ($opt_default_server_options
+      ? 'include/hard_default_my.cnf'
+      : 'include/default_my.cnf'
+  );
   my $config= My::ConfigFactory->new_config
     ( {
        basedir         => $basedir,
        testdir         => $glob_mysql_test_dir,
-       template_path   => "include/default_my.cnf",
+       template_path   => $config_template,
        vardir          => $opt_vardir,
        tmpdir          => $opt_tmpdir,
        baseport        => 0,
@@ -3509,12 +3517,14 @@ sub mysql_install_db {
   mtr_add_arg($args, "--basedir=%s", $install_basedir);
   mtr_add_arg($args, "--datadir=%s", $install_datadir);
   mtr_add_arg($args, "--plugin-dir=%s", $plugindir);
-  mtr_add_arg($args, "--default-storage-engine=myisam");
-  mtr_add_arg($args, "--loose-skip-plugin-$_") for @optional_plugins;
-  # starting from 10.0 bootstrap scripts require InnoDB
-  mtr_add_arg($args, "--loose-innodb");
-  mtr_add_arg($args, "--loose-innodb-log-file-size=5M");
-  mtr_add_arg($args, "--disable-sync-frm");
+  if (!$opt_default_server_options) {
+    mtr_add_arg($args, "--default-storage-engine=myisam");
+    mtr_add_arg($args, "--loose-skip-plugin-$_") for @optional_plugins;
+    # starting from 10.0 bootstrap scripts require InnoDB
+    mtr_add_arg($args, "--loose-innodb");
+    mtr_add_arg($args, "--loose-innodb-log-file-size=5M");
+    mtr_add_arg($args, "--disable-sync-frm");
+  }
   mtr_add_arg($args, "--tmpdir=%s", "$opt_vardir/tmp/");
   mtr_add_arg($args, "--core-file");
   mtr_add_arg($args, "--console");
@@ -6438,6 +6448,8 @@ Options to control what engine/variation to run:
                         tests
   defaults-extra-file=<config template> Extra config template to add to
                         all generated configs
+  default-server-options Use hard server defaults instead of the usual
+                        heavily adjusted defaults-file
   combination=<opt>     Use at least twice to run tests with specified
                         options to mysqld
   dry-run               Don't run any tests, print the list of tests

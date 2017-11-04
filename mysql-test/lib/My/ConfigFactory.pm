@@ -37,7 +37,9 @@ sub add_opt_values {
 
   # add auto-options
   $config->insert('OPT', 'port'   => sub { fix_port($self, $config) });
-  $config->insert('mysqld', "loose-skip-plugin-$_" => undef) for (@::optional_plugins);
+  if (!$::opt_default_server_options) {
+    $config->insert('mysqld', "loose-skip-plugin-$_" => undef) for (@::optional_plugins);
+  }
 }
 
 my @pre_rules=
