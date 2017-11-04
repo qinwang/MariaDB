@@ -4385,6 +4385,7 @@ sub run_testcase ($$) {
   my $test= $tinfo->{suite}->start_test($tinfo);
   # Set only when we have to keep waiting after expectedly died server
   my $keep_waiting_proc = 0;
+  my $keep_waiting_proc_old = 0;
   my $print_timeout= start_timer($print_freq * 60);
 
   while (1)
@@ -4396,6 +4397,7 @@ sub run_testcase ($$) {
       $proc = My::SafeProcess->check_any();
       if ($proc)
       {
+        $keep_waiting_proc_old = $keep_waiting_proc;
 	mtr_verbose ("Found exited process $proc");
       }
       else
@@ -4553,7 +4555,8 @@ sub run_testcase ($$) {
     if ($check_crash)
     {
       # Keep waiting if it returned 2, if 1 don't wait or stop waiting.
-      $keep_waiting_proc = 0 if $check_crash == 1;
+      $keep_waiting_proc = $keep_waiting_proc_old if $check_crash == 1;
+      $keep_waiting_proc_old = 0 if $check_crash == 1;
       $keep_waiting_proc = $proc if $check_crash == 2;
       next;
     }

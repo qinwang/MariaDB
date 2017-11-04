@@ -16,7 +16,6 @@ MW-329 : MDEV-13549 Galera test failures
 galera_account_management : MariaDB 10.0 does not support ALTER USER
 galera_binlog_row_image : MariaDB 10.0 does not support binlog_row_image
 galera_binlog_rows_query_log_events: MariaDB does not support binlog_rows_query_log_events
-GAL-419 : MDEV-13549 Galera test failures
 galera_toi_ddl_fk_insert : MDEV-13549 Galera test failures
 galera_var_slave_threads : MDEV-13549 Galera test failures
 mysql-wsrep#90 : MDEV-13549 Galera test failures
@@ -25,7 +24,6 @@ galera_as_master_gtid_change_master : Requires MySQL GTID
 galera_as_slave_replication_bundle : MDEV-13549 Galera test failures
 galera_as_slave_preordered : wsrep-preordered feature not merged to MariaDB
 galera_gcs_fragment : MDEV-13549 Galera test failures
-galera_gcache_recover : MDEV-13549 Galera test failures
 galera_gcache_recover_full_gcache : MDEV-13549 Galera test failures
 galera_gcache_recover_manytrx : MDEV-13549 Galera test failures
 galera_ist_mysqldump : MDEV-13549 Galera test failures
