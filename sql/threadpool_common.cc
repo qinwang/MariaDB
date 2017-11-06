@@ -23,6 +23,7 @@
 #include <sql_audit.h>
 #include <debug_sync.h>
 #include <threadpool.h>
+#include "sql_parse.h"
 
 
 /* Threadpool parameters */
@@ -46,7 +47,6 @@ static int   threadpool_process_request(THD *thd);
 static THD*  threadpool_add_connection(CONNECT *connect, void *scheduler_data);
 
 extern "C" pthread_key(struct st_my_thread_var*, THR_KEY_mysys);
-extern bool do_command(THD*);
 
 static inline TP_connection *get_TP_connection(THD *thd)
 {
@@ -222,6 +222,7 @@ error:
 static THD* threadpool_add_connection(CONNECT *connect, void *scheduler_data)
 {
   THD *thd= NULL;
+  bool error= false;
 
   /*
     Create a new connection context: mysys_thread_var and PSI thread
@@ -283,6 +284,26 @@ static THD* threadpool_add_connection(CONNECT *connect, void *scheduler_data)
 
   thd->skip_wait_timeout= true;
   set_thd_idle(thd);
+
+  if (thd && thd->bundle_command.str)
+  {
+    thd->bundle_command.str[thd->bundle_command.length]= '\0'; /* safety */
+    enum enum_server_command command=
+      fetch_command(thd, thd->bundle_command.str);
+
+    /* it is not a real error, just QUIT */
+    error= dispatch_command(command, thd, thd->bundle_command.str + 1,
+                                 (uint) (thd->bundle_command.length - 1),
+                                 FALSE, FALSE);
+    net_flush(&thd->net);
+    mysql_audit_release(thd);
+  }
+
+  if (error)
+  {
+    threadpool_remove_connection(thd);
+    thd= NULL;
+  }
   return thd;
 
 end:

@@ -1138,7 +1138,7 @@ void cleanup_items(Item *item)
   DBUG_VOID_RETURN;
 }
 
-static enum enum_server_command fetch_command(THD *thd, char *packet)
+enum enum_server_command fetch_command(THD *thd, char *packet)
 {
   enum enum_server_command
     command= (enum enum_server_command) (uchar) packet[0];
@@ -1342,25 +1342,6 @@ bool do_command(THD *thd)
 
   command= fetch_command(thd, packet);
 
-#ifdef WITH_WSREP
-  /*
-    Bail out if DB snapshot has not been installed.
-  */
-  if (!(server_command_flags[command] & CF_SKIP_WSREP_CHECK) &&
-      !wsrep_node_is_ready(thd))
-  {
-    thd->protocol->end_statement();
-
-    /* Performance Schema Interface instrumentation end. */
-    MYSQL_END_STATEMENT(thd->m_statement_psi, thd->get_stmt_da());
-    thd->m_statement_psi= NULL;
-    thd->m_digest= NULL;
-
-    return_value= FALSE;
-    goto out;
-  }
-#endif
-
   /* Restore read timeout value */
   my_net_set_read_timeout(net, thd->variables.net_read_timeout);
 
@@ -1549,6 +1530,24 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
                        command_name[command].str :
                        "<?>")));
   bool drop_more_results= 0;
+#ifdef WITH_WSREP
+  /*
+    Bail out if DB snapshot has not been installed.
+  */
+  if (!(server_command_flags[command] & CF_SKIP_WSREP_CHECK) &&
+      !wsrep_node_is_ready(thd))
+  {
+    thd->protocol->end_statement();
+
+    /* Performance Schema Interface instrumentation end. */
+    MYSQL_END_STATEMENT(thd->m_statement_psi, thd->get_stmt_da());
+    thd->m_statement_psi= NULL;
+    thd->m_digest= NULL;
+
+    DBUG_RETURN (FALSE);
+  }
+#endif
+
 
   if (!is_com_multi)
     inc_thread_running();

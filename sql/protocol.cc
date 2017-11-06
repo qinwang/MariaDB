@@ -573,12 +573,17 @@ void Protocol::end_statement()
     break;
   case Diagnostics_area::DA_OK:
   case Diagnostics_area::DA_OK_BULK:
+    /*
+       We skipping flush if it is packet processing, or there is bundle in
+       auth packet command.
+     */
     error= send_ok(thd->server_status,
                    thd->get_stmt_da()->statement_warn_count(),
                    thd->get_stmt_da()->affected_rows(),
                    thd->get_stmt_da()->last_insert_id(),
                    thd->get_stmt_da()->message(),
-                   thd->get_stmt_da()->skip_flush());
+                   (thd->get_stmt_da()->skip_flush() ||
+                    (thd->bundle_command.str != NULL)));
     break;
   case Diagnostics_area::DA_DISABLED:
     break;

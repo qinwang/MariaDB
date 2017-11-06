@@ -4559,7 +4559,6 @@ public:
     mysql_mutex_unlock(&LOCK_thread_count);
   }
 
-
   uint get_net_wait_timeout()
   {
     if (in_active_multi_stmt_transaction())
@@ -4612,6 +4611,9 @@ public:
                                LOG_SLOW_DISABLE_ADMIN);
     query_plan_flags|= QPLAN_ADMIN;
   }
+
+  /* Auth packet bundle packet */
+  LEX_STRING bundle_command;
 };
 
 inline void add_to_active_threads(THD *thd)

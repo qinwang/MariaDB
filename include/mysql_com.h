@@ -280,6 +280,8 @@ enum enum_indicator_type
 #define MARIADB_CLIENT_COM_MULTI (1ULL << 33)
 /* support of array binding */
 #define MARIADB_CLIENT_STMT_BULK_OPERATIONS (1ULL << 34)
+/* support bundle first command with the authentication packet */
+#define MARIADB_CLIENT_COM_IN_AUTH (1ULL << 35)
 
 #ifdef HAVE_COMPRESS
 #define CAN_CLIENT_COMPRESS CLIENT_COMPRESS
@@ -320,7 +322,8 @@ enum enum_indicator_type
                            CLIENT_DEPRECATE_EOF |\
                            CLIENT_CONNECT_ATTRS |\
                            MARIADB_CLIENT_COM_MULTI |\
-                           MARIADB_CLIENT_STMT_BULK_OPERATIONS)
+                           MARIADB_CLIENT_STMT_BULK_OPERATIONS |\
+                           MARIADB_CLIENT_COM_IN_AUTH)
 
 /*
   To be added later:

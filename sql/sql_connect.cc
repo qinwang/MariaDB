@@ -1358,6 +1358,8 @@ void do_handle_one_connection(CONNECT *connect)
 {
   ulonglong thr_create_utime= microsecond_interval_timer();
   THD *thd;
+  bool close_conn= false;
+
   if (connect->scheduler->init_new_connection_thread() ||
       !(thd= connect->create_thd(NULL)))
   {
@@ -1410,13 +1412,34 @@ void do_handle_one_connection(CONNECT *connect)
     {
       create_user= FALSE;
       goto end_thread;
-    }      
+    }
 
-    while (thd_is_connection_alive(thd))
+    if (thd->bundle_command.str)
     {
+      thd->bundle_command.str[thd->bundle_command.length]= '\0'; /* safety */
+
+      enum enum_server_command command=
+        fetch_command(thd, thd->bundle_command.str);
+
+      close_conn= dispatch_command(command, thd, thd->bundle_command.str + 1,
+                                   (uint) (thd->bundle_command.length - 1),
+                                   FALSE, FALSE);
+
       mysql_audit_release(thd);
-      if (do_command(thd))
-	break;
+      my_free(thd->bundle_command.str);
+      thd->bundle_command.str= 0;
+      thd->bundle_command.length= 0;
+    }
+
+    if (!close_conn)
+    {
+      while (thd_is_connection_alive(thd))
+      {
+        DBUG_ASSERT(thd->bundle_command.str == NULL);
+        mysql_audit_release(thd);
+        if (do_command(thd))
+          break;
+      }
     }
     end_connection(thd);
 

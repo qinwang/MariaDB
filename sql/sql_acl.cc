@@ -12403,28 +12403,39 @@ static bool find_mpvio_user(MPVIO_EXT *mpvio)
 }
 
 static bool
-read_client_connect_attrs(char **ptr, char *end, CHARSET_INFO *from_cs)
+read_bundle_length (size_t *length, char **ptr, char *end)
 {
-  ulonglong length;
   char *ptr_save= *ptr;
 
   /* not enough bytes to hold the length */
   if (ptr_save >= end)
     return true;
 
-  length= safe_net_field_length_ll((uchar **) ptr, end - ptr_save);
+  *length= safe_net_field_length_ll((uchar **) ptr, end - ptr_save);
 
   /* cannot even read the length */
   if (*ptr == NULL)
     return true;
 
   /* length says there're more data than can fit into the packet */
-  if (*ptr + length > end)
+  if (*ptr + *length > end)
+    return true;
+
+  return false;
+}
+
+static bool
+read_client_connect_attrs(char **ptr, char *end, CHARSET_INFO *from_cs)
+{
+  size_t length;
+
+  if (read_bundle_length(&length, ptr, end))
     return true;
 
   /* impose an artificial length limit of 64k */
   if (length > 65535)
     return true;
+
 
 #ifdef HAVE_PSI_THREAD_INTERFACE
   if (PSI_THREAD_CALL(set_thread_connect_attrs)(*ptr, (size_t)length, from_cs) &&
@@ -12432,7 +12443,36 @@ read_client_connect_attrs(char **ptr, char *end, CHARSET_INFO *from_cs)
     sql_print_warning("Connection attributes of length %llu were truncated",
                       length);
 #endif
+  *ptr+= length;
   return false;
+}
+
+static LEX_STRING
+read_client_bundle_com(char **ptr, char *end)
+{
+  LEX_STRING res= {0, packet_error};
+
+  if (read_bundle_length(&res.length, ptr, end))
+    return res;
+
+  if (!res.length)
+    return res;
+
+  /* do_command add \0 to the end so we need allocate more */
+  res.str= (char *)my_malloc(res.length + 1, MYF(MY_WME));
+
+  if (likely(res.str))
+  {
+    memcpy(res.str, *ptr, res.length);
+    *ptr+= res.length;
+  }
+  else
+  {
+    *ptr+= res.length;
+    res.length= packet_error;
+  }
+
+  return res;
 }
 
 #endif
@@ -12816,6 +12856,19 @@ static ulong parse_client_handshake_packet(MPVIO_EXT *mpvio,
       read_client_connect_attrs(&next_field, ((char *)net->read_pos) + pkt_len,
                                 mpvio->auth_info.thd->charset()))
     return packet_error;
+
+  if (thd->client_capabilities & MARIADB_CLIENT_COM_IN_AUTH)
+  {
+    thd->bundle_command=
+      read_client_bundle_com(&next_field,
+                             ((char *)net->read_pos) + pkt_len);
+    if (thd->bundle_command.length == packet_error)
+    {
+      thd->bundle_command.str= NULL;
+      thd->bundle_command.length= 0;
+      return packet_error;
+    }
+  }
 
   /*
     if the acl_user needs a different plugin to authenticate

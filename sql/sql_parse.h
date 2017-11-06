@@ -102,6 +102,7 @@ pthread_handler_t handle_bootstrap(void *arg);
 int mysql_execute_command(THD *thd);
 bool do_command(THD *thd);
 void do_handle_bootstrap(THD *thd);
+enum enum_server_command fetch_command(THD *thd, char *packet);
 bool dispatch_command(enum enum_server_command command, THD *thd,
 		      char* packet, uint packet_length,
                       bool is_com_multi, bool is_next_command);
