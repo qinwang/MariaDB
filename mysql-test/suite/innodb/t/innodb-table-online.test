@@ -54,11 +54,11 @@ SET @saved_debug_dbug = @@SESSION.debug_dbug;
 SET DEBUG_DBUG = '+d,innodb_OOM_prepare_inplace_alter';
 --error ER_OUT_OF_RESOURCES
 ALTER TABLE t1 ROW_FORMAT=REDUNDANT, ALGORITHM=INPLACE, LOCK=NONE;
-SET SESSION DEBUG = @saved_debug_dbug;
-SET SESSION DEBUG = '+d,innodb_OOM_inplace_alter';
+SET SESSION DEBUG_DBUG= @saved_debug_dbug;
+SET SESSION DEBUG_DBUG= '+d,innodb_OOM_inplace_alter';
 --error ER_OUT_OF_RESOURCES
 ALTER TABLE t1 ROW_FORMAT=REDUNDANT, ALGORITHM=INPLACE, LOCK=NONE;
-SET SESSION DEBUG = @saved_debug_dbug;
+SET SESSION DEBUG_DBUG= @saved_debug_dbug;
 ALTER TABLE t1 ROW_FORMAT=REDUNDANT, ALGORITHM=INPLACE, LOCK=NONE;
 
 --echo # session default
@@ -215,8 +215,7 @@ SET DEBUG_SYNC = 'row_log_table_apply1_before SIGNAL rebuilt2 WAIT_FOR dml2_done
 # Ensure that the ALTER TABLE will be executed even with some concurrent DML.
 SET lock_wait_timeout = 10;
 --send
-ALTER TABLE t1 ROW_FORMAT=COMPACT
-PAGE_COMPRESSED = YES PAGE_COMPRESSION_LEVEL = 1, ALGORITHM = INPLACE;
+ALTER TABLE t1 ROW_FORMAT=COMPACT, ALGORITHM = INPLACE;
 
 # Generate some log (delete-mark, delete-unmark, insert etc.)
 # while the index creation is blocked. Some of this may run
@@ -431,19 +430,52 @@ SELECT * FROM t1 LIMIT 10;
 connection con1;
 ALTER TABLE t1 DISCARD TABLESPACE;
 --echo # Disconnect session con1
-disconnect con1;
+#disconnect con1;
 
 --echo # session default
 connection default;
 SHOW CREATE TABLE t1;
-SET DEBUG_SYNC = 'RESET';
-SET GLOBAL innodb_monitor_disable = module_ddl;
 DROP TABLE t1;
+
+--echo #
+--echo # Bug#18894337 ONLINE ALTER TABLE LOG APPLY FAILS TO SKIP LOCKING
+--echo #
+
+--echo # session con1
+connection con1;
+CREATE TABLE t1 (a SERIAL, c64 VARCHAR(64) UNIQUE) ENGINE=InnoDB;
+INSERT INTO t1 VALUES(0, NULL);
+SET DEBUG_DBUG='+d,innodb_trx_duplicates';
+SET DEBUG_SYNC='row_log_table_apply1_before SIGNAL t1_ddl WAIT_FOR t1_dml';
+--send
+ALTER TABLE t1 ENGINE=InnoDB;
+
+--echo # session default
+connection default;
+
+SET DEBUG_SYNC='now WAIT_FOR t1_ddl';
+INSERT INTO t1 VALUES(0, NULL), (0, NULL);
+SET DEBUG_SYNC='now SIGNAL t1_dml';
+
+--echo # session con1
+connection con1;
+reap;
+--echo # Disconnect session con1
+disconnect con1;
+--echo # session default
+connection default;
+DROP TABLE t1;
+
+SET DEBUG_SYNC = 'RESET';
+set debug_dbug = '';
+SET GLOBAL innodb_monitor_disable = module_ddl;
+#DROP TABLE t1;
 
 # Check that all connections opened by test cases in this file are really
 # gone so execution of other tests won't be affected by their presence.
 --source include/wait_until_count_sessions.inc
 
+SET GLOBAL DEBUG_DBUG = '';
 SET GLOBAL innodb_file_per_table = @global_innodb_file_per_table_orig;
 --disable_warnings
 SET GLOBAL innodb_monitor_enable  = default;

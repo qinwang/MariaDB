@@ -43,17 +43,11 @@ SET @saved_debug_dbug = @@SESSION.debug_dbug;
 SET DEBUG_DBUG = '+d,innodb_OOM_prepare_inplace_alter';
 ALTER TABLE t1 ROW_FORMAT=REDUNDANT, ALGORITHM=INPLACE, LOCK=NONE;
 ERROR HY000: Out of memory; check if mysqld or some other process uses all available memory; if not, you may have to use 'ulimit' to allow mysqld to use more memory or you can add more swap space
-SET SESSION DEBUG = @saved_debug_dbug;
-Warnings:
-Warning	1287	'@@debug' is deprecated and will be removed in a future release. Please use '@@debug_dbug' instead
-SET SESSION DEBUG = '+d,innodb_OOM_inplace_alter';
-Warnings:
-Warning	1287	'@@debug' is deprecated and will be removed in a future release. Please use '@@debug_dbug' instead
+SET SESSION DEBUG_DBUG= @saved_debug_dbug;
+SET SESSION DEBUG_DBUG= '+d,innodb_OOM_inplace_alter';
 ALTER TABLE t1 ROW_FORMAT=REDUNDANT, ALGORITHM=INPLACE, LOCK=NONE;
 ERROR HY000: Out of memory; check if mysqld or some other process uses all available memory; if not, you may have to use 'ulimit' to allow mysqld to use more memory or you can add more swap space
-SET SESSION DEBUG = @saved_debug_dbug;
-Warnings:
-Warning	1287	'@@debug' is deprecated and will be removed in a future release. Please use '@@debug_dbug' instead
+SET SESSION DEBUG_DBUG= @saved_debug_dbug;
 ALTER TABLE t1 ROW_FORMAT=REDUNDANT, ALGORITHM=INPLACE, LOCK=NONE;
 # session default
 connection default;
@@ -235,8 +229,7 @@ t1	CREATE TABLE `t1` (
 ALTER TABLE t1 ROW_FORMAT=REDUNDANT;
 SET DEBUG_SYNC = 'row_log_table_apply1_before SIGNAL rebuilt2 WAIT_FOR dml2_done';
 SET lock_wait_timeout = 10;
-ALTER TABLE t1 ROW_FORMAT=COMPACT
-PAGE_COMPRESSED = YES PAGE_COMPRESSION_LEVEL = 1, ALGORITHM = INPLACE;
+ALTER TABLE t1 ROW_FORMAT=COMPACT, ALGORITHM = INPLACE;
 # session default
 connection default;
 INSERT INTO t1 SELECT  80 + c1, c2, c3 FROM t1;
@@ -484,7 +477,6 @@ c22f	c1	c3	c4
 connection con1;
 ALTER TABLE t1 DISCARD TABLESPACE;
 # Disconnect session con1
-disconnect con1;
 # session default
 connection default;
 SHOW CREATE TABLE t1;
@@ -496,9 +488,33 @@ t1	CREATE TABLE `t1` (
   `c4` varchar(6) NOT NULL DEFAULT 'Online',
   PRIMARY KEY (`c22f`,`c1`,`c4`(5))
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 ROW_FORMAT=REDUNDANT
-SET DEBUG_SYNC = 'RESET';
-SET GLOBAL innodb_monitor_disable = module_ddl;
 DROP TABLE t1;
+#
+# Bug#18894337 ONLINE ALTER TABLE LOG APPLY FAILS TO SKIP LOCKING
+#
+# session con1
+connection con1;
+CREATE TABLE t1 (a SERIAL, c64 VARCHAR(64) UNIQUE) ENGINE=InnoDB;
+INSERT INTO t1 VALUES(0, NULL);
+SET DEBUG_DBUG='+d,innodb_trx_duplicates';
+SET DEBUG_SYNC='row_log_table_apply1_before SIGNAL t1_ddl WAIT_FOR t1_dml';
+ALTER TABLE t1 ENGINE=InnoDB;
+# session default
+connection default;
+SET DEBUG_SYNC='now WAIT_FOR t1_ddl';
+INSERT INTO t1 VALUES(0, NULL), (0, NULL);
+SET DEBUG_SYNC='now SIGNAL t1_dml';
+# session con1
+connection con1;
+# Disconnect session con1
+disconnect con1;
+# session default
+connection default;
+DROP TABLE t1;
+SET DEBUG_SYNC = 'RESET';
+set debug_dbug = '';
+SET GLOBAL innodb_monitor_disable = module_ddl;
+SET GLOBAL DEBUG_DBUG = '';
 SET GLOBAL innodb_file_per_table = @global_innodb_file_per_table_orig;
 SET GLOBAL innodb_monitor_enable  = default;
 SET GLOBAL innodb_monitor_disable = default;

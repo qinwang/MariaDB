@@ -20,8 +20,10 @@ ENCRYPTED=YES;
 #
 CREATE TABLE t1 (pk INT PRIMARY KEY AUTO_INCREMENT,
 c VARCHAR(256), coordinate POINT NOT NULL, SPATIAL index(coordinate)) ENGINE=INNODB;
---error ER_ILLEGAL_HA_CREATE_OPTION
+--replace_regex /#sql-[0-9a-f_]*`/#sql-temporary`/
+--error ER_CANT_CREATE_TABLE
 ALTER TABLE t1 ENCRYPTED=YES;
+--replace_regex /#sql-[0-9a-f_]*`/#sql-temporary`/
 DROP TABLE t1;
 
 #

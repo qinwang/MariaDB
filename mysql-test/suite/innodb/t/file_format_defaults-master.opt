@@ -1,0 +1,4 @@
+--innodb_large_prefix=off 
+--innodb_file_format=barracuda 
+--innodb-file-format-check=off 
+--innodb_page_size=16k

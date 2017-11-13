@@ -7,7 +7,8 @@ insert t1 values (12345, repeat('1234567890', 20));
 
 alter table t1 encryption_key_id=2;
 show create table t1;
---error ER_ILLEGAL_HA_CREATE_OPTION
+--replace_regex /#sql-[0-9a-f_]*/#sql-temporary/
+--error ER_CANT_CREATE_TABLE
 alter table t1 encryption_key_id=3;
 show create table t1;
 alter table t1 encryption_key_id=33;
@@ -16,3 +17,4 @@ alter table t1 encryption_key_id=4;
 show create table t1;
 
 drop table t1;
+
