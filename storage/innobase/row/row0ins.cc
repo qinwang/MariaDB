@@ -3633,6 +3633,28 @@ row_ins(
 					}
 					break;
 				}
+
+				DBUG_RETURN(err);
+			case DB_NO_REFERENCED_ROW:
+				/* When we are in REPLACE statement or
+				INSERT .. ON DUPLICATE UPDATE statement,
+				we should process all the unique secondary
+				indexes, even after we encourter a duplicate
+				error. Now foreign key constraint could also
+				use unique secondary index and if INSERT
+				statement does not provide value for
+				foreign key column we could encourter
+				DB_NO_REFERENCED_ROW error. Therefore,
+				if we have saved dup error we should return
+				that error code not DB_NO_REFERENCED_ROW
+				to process ON DUPLICATE UPDATE. */
+				if (thr_get_trx(thr)->isolation_level
+				    >= TRX_ISO_REPEATABLE_READ
+				    && thr_get_trx(thr)->duplicates
+				    && node->duplicate) {
+					ut_ad(dict_index_is_unique(node->index));
+					err = DB_DUPLICATE_KEY;
+				}
 				// fall through
 			default:
 				DBUG_RETURN(err);
