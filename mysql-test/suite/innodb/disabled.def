@@ -77,6 +77,7 @@ innodb_wl6469_1: mdev-13626 (a)
 innodb_wl6560_debug: mdev-13626 (a)
 innodb_wl6915_debug: mdev-13626 (a)
 log_file_size_checkpoint: mdev-13626 (a)
+log_file_size_1:
 monitor_restart: mdev-13626 (a)
 mysqldump_max_recordsize: mdev-13626 (a)
 optimizer_temporary_table: mdev-13626 (a)
