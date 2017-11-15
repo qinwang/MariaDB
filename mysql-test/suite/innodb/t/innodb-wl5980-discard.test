@@ -3,7 +3,7 @@
 --echo #
 
 --source include/no_valgrind_without_big.inc
-
+--source include/have_innodb.inc
 # Not supported in embedded
 --source include/not_embedded.inc
 
@@ -176,14 +176,12 @@ SELECT * FROM t5980;
 --echo # Show that the system tables have this table in them correctly.
 --echo #
 --source suite/innodb/include/show_i_s_tables.inc
---source suite/innodb/include/show_i_s_tablespaces.inc
 
 --echo #
 --echo # Drop the imported table and show that the system tables are updated.
 --echo #
 DROP TABLE t5980;
 --source suite/innodb/include/show_i_s_tables.inc
---source suite/innodb/include/show_i_s_tablespaces.inc
 
 --echo ### files in MYSQLD_DATADIR/test
 --list_files $MYSQLD_DATADIR/test
@@ -308,7 +306,7 @@ CHECK TABLE t5980;
 --echo #
 --disable_result_log
 
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1030
 ALTER TABLE t5980 IMPORT TABLESPACE;
 --enable_result_log
 --error ER_TABLESPACE_DISCARDED
@@ -340,7 +338,7 @@ SHOW CREATE TABLE t5980;
 --echo # Show that the system tables have this table in them correctly.
 --echo #
 --source suite/innodb/include/show_i_s_tables.inc
---source suite/innodb/include/show_i_s_tablespaces.inc
+
 
 DROP TABLE t5980;
 --remove_file $MYSQL_TMP_DIR/alt_dir/test/t5980.cfg.bak
@@ -380,7 +378,7 @@ SHOW CREATE TABLE t5980c;
 SHOW CREATE TABLE t5980d;
 
 --source suite/innodb/include/show_i_s_tables.inc
---source suite/innodb/include/show_i_s_tablespaces.inc
+
 
 --echo ### files in MYSQLD_DATADIR/test
 --list_files $MYSQLD_DATADIR/test
@@ -411,21 +409,21 @@ ALTER TABLE t5980b DISCARD TABLESPACE;
 SELECT * FROM t5980a;
 --error ER_TABLESPACE_DISCARDED
 SELECT * FROM t5980b;
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 SELECT * FROM t5980c;
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 SELECT * FROM t5980d;
 
 SHOW CREATE TABLE t5980a;
 --replace_result $MYSQL_TMP_DIR MYSQL_TMP_DIR
 SHOW CREATE TABLE t5980b;
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 SHOW CREATE TABLE t5980c;
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 SHOW CREATE TABLE t5980d;
 
 --source suite/innodb/include/show_i_s_tables.inc
---source suite/innodb/include/show_i_s_tablespaces.inc
+
 
 --echo ### files in MYSQLD_DATADIR/test
 --list_files $MYSQLD_DATADIR/test
@@ -440,9 +438,9 @@ SHOW CREATE TABLE t5980d;
 TRUNCATE TABLE t5980a;
 --error ER_TABLESPACE_DISCARDED
 TRUNCATE TABLE t5980b;
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 TRUNCATE TABLE t5980c;
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 TRUNCATE TABLE t5980d;
 
 --echo #
@@ -469,21 +467,21 @@ SELECT * FROM t5980b;
 SELECT * FROM t5980aa;
 --error ER_TABLESPACE_DISCARDED
 SELECT * FROM t5980bb;
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 SELECT * FROM t5980c;
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 SELECT * FROM t5980d;
 
 SHOW CREATE TABLE t5980aa;
 --replace_result $MYSQL_TMP_DIR MYSQL_TMP_DIR
 SHOW CREATE TABLE t5980bb;
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 SHOW CREATE TABLE t5980c;
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 SHOW CREATE TABLE t5980d;
 
 --source suite/innodb/include/show_i_s_tables.inc
---source suite/innodb/include/show_i_s_tablespaces.inc
+
 
 --echo #
 --echo # Discarded tablespaces cannot be ALTERED with ALGORITHM=COPY.
@@ -512,9 +510,9 @@ ALTER TABLE t5980bb ADD PRIMARY KEY(a), ALGORITHM=INPLACE;
 --echo # Missing tablespaces cannot be ALTERED.
 --echo #
 
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 ALTER TABLE t5980c ADD PRIMARY KEY(a);
---error ER_TABLESPACE_MISSING
+--error ER_TABLESPACE_MISSING, 1932
 ALTER TABLE t5980d ADD PRIMARY KEY(a);
 
 --error ER_TABLESPACE_DISCARDED
@@ -527,7 +525,7 @@ SHOW CREATE TABLE t5980aa;
 SHOW CREATE TABLE t5980bb;
 
 --source suite/innodb/include/show_i_s_tables.inc
---source suite/innodb/include/show_i_s_tablespaces.inc
+
 
 --echo ### files in MYSQLD_DATADIR/test
 --list_files $MYSQLD_DATADIR/test
@@ -562,7 +560,7 @@ SHOW CREATE TABLE t5980a;
 SHOW CREATE TABLE t5980b;
 
 --source suite/innodb/include/show_i_s_tables.inc
---source suite/innodb/include/show_i_s_tablespaces.inc
+
 
 --echo ### files in MYSQLD_DATADIR/test
 --list_files $MYSQLD_DATADIR/test
@@ -667,7 +665,7 @@ DROP TABLE t5980c;
 DROP TABLE t5980d;
 
 --source suite/innodb/include/show_i_s_tables.inc
---source suite/innodb/include/show_i_s_tablespaces.inc
+
 
 --echo ### files in MYSQLD_DATADIR/test
 --list_files $MYSQLD_DATADIR/test

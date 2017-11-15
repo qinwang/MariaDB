@@ -630,7 +630,7 @@ truncate table ibstd_33;
 #
 --source include/start_mysqld.inc
 #
---error ER_NO_SUCH_TABLE
+--error ER_NO_SUCH_TABLE, 1030
 select count(*) from ibstd_33;
 drop table ibstd_33;
 
@@ -656,14 +656,14 @@ truncate table t1;
 
 --source include/start_mysqld.inc
 
---error ER_NO_SUCH_TABLE
+--error ER_NO_SUCH_TABLE, 1194
 INSERT INTO t1 VALUES('MySQL has now support', 'for full-text search'),
                        ('Full-text indexes', 'are called collections'),
                           ('Only MyISAM tables','support collections'),
              ('Function MATCH ... AGAINST()','is used to do a search'),
         ('Full-text search in MySQL', 'implements vector space model');
 
---error ER_NO_SUCH_TABLE
+--error ER_NO_SUCH_TABLE,1191
 select * from t1 where MATCH(a,b) AGAINST ("collections");
 
 drop table t1;
