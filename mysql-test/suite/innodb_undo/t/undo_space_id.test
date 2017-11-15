@@ -26,7 +26,7 @@ EOF
 # Set the bootstrap parameter with 2 undo tablespaces of different space id
 # other than 1
 
---let NEW_CMD = $MYSQLD_CMD --console --bootstrap --lc_messages_dir=$MYSQL_SHAREDIR --innodb-page-size=$page_size --basedir=$MYSQLD_BASEDIR --datadir=$MYSQLD_DATADIR1 --debug-dbug="d,innodb_undo_upgrade" --innodb_log_file_size=5M --innodb_log_files_in_group=2 --init-file=$BOOTSTRAP_SQL --innodb_undo_tablespaces=2 --secure-file-priv="" </dev/null>>$MYSQLTEST_VARDIR/tmp/bootstrap.log 2>&1;
+--let NEW_CMD = $MYSQLD_CMD --lc_messages_dir=$MYSQL_SHAREDIR --innodb-page-size=$page_size --basedir=$MYSQLD_BASEDIR --datadir=$MYSQLD_DATADIR1 --debug-dbug="d,innodb_undo_upgrade" --innodb_log_file_size=5M --innodb_log_files_in_group=2 --init-file=$BOOTSTRAP_SQL --innodb_undo_tablespaces=2 --secure-file-priv="" </dev/null>>$MYSQLTEST_VARDIR/tmp/bootstrap.log 2>&1;
 
 --echo # Run the bootstrap command with 2 undo tablespaces
 --exec $NEW_CMD
