@@ -8,7 +8,7 @@ insert t1 values (12345, repeat('1234567890', 20));
 alter table t1 encryption_key_id=2;
 show create table t1;
 --replace_regex /#sql-[0-9a-f_]*/#sql-temporary/
---error ER_CANT_CREATE_TABLE
+--error ER_CANT_CREATE_TABLE, 1478
 alter table t1 encryption_key_id=3;
 show create table t1;
 alter table t1 encryption_key_id=33;
