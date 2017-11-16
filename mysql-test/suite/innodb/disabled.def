@@ -12,7 +12,7 @@
 
 create-index-debug : MDEV-13680 InnoDB may crash when btr_page_alloc() fails
 crc32_endianness: no unzip
-innodb-multiple-tablespaces: crash// --
+
 partition:  MDEV-14391 
 
 alter_table_stage_progress: fix
