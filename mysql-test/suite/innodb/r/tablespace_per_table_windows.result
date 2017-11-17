@@ -8,7 +8,7 @@ SET default_storage_engine=InnoDB;
 # of up to 3 bytes per character, corresponding to 192 bytes.
 #
 CREATE DATABASE `this_sixty_five_byte_name_is_too_long____________________________`;
-ERROR 42000: Identifier name 'this_sixty_five_byte_name_is_too_long____________________________' is too long
+ERROR 42000: Incorrect database name 'this_sixty_five_byte_name_is_too_long____________________________'
 CREATE DATABASE `this_sixty_four_byte_name_is_not_too_long_______________________`;
 USE `this_sixty_four_byte_name_is_not_too_long_______________________`;
 #
@@ -19,9 +19,9 @@ CREATE TABLE `this_sixty_four_byte_name_is_not_too_long_______________________`.
 # A 65 character tablename is too long.
 #
 CREATE TABLE `test`.`this_sixty_five_byte_name_is_too_long____________________________` (a SERIAL);
-ERROR 42000: Identifier name 'this_sixty_five_byte_name_is_too_long____________________________' is too long
+ERROR 42000: Incorrect table name 'this_sixty_five_byte_name_is_too_long____________________________'
 CREATE TABLE `this_sixty_four_byte_name_is_not_too_long_______________________`.`this_sixty_five_byte_name_is_too_long____________________________` (a SERIAL);
-ERROR 42000: Identifier name 'this_sixty_five_byte_name_is_too_long____________________________' is too long
+ERROR 42000: Incorrect table name 'this_sixty_five_byte_name_is_too_long____________________________'
 #
 # Show the successfully created database and table
 #
