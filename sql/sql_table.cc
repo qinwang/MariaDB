@@ -3375,6 +3375,12 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
                       "invisible", &type_handler_long, COMPLETELY_INVISIBLE,
                       new (thd->mem_root)Item_int(thd, 9));
           });
+  DBUG_EXECUTE_IF("test_invisible_index",{
+          LEX_CSTRING temp;
+          temp.str= "invisible";
+          temp.length= strlen("invisible");
+          thd->lex->add_key_to_list(&temp, Key::UNIQUE, false);
+          });
   LEX_CSTRING* connect_string = &create_info->connect_string;
   if (connect_string->length != 0 &&
       connect_string->length > CONNECT_STRING_MAXLEN &&
@@ -5125,14 +5131,18 @@ err:
 
 /*
 ** Give the key name after the first field with an optional '_#' after
+   @returns
+    0        if keyname does not exists
+    [1..)    index + 1 of duplicate key name
 **/
 
 static bool
 check_if_keyname_exists(const char *name, KEY *start, KEY *end)
 {
-  for (KEY *key=start ; key != end ; key++)
+  uint i= 1;
+  for (KEY *key=start; key != end ; key++, i++)
     if (!my_strcasecmp(system_charset_info, name, key->name.str))
-      return 1;
+      return i;
   return 0;
 }
 
@@ -7886,7 +7896,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
     Collect all keys which isn't in drop list. Add only those
     for which some fields exists.
   */
- 
+
   for (uint i=0 ; i < table->s->keys ; i++,key_info++)
   {
     const char *key_name= key_info->name.str;
@@ -7898,8 +7908,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
 	  !my_strcasecmp(system_charset_info,key_name, drop->name))
 	break;
     }
-    /* You are not allowed to drop system generated invisible index */
-    if (drop && !(key_info->flags & HA_INVISIBLE_KEY ))
+    if (drop && key_info->flags & HA_INVISIBLE_KEY)
     {
       if (table->s->tmp_table == NO_TMP_TABLE)
       {
@@ -8067,6 +8076,30 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
       {
 	my_error(ER_WRONG_NAME_FOR_INDEX, MYF(0), key->name.str);
         goto err;
+      }
+      uint dup_index= 0;
+      if ((dup_index= check_if_keyname_exists(key->name.str, table->key_info,
+                    table->key_info + table->s->keys)))
+      {
+        if (table->s->key_info[dup_index - 1].flags & HA_INVISIBLE_KEY)
+        {
+          /* Drop Index from new_key_list
+             Why only drop HA_INVISIBLE_INDEX because we want them to be renamed
+               automatically.
+          */
+          List_iterator<Key> it(new_key_list);
+          Key *tmp;
+          while((tmp= it++))
+          {
+            if(!my_strcasecmp(system_charset_info, tmp->name.str, key->name.str))
+            {
+              it.remove();
+              if (table->s->tmp_table == NO_TMP_TABLE)
+                (void) delete_statistics_for_index(thd, table,
+                         &table->key_info[dup_index - 1], FALSE);
+            }
+          }
+        }
       }
     }
   }

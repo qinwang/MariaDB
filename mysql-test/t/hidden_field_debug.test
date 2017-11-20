@@ -169,7 +169,8 @@ show index from t1;
 drop table t1;
 ## Sytem Generated index on invisible column
 set debug_dbug= "+d,test_completely_invisible,test_invisible_index";
-Create table t1( a int default(99) , b int, index system_gen (invisible), index(b));
+## index name will be invisible
+Create table t1( a int default(99) , b int, index(invisible), index(b));
 set debug_dbug=@old_debug;
 Show index from t1;
 select * from INFORMATION_SCHEMA.STATISTICS where TABLE_SCHEMA ='test' and table_name='t1';
@@ -188,6 +189,13 @@ Show index from t1;
 ## Sytem Generated Index modification
 --error ER_KEY_COLUMN_DOES_NOT_EXITS
 create index a1 on t1(invisible);
+set debug_dbug= "+d,test_completely_invisible,test_invisible_index";
+## index does not exist for user
 --error ER_CANT_DROP_FIELD_OR_KEY
-drop index system_gen on t1;
+drop index invisible on t1;
+## Index will be recreated
+explain select * from t1 where invisible =9;
+## index name will be changed
+create index invisible on t1(b);
+explain select * from t1 where invisible =9;
 drop table t1;
