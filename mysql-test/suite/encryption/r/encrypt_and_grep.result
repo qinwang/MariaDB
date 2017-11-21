@@ -15,6 +15,8 @@ SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_
 NAME
 mysql/innodb_table_stats
 mysql/innodb_index_stats
+mysql/transaction_registry
+mysql/vtmd_template
 test/t1
 test/t2
 innodb_system
@@ -33,12 +35,14 @@ SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_
 NAME
 mysql/innodb_table_stats
 mysql/innodb_index_stats
-test/t2
+mysql/transaction_registry
+mysql/vtmd_template
 test/t3
-innodb_system
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
 NAME
 test/t1
+test/t2
+innodb_system
 # t1 yes on expecting NOT FOUND
 NOT FOUND /foobarsecret/ in t1.ibd
 # t2 ... default expecting FOUND
@@ -57,6 +61,8 @@ SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_
 NAME
 mysql/innodb_table_stats
 mysql/innodb_index_stats
+mysql/transaction_registry
+mysql/vtmd_template
 test/t1
 test/t2
 innodb_system

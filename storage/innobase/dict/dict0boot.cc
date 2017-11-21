@@ -79,7 +79,9 @@ dict_hdr_get_new_id(
 
 	mtr_start(&mtr);
 	if (table) {
-		dict_disable_redo_if_temporary(table, &mtr);
+		if (table->is_temporary()) {
+			mtr.set_log_mode(MTR_LOG_NO_REDO);
+		}
 	} else if (disable_redo) {
 		/* In non-read-only mode we need to ensure that space-id header
 		page is written to disk else if page is removed from buffer
@@ -87,8 +89,8 @@ dict_hdr_get_new_id(
 		to another tablespace.
 		This is not a case with read-only mode as there is no new object
 		that is created except temporary tablespace. */
-		mtr_set_log_mode(&mtr,
-			(srv_read_only_mode ? MTR_LOG_NONE : MTR_LOG_NO_REDO));
+		mtr.set_log_mode(srv_read_only_mode
+				 ? MTR_LOG_NONE : MTR_LOG_NO_REDO);
 	}
 
 	/* Server started and let's say space-id = x
@@ -349,7 +351,8 @@ dict_boot(void)
 
 	table->id = DICT_TABLES_ID;
 
-	dict_table_add_to_cache(table, FALSE, heap);
+	dict_table_add_system_columns(table, heap);
+	table->add_to_cache();
 	dict_sys->sys_tables = table;
 	mem_heap_empty(heap);
 
@@ -367,6 +370,9 @@ dict_boot(void)
 						       MLOG_4BYTES, &mtr),
 					FALSE);
 	ut_a(error == DB_SUCCESS);
+	ut_ad(!table->is_instant());
+	table->indexes.start->n_core_null_bytes = UT_BITS_IN_BYTES(
+		table->indexes.start->n_nullable);
 
 	/*-------------------------*/
 	index = dict_mem_index_create("SYS_TABLES", "ID_IND",
@@ -395,7 +401,8 @@ dict_boot(void)
 
 	table->id = DICT_COLUMNS_ID;
 
-	dict_table_add_to_cache(table, FALSE, heap);
+	dict_table_add_system_columns(table, heap);
+	table->add_to_cache();
 	dict_sys->sys_columns = table;
 	mem_heap_empty(heap);
 
@@ -413,6 +420,9 @@ dict_boot(void)
 						       MLOG_4BYTES, &mtr),
 					FALSE);
 	ut_a(error == DB_SUCCESS);
+	ut_ad(!table->is_instant());
+	table->indexes.start->n_core_null_bytes = UT_BITS_IN_BYTES(
+		table->indexes.start->n_nullable);
 
 	/*-------------------------*/
 	table = dict_mem_table_create("SYS_INDEXES", DICT_HDR_SPACE,
@@ -429,7 +439,15 @@ dict_boot(void)
 
 	table->id = DICT_INDEXES_ID;
 
-	dict_table_add_to_cache(table, FALSE, heap);
+	dict_table_add_system_columns(table, heap);
+	/* The column SYS_INDEXES.MERGE_THRESHOLD was "instantly"
+	added in MySQL 5.7 and MariaDB 10.2.2. Assign it DEFAULT NULL.
+	Because of file format compatibility, we must treat SYS_INDEXES
+	as a special case, relaxing some debug assertions
+	for DICT_INDEXES_ID. */
+	dict_table_get_nth_col(table, DICT_COL__SYS_INDEXES__MERGE_THRESHOLD)
+		->def_val.len = UNIV_SQL_NULL;
+	table->add_to_cache();
 	dict_sys->sys_indexes = table;
 	mem_heap_empty(heap);
 
@@ -447,6 +465,9 @@ dict_boot(void)
 						       MLOG_4BYTES, &mtr),
 					FALSE);
 	ut_a(error == DB_SUCCESS);
+	ut_ad(!table->is_instant());
+	table->indexes.start->n_core_null_bytes = UT_BITS_IN_BYTES(
+		table->indexes.start->n_nullable);
 
 	/*-------------------------*/
 	table = dict_mem_table_create("SYS_FIELDS", DICT_HDR_SPACE, 3, 0, 0, 0);
@@ -457,7 +478,8 @@ dict_boot(void)
 
 	table->id = DICT_FIELDS_ID;
 
-	dict_table_add_to_cache(table, FALSE, heap);
+	dict_table_add_system_columns(table, heap);
+	table->add_to_cache();
 	dict_sys->sys_fields = table;
 	mem_heap_free(heap);
 
@@ -475,6 +497,9 @@ dict_boot(void)
 						       MLOG_4BYTES, &mtr),
 					FALSE);
 	ut_a(error == DB_SUCCESS);
+	ut_ad(!table->is_instant());
+	table->indexes.start->n_core_null_bytes = UT_BITS_IN_BYTES(
+		table->indexes.start->n_nullable);
 
 	mtr_commit(&mtr);
 

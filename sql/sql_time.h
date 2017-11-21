@@ -105,7 +105,7 @@ inline void datetime_to_date(MYSQL_TIME *ltime)
   DBUG_ASSERT(ltime->time_type == MYSQL_TIMESTAMP_DATE ||
               ltime->time_type == MYSQL_TIMESTAMP_DATETIME);
   DBUG_ASSERT(ltime->neg == 0);
-  ltime->hour= ltime->minute= ltime->second= ltime->second_part= 0;
+  ltime->second_part= ltime->hour= ltime->minute= ltime->second= 0;
   ltime->time_type= MYSQL_TIMESTAMP_DATE;
 }
 inline void date_to_datetime(MYSQL_TIME *ltime)
@@ -170,6 +170,7 @@ bool calc_time_diff(const MYSQL_TIME *l_time1, const MYSQL_TIME *l_time2,
                     int lsign, MYSQL_TIME *l_time3, ulonglong fuzzydate);
 int my_time_compare(const MYSQL_TIME *a, const MYSQL_TIME *b);
 void localtime_to_TIME(MYSQL_TIME *to, struct tm *from);
+
 void calc_time_from_sec(MYSQL_TIME *to, long seconds, long microseconds);
 uint calc_week(MYSQL_TIME *l_time, uint week_behaviour, uint *year);
 
@@ -193,7 +194,7 @@ inline bool parse_date_time_format(timestamp_type format_type,
 {
   return parse_date_time_format(format_type,
                                 date_time_format->format.str,
-                                date_time_format->format.length,
+                                (uint) date_time_format->format.length,
                                 date_time_format);
 }
 

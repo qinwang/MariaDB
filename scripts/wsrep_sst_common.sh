@@ -43,7 +43,7 @@ case "$1" in
             # "traditional" notation
             readonly WSREP_SST_OPT_HOST=${WSREP_SST_OPT_ADDR%%[:/]*}
         fi
-        readonly WSREP_SST_OPT_PORT=$(echo $WSREP_SST_OPT_ADDR | \
+        readonly WSREP_SST_OPT_ADDR_PORT=$(echo $WSREP_SST_OPT_ADDR | \
                 cut -d ']' -f 2 | cut -s -d ':' -f 2 | cut -d '/' -f 1)
         readonly WSREP_SST_OPT_PATH=${WSREP_SST_OPT_ADDR#*/}
         shift
@@ -113,6 +113,17 @@ done
 readonly WSREP_SST_OPT_BYPASS
 readonly WSREP_SST_OPT_BINLOG
 readonly WSREP_SST_OPT_CONF_SUFFIX
+
+if [ -n "${WSREP_SST_OPT_ADDR_PORT:-}" ]; then
+  if [ -n "${WSREP_SST_OPT_PORT:-}" ]; then
+    if [ "$WSREP_SST_OPT_PORT" != "$WSREP_SST_OPT_ADDR_PORT" ]; then
+      wsrep_log_error "port in --port=$WSREP_SST_OPT_PORT differs from port in --address=$WSREP_SST_OPT_ADDR"
+      exit 2
+    fi
+  else
+    readonly WSREP_SST_OPT_PORT="$WSREP_SST_OPT_ADDR_PORT"
+  fi
+fi
 
 # try to use my_print_defaults, mysql and mysqldump that come with the sources
 # (for MTR suite)
@@ -245,12 +256,12 @@ parse_cnf()
 
     # look in group+suffix
     if [[ -n $WSREP_SST_OPT_CONF_SUFFIX ]]; then
-        reval=$($MY_PRINT_DEFAULTS -c $WSREP_SST_OPT_CONF "${group}${WSREP_SST_OPT_CONF_SUFFIX}" | awk -F= '{if ($1 ~ /_/) { gsub(/_/,"-",$1); print $1"="$2 } else { print $0 }}' | grep -- "--$var=" | cut -d= -f2- | tail -1)
+        reval=$($MY_PRINT_DEFAULTS "${group}${WSREP_SST_OPT_CONF_SUFFIX}" | awk -F= '{if ($1 ~ /_/) { gsub(/_/,"-",$1); print $1"="$2 } else { print $0 }}' | grep -- "--$var=" | cut -d= -f2- | tail -1)
     fi
 
     # look in group
     if [[ -z $reval ]]; then
-        reval=$($MY_PRINT_DEFAULTS -c $WSREP_SST_OPT_CONF $group | awk -F= '{if ($1 ~ /_/) { gsub(/_/,"-",$1); print $1"="$2 } else { print $0 }}' | grep -- "--$var=" | cut -d= -f2- | tail -1)
+        reval=$($MY_PRINT_DEFAULTS $group | awk -F= '{if ($1 ~ /_/) { gsub(/_/,"-",$1); print $1"="$2 } else { print $0 }}' | grep -- "--$var=" | cut -d= -f2- | tail -1)
     fi
 
     # use default if we haven't found a value

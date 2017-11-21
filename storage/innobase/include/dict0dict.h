@@ -386,22 +386,6 @@ dict_table_add_system_columns(
 	dict_table_t*	table,	/*!< in/out: table */
 	mem_heap_t*	heap)	/*!< in: temporary heap */
 	MY_ATTRIBUTE((nonnull));
-
-/** Mark if table has big rows.
-@param[in,out]	table	table handler */
-void
-dict_table_set_big_rows(
-	dict_table_t*	table)
-	MY_ATTRIBUTE((nonnull));
-/**********************************************************************//**
-Adds a table object to the dictionary cache. */
-void
-dict_table_add_to_cache(
-/*====================*/
-	dict_table_t*	table,		/*!< in: table */
-	bool		can_be_evicted,	/*!< in: whether can be evicted*/
-	mem_heap_t*	heap)		/*!< in: temporary heap */
-	MY_ATTRIBUTE((nonnull));
 /**********************************************************************//**
 Removes a table object from the dictionary cache. */
 void
@@ -596,16 +580,6 @@ dict_foreign_find_index(
 					happened */
 
 	MY_ATTRIBUTE((nonnull(1,3), warn_unused_result));
-/**********************************************************************//**
-Returns a column's name.
-@return column name. NOTE: not guaranteed to stay valid if table is
-modified in any way (columns added, etc.). */
-const char*
-dict_table_get_col_name(
-/*====================*/
-	const dict_table_t*	table,	/*!< in: table */
-	ulint			col_nr)	/*!< in: column number */
-	MY_ATTRIBUTE((nonnull, warn_unused_result));
 
 /** Returns a virtual column's name.
 @param[in]	table		table object
@@ -815,14 +789,6 @@ dict_table_get_n_user_cols(
 /*=======================*/
 	const dict_table_t*	table)	/*!< in: table */
 	MY_ATTRIBUTE((warn_unused_result));
-/** Gets the number of user-defined virtual and non-virtual columns in a table
-in the dictionary cache.
-@param[in]	table	table
-@return number of user-defined (e.g., not ROW_ID) columns of a table */
-UNIV_INLINE
-ulint
-dict_table_get_n_tot_u_cols(
-	const dict_table_t*	table);
 /********************************************************************//**
 Gets the number of all non-virtual columns (also system) in a table
 in the dictionary cache.
@@ -920,14 +886,25 @@ dict_table_get_sys_col(
 	ulint			sys)	/*!< in: DATA_ROW_ID, ... */
 	MY_ATTRIBUTE((nonnull, warn_unused_result));
 #else /* UNIV_DEBUG */
-#define dict_table_get_nth_col(table, pos)	\
-((table)->cols + (pos))
-#define dict_table_get_sys_col(table, sys)	\
-((table)->cols + (table)->n_cols + (sys)	\
- - (dict_table_get_n_sys_cols(table)))
+#define dict_table_get_nth_col(table, pos)				\
+	(&(table)->cols[pos])
+#define dict_table_get_sys_col(table, sys)				\
+	(&(table)->cols[(table)->n_cols + (sys) - DATA_N_SYS_COLS])
 /* Get nth virtual columns */
-#define dict_table_get_nth_v_col(table, pos)	((table)->v_cols + (pos))
+#define dict_table_get_nth_v_col(table, pos)	(&(table)->v_cols[pos])
 #endif /* UNIV_DEBUG */
+/** Wrapper function.
+@see dict_col_t::name()
+@param[in]	table	table
+@param[in]	col_nr	column number in table
+@return	column name */
+inline
+const char*
+dict_table_get_col_name(const dict_table_t* table, ulint col_nr)
+{
+	return(dict_table_get_nth_col(table, col_nr)->name(*table));
+}
+
 /********************************************************************//**
 Gets the given system column number of a table.
 @return column number */
@@ -1171,6 +1148,7 @@ dict_index_get_n_fields(
 					representation of index (in
 					the dictionary cache) */
 	MY_ATTRIBUTE((nonnull, warn_unused_result));
+
 /********************************************************************//**
 Gets the number of fields in the internal representation of an index
 that uniquely determine the position of an index entry in the index, if
@@ -1451,17 +1429,22 @@ dict_index_copy_rec_order_prefix(
 					copied prefix, or NULL */
 	ulint*			buf_size)/*!< in/out: buffer size */
 	MY_ATTRIBUTE((nonnull, warn_unused_result));
-/**********************************************************************//**
-Builds a typed data tuple out of a physical record.
+/** Convert a physical record into a search tuple.
+@param[in]	rec		index record (not necessarily in an index page)
+@param[in]	index		index
+@param[in]	leaf		whether rec is in a leaf page
+@param[in]	n_fields	number of data fields
+@param[in,out]	heap		memory heap for allocation
 @return own: data tuple */
 dtuple_t*
 dict_index_build_data_tuple(
-/*========================*/
-	dict_index_t*	index,	/*!< in: index */
-	rec_t*		rec,	/*!< in: record for which to build data tuple */
-	ulint		n_fields,/*!< in: number of data fields */
-	mem_heap_t*	heap)	/*!< in: memory heap where tuple created */
+	const rec_t*		rec,
+	const dict_index_t*	index,
+	bool			leaf,
+	ulint			n_fields,
+	mem_heap_t*		heap)
 	MY_ATTRIBUTE((nonnull, warn_unused_result));
+
 /*********************************************************************//**
 Gets the space id of the root of the index tree.
 @return space id */
@@ -1930,24 +1913,7 @@ dict_table_is_discarded(
 	const dict_table_t*	table)	/*!< in: table to check */
 	MY_ATTRIBUTE((warn_unused_result));
 
-/********************************************************************//**
-Check if it is a temporary table.
-@return true if temporary table flag is set. */
-UNIV_INLINE
-bool
-dict_table_is_temporary(
-/*====================*/
-	const dict_table_t*	table)	/*!< in: table to check */
-	MY_ATTRIBUTE((warn_unused_result));
-
-/********************************************************************//**
-Turn-off redo-logging if temporary table. */
-UNIV_INLINE
-void
-dict_disable_redo_if_temporary(
-/*===========================*/
-	const dict_table_t*	table,	/*!< in: table to check */
-	mtr_t*			mtr);	/*!< out: mini-transaction */
+#define dict_table_is_temporary(table) (table)->is_temporary()
 
 /*********************************************************************//**
 This function should be called whenever a page is successfully
@@ -1989,13 +1955,7 @@ dict_index_node_ptr_max_size(
 /*=========================*/
 	const dict_index_t*	index)	/*!< in: index */
 	MY_ATTRIBUTE((warn_unused_result));
-/** Check if a column is a virtual column
-@param[in]	col	column
-@return true if it is a virtual column, false otherwise */
-UNIV_INLINE
-bool
-dict_col_is_virtual(
-	const dict_col_t*	col);
+#define dict_col_is_virtual(col) (col)->is_virtual()
 
 /** encode number of columns and number of virtual columns in one
 4 bytes value. We could do this because the number of columns in

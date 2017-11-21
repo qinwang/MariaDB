@@ -152,7 +152,7 @@ row_purge_remove_clust_if_poss_low(
 	rec = btr_pcur_get_rec(&node->pcur);
 
 	offsets = rec_get_offsets(
-		rec, index, offsets_, ULINT_UNDEFINED, &heap);
+		rec, index, offsets_, true, ULINT_UNDEFINED, &heap);
 
 	if (node->roll_ptr != row_get_rec_roll_ptr(rec, index, offsets)) {
 		/* Someone else has modified the record later: do not remove */
@@ -686,7 +686,7 @@ row_purge_reset_trx_id(purge_node_t* node, mtr_t* mtr)
 		ulint	offsets_[REC_OFFS_HEADER_SIZE + MAX_REF_PARTS + 2];
 		rec_offs_init(offsets_);
 		ulint*	offsets = rec_get_offsets(
-			rec, index, offsets_, trx_id_pos + 2, &heap);
+			rec, index, offsets_, true, trx_id_pos + 2, &heap);
 		ut_ad(heap == NULL);
 
 		ut_ad(dict_index_get_nth_field(index, trx_id_pos)
@@ -905,6 +905,7 @@ row_purge_parse_undo_rec(
 	node->rec_type = type;
 
 	switch (type) {
+	case TRX_UNDO_INSERT_DEFAULT:
 	case TRX_UNDO_INSERT_REC:
 		break;
 	default:
@@ -942,9 +943,15 @@ try_again:
 		goto err_exit;
 	}
 
-	if (type != TRX_UNDO_INSERT_REC
-	    && node->table->n_v_cols && !node->table->vc_templ
-	    && dict_table_has_indexed_v_cols(node->table)) {
+	switch (type) {
+	case TRX_UNDO_INSERT_DEFAULT:
+	case TRX_UNDO_INSERT_REC:
+		break;
+	default:
+		if (!node->table->n_v_cols || node->table->vc_templ
+		    || !dict_table_has_indexed_v_cols(node->table)) {
+			break;
+		}
 		/* Need server fully up for virtual column computation */
 		if (!mysqld_server_started) {
 
@@ -974,6 +981,11 @@ err_exit:
 		return(false);
 	}
 
+	if (type == TRX_UNDO_INSERT_DEFAULT) {
+		node->ref = &trx_undo_default_rec;
+		return(true);
+	}
+
 	ptr = trx_undo_rec_get_row_ref(ptr, clust_index, &(node->ref),
 				       node->heap);
 
@@ -984,7 +996,6 @@ err_exit:
 	ptr = trx_undo_update_rec_get_update(ptr, clust_index, type,
 					     node->trx_id,
 					     roll_ptr, info_bits,
-					     thr_get_trx(thr),
 					     node->heap, &(node->update));
 
 	/* Read to the partial row the fields that occur in indexes */
@@ -1035,6 +1046,7 @@ row_purge_record_func(
 			MONITOR_INC(MONITOR_N_DEL_ROW_PURGE);
 		}
 		break;
+	case TRX_UNDO_INSERT_DEFAULT:
 	case TRX_UNDO_INSERT_REC:
 		node->roll_ptr |= 1ULL << ROLL_PTR_INSERT_FLAG_POS;
 		/* fall through */
@@ -1215,7 +1227,8 @@ purge_node_t::validate_pcur()
 	dict_index_t*	clust_index = pcur.btr_cur.index;
 
 	ulint*	offsets = rec_get_offsets(
-		pcur.old_rec, clust_index, NULL, pcur.old_n_fields, &heap);
+		pcur.old_rec, clust_index, NULL, true,
+		pcur.old_n_fields, &heap);
 
 	/* Here we are comparing the purge ref record and the stored initial
 	part in persistent cursor. Both cases we store n_uniq fields of the

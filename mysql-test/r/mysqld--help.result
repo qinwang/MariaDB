@@ -322,11 +322,11 @@ The following options may be given as the first argument:
  --idle-readonly-transaction-timeout=# 
  The number of seconds the server waits for read-only idle
  transaction
- --idle-readwrite-transaction-timeout=# 
- The number of seconds the server waits for read-write
- idle transaction
  --idle-transaction-timeout=# 
  The number of seconds the server waits for idle
+ transaction
+ --idle-write-transaction-timeout=# 
+ The number of seconds the server waits for write idle
  transaction
  --ignore-builtin-innodb 
  Disable initialization of builtin InnoDB plugin
@@ -334,6 +334,10 @@ The following options may be given as the first argument:
  Specifies a directory to add to the ignore list when
  collecting database names from the datadir. Put a blank
  argument to reset the list accumulated so far.
+ --in-subquery-conversion-threshold[=#] 
+ The minimum number of scalar elements in the value list
+ of IN predicate that triggers its conversion to IN
+ subquery
  --init-connect=name Command(s) that are executed for each new connection
  (unless the user has SUPER privilege)
  --init-file=name    Read SQL commands from this file at startup
@@ -452,7 +456,7 @@ The following options may be given as the first argument:
  types are bound by slow_query_time, except
  'not_using_index' which is always logged if enabled. Any
  combination of: admin, filesort, filesort_on_disk, 
- filsort_priority_queue, full_join, full_scan, 
+ filesort_priority_queue, full_join, full_scan, 
  not_using_index, query_cache, query_cache_miss, tmp_table,
  tmp_table_on_disk
  --log-slow-rate-limit=# 
@@ -475,8 +479,9 @@ The following options may be given as the first argument:
  file.Value can be between 0 and 11. Higher values mean
  more verbosity
  --long-query-time=# Log all queries that have taken more than long_query_time
- seconds to execute to file. The argument will be treated
- as a decimal value with microsecond precision
+ seconds to execute to the slow query log file. The
+ argument will be treated as a decimal value with
+ microsecond precision
  --low-priority-updates 
  INSERT/DELETE/UPDATE has lower priority than selects
  --lower-case-table-names[=#] 
@@ -626,9 +631,10 @@ The following options may be given as the first argument:
  --open-files-limit=# 
  If this is not 0, then mysqld will use this value to
  reserve file descriptors to use with setrlimit(). If this
- value is 0 then mysqld will reserve max_connections*5 or
- max_connections + table_cache*2 (whichever is larger)
- number of file descriptors
+ value is 0 or autoset then mysqld will reserve
+ max_connections*5 or max_connections + table_cache*2
+ (whichever is larger) number of file descriptors
+ (Automatically configured unless set explicitly)
  --optimizer-prune-level=# 
  Controls the heuristic(s) applied during query
  optimization to prune less-promising partial plans from
@@ -1144,7 +1150,8 @@ The following options may be given as the first argument:
  NO_ZERO_DATE, ALLOW_INVALID_DATES, 
  ERROR_FOR_DIVISION_BY_ZERO, TRADITIONAL, 
  NO_AUTO_CREATE_USER, HIGH_NOT_PRECEDENCE, 
- NO_ENGINE_SUBSTITUTION, PAD_CHAR_TO_FULL_LENGTH
+ NO_ENGINE_SUBSTITUTION, PAD_CHAR_TO_FULL_LENGTH, 
+ EMPTY_STRING_IS_NULL
  --stack-trace       Print a symbolic stack trace on failure
  (Defaults to on; use --skip-stack-trace to disable.)
  --standard-compliant-cte 
@@ -1248,6 +1255,9 @@ The following options may be given as the first argument:
  --transaction-read-only 
  Default transaction access mode. True if transactions are
  read-only.
+ --transaction-registry 
+ Enable or disable update of transaction_registry
+ (Defaults to on; use --skip-transaction-registry to disable.)
  --updatable-views-with-limit=name 
  YES = Don't issue an error message (warning only) if a
  VIEW without presence of a key of the underlying table is
@@ -1265,6 +1275,23 @@ The following options may be given as the first argument:
  -v, --verbose       Used with --help option for detailed help.
  -V, --version[=name] 
  Output version information and exit.
+ --versioning-alter-history=name 
+ Versioning ALTER TABLE mode. KEEP: leave historical
+ system rows as is on ALTER TABLE; SURVIVE: use DDL
+ survival feature; DROP: delete historical system rows on
+ ALTER TABLE
+ --versioning-force  Force system versioning for all created tables
+ --versioning-hide=name 
+ Hide system versioning from being displayed in table
+ info. AUTO: hide implicit system fields only in
+ non-versioned and AS OF queries; IMPLICIT: hide implicit
+ system fields in all queries; FULL: hide any system
+ fields in all queries and hide versioning info in SHOW
+ commands; NEVER: don't hide system fields
+ --versioning-innodb-algorithm-simple 
+ Use simple algorithm of timestamp handling in InnoDB
+ instead of TRX_SEES
+ (Defaults to on; use --skip-versioning-innodb-algorithm-simple to disable.)
  --wait-timeout=#    The number of seconds the server waits for activity on a
  connection before closing it
 
@@ -1348,10 +1375,11 @@ histogram-size 0
 histogram-type SINGLE_PREC_HB
 host-cache-size 279
 idle-readonly-transaction-timeout 0
-idle-readwrite-transaction-timeout 0
 idle-transaction-timeout 0
+idle-write-transaction-timeout 0
 ignore-builtin-innodb FALSE
 ignore-db-dirs 
+in-subquery-conversion-threshold 1000
 init-connect 
 init-file (No default value)
 init-rpl-role MASTER
@@ -1387,7 +1415,7 @@ log-short-format FALSE
 log-slave-updates FALSE
 log-slow-admin-statements TRUE
 log-slow-disabled-statements sp
-log-slow-filter admin,filesort,filesort_on_disk,filsort_priority_queue,full_join,full_scan,query_cache,query_cache_miss,tmp_table,tmp_table_on_disk
+log-slow-filter admin,filesort,filesort_on_disk,filesort_priority_queue,full_join,full_scan,query_cache,query_cache_miss,tmp_table,tmp_table_on_disk
 log-slow-rate-limit 1
 log-slow-slave-statements TRUE
 log-slow-verbosity 
@@ -1488,7 +1516,7 @@ performance-schema-max-rwlock-classes 40
 performance-schema-max-rwlock-instances -1
 performance-schema-max-socket-classes 10
 performance-schema-max-socket-instances -1
-performance-schema-max-stage-classes 150
+performance-schema-max-stage-classes 160
 performance-schema-max-statement-classes 191
 performance-schema-max-table-handles -1
 performance-schema-max-table-instances -1
@@ -1600,6 +1628,7 @@ transaction-alloc-block-size 8192
 transaction-isolation REPEATABLE-READ
 transaction-prealloc-size 4096
 transaction-read-only FALSE
+transaction-registry TRUE
 updatable-views-with-limit YES
 use-stat-tables NEVER
 userstat FALSE

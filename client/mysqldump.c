@@ -247,8 +247,8 @@ static struct my_option my_long_options[] =
    &opt_slave_apply, &opt_slave_apply, 0, GET_BOOL, NO_ARG,
    0, 0, 0, 0, 0, 0},
   {"character-sets-dir", OPT_CHARSETS_DIR,
-   "Directory for character set files.", &charsets_dir,
-   &charsets_dir, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
+   "Directory for character set files.", (char **)&charsets_dir,
+   (char **)&charsets_dir, 0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"comments", 'i', "Write additional information.",
    &opt_comments, &opt_comments, 0, GET_BOOL, NO_ARG,
    1, 0, 0, 0, 0, 0},
@@ -285,8 +285,8 @@ static struct my_option my_long_options[] =
   {"debug", '#', "This is a non-debug version. Catch this and exit.",
    0,0, 0, GET_DISABLED, OPT_ARG, 0, 0, 0, 0, 0, 0},
 #else
-  {"debug", '#', "Output debug log.", &default_dbug_option,
-   &default_dbug_option, 0, GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
+  {"debug", '#', "Output debug log.", (char *)&default_dbug_option,
+   (char *)&default_dbug_option, 0, GET_STR, OPT_ARG, 0, 0, 0, 0, 0, 0},
 #endif
   {"debug-check", OPT_DEBUG_CHECK, "Check memory and open file usage at exit.",
    &debug_check_flag, &debug_check_flag, 0,
@@ -747,6 +747,7 @@ static void write_header(FILE *sql_file, char *db_name)
             "/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;\n",
             path?"":"NO_AUTO_VALUE_ON_ZERO",compatible_mode_normal_str[0]==0?"":",",
             compatible_mode_normal_str);
+    fprintf(sql_file, "/*!100300 SET GLOBAL TRANSACTION_REGISTRY=0 */;\n");
     check_io(sql_file);
   }
 } /* write_header */
@@ -761,6 +762,7 @@ static void write_footer(FILE *sql_file)
   }
   else if (!opt_compact)
   {
+    fprintf(sql_file, "/*!100300 SET GLOBAL TRANSACTION_REGISTRY=1 */;\n");
     if (opt_tz_utc)
       fprintf(sql_file,"/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;\n");
 
@@ -991,7 +993,9 @@ static int get_options(int *argc, char ***argv)
       my_hash_insert(&ignore_table,
                      (uchar*) my_strdup("mysql.general_log", MYF(MY_WME))) ||
       my_hash_insert(&ignore_table,
-                     (uchar*) my_strdup("mysql.slow_log", MYF(MY_WME))))
+                     (uchar*) my_strdup("mysql.slow_log", MYF(MY_WME))) ||
+      my_hash_insert(&ignore_table,
+                     (uchar*) my_strdup("mysql.transaction_registry", MYF(MY_WME))))
     return(EX_EOM);
 
   if ((ho_error= handle_options(argc, argv, my_long_options, get_one_option)))
@@ -2668,7 +2672,8 @@ static inline my_bool general_log_or_slow_log_tables(const char *db,
 {
   return (!my_strcasecmp(charset_info, db, "mysql")) &&
           (!my_strcasecmp(charset_info, table, "general_log") ||
-           !my_strcasecmp(charset_info, table, "slow_log"));
+           !my_strcasecmp(charset_info, table, "slow_log") ||
+           !my_strcasecmp(charset_info, table, "transaction_registry"));
 }
 
 /*
@@ -4583,6 +4588,7 @@ static int dump_all_tables_in_db(char *database)
   char hash_key[2*NAME_LEN+2];  /* "db.tablename" */
   char *afterdot;
   my_bool general_log_table_exists= 0, slow_log_table_exists=0;
+  my_bool transaction_registry_table_exists= 0;
   int using_mysql_db= !my_strcasecmp(charset_info, database, "mysql");
   DBUG_ENTER("dump_all_tables_in_db");
 
@@ -4685,6 +4691,8 @@ static int dump_all_tables_in_db(char *database)
           general_log_table_exists= 1;
         else if (!my_strcasecmp(charset_info, table, "slow_log"))
           slow_log_table_exists= 1;
+        else if (!my_strcasecmp(charset_info, table, "transaction_registry"))
+          transaction_registry_table_exists= 1;
       }
     }
   }
@@ -4730,6 +4738,13 @@ static int dump_all_tables_in_db(char *database)
                                database, table_type, &ignore_flag) )
         verbose_msg("-- Warning: get_table_structure() failed with some internal "
                     "error for 'slow_log' table\n");
+    }
+    if (transaction_registry_table_exists)
+    {
+      if (!get_table_structure((char *) "transaction_registry",
+                               database, table_type, &ignore_flag) )
+        verbose_msg("-- Warning: get_table_structure() failed with some internal "
+                    "error for 'transaction_registry' table\n");
     }
   }
   if (flush_privileges && using_mysql_db)
@@ -5733,7 +5748,7 @@ static int replace(DYNAMIC_STRING *ds_str,
     return 1;
   init_dynamic_string_checked(&ds_tmp, "",
                       ds_str->length + replace_len, 256);
-  dynstr_append_mem_checked(&ds_tmp, ds_str->str, start - ds_str->str);
+  dynstr_append_mem_checked(&ds_tmp, ds_str->str, (uint)(start - ds_str->str));
   dynstr_append_mem_checked(&ds_tmp, replace_str, replace_len);
   dynstr_append_checked(&ds_tmp, start + search_len);
   dynstr_set_checked(ds_str, ds_tmp.str);

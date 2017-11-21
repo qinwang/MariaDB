@@ -559,7 +559,7 @@ ibuf_init_at_db_start(void)
 
 	ibuf->index = dict_mem_index_create(
 		"innodb_change_buffer", "CLUST_IND",
-		IBUF_SPACE_ID, DICT_CLUSTERED | DICT_UNIVERSAL | DICT_IBUF, 1);
+		IBUF_SPACE_ID, DICT_CLUSTERED | DICT_IBUF, 1);
 	ibuf->index->id = DICT_IBUF_ID_MIN + IBUF_SPACE_ID;
 	ibuf->index->table = dict_mem_table_create(
 		"innodb_change_buffer", IBUF_SPACE_ID, 1, 0, 0, 0);
@@ -1502,6 +1502,7 @@ ibuf_dummy_index_create(
 
 	/* avoid ut_ad(index->cached) in dict_index_get_n_unique_in_tree */
 	index->cached = TRUE;
+	ut_d(index->is_dummy = true);
 
 	return(index);
 }
@@ -1623,6 +1624,8 @@ ibuf_build_entry_from_ibuf_rec_func(
 
 		ibuf_dummy_index_add_col(index, dfield_get_type(field), len);
 	}
+
+	index->n_core_null_bytes = UT_BITS_IN_BYTES(index->n_nullable);
 
 	/* Prevent an ut_ad() failure in page_zip_write_rec() by
 	adding system columns to the dummy table pointed to by the
@@ -4000,8 +4003,8 @@ dump:
 		row_ins_sec_index_entry_by_modify(BTR_MODIFY_LEAF). */
 		ut_ad(rec_get_deleted_flag(rec, page_is_comp(page)));
 
-		offsets = rec_get_offsets(rec, index, NULL, ULINT_UNDEFINED,
-					  &heap);
+		offsets = rec_get_offsets(rec, index, NULL, true,
+					  ULINT_UNDEFINED, &heap);
 		update = row_upd_build_sec_rec_difference_binary(
 			rec, index, offsets, entry, heap);
 
@@ -4193,7 +4196,7 @@ ibuf_delete(
 		rec_offs_init(offsets_);
 
 		offsets = rec_get_offsets(
-			rec, index, offsets, ULINT_UNDEFINED, &heap);
+			rec, index, offsets, true, ULINT_UNDEFINED, &heap);
 
 		if (page_get_n_recs(page) <= 1
 		    || !(REC_INFO_DELETED_FLAG
@@ -4209,7 +4212,7 @@ ibuf_delete(
 			fprintf(stderr, "\nspace " UINT32PF " offset " UINT32PF
 				" (%u records, index id %llu)\n"
 				"InnoDB: Submit a detailed bug report"
-				" to http://bugs.mysql.com\n",
+				" to https://jira.mariadb.org/\n",
 				block->page.id.space(),
 				block->page.id.page_no(),
 				(unsigned) page_get_n_recs(page),
@@ -4961,21 +4964,36 @@ ibuf_check_bitmap_on_import(
 	const trx_t*	trx,		/*!< in: transaction */
 	ulint		space_id)	/*!< in: tablespace identifier */
 {
-	ulint	size;
 	ulint	page_no;
 
 	ut_ad(space_id);
 	ut_ad(trx->mysql_thd);
 
-	bool			found;
-	const page_size_t&	page_size
-		= fil_space_get_page_size(space_id, &found);
-
-	if (!found) {
+	FilSpace space(space_id);
+	if (!space()) {
 		return(DB_TABLE_NOT_FOUND);
 	}
 
-	size = fil_space_get_size(space_id);
+	const page_size_t	page_size(space->flags);
+	/* fil_space_t::size and fil_space_t::free_limit would still be 0
+	at this point. So, we will have to read page 0. */
+	ut_ad(!space->free_limit);
+	ut_ad(!space->size);
+
+	mtr_t	mtr;
+	ulint	size;
+	mtr.start();
+	if (buf_block_t* sp = buf_page_get(page_id_t(space_id, 0), page_size,
+					   RW_S_LATCH, &mtr)) {
+		size = std::min(
+			mach_read_from_4(FSP_HEADER_OFFSET + FSP_FREE_LIMIT
+					 + sp->frame),
+			mach_read_from_4(FSP_HEADER_OFFSET + FSP_SIZE
+					 + sp->frame));
+	} else {
+		size = 0;
+	}
+	mtr.commit();
 
 	if (size == 0) {
 		return(DB_TABLE_NOT_FOUND);
@@ -4990,7 +5008,6 @@ ibuf_check_bitmap_on_import(
 	the space, as usual. */
 
 	for (page_no = 0; page_no < size; page_no += page_size.physical()) {
-		mtr_t	mtr;
 		page_t*	bitmap_page;
 		ulint	i;
 

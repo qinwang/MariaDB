@@ -197,6 +197,7 @@ my @DEFAULT_SUITES= qw(
     sql_sequence-
     unit-
     vcol-
+    versioning-
     wsrep-
     galera-
   );
@@ -220,6 +221,7 @@ our @opt_extra_mysqld_opt;
 our @opt_mysqld_envs;
 
 my $opt_stress;
+my $opt_tail_lines= 20;
 
 my $opt_dry_run;
 
@@ -739,8 +741,7 @@ sub run_test_server ($$$) {
 
 	  # Repeat test $opt_repeat number of times
 	  my $repeat= $result->{repeat} || 1;
-	  # Don't repeat if test was skipped
-	  if ($repeat < $opt_repeat && $result->{'result'} ne 'MTR_RES_SKIPPED')
+	  if ($repeat < $opt_repeat)
 	  {
 	    $result->{retries}= 0;
 	    $result->{rep_failures}++ if $result->{failures};
@@ -1205,6 +1206,7 @@ sub command_line_setup {
 	     'report-times'             => \$opt_report_times,
 	     'result-file'              => \$opt_resfile,
 	     'stress=s'                 => \$opt_stress,
+	     'tail-lines=i'             => \$opt_tail_lines,
              'dry-run'                  => \$opt_dry_run,
 
              'help|h'                   => \$opt_usage,
@@ -1915,10 +1917,10 @@ sub collect_mysqld_features_from_running_server ()
     #print "Major: $1 Minor: $2 Build: $3\n";
     $mysql_version_id= $1*10000 + $2*100 + $3;
     #print "mysql_version_id: $mysql_version_id\n";
-    mtr_report("MySQL Version $1.$2.$3");
+    mtr_report("MariaDB Version $1.$2.$3");
     $mysql_version_extra= $4;
   }
-  mtr_error("Could not find version of MySQL") unless $mysql_version_id;
+  mtr_error("Could not find version of MariaDBL") unless $mysql_version_id;
 }
 
 sub find_mysqld {
@@ -2208,7 +2210,7 @@ sub environment_setup {
   $ENV{'UMASK_DIR'}=          "0770"; # The octal *string*
 
   #
-  # MySQL tests can produce output in various character sets
+  # MariaDB tests can produce output in various character sets
   # (especially, ctype_xxx.test). To avoid confusing Perl
   # with output which is incompatible with the current locale
   # settings, we reset the current values of LC_ALL and LC_CTYPE to "C".
@@ -2539,7 +2541,7 @@ sub setup_vardir() {
   if (check_socket_path_length("$opt_tmpdir/testsocket.sock")){
     mtr_error("Socket path '$opt_tmpdir' too long, it would be ",
 	      "truncated and thus not possible to use for connection to ",
-	      "MySQL Server. Set a shorter with --tmpdir=<path> option");
+	      "MariaDB Server. Set a shorter with --tmpdir=<path> option");
   }
 
   # copy all files from std_data into var/std_data
@@ -4454,12 +4456,12 @@ sub extract_warning_lines ($$) {
      qr/Slave I\/O: error reconnecting to master '.*' - retry-time: [1-3]  retries/,
      qr/Slave I\/0: Master command COM_BINLOG_DUMP failed/,
      qr/Error reading packet/,
-     qr/Lost connection to MySQL server at 'reading initial communication packet'/,
+     qr/Lost connection to MariaDB server at 'reading initial communication packet'/,
      qr/Failed on request_dump/,
      qr/Slave: Can't drop database.* database doesn't exist/,
      qr/Slave: Operation DROP USER failed for 'create_rout_db'/,
      qr|Checking table:   '\..mtr.test_suppressions'|,
-     qr|Table \./test/bug53592 has a primary key in InnoDB data dictionary, but not in MySQL|,
+     qr|Table \./test/bug53592 has a primary key in InnoDB data dictionary, but not in|,
      qr|Table '\..mtr.test_suppressions' is marked as crashed and should be repaired|,
      qr|Table 'test_suppressions' is marked as crashed and should be repaired|,
      qr|Can't open shared library|,
@@ -4618,8 +4620,8 @@ sub check_warnings ($) {
 
   my $timeout= start_timer(check_timeout($tinfo));
 
+  my $result= 0;
   while (1){
-    my $result= 0;
     my $proc= My::SafeProcess->wait_any_timeout($timeout);
     mtr_report("Got $proc");
 
@@ -4930,7 +4932,7 @@ sub report_failure_and_restart ($) {
 	    $tinfo->{comment}.=
 	      "The result from queries just before the failure was:".
 	      "\n< snip >\n".
-	      mtr_lastlinesfromfile($log_file_name, 20)."\n";
+	      mtr_lastlinesfromfile($log_file_name, $opt_tail_lines)."\n";
 	  }
 	}
       }
@@ -5104,9 +5106,9 @@ sub mysqld_start ($$) {
   }
 
 
-  # "Dynamic" version of MYSQLD_CMD is reevaluated with each mysqld_start.
-  # Use it to restart the server at testing a failing server start (e.g
-  # due to incompatible options).
+  # Command line for mysqld started for *this particular test*.
+  # Differs from "generic" MYSQLD_CMD by including all command line
+  # options from *.opt and *.combination files.
   $ENV{'MYSQLD_LAST_CMD'}= "$exe  @$args";
 
   if ( $opt_gdb || $opt_manual_gdb )
@@ -5630,7 +5632,7 @@ sub start_mysqltest ($) {
   mtr_add_arg($args, "--test-file=%s", $tinfo->{'path'});
 
   # Number of lines of resut to include in failure report
-  mtr_add_arg($args, "--tail-lines=20");
+  mtr_add_arg($args, "--tail-lines=%d", $opt_tail_lines);
 
   if ( defined $tinfo->{'result_file'} ) {
     mtr_add_arg($args, "--result-file=%s", $tinfo->{'result_file'});
@@ -5865,7 +5867,7 @@ sub debugger_arguments {
     $$exe= $debugger;
 
   }
-  elsif ( $debugger =~ /windbg/ )
+  elsif ( $debugger =~ /windbg|vsjitdebugger/ )
   {
     # windbg exe arg1 .. argn
 
@@ -6278,6 +6280,8 @@ Misc options
                         phases of test execution.
   stress=ARGS           Run stress test, providing options to
                         mysql-stress-test.pl. Options are separated by comma.
+  tail-lines=N          Number of lines of the result to include in a failure
+                        report.
 
 Some options that control enabling a feature for normal test runs,
 can be turned off by prepending 'no' to the option, e.g. --notimer.

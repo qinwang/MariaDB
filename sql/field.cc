@@ -1,6 +1,6 @@
 /*
-   Copyright (c) 2000, 2013, Oracle and/or its affiliates.
-   Copyright (c) 2008, 2013, Monty Program Ab.
+   Copyright (c) 2000, 2017, Oracle and/or its affiliates.
+   Copyright (c) 2008, 2017, MariaDB
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -240,7 +240,7 @@ static enum_field_types field_types_merge_rules [FIELDTYPE_NUM][FIELDTYPE_NUM]=
   //MYSQL_TYPE_NULL         MYSQL_TYPE_TIMESTAMP
     MYSQL_TYPE_FLOAT,       MYSQL_TYPE_VARCHAR,
   //MYSQL_TYPE_LONGLONG     MYSQL_TYPE_INT24
-    MYSQL_TYPE_FLOAT,       MYSQL_TYPE_FLOAT,
+    MYSQL_TYPE_DOUBLE,      MYSQL_TYPE_FLOAT,
   //MYSQL_TYPE_DATE         MYSQL_TYPE_TIME
     MYSQL_TYPE_VARCHAR,     MYSQL_TYPE_VARCHAR,
   //MYSQL_TYPE_DATETIME     MYSQL_TYPE_YEAR
@@ -1713,6 +1713,33 @@ int Field::store(const char *to, uint length, CHARSET_INFO *cs,
 }
 
 
+static int timestamp_to_TIME(THD *thd, MYSQL_TIME *ltime, my_time_t ts,
+                             ulong sec_part, ulonglong fuzzydate)
+{
+  thd->time_zone_used= 1;
+  if (ts == 0 && sec_part == 0)
+  {
+    if (fuzzydate & TIME_NO_ZERO_DATE)
+      return 1;
+    set_zero_time(ltime, MYSQL_TIMESTAMP_DATETIME);
+  }
+  else
+  {
+    thd->variables.time_zone->gmt_sec_to_TIME(ltime, ts);
+    ltime->second_part= sec_part;
+  }
+  return 0;
+}
+
+
+int Field::store_timestamp(my_time_t ts, ulong sec_part)
+{
+  MYSQL_TIME ltime;
+  THD *thd= get_thd();
+  timestamp_to_TIME(thd, &ltime, ts, sec_part, 0);
+  return store_time_dec(&ltime, decimals());
+}
+
 /**
    Pack the field into a format suitable for storage and transfer.
 
@@ -1957,6 +1984,48 @@ bool Field_num::get_date(MYSQL_TIME *ltime,ulonglong fuzzydate)
   bool neg= !(flags & UNSIGNED_FLAG) && nr < 0;
   return int_to_datetime_with_warn(neg, neg ? -nr : nr, ltime, fuzzydate,
                                    field_name.str);
+}
+
+
+bool Field_vers_trx_id::get_date(MYSQL_TIME *ltime, ulonglong fuzzydate, ulonglong trx_id)
+{
+  ASSERT_COLUMN_MARKED_FOR_READ;
+  DBUG_ASSERT(ltime);
+  if (!table || !table->s)
+    return true;
+  DBUG_ASSERT(table->versioned_by_engine() ||
+    (table->versioned() && table->s->table_category == TABLE_CATEGORY_TEMPORARY));
+  if (!trx_id)
+    return true;
+
+  THD *thd= get_thd();
+  DBUG_ASSERT(thd);
+  if (trx_id == ULONGLONG_MAX)
+  {
+    thd->variables.time_zone->gmt_sec_to_TIME(ltime, TIMESTAMP_MAX_VALUE);
+    ltime->second_part= TIME_MAX_SECOND_PART;
+    return false;
+  }
+  if (cached == trx_id)
+  {
+    *ltime= cache;
+    return false;
+  }
+
+  TR_table trt(thd);
+  bool found= trt.query(trx_id);
+  if (found)
+  {
+    trt[TR_table::FLD_COMMIT_TS]->get_date(&cache, fuzzydate);
+    *ltime= cache;
+    cached= trx_id;
+    return false;
+  }
+
+  push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
+                      ER_VERS_NO_TRX_ID, ER_THD(thd, ER_VERS_NO_TRX_ID),
+                      trx_id);
+  return true;
 }
 
 
@@ -2213,15 +2282,15 @@ Field *Field::clone(MEM_ROOT *root, my_ptrdiff_t diff)
   return tmp;
 }
 
-void Field::set_default()
+int Field::set_default()
 {
   if (default_value)
   {
     Query_arena backup_arena;
     table->in_use->set_n_backup_active_arena(table->expr_arena, &backup_arena);
-    (void) default_value->expr->save_in_field(this, 0);
+    int rc= default_value->expr->save_in_field(this, 0);
     table->in_use->restore_active_arena(table->expr_arena, &backup_arena);
-    return;
+    return rc;
   }
   /* Copy constant value stored in s->default_values */
   my_ptrdiff_t l_offset= (my_ptrdiff_t) (table->s->default_values -
@@ -2230,6 +2299,7 @@ void Field::set_default()
   if (maybe_null_in_table())
     *null_ptr= ((*null_ptr & (uchar) ~null_bit) |
                 (null_ptr[l_offset] & null_bit));
+  return 0;
 }
 
 
@@ -2240,6 +2310,16 @@ void Field::set_default()
 void Field_null::sql_type(String &res) const
 {
   res.set_ascii(STRING_WITH_LEN("null"));
+}
+
+
+/****************************************************************************
+  Field_row, e.g. for ROW-type SP variables
+****************************************************************************/
+
+Field_row::~Field_row()
+{
+  delete m_table;
 }
 
 
@@ -4257,6 +4337,26 @@ void Field_longlong::sql_type(String &res) const
   add_zerofill_and_unsigned(res);
 }
 
+void Field_longlong::set_max()
+{
+  ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
+  set_notnull();
+  int8store(ptr, unsigned_flag ? ULONGLONG_MAX : LONGLONG_MAX);
+}
+
+bool Field_longlong::is_max()
+{
+  ASSERT_COLUMN_MARKED_FOR_READ;
+  if (unsigned_flag)
+  {
+    ulonglong j;
+    j= uint8korr(ptr);
+    return j == ULONGLONG_MAX;
+  }
+  longlong j;
+  j= sint8korr(ptr);
+  return j == LONGLONG_MAX;
+}
 
 /*
   Floating-point numbers
@@ -4810,6 +4910,13 @@ Field_timestamp::Field_timestamp(uchar *ptr_arg, uint32 len_arg,
 }
 
 
+int Field_timestamp::save_in_field(Field *to)
+{
+  ulong sec_part;
+  my_time_t ts= get_timestamp(&sec_part);
+  return to->store_timestamp(ts, sec_part);
+}
+
 my_time_t Field_timestamp::get_timestamp(const uchar *pos,
                                          ulong *sec_part) const
 {
@@ -4936,6 +5043,22 @@ int Field_timestamp::store(longlong nr, bool unsigned_val)
 }
 
 
+int Field_timestamp::store_timestamp(my_time_t ts, ulong sec_part)
+{
+  store_TIME(ts, sec_part);
+  if (ts == 0 && sec_part == 0 &&
+      get_thd()->variables.sql_mode & TIME_NO_ZERO_DATE)
+  {
+    ErrConvString s(
+      STRING_WITH_LEN("0000-00-00 00:00:00.000000") - (decimals() ? 6 - decimals() : 7),
+      system_charset_info);
+    set_datetime_warning(WARN_DATA_TRUNCATED, &s, MYSQL_TIMESTAMP_DATETIME, 1);
+    return 1;
+  }
+  return 0;
+}
+
+
 double Field_timestamp::val_real(void)
 {
   return (double) Field_timestamp::val_int();
@@ -5039,22 +5162,9 @@ Field_timestamp::validate_value_in_record(THD *thd, const uchar *record) const
 
 bool Field_timestamp::get_date(MYSQL_TIME *ltime, ulonglong fuzzydate)
 {
-  THD *thd= get_thd();
-  thd->time_zone_used= 1;
   ulong sec_part;
-  my_time_t temp= get_timestamp(&sec_part);
-  if (temp == 0 && sec_part == 0)
-  {				      /* Zero time is "000000" */
-    if (fuzzydate & TIME_NO_ZERO_DATE)
-      return 1;
-    set_zero_time(ltime, MYSQL_TIMESTAMP_DATETIME);
-  }
-  else
-  {
-    thd->variables.time_zone->gmt_sec_to_TIME(ltime, (my_time_t)temp);
-    ltime->second_part= sec_part;
-  }
-  return 0;
+  my_time_t ts= get_timestamp(&sec_part);
+  return timestamp_to_TIME(get_thd(), ltime, ts, sec_part, fuzzydate);
 }
 
 
@@ -5102,36 +5212,6 @@ int Field_timestamp::set_time()
   set_notnull();
   store_TIME(get_thd()->query_start(), 0);
   return 0;
-}
-
-/**
-  Mark the field as having an explicit default value.
-
-  @param value  if available, the value that the field is being set to
-  @returns whether the explicit default bit was set
-
-  @note
-    Fields that have an explicit default value should not be updated
-    automatically via the DEFAULT or ON UPDATE functions. The functions
-    that deal with data change functionality (INSERT/UPDATE/LOAD),
-    determine if there is an explicit value for each field before performing
-    the data change, and call this method to mark the field.
-
-    For timestamp columns, the only case where a column is not marked
-    as been given a value are:
-    - It's explicitly assigned with DEFAULT
-    - We assign NULL to a timestamp field that is defined as NOT NULL.
-      This is how MySQL has worked since it's start.
-*/
-
-bool Field_timestamp::set_explicit_default(Item *value)
-{
-  if (((value->type() == Item::DEFAULT_VALUE_ITEM &&
-        !((Item_default_value*)value)->arg) ||
-       (!maybe_null() && value->null_value)))
-    return false;
-  set_has_explicit_value();
-  return true;
 }
 
 #ifdef NOT_USED
@@ -5289,13 +5369,41 @@ void Field_timestampf::store_TIME(my_time_t timestamp, ulong sec_part)
   my_timestamp_to_binary(&tm, ptr, dec);
 }
 
+void Field_timestampf::set_max()
+{
+  DBUG_ENTER("Field_timestampf::set_max");
+  ASSERT_COLUMN_MARKED_FOR_WRITE_OR_COMPUTED;
+  DBUG_ASSERT(dec == TIME_SECOND_PART_DIGITS);
+
+  set_notnull();
+  mi_int4store(ptr, TIMESTAMP_MAX_VALUE);
+  mi_int3store(ptr + 4, TIME_MAX_SECOND_PART);
+
+  DBUG_VOID_RETURN;
+}
+
+bool Field_timestampf::is_max()
+{
+  DBUG_ENTER("Field_timestampf::is_max");
+  ASSERT_COLUMN_MARKED_FOR_READ;
+
+  DBUG_RETURN(mi_sint4korr(ptr) == TIMESTAMP_MAX_VALUE &&
+              mi_sint3korr(ptr + 4) == TIME_MAX_SECOND_PART);
+}
 
 my_time_t Field_timestampf::get_timestamp(const uchar *pos,
                                           ulong *sec_part) const
 {
   struct timeval tm;
-  my_timestamp_from_binary(&tm, pos, dec);
-  *sec_part= tm.tv_usec;
+  if (sec_part)
+  {
+    my_timestamp_from_binary(&tm, pos ? pos : ptr, dec);
+    *sec_part= tm.tv_usec;
+  }
+  else
+  {
+    my_timestamp_from_binary(&tm, pos ? pos : ptr, 0);
+  }
   return tm.tv_sec;
 }
 
@@ -5397,7 +5505,7 @@ int Field_temporal_with_date::store(double nr)
   ErrConvDouble str(nr);
 
   longlong tmp= double_to_datetime(nr, &ltime,
-                                    sql_mode_for_dates(thd), &error);
+                                    (uint) sql_mode_for_dates(thd), &error);
   return store_TIME_with_warning(&ltime, &str, error, tmp != -1);
 }
 
@@ -7976,7 +8084,7 @@ int Field_blob::store(const char *from,uint length,CHARSET_INFO *cs)
     DBUG_ASSERT(length <= max_data_length());
     
     new_length= length;
-    copy_length= table->in_use->variables.group_concat_max_len;
+    copy_length= (uint)MY_MIN(UINT_MAX,table->in_use->variables.group_concat_max_len);
     if (new_length > copy_length)
     {
       new_length= Well_formed_prefix(cs,
@@ -8387,8 +8495,8 @@ const uchar *Field_blob::unpack(uchar *to, const uchar *from,
                                 const uchar *from_end, uint param_data)
 {
   DBUG_ENTER("Field_blob::unpack");
-  DBUG_PRINT("enter", ("to: 0x%lx; from: 0x%lx; param_data: %u",
-                       (ulong) to, (ulong) from, param_data));
+  DBUG_PRINT("enter", ("to: %p; from: %p; param_data: %u",
+                       to, from, param_data));
   uint const master_packlength=
     param_data > 0 ? param_data & 0xFF : packlength;
   if (from + master_packlength > from_end)
@@ -8577,7 +8685,7 @@ uint gis_field_options_read(const uchar *buf, uint buf_len,
   }
 
 end_of_record:
-  return cbuf - buf;
+  return (uint)(cbuf - buf);
 }
 
 
@@ -8998,13 +9106,13 @@ String *Field_set::val_str(String *val_buffer,
   ulonglong tmp=(ulonglong) Field_enum::val_int();
   uint bitnr=0;
 
+  /*
+    Some callers expect *val_buffer to contain the result,
+    so we assign to it, rather than doing 'return &empty_set_string.
+  */
+  *val_buffer= empty_set_string;
   if (tmp == 0)
   {
-    /*
-      Some callers expect *val_buffer to contain the result,
-      so we assign to it, rather than doing 'return &empty_set_string.
-     */
-    *val_buffer= empty_set_string;
     return val_buffer;
   }
 
@@ -9308,8 +9416,8 @@ Field_bit::do_last_null_byte() const
     bits. On systems with CHAR_BIT > 8 (not very common), the storage
     will lose the extra bits.
   */
-  DBUG_PRINT("test", ("bit_ofs: %d, bit_len: %d  bit_ptr: 0x%lx",
-                      bit_ofs, bit_len, (long) bit_ptr));
+  DBUG_PRINT("test", ("bit_ofs: %d, bit_len: %d  bit_ptr: %p",
+                      bit_ofs, bit_len, bit_ptr));
   uchar *result;
   if (bit_len == 0)
     result= null_ptr;
@@ -9757,7 +9865,7 @@ Field_bit::unpack(uchar *to, const uchar *from, const uchar *from_end,
 }
 
 
-void Field_bit::set_default()
+int Field_bit::set_default()
 {
   if (bit_len > 0)
   {
@@ -9765,7 +9873,7 @@ void Field_bit::set_default()
     uchar bits= get_rec_bits(bit_ptr + col_offset, bit_ofs, bit_len);
     set_rec_bits(bits, bit_ptr, bit_ofs, bit_len);
   }
-  Field::set_default();
+  return Field::set_default();
 }
 
 /*
@@ -9993,7 +10101,7 @@ void Column_definition::create_length_to_internal_length_bit()
   }
   else
   {
-    pack_length= length / 8;
+    pack_length= (uint) length / 8;
     /* We need one extra byte to store the bits we save among the null bits */
     key_length= pack_length + MY_TEST(length & 7);
   }
@@ -10003,7 +10111,7 @@ void Column_definition::create_length_to_internal_length_bit()
 void Column_definition::create_length_to_internal_length_newdecimal()
 {
   key_length= pack_length=
-    my_decimal_get_binary_size(my_decimal_length_to_precision(length,
+    my_decimal_get_binary_size(my_decimal_length_to_precision((uint) length,
                                                               decimals,
                                                               flags &
                                                               UNSIGNED_FLAG),
@@ -10110,9 +10218,9 @@ bool Column_definition::fix_attributes_decimal()
     my_error(ER_M_BIGGER_THAN_D, MYF(0), field_name.str);
     return true;
   }
-  length= my_decimal_precision_to_length(length, decimals,
+  length= my_decimal_precision_to_length((uint) length, decimals,
                                          flags & UNSIGNED_FLAG);
-  pack_length= my_decimal_get_binary_size(length, decimals);
+  pack_length= my_decimal_get_binary_size((uint) length, decimals);
   return false;
 }
 
@@ -10121,7 +10229,7 @@ bool Column_definition::fix_attributes_bit()
 {
   if (!length)
     length= 1;
-  pack_length= (length + 7) / 8;
+  pack_length= ((uint) length + 7) / 8;
   return check_length(ER_TOO_BIG_DISPLAYWIDTH, MAX_BIT_FIELD_LENGTH);
 }
 
@@ -10219,7 +10327,7 @@ bool Column_definition::check(THD *thd)
     DBUG_RETURN(true);
 
   /* Remember the value of length */
-  char_length= length;
+  char_length= (uint)length;
 
   /*
     Set NO_DEFAULT_VALUE_FLAG if this field doesn't have a default value and
@@ -10289,10 +10397,26 @@ Field *make_field(TABLE_SHARE *share,
 		  Field::geometry_type geom_type, uint srid,
 		  Field::utype unireg_check,
 		  TYPELIB *interval,
-		  const LEX_CSTRING *field_name)
+		  const LEX_CSTRING *field_name,
+		  uint32 flags)
 {
   uchar *UNINIT_VAR(bit_ptr);
   uchar UNINIT_VAR(bit_offset);
+
+  DBUG_PRINT("debug", ("field_type: %s, field_length: %u, interval: %p, pack_flag: %s%s%s%s%s",
+                       handler->name().ptr(), field_length, interval,
+                       FLAGSTR(pack_flag, FIELDFLAG_BINARY),
+                       FLAGSTR(pack_flag, FIELDFLAG_INTERVAL),
+                       FLAGSTR(pack_flag, FIELDFLAG_NUMBER),
+                       FLAGSTR(pack_flag, FIELDFLAG_PACK),
+                       FLAGSTR(pack_flag, FIELDFLAG_BLOB)));
+
+  if (handler == &type_handler_row)
+  {
+    DBUG_ASSERT(field_length == 0);
+    DBUG_ASSERT(f_maybe_null(pack_flag));
+    return new (mem_root) Field_row(ptr, field_name);
+  }
 
   if (handler->real_field_type() == MYSQL_TYPE_BIT && !f_bit_as_char(pack_flag))
   {
@@ -10315,13 +10439,6 @@ Field *make_field(TABLE_SHARE *share,
     null_bit= ((uchar) 1) << null_bit;
   }
 
-  DBUG_PRINT("debug", ("field_type: %s, field_length: %u, interval: %p, pack_flag: %s%s%s%s%s",
-                       handler->name().ptr(), field_length, interval,
-                       FLAGSTR(pack_flag, FIELDFLAG_BINARY),
-                       FLAGSTR(pack_flag, FIELDFLAG_INTERVAL),
-                       FLAGSTR(pack_flag, FIELDFLAG_NUMBER),
-                       FLAGSTR(pack_flag, FIELDFLAG_PACK),
-                       FLAGSTR(pack_flag, FIELDFLAG_BLOB)));
 
   if (f_is_alpha(pack_flag))
   {
@@ -10466,11 +10583,22 @@ Field *make_field(TABLE_SHARE *share,
                  f_is_zerofill(pack_flag) != 0,
                  f_is_dec(pack_flag) == 0);
   case MYSQL_TYPE_LONGLONG:
-    return new (mem_root)
-      Field_longlong(ptr,field_length,null_pos,null_bit,
-                     unireg_check, field_name,
-                     f_is_zerofill(pack_flag) != 0,
-                     f_is_dec(pack_flag) == 0);
+    if (flags & (VERS_SYS_START_FLAG|VERS_SYS_END_FLAG))
+    {
+      return new (mem_root)
+        Field_vers_trx_id(ptr, field_length, null_pos, null_bit,
+                      unireg_check, field_name,
+                      f_is_zerofill(pack_flag) != 0,
+                      f_is_dec(pack_flag) == 0);
+    }
+    else
+    {
+      return new (mem_root)
+        Field_longlong(ptr,field_length,null_pos,null_bit,
+                      unireg_check, field_name,
+                      f_is_zerofill(pack_flag) != 0,
+                      f_is_dec(pack_flag) == 0);
+    }
   case MYSQL_TYPE_TIMESTAMP:
   {
     uint dec= field_length > MAX_DATETIME_WIDTH ?
@@ -10547,6 +10675,11 @@ Field *make_field(TABLE_SHARE *share,
   return 0;
 }
 
+bool Field_vers_trx_id::test_if_equality_guarantees_uniqueness(const Item* item) const
+{
+  return item->type() == Item::DATE_ITEM;
+}
+
 
 /** Create a field suitable for create of table. */
 
@@ -10568,6 +10701,8 @@ Column_definition::Column_definition(THD *thd, Field *old_field,
   option_list= old_field->option_list;
   pack_flag= 0;
   compression_method_ptr= 0;
+  versioning= VERSIONING_NOT_SET;
+  implicit_not_null= false;
 
   if (orig_field)
   {
@@ -10644,7 +10779,7 @@ Column_definition::Column_definition(THD *thd, Field *old_field,
 
   interval_list.empty(); // prepare_interval_field() needs this
 
-  char_length= length;
+  char_length= (uint)length;
 
   /*
     Copy the default (constant/function) from the column object orig_field, if
@@ -10987,7 +11122,7 @@ bool Field::save_in_field_default_value(bool view_error_processing)
     {
       my_message(ER_CANT_CREATE_GEOMETRY_OBJECT,
                  ER_THD(thd, ER_CANT_CREATE_GEOMETRY_OBJECT), MYF(0));
-      return -1;
+      return true;
     }
 
     if (view_error_processing)
@@ -11006,13 +11141,13 @@ bool Field::save_in_field_default_value(bool view_error_processing)
                           ER_THD(thd, ER_NO_DEFAULT_FOR_FIELD),
                           field_name.str);
     }
-    return 1;
+    return true;
   }
   set_default();
   return
     !is_null() &&
     validate_value_in_record_with_warn(thd, table->record[0]) &&
-    thd->is_error() ? -1 : 0;
+    thd->is_error();
 }
 
 

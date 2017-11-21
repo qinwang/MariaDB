@@ -1197,6 +1197,12 @@ let $values1 = '2012-12-12',default;
 let $rows = 1;
 --source suite/vcol/inc/vcol_supported_sql_funcs.inc
 
+--echo # DATE_FORMAT() STORED
+let $cols = a date, b varchar(100) as (date_format(a, '%W %a %M %b', 'de_DE')) STORED;
+let $values1 = '2012-12-12',default;
+let $rows = 1;
+--source suite/vcol/inc/vcol_supported_sql_funcs.inc
+
 --echo # CURRENT_USER()
 let $cols = a char, b varchar(32) as (current_user());
 let $values1 = 'a', default;
@@ -1204,8 +1210,14 @@ let $rows = 1;
 --source suite/vcol/inc/vcol_supported_sql_funcs.inc
 
 --echo # TIME_FORMAT()
-let $cols = a datetime, b varchar(10) as (time_format(a,"%d.%m.%Y"));
-let $values1 = '2001-01-01 02:02:02',default;
+let $cols = a datetime, b varchar(10) as (time_format(a,"%H.%i.%S"));
+let $values1 = '2001-01-01 02:03:04',default;
+let $rows = 1;
+--source suite/vcol/inc/vcol_supported_sql_funcs.inc
+
+--echo # TIME_FORMAT() STORED
+let $cols = a datetime, b varchar(10) as (time_format(a,"%H.%i.%S")) STORED;
+let $values1 = '2001-01-01 02:03:04',default;
 let $rows = 1;
 --source suite/vcol/inc/vcol_supported_sql_funcs.inc
 

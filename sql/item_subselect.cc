@@ -58,7 +58,7 @@ Item_subselect::Item_subselect(THD *thd_arg):
   changed(0), is_correlated(FALSE), with_recursive_reference(0)
 {
   DBUG_ENTER("Item_subselect::Item_subselect");
-  DBUG_PRINT("enter", ("this: 0x%lx", (ulong) this));
+  DBUG_PRINT("enter", ("this: %p", this));
   sortbuffer.str= 0;
 
 #ifndef DBUG_OFF
@@ -84,8 +84,8 @@ void Item_subselect::init(st_select_lex *select_lex,
   */
 
   DBUG_ENTER("Item_subselect::init");
-  DBUG_PRINT("enter", ("select_lex: 0x%lx  this: 0x%lx",
-                       (ulong) select_lex, (ulong) this));
+  DBUG_PRINT("enter", ("select_lex: %p  this: %p",
+                       select_lex, this));
   unit= select_lex->master_unit();
 
   if (unit->item)
@@ -116,9 +116,10 @@ void Item_subselect::init(st_select_lex *select_lex,
       do not take into account expression inside aggregate functions because
       they can access original table fields
     */
-    parsing_place= (outer_select->in_sum_expr ? NO_MATTER
-                                              : outer_select->parsing_place);
-    if (unit->is_unit_op())
+    parsing_place= (outer_select->in_sum_expr ?
+                    NO_MATTER :
+                    outer_select->parsing_place);
+    if (unit->is_unit_op() && unit->first_select()->next_select())
       engine= new subselect_union_engine(unit, result, this);
     else
       engine= new subselect_single_select_engine(select_lex, result, this);
@@ -130,7 +131,7 @@ void Item_subselect::init(st_select_lex *select_lex,
     /* The subquery is an expression cache candidate */
     upper->expr_cache_may_be_used[upper->parsing_place]= TRUE;
   }
-  DBUG_PRINT("info", ("engine: 0x%lx", (ulong)engine));
+  DBUG_PRINT("info", ("engine: %p", engine));
   DBUG_VOID_RETURN;
 }
 
@@ -215,7 +216,7 @@ void Item_allany_subselect::cleanup()
 Item_subselect::~Item_subselect()
 {
   DBUG_ENTER("Item_subselect::~Item_subselect");
-  DBUG_PRINT("enter", ("this: 0x%lx", (ulong) this));
+  DBUG_PRINT("enter", ("this: %p", this));
   if (own_engine)
     delete engine;
   else
@@ -264,6 +265,13 @@ bool Item_subselect::fix_fields(THD *thd_param, Item **ref)
   if (check_stack_overrun(thd, STACK_MIN_SIZE, (uchar*)&res))
     return TRUE;
   
+  for (SELECT_LEX *sl= unit->first_select(); sl; sl= sl->next_select())
+  {
+    if (sl->tvc)
+    {
+      wrap_tvc_in_derived_table(thd, sl);
+    }
+  }
   
   if (!(res= engine->prepare(thd)))
   {
@@ -452,7 +460,8 @@ bool Item_subselect::mark_as_dependent(THD *thd, st_select_lex *select,
       OUTER_REF_TABLE_BIT.
 */
 
-void Item_subselect::fix_after_pullout(st_select_lex *new_parent, Item **ref)
+void Item_subselect::fix_after_pullout(st_select_lex *new_parent,
+                                       Item **ref, bool merge)
 {
   recalc_used_tables(new_parent, TRUE);
   parent_select= new_parent;
@@ -1160,7 +1169,8 @@ Item_singlerow_subselect::select_transformer(JOIN *join)
     /*
       as far as we moved content to upper level we have to fix dependences & Co
     */
-    substitution->fix_after_pullout(select_lex->outer_select(), &substitution);
+    substitution->fix_after_pullout(select_lex->outer_select(),
+                                    &substitution, TRUE);
   }
   DBUG_RETURN(false);
 }
@@ -1433,6 +1443,10 @@ Item_in_subselect::Item_in_subselect(THD *thd, Item * left_exp,
   DBUG_ENTER("Item_in_subselect::Item_in_subselect");
   DBUG_PRINT("info", ("in_strategy: %u", (uint)in_strategy));
   left_expr_orig= left_expr= left_exp;
+  /* prepare to possible disassembling the item in convert_subq_to_sj() */
+  if (left_exp->type() == Item::ROW_ITEM)
+    left_expr_orig= new (thd->mem_root)
+      Item_row(thd, static_cast<Item_row*>(left_exp));
   func= &eq_creator;
   init(select_lex, new (thd->mem_root) select_exists_subselect(thd, this));
   max_columns= UINT_MAX;
@@ -1456,6 +1470,10 @@ Item_allany_subselect::Item_allany_subselect(THD *thd, Item * left_exp,
 {
   DBUG_ENTER("Item_allany_subselect::Item_allany_subselect");
   left_expr_orig= left_expr= left_exp;
+  /* prepare to possible disassembling the item in convert_subq_to_sj() */
+  if (left_exp->type() == Item::ROW_ITEM)
+    left_expr_orig= new (thd->mem_root)
+      Item_row(thd, static_cast<Item_row*>(left_exp));
   func= func_creator(all_arg);
   init(select_lex, new (thd->mem_root) select_exists_subselect(thd, this));
   max_columns= 1;
@@ -2929,7 +2947,7 @@ bool Item_exists_subselect::exists2in_processor(void *opt_arg)
           goto out;
         }
       }
-      outer_exp->fix_after_pullout(unit->outer_select(), &outer_exp);
+      outer_exp->fix_after_pullout(unit->outer_select(), &outer_exp, FALSE);
       outer_exp->update_used_tables();
       outer.push_back(outer_exp, thd->mem_root);
     }
@@ -3310,10 +3328,11 @@ err:
 }
 
 
-void Item_in_subselect::fix_after_pullout(st_select_lex *new_parent, Item **ref)
+void Item_in_subselect::fix_after_pullout(st_select_lex *new_parent,
+                                          Item **ref, bool merge)
 {
-  left_expr->fix_after_pullout(new_parent, &left_expr);
-  Item_subselect::fix_after_pullout(new_parent, ref);
+  left_expr->fix_after_pullout(new_parent, &left_expr, merge);
+  Item_subselect::fix_after_pullout(new_parent, ref, merge);
   used_tables_cache |= left_expr->used_tables();
 }
 

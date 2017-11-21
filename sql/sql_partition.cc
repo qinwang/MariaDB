@@ -1,5 +1,5 @@
-/* Copyright (c) 2005, 2014, Oracle and/or its affiliates.
-   Copyright (c) 2009, 2014, SkySQL Ab.
+/* Copyright (c) 2005, 2017, Oracle and/or its affiliates.
+   Copyright (c) 2009, 2017, SkySQL Ab.
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -67,6 +67,7 @@
 #include "opt_range.h"                  // store_key_image_to_rec
 #include "sql_alter.h"                  // Alter_table_ctx
 #include "sql_select.h"
+#include "sql_tablespace.h"             // check_tablespace_name
 
 #include <algorithm>
 using std::max;
@@ -87,6 +88,7 @@ static int get_partition_id_list_col(partition_info *, uint32 *, longlong *);
 static int get_partition_id_list(partition_info *, uint32 *, longlong *);
 static int get_partition_id_range_col(partition_info *, uint32 *, longlong *);
 static int get_partition_id_range(partition_info *, uint32 *, longlong *);
+static int vers_get_partition_id(partition_info *, uint32 *, longlong *);
 static int get_part_id_charset_func_part(partition_info *, uint32 *, longlong *);
 static int get_part_id_charset_func_subpart(partition_info *, uint32 *);
 static int get_partition_id_hash_nosub(partition_info *, uint32 *, longlong *);
@@ -1295,6 +1297,24 @@ static void set_up_partition_func_pointers(partition_info *part_info)
           part_info->get_subpartition_id= get_partition_id_hash_sub;
       }
     }
+    else if (part_info->part_type == VERSIONING_PARTITION)
+    {
+      part_info->get_part_partition_id= vers_get_partition_id;
+      if (part_info->list_of_subpart_fields)
+      {
+        if (part_info->linear_hash_ind)
+          part_info->get_subpartition_id= get_partition_id_linear_key_sub;
+        else
+          part_info->get_subpartition_id= get_partition_id_key_sub;
+      }
+      else
+      {
+        if (part_info->linear_hash_ind)
+          part_info->get_subpartition_id= get_partition_id_linear_hash_sub;
+        else
+          part_info->get_subpartition_id= get_partition_id_hash_sub;
+      }
+    }
     else /* LIST Partitioning */
     {
       if (part_info->column_list)
@@ -1334,6 +1354,10 @@ static void set_up_partition_func_pointers(partition_info *part_info)
         part_info->get_partition_id= get_partition_id_list_col;
       else
         part_info->get_partition_id= get_partition_id_list;
+    }
+    else if (part_info->part_type == VERSIONING_PARTITION)
+    {
+      part_info->get_partition_id= vers_get_partition_id;
     }
     else /* HASH partitioning */
     {
@@ -1607,6 +1631,7 @@ bool fix_partition_func(THD *thd, TABLE *table,
     }
   }
   DBUG_ASSERT(part_info->part_type != NOT_A_PARTITION);
+  DBUG_ASSERT(part_info->part_type != VERSIONING_PARTITION || part_info->column_list);
   /*
     Partition is defined. We need to verify that partitioning
     function is correct.
@@ -1639,6 +1664,9 @@ bool fix_partition_func(THD *thd, TABLE *table,
     const char *error_str;
     if (part_info->column_list)
     {
+      if (part_info->part_type == VERSIONING_PARTITION &&
+        part_info->vers_setup_expression(thd))
+        goto end;
       List_iterator<const char> it(part_info->part_field_list);
       if (unlikely(handle_list_of_fields(thd, it, table, part_info, FALSE)))
         goto end;
@@ -1660,6 +1688,12 @@ bool fix_partition_func(THD *thd, TABLE *table,
     {
       error_str= "LIST";
       if (unlikely(part_info->check_list_constants(thd)))
+        goto end;
+    }
+    else if (part_info->part_type == VERSIONING_PARTITION)
+    {
+      error_str= "SYSTEM_TIME";
+      if (unlikely(part_info->check_range_constants(thd)))
         goto end;
     }
     else
@@ -2182,6 +2216,20 @@ static int add_partition_values(String *str, partition_info *part_info,
     } while (++i < num_items);
     err+= str->append(')');
   }
+  else if (part_info->part_type == VERSIONING_PARTITION)
+  {
+    switch (p_elem->type())
+    {
+    case partition_element::AS_OF_NOW:
+      err+= str->append(STRING_WITH_LEN(" AS OF NOW"));
+      break;
+    case partition_element::VERSIONING:
+      err+= str->append(STRING_WITH_LEN(" VERSIONING"));
+      break;
+    default:
+      DBUG_ASSERT(0 && "wrong p_elem->type");
+    }
+  }
 end:
   return err;
 }
@@ -2275,13 +2323,32 @@ char *generate_partition_syntax(THD *thd, partition_info *part_info,
       else
         err+= str.append(STRING_WITH_LEN("HASH "));
       break;
+    case VERSIONING_PARTITION:
+      err+= str.append(STRING_WITH_LEN("SYSTEM_TIME "));
+      break;
     default:
       DBUG_ASSERT(0);
       /* We really shouldn't get here, no use in continuing from here */
       my_error(ER_OUT_OF_RESOURCES, MYF(ME_FATALERROR));
       DBUG_RETURN(NULL);
   }
-  if (part_info->part_expr)
+  if (part_info->part_type == VERSIONING_PARTITION)
+  {
+    Vers_part_info *vers_info= part_info->vers_info;
+    DBUG_ASSERT(vers_info);
+    if (vers_info->interval)
+    {
+      err+= str.append(STRING_WITH_LEN("INTERVAL "));
+      err+= str.append_ulonglong(vers_info->interval);
+      err+= str.append(STRING_WITH_LEN(" SECOND "));
+    }
+    if (vers_info->limit)
+    {
+      err+= str.append(STRING_WITH_LEN("LIMIT "));
+      err+= str.append_ulonglong(vers_info->limit);
+    }
+  }
+  else if (part_info->part_expr)
   {
     err+= str.append('(');
     part_info->part_expr->print_for_table_def(&str);
@@ -3082,6 +3149,71 @@ int get_partition_id_range_col(partition_info *part_info,
       (cmp_rec_and_tuple(range_col_array + loc_part_id*num_columns,
                          num_columns) >= 0))
     DBUG_RETURN(HA_ERR_NO_PARTITION_FOUND);
+
+  DBUG_PRINT("exit",("partition: %d", *part_id));
+  DBUG_RETURN(0);
+}
+
+
+int vers_get_partition_id(partition_info *part_info,
+                          uint32 *part_id,
+                          longlong *func_value)
+{
+  DBUG_ENTER("vers_get_partition_id");
+  DBUG_ASSERT(part_info);
+  Field *sys_trx_end= part_info->part_field_array[STAT_TRX_END];
+  DBUG_ASSERT(sys_trx_end);
+  DBUG_ASSERT(part_info->table);
+  Vers_part_info *vers_info= part_info->vers_info;
+  DBUG_ASSERT(vers_info && vers_info->initialized());
+  DBUG_ASSERT(sys_trx_end->table == part_info->table && part_info->table->versioned());
+  DBUG_ASSERT(part_info->table->vers_end_field() == sys_trx_end);
+
+  // new rows have NULL in sys_trx_end
+  if (sys_trx_end->is_max() || sys_trx_end->is_null())
+  {
+    *part_id= vers_info->now_part->id;
+  }
+  else // row is historical
+  {
+    THD *thd= current_thd;
+    TABLE *table= part_info->table;
+
+    switch (thd->lex->sql_command)
+    {
+    case SQLCOM_DELETE:
+    case SQLCOM_DELETE_MULTI:
+    case SQLCOM_UPDATE:
+    case SQLCOM_UPDATE_MULTI:
+    case SQLCOM_ALTER_TABLE:
+      mysql_mutex_lock(&table->s->LOCK_rotation);
+      if (table->s->busy_rotation)
+      {
+        table->s->vers_wait_rotation();
+        part_info->vers_hist_part();
+      }
+      else
+      {
+        table->s->busy_rotation= true;
+        mysql_mutex_unlock(&table->s->LOCK_rotation);
+        // transaction is not yet pushed to VTQ, so we use now-time
+        my_time_t end_ts= sys_trx_end->table->versioned_by_engine() ?
+          my_time_t(0) : sys_trx_end->get_timestamp();
+        if (part_info->vers_limit_exceed() || part_info->vers_interval_exceed(end_ts))
+        {
+          part_info->vers_part_rotate(thd);
+        }
+        mysql_mutex_lock(&table->s->LOCK_rotation);
+        mysql_cond_broadcast(&table->s->COND_rotation);
+        table->s->busy_rotation= false;
+      }
+      mysql_mutex_unlock(&table->s->LOCK_rotation);
+      break;
+    default:
+      ;
+    }
+    *part_id= vers_info->hist_part->id;
+  }
 
   DBUG_PRINT("exit",("partition: %d", *part_id));
   DBUG_RETURN(0);
@@ -4355,10 +4487,6 @@ bool compare_partition_options(HA_CREATE_INFO *table_create_info,
     option_diffs[errors++]= "MAX_ROWS";
   if (part_elem->part_min_rows != table_create_info->min_rows)
     option_diffs[errors++]= "MIN_ROWS";
-  if (part_elem->data_file_name || table_create_info->data_file_name)
-    option_diffs[errors++]= "DATA DIRECTORY";
-  if (part_elem->index_file_name || table_create_info->index_file_name)
-    option_diffs[errors++]= "INDEX DIRECTORY";
 
   for (i= 0; i < errors; i++)
     my_error(ER_PARTITION_EXCHANGE_DIFFERENT_OPTION, MYF(0),
@@ -4658,7 +4786,8 @@ uint prep_alter_part_table(THD *thd, TABLE *table, Alter_info *alter_info,
         must know the number of new partitions in this case.
       */
       if (thd->lex->no_write_to_binlog &&
-          tab_part_info->part_type != HASH_PARTITION)
+          tab_part_info->part_type != HASH_PARTITION &&
+          tab_part_info->part_type != VERSIONING_PARTITION)
       {
         my_error(ER_NO_BINLOG_ERROR, MYF(0));
         goto err;
@@ -4863,6 +4992,21 @@ that are reorganised.
         partition configuration is made.
       */
       {
+        partition_element *now_part= NULL;
+        if (tab_part_info->part_type == VERSIONING_PARTITION)
+        {
+          List_iterator<partition_element> it(tab_part_info->partitions);
+          partition_element *el;
+          while ((el= it++))
+          {
+            if (el->type() == partition_element::AS_OF_NOW)
+            {
+              DBUG_ASSERT(tab_part_info->vers_info && el == tab_part_info->vers_info->now_part);
+              it.remove();
+              now_part= el;
+            }
+          }
+        }
         List_iterator<partition_element> alt_it(alt_part_info->partitions);
         uint part_count= 0;
         do
@@ -4877,6 +5021,15 @@ that are reorganised.
           }
         } while (++part_count < num_new_partitions);
         tab_part_info->num_parts+= num_new_partitions;
+        if (tab_part_info->part_type == VERSIONING_PARTITION)
+        {
+          DBUG_ASSERT(now_part);
+          if (tab_part_info->partitions.push_back(now_part, thd->mem_root))
+          {
+            mem_alloc_error(1);
+            goto err;
+          }
+        }
       }
       /*
         If we specify partitions explicitly we don't use defaults anymore.
@@ -4888,7 +5041,7 @@ that are reorganised.
       {
         if (!alt_part_info->use_default_partitions)
         {
-          DBUG_PRINT("info", ("part_info: 0x%lx", (long) tab_part_info));
+          DBUG_PRINT("info", ("part_info: %p", tab_part_info));
           tab_part_info->use_default_partitions= FALSE;
         }
         tab_part_info->use_default_num_partitions= FALSE;
@@ -4910,16 +5063,28 @@ that are reorganised.
       List_iterator<partition_element> part_it(tab_part_info->partitions);
 
       tab_part_info->is_auto_partitioned= FALSE;
-      if (!(tab_part_info->part_type == RANGE_PARTITION ||
-            tab_part_info->part_type == LIST_PARTITION))
+      if (tab_part_info->part_type == VERSIONING_PARTITION)
       {
-        my_error(ER_ONLY_ON_RANGE_LIST_PARTITION, MYF(0), "DROP");
-        goto err;
+        if (num_parts_dropped >= tab_part_info->num_parts - 1)
+        {
+          DBUG_ASSERT(table && table->s && table->s->table_name.str);
+          my_error(ER_VERS_WRONG_PARTS, MYF(0), table->s->table_name.str);
+          goto err;
+        }
       }
-      if (num_parts_dropped >= tab_part_info->num_parts)
+      else
       {
-        my_error(ER_DROP_LAST_PARTITION, MYF(0));
-        goto err;
+        if (!(tab_part_info->part_type == RANGE_PARTITION ||
+              tab_part_info->part_type == LIST_PARTITION))
+        {
+          my_error(ER_ONLY_ON_RANGE_LIST_PARTITION, MYF(0), "DROP");
+          goto err;
+        }
+        if (num_parts_dropped >= tab_part_info->num_parts)
+        {
+          my_error(ER_DROP_LAST_PARTITION, MYF(0));
+          goto err;
+        }
       }
       do
       {
@@ -4927,6 +5092,13 @@ that are reorganised.
         if (is_name_in_list(part_elem->partition_name,
                             alter_info->partition_names))
         {
+          if (tab_part_info->part_type == VERSIONING_PARTITION &&
+            part_elem->type() == partition_element::AS_OF_NOW)
+          {
+            DBUG_ASSERT(table && table->s && table->s->table_name.str);
+            my_error(ER_VERS_WRONG_PARTS, MYF(0), table->s->table_name.str);
+            goto err;
+          }
           /*
             Set state to indicate that the partition is to be dropped.
           */
@@ -5249,6 +5421,12 @@ the generated partition syntax in a correct manner.
         tab_part_info->use_default_subpartitions= FALSE;
         tab_part_info->use_default_num_subpartitions= FALSE;
       }
+
+      if (alter_info->flags & Alter_info::ALTER_ADD_PARTITION &&
+        tab_part_info->part_type == VERSIONING_PARTITION &&
+        tab_part_info->vers_setup_expression(thd, alt_part_info->partitions.elements))
+        goto err;
+
       if (tab_part_info->check_partition_info(thd, (handlerton**)NULL,
                                               table->file, 0, TRUE))
       {
@@ -6565,7 +6743,8 @@ uint fast_alter_partition_table(THD *thd, TABLE *table,
   lpt->alter_info= alter_info;
   lpt->create_info= create_info;
   lpt->db_options= create_info->table_options;
-  if (create_info->row_type == ROW_TYPE_DYNAMIC)
+  if (create_info->row_type != ROW_TYPE_FIXED &&
+      create_info->row_type != ROW_TYPE_DEFAULT)
     lpt->db_options|= HA_OPTION_PACK_RECORD;
   lpt->table= table;
   lpt->key_info_buffer= 0;
@@ -6919,6 +7098,39 @@ err:
 }
 #endif
 
+
+/*
+  Prepare for calling val_int on partition function by setting fields to
+  point to the record where the values of the PF-fields are stored.
+
+  SYNOPSIS
+    set_field_ptr()
+    ptr                 Array of fields to change ptr
+    new_buf             New record pointer
+    old_buf             Old record pointer
+
+  DESCRIPTION
+    Set ptr in field objects of field array to refer to new_buf record
+    instead of previously old_buf. Used before calling val_int and after
+    it is used to restore pointers to table->record[0].
+    This routine is placed outside of partition code since it can be useful
+    also for other programs.
+*/
+
+void set_field_ptr(Field **ptr, const uchar *new_buf,
+                   const uchar *old_buf)
+{
+  my_ptrdiff_t diff= (new_buf - old_buf);
+  DBUG_ENTER("set_field_ptr");
+
+  do
+  {
+    (*ptr)->move_field_offset(diff);
+  } while (*(++ptr));
+  DBUG_VOID_RETURN;
+}
+
+
 /*
   Prepare for calling val_int on partition function by setting fields to
   point to the record where the values of the PF-fields are stored.
@@ -6954,6 +7166,61 @@ void set_key_field_ptr(KEY *key_info, const uchar *new_buf,
     key_part++;
   } while (++i < key_parts);
   DBUG_VOID_RETURN;
+}
+
+
+/**
+  Append all fields in read_set to string
+
+  @param[in,out] str   String to append to.
+  @param[in]     row   Row to append.
+  @param[in]     table Table containing read_set and fields for the row.
+*/
+void append_row_to_str(String &str, const uchar *row, TABLE *table)
+{
+  Field **fields, **field_ptr;
+  const uchar *rec;
+  uint num_fields= bitmap_bits_set(table->read_set);
+  uint curr_field_index= 0;
+  bool is_rec0= !row || row == table->record[0];
+  if (!row)
+    rec= table->record[0];
+  else
+    rec= row;
+
+  /* Create a new array of all read fields. */
+  fields= (Field**) my_malloc(sizeof(void*) * (num_fields + 1),
+                              MYF(0));
+  if (!fields)
+    return;
+  fields[num_fields]= NULL;
+  for (field_ptr= table->field;
+       *field_ptr;
+       field_ptr++)
+  {
+    if (!bitmap_is_set(table->read_set, (*field_ptr)->field_index))
+      continue;
+    fields[curr_field_index++]= *field_ptr;
+  }
+
+
+  if (!is_rec0)
+    set_field_ptr(fields, rec, table->record[0]);
+
+  for (field_ptr= fields;
+       *field_ptr;
+       field_ptr++)
+  {
+    Field *field= *field_ptr;
+    str.append(" ");
+    str.append(field->field_name);
+    str.append(":");
+    field_unpack(&str, field, rec, 0, false);
+  }
+
+  if (!is_rec0)
+    set_field_ptr(fields, table->record[0], rec);
+  my_free(fields);
 }
 
 
@@ -7103,6 +7370,7 @@ static void set_up_range_analysis_info(partition_info *part_info)
   switch (part_info->part_type) {
   case RANGE_PARTITION:
   case LIST_PARTITION:
+  case VERSIONING_PARTITION:
     if (!part_info->column_list)
     {
       if (part_info->part_expr->get_monotonicity_info() != NON_MONOTONIC)
@@ -7403,7 +7671,7 @@ int get_part_iter_for_interval_cols_via_map(partition_info *part_info,
   uint full_length= 0;
   DBUG_ENTER("get_part_iter_for_interval_cols_via_map");
 
-  if (part_info->part_type == RANGE_PARTITION)
+  if (part_info->part_type == RANGE_PARTITION || part_info->part_type == VERSIONING_PARTITION)
   {
     get_col_endpoint= get_partition_id_cols_range_for_endpoint;
     part_iter->get_next= get_next_partition_id_range;
@@ -7449,7 +7717,7 @@ int get_part_iter_for_interval_cols_via_map(partition_info *part_info,
   }
   if (flags & NO_MAX_RANGE)
   {
-    if (part_info->part_type == RANGE_PARTITION)
+    if (part_info->part_type == RANGE_PARTITION || part_info->part_type == VERSIONING_PARTITION)
       part_iter->part_nums.end= part_info->num_parts;
     else /* LIST_PARTITION */
     {
@@ -8077,6 +8345,7 @@ int create_partition_name(char *out, size_t outlen, const char *in1,
   }
   else
     transl_part= in2;
+
   if (name_variant == NORMAL_PART_NAME)
     end= strxnmov(out, outlen-1, in1, "#P#", transl_part, NullS);
   else if (name_variant == TEMP_PART_NAME)
@@ -8091,25 +8360,19 @@ int create_partition_name(char *out, size_t outlen, const char *in1,
   return 0;
 }
 
+/**
+  Create subpartition name. This method is used to calculate the
+  subpartition name, service routine to the del_ren_cre_table method.
+  The output buffer size should be FN_REFLEN + 1(terminating '\0').
 
-/*
-  Create subpartition name
+    @param [out] out          Created partition name string
+    @param in1                First part
+    @param in2                Second part
+    @param in3                Third part
+    @param name_variant       Normal, temporary or renamed partition name
 
-  SYNOPSIS
-    create_subpartition_name()
-    out:out                   The buffer for the created partition name string
-                              must be *at least* of FN_REFLEN+1 bytes
-    in1                       First part
-    in2                       Second part
-    in3                       Third part
-    name_variant              Normal, temporary or renamed partition name
-
-  RETURN VALUE
-    0 if ok, error if name too long
-
-  DESCRIPTION
-  This method is used to calculate the subpartition name, service routine to
-  the del_ren_cre_table method.
+    @retval true              Error.
+    @retval false             Success.
 */
 
 int create_subpartition_name(char *out, size_t outlen,
@@ -8121,6 +8384,7 @@ int create_subpartition_name(char *out, size_t outlen,
 
   tablename_to_filename(in2, transl_part_name, FN_REFLEN);
   tablename_to_filename(in3, transl_subpart_name, FN_REFLEN);
+
   if (name_variant == NORMAL_PART_NAME)
     end= strxnmov(out, outlen-1, in1, "#P#", transl_part_name,
                   "#SP#", transl_subpart_name, NullS);
@@ -8149,5 +8413,53 @@ uint get_partition_field_store_length(Field *field)
   if (field->real_type() == MYSQL_TYPE_VARCHAR)
     store_length+= HA_KEY_BLOB_LENGTH;
   return store_length;
+}
+
+// FIXME: duplicate of ha_partition::set_up_table_before_create
+bool set_up_table_before_create(THD *thd,
+                                TABLE_SHARE *share,
+                                const char *partition_name_with_path,
+                                HA_CREATE_INFO *info,
+                                partition_element *part_elem)
+{
+  bool error= false;
+  const char *partition_name;
+  DBUG_ENTER("set_up_table_before_create");
+
+  DBUG_ASSERT(part_elem);
+
+  if (!part_elem)
+    DBUG_RETURN(true);
+  share->max_rows= part_elem->part_max_rows;
+  share->min_rows= part_elem->part_min_rows;
+  partition_name= strrchr(partition_name_with_path, FN_LIBCHAR);
+  if ((part_elem->index_file_name &&
+      (error= append_file_to_dir(thd,
+                                 const_cast<const char**>(&part_elem->index_file_name),
+                                 partition_name+1))) ||
+      (part_elem->data_file_name &&
+      (error= append_file_to_dir(thd,
+                                 const_cast<const char**>(&part_elem->data_file_name),
+                                 partition_name+1))))
+  {
+    DBUG_RETURN(error);
+  }
+  if (part_elem->index_file_name != NULL)
+  {
+    info->index_file_name= part_elem->index_file_name;
+  }
+  if (part_elem->data_file_name != NULL)
+  {
+    info->data_file_name= part_elem->data_file_name;
+  }
+  if (part_elem->tablespace_name != NULL)
+  {
+    if (check_tablespace_name(part_elem->tablespace_name) != IDENT_NAME_OK)
+    {
+	    DBUG_RETURN(true);
+    }
+    info->tablespace= part_elem->tablespace_name;
+  }
+  DBUG_RETURN(error);
 }
 #endif

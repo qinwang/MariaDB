@@ -40,7 +40,7 @@
 */
 
 Item::Type
-sp_map_item_type(enum enum_field_types type);
+sp_map_item_type(const Type_handler *handler);
 
 uint
 sp_get_flags_for_command(LEX *lex);
@@ -209,13 +209,17 @@ public:
   ulong sp_cache_version() const { return m_sp_cache_version; }
 
   /** Set the value of the SP cache version.  */
-  void set_sp_cache_version(ulong version_arg)
+  void set_sp_cache_version(ulong version_arg) const
   {
     m_sp_cache_version= version_arg;
   }
 
-  sp_rcontext *rcontext_create(THD *thd, Field *retval);
-
+  sp_rcontext *rcontext_create(THD *thd, Field *retval, List<Item> *args);
+  sp_rcontext *rcontext_create(THD *thd, Field *retval,
+                               Item **args, uint arg_count);
+  sp_rcontext *rcontext_create(THD *thd, Field *retval,
+                               Row_definition_list *list,
+                               bool switch_security_ctx);
 private:
   /**
     Version of the stored routine cache at the moment when the
@@ -227,7 +231,7 @@ private:
     is obsolete and should not be used --
     sp_cache_flush_obsolete() will purge it.
   */
-  ulong m_sp_cache_version;
+  mutable ulong m_sp_cache_version;
   Stored_program_creation_ctx *m_creation_ctx;
   /**
     Boolean combination of (1<<flag), where flag is a member of

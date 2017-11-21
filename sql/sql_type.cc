@@ -32,6 +32,7 @@ Type_handler_long        type_handler_long;
 Type_handler_int24       type_handler_int24;
 Type_handler_longlong    type_handler_longlong;
 Type_handler_longlong    type_handler_ulonglong; // Only used for CAST() for now
+Type_handler_vers_trx_id type_handler_vers_trx_id;
 Type_handler_float       type_handler_float;
 Type_handler_double      type_handler_double;
 Type_handler_bit         type_handler_bit;
@@ -160,7 +161,7 @@ void Type_std_attributes::count_decimal_length(Item **item, uint nitems)
   }
   int precision= MY_MIN(max_int_part + decimals, DECIMAL_MAX_PRECISION);
   fix_char_length(my_decimal_precision_to_length_no_truncation(precision,
-                                                               decimals,
+                                                               (uint8) decimals,
                                                                unsigned_flag));
 }
 
@@ -658,7 +659,9 @@ Type_handler_hybrid_field_type::aggregate_for_comparison(const Type_handler *h)
 
   Item_result a= cmp_type();
   Item_result b= h->cmp_type();
-  if (a == STRING_RESULT && b == STRING_RESULT)
+  if (m_vers_trx_id && (a == STRING_RESULT || b == STRING_RESULT))
+    m_type_handler= &type_handler_datetime;
+  else if (a == STRING_RESULT && b == STRING_RESULT)
     m_type_handler= &type_handler_long_blob;
   else if (a == INT_RESULT && b == INT_RESULT)
     m_type_handler= &type_handler_longlong;
@@ -998,7 +1001,8 @@ Type_handler::make_num_distinct_aggregator_field(MEM_ROOT *mem_root,
          Field_double(NULL, item->max_length,
                       (uchar *) (item->maybe_null ? "" : 0),
                       item->maybe_null ? 1 : 0, Field::NONE,
-                      &item->name, item->decimals, 0, item->unsigned_flag);
+                      &item->name, (uint8) item->decimals,
+                      0, item->unsigned_flag);
 }
 
 
@@ -1011,7 +1015,8 @@ Type_handler_float::make_num_distinct_aggregator_field(MEM_ROOT *mem_root,
          Field_float(NULL, item->max_length,
                      (uchar *) (item->maybe_null ? "" : 0),
                      item->maybe_null ? 1 : 0, Field::NONE,
-                     &item->name, item->decimals, 0, item->unsigned_flag);
+                     &item->name, (uint8) item->decimals,
+                     0, item->unsigned_flag);
 }
 
 
@@ -1026,7 +1031,8 @@ Type_handler_decimal_result::make_num_distinct_aggregator_field(
          Field_new_decimal(NULL, item->max_length,
                            (uchar *) (item->maybe_null ? "" : 0),
                            item->maybe_null ? 1 : 0, Field::NONE,
-                           &item->name, item->decimals, 0, item->unsigned_flag);
+                           &item->name, (uint8) item->decimals,
+                           0, item->unsigned_flag);
 }
 
 
@@ -1143,7 +1149,7 @@ Field *Type_handler_newdecimal::make_conversion_table_field(TABLE *table,
                                                             const
 {
   int  precision= metadata >> 8;
-  uint decimals= metadata & 0x00ff;
+  uint8 decimals= metadata & 0x00ff;
   uint32 max_length= my_decimal_precision_to_length(precision, decimals, false);
   DBUG_ASSERT(decimals <= DECIMAL_MAX_SCALE);
   return new (table->in_use->mem_root)
@@ -1622,6 +1628,17 @@ bool Type_handler_null::
   return false;
 }
 
+bool Type_handler_row::
+       Column_definition_prepare_stage1(THD *thd,
+                                        MEM_ROOT *mem_root,
+                                        Column_definition *def,
+                                        handler *file,
+                                        ulonglong table_flags) const
+{
+  def->create_length_to_internal_length_null();
+  return false;
+}
+
 bool Type_handler_newdecimal::
        Column_definition_prepare_stage1(THD *thd,
                                         MEM_ROOT *mem_root,
@@ -2049,6 +2066,19 @@ Field *Type_handler_longlong::make_table_field(const LEX_CSTRING *name,
 }
 
 
+Field *Type_handler_vers_trx_id::make_table_field(const LEX_CSTRING *name,
+                                               const Record_addr &addr,
+                                               const Type_all_attributes &attr,
+                                               TABLE *table) const
+{
+  return new (table->in_use->mem_root)
+         Field_vers_trx_id(addr.ptr, attr.max_char_length(),
+                        addr.null_ptr, addr.null_bit,
+                        Field::NONE, name,
+                        0/*zerofill*/, attr.unsigned_flag);
+}
+
+
 Field *Type_handler_float::make_table_field(const LEX_CSTRING *name,
                                             const Record_addr &addr,
                                             const Type_all_attributes &attr,
@@ -2058,7 +2088,7 @@ Field *Type_handler_float::make_table_field(const LEX_CSTRING *name,
          Field_float(addr.ptr, attr.max_char_length(),
                      addr.null_ptr, addr.null_bit,
                      Field::NONE, name,
-                     attr.decimals, 0/*zerofill*/, attr.unsigned_flag);
+                     (uint8) attr.decimals, 0/*zerofill*/, attr.unsigned_flag);
 }
 
 
@@ -2071,7 +2101,7 @@ Field *Type_handler_double::make_table_field(const LEX_CSTRING *name,
          Field_double(addr.ptr, attr.max_char_length(),
                       addr.null_ptr, addr.null_bit,
                       Field::NONE, name,
-                      attr.decimals, 0/*zerofill*/, attr.unsigned_flag);
+                      (uint8) attr.decimals, 0/*zerofill*/, attr.unsigned_flag);
 }
 
 
@@ -2091,7 +2121,7 @@ Type_handler_olddecimal::make_table_field(const LEX_CSTRING *name,
   DBUG_ASSERT(0);
   return new (table->in_use->mem_root)
          Field_decimal(addr.ptr, attr.max_length, addr.null_ptr, addr.null_bit,
-                       Field::NONE, name, attr.decimals,
+                       Field::NONE, name, (uint8) attr.decimals,
                        0/*zerofill*/,attr.unsigned_flag);
 }
 
@@ -2102,8 +2132,8 @@ Type_handler_newdecimal::make_table_field(const LEX_CSTRING *name,
                                           const Type_all_attributes &attr,
                                           TABLE *table) const
 {
-  uint8 dec= attr.decimals;
-  uint8 intg= attr.decimal_precision() - dec;
+  uint8 dec= (uint8) attr.decimals;
+  uint8 intg= (uint8) (attr.decimal_precision() - dec);
   uint32 len= attr.max_char_length();
 
   /*
@@ -2420,6 +2450,31 @@ Field *Type_handler_set::make_table_field(const LEX_CSTRING *name,
 
 /*************************************************************************/
 
+/*
+   If length is not specified for a varchar parameter, set length to the
+   maximum length of the actual argument. Goals are:
+   - avoid to allocate too much unused memory for m_var_table
+   - allow length check inside the callee rather than during copy of
+     returned values in output variables.
+   - allow varchar parameter size greater than 4000
+   Default length has been stored in "decimal" member during parse.
+*/
+bool Type_handler_varchar::adjust_spparam_type(Spvar_definition *def,
+                                               Item *from) const
+{
+  if (def->decimals)
+  {
+    uint def_max_char_length= MAX_FIELD_VARCHARLENGTH / def->charset->mbmaxlen;
+    uint arg_max_length= from->max_char_length();
+    set_if_smaller(arg_max_length, def_max_char_length);
+    def->length= arg_max_length > 0 ? arg_max_length : def->decimals;
+    def->create_length_to_internal_length_string();
+  }
+  return false;
+}
+
+/*************************************************************************/
+
 uint32 Type_handler_decimal_result::max_display_length(const Item *item) const
 {
   return item->max_length;
@@ -2659,9 +2714,27 @@ Type_handler_string_result::Item_get_cache(THD *thd, const Item *item) const
 }
 
 Item_cache *
-Type_handler_temporal_result::Item_get_cache(THD *thd, const Item *item) const
+Type_handler_timestamp_common::Item_get_cache(THD *thd, const Item *item) const
 {
-  return new (thd->mem_root) Item_cache_temporal(thd, item->type_handler());
+  return new (thd->mem_root) Item_cache_datetime(thd);
+}
+
+Item_cache *
+Type_handler_datetime_common::Item_get_cache(THD *thd, const Item *item) const
+{
+  return new (thd->mem_root) Item_cache_datetime(thd);
+}
+
+Item_cache *
+Type_handler_time_common::Item_get_cache(THD *thd, const Item *item) const
+{
+  return new (thd->mem_root) Item_cache_time(thd);
+}
+
+Item_cache *
+Type_handler_date_common::Item_get_cache(THD *thd, const Item *item) const
+{
+  return new (thd->mem_root) Item_cache_date(thd);
 }
 
 /*************************************************************************/
@@ -3503,7 +3576,7 @@ bool Type_handler_numeric::
 bool Type_handler_temporal_result::
        Item_func_between_fix_length_and_dec(Item_func_between *func) const
 {
-  return func->fix_length_and_dec_numeric(current_thd);
+  return func->fix_length_and_dec_temporal(current_thd);
 }
 
 bool Type_handler_string_result::
@@ -5231,7 +5304,7 @@ Item *Type_handler_time_common::
   longlong value= item->val_time_packed();
   if (item->null_value)
     return new (thd->mem_root) Item_null(thd, item->name.str);
-  cache= new (thd->mem_root) Item_cache_temporal(thd, this);
+  cache= new (thd->mem_root) Item_cache_time(thd);
   if (cache)
     cache->store_packed(value, item);
   return cache;
@@ -5245,7 +5318,7 @@ Item *Type_handler_temporal_with_date::
   longlong value= item->val_datetime_packed();
   if (item->null_value)
     return new (thd->mem_root) Item_null(thd, item->name.str);
-  cache= new (thd->mem_root) Item_cache_temporal(thd, this);
+  cache= new (thd->mem_root) Item_cache_datetime(thd);
   if (cache)
     cache->store_packed(value, item);
   return cache;
@@ -5313,7 +5386,7 @@ static void wrong_precision_error(uint errcode, Item *a,
 */
 
 bool get_length_and_scale(ulonglong length, ulonglong decimals,
-                          ulong *out_length, uint *out_decimals,
+                          uint *out_length, uint *out_decimals,
                           uint max_precision, uint max_scale,
                           Item *a)
 {
@@ -5330,7 +5403,7 @@ bool get_length_and_scale(ulonglong length, ulonglong decimals,
 
   *out_decimals=  (uint) decimals;
   my_decimal_trim(&length, out_decimals);
-  *out_length=  (ulong) length;
+  *out_length=  (uint) length;
   
   if (*out_length < *out_decimals)
   {
@@ -5396,8 +5469,7 @@ Item *Type_handler_decimal_result::
         create_typecast_item(THD *thd, Item *item,
                              const Type_cast_attributes &attr) const
 {
-  ulong len;
-  uint dec;
+  uint len, dec;
   if (get_length_and_scale(attr.length(), attr.decimals(), &len, &dec,
                            DECIMAL_MAX_PRECISION, DECIMAL_MAX_SCALE, item))
     return NULL;
@@ -5409,8 +5481,7 @@ Item *Type_handler_double::
         create_typecast_item(THD *thd, Item *item,
                              const Type_cast_attributes &attr) const
 {
-  ulong len;
-  uint dec;
+  uint len, dec;
   if (!attr.length_specified())
     return new (thd->mem_root) Item_double_typecast(thd, item,
                                                     DBL_DIG + 7,

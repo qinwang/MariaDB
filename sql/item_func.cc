@@ -218,6 +218,58 @@ bool Item_func::check_argument_types_can_return_real(uint start,
 }
 
 
+bool Item_func::check_argument_types_can_return_text(uint start,
+                                                     uint end) const
+{
+  for (uint i= start; i < end ; i++)
+  {
+    DBUG_ASSERT(i < arg_count);
+    if (args[i]->check_type_can_return_text(func_name()))
+      return true;
+  }
+  return false;
+}
+
+
+bool Item_func::check_argument_types_can_return_str(uint start,
+                                                    uint end) const
+{
+  for (uint i= start; i < end ; i++)
+  {
+    DBUG_ASSERT(i < arg_count);
+    if (args[i]->check_type_can_return_str(func_name()))
+      return true;
+  }
+  return false;
+}
+
+
+bool Item_func::check_argument_types_can_return_date(uint start,
+                                                     uint end) const
+{
+  for (uint i= start; i < end ; i++)
+  {
+    DBUG_ASSERT(i < arg_count);
+    if (args[i]->check_type_can_return_date(func_name()))
+      return true;
+  }
+  return false;
+}
+
+
+bool Item_func::check_argument_types_can_return_time(uint start,
+                                                     uint end) const
+{
+  for (uint i= start; i < end ; i++)
+  {
+    DBUG_ASSERT(i < arg_count);
+    if (args[i]->check_type_can_return_time(func_name()))
+      return true;
+  }
+  return false;
+}
+
+
 bool Item_func::check_argument_types_scalar(uint start, uint end) const
 {
   for (uint i= start; i < end; i++)
@@ -354,7 +406,8 @@ Item_func::eval_not_null_tables(void *opt_arg)
 }
 
 
-void Item_func::fix_after_pullout(st_select_lex *new_parent, Item **ref)
+void Item_func::fix_after_pullout(st_select_lex *new_parent, Item **ref,
+                                  bool merge)
 {
   Item **arg,**arg_end;
 
@@ -365,7 +418,7 @@ void Item_func::fix_after_pullout(st_select_lex *new_parent, Item **ref)
   {
     for (arg=args, arg_end=args+arg_count; arg != arg_end ; arg++)
     {
-      (*arg)->fix_after_pullout(new_parent, arg);
+      (*arg)->fix_after_pullout(new_parent, arg, merge);
       Item *item= *arg;
 
       used_tables_and_const_cache_join(item);
@@ -560,7 +613,8 @@ void Item_func::print_op(String *str, enum_query_type query_type)
     str->append(func_name());
     str->append(' ');
   }
-  args[arg_count-1]->print_parenthesised(str, query_type, precedence());
+  args[arg_count-1]->print_parenthesised(str, query_type,
+                                         (enum precedence)(precedence() + 1));
 }
 
 

@@ -77,6 +77,11 @@
 #define GET_HA_ROWS GET_ULONG
 #endif
 
+// Disable warning caused by SESSION_VAR() macro
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
+#endif
+
 /*
   special assert for sysvars. Tells the name of the variable,
   and fails even in non-debug builds.
@@ -234,25 +239,25 @@ typedef Sys_var_integer<long, GET_LONG, SHOW_SLONG> Sys_var_long;
 
 template<> uchar *Sys_var_int::default_value_ptr(THD *thd)
 {
-  thd->sys_var_tmp.int_value= option.def_value;
+  thd->sys_var_tmp.int_value= (int)option.def_value;
   return (uchar*) &thd->sys_var_tmp.int_value;
 }
 
 template<> uchar *Sys_var_uint::default_value_ptr(THD *thd)
 {
-  thd->sys_var_tmp.uint_value= option.def_value;
+  thd->sys_var_tmp.uint_value= (uint)option.def_value;
   return (uchar*) &thd->sys_var_tmp.uint_value;
 }
 
 template<> uchar *Sys_var_long::default_value_ptr(THD *thd)
 {
-  thd->sys_var_tmp.long_value= option.def_value;
+  thd->sys_var_tmp.long_value= (long)option.def_value;
   return (uchar*) &thd->sys_var_tmp.long_value;
 }
 
 template<> uchar *Sys_var_ulong::default_value_ptr(THD *thd)
 {
-  thd->sys_var_tmp.ulong_value= option.def_value;
+  thd->sys_var_tmp.ulong_value= (ulong)option.def_value;
   return (uchar*) &thd->sys_var_tmp.ulong_value;
 }
 
@@ -369,7 +374,7 @@ public:
   uchar *global_value_ptr(THD *thd, const LEX_CSTRING *base)
   { return valptr(thd, global_var(ulong)); }
   uchar *default_value_ptr(THD *thd)
-  { return valptr(thd, option.def_value); }
+  { return valptr(thd, (ulong)option.def_value); }
 };
 
 /**
@@ -416,7 +421,7 @@ public:
   { var->save_result.ulonglong_value= option.def_value; }
   uchar *default_value_ptr(THD *thd)
   {
-    thd->sys_var_tmp.my_bool_value= option.def_value;
+    thd->sys_var_tmp.my_bool_value=(my_bool) option.def_value;
     return (uchar*) &thd->sys_var_tmp.my_bool_value;
   }
 };
@@ -1767,7 +1772,7 @@ public:
     option.var_type|= GET_BIT;
     reverse_semantics= my_count_bits(bitmask_arg) > 1;
     bitmask= reverse_semantics ? ~bitmask_arg : bitmask_arg;
-    option.block_size= reverse_semantics ? -(long) bitmask : bitmask;
+    option.block_size= reverse_semantics ? -(long) bitmask : (long)bitmask;
     set(global_var_ptr(), def_val);
     SYSVAR_ASSERT(def_val < 2);
     SYSVAR_ASSERT(size == sizeof(ulonglong));
@@ -2596,4 +2601,88 @@ public:
   }
   bool global_update(THD *thd, set_var *var);
   uchar *global_value_ptr(THD *thd, const LEX_CSTRING *base);
+};
+
+
+class Sys_var_vers_asof: public Sys_var_enum
+{
+public:
+  static const char *asof_keywords[];
+
+public:
+  Sys_var_vers_asof(const char *name_arg,
+          const char *comment, int flag_args, ptrdiff_t off, size_t size,
+          CMD_LINE getopt, const char *values[],
+          uint def_val)
+    : Sys_var_enum(name_arg, comment, flag_args, off, size,
+                   getopt, values, def_val)
+  {
+    // setval() accepts string rather enum
+    option.var_type= GET_STR;
+  }
+  virtual bool do_check(THD *thd, set_var *var)
+  {
+    if (!Sys_var_enum::do_check(thd, var))
+      return false;
+    MYSQL_TIME ltime;
+    bool res= var->value->get_date(&ltime, 0);
+    if (!res)
+    {
+      var->save_result.ulonglong_value= FOR_SYSTEM_TIME_AS_OF;
+    }
+    return res;
+  }
+
+private:
+  bool update(set_var *var, st_vers_asof_timestamp &out)
+  {
+    bool res= false;
+    out.type= static_cast<enum_var_type>(var->save_result.ulonglong_value);
+    if (out.type == FOR_SYSTEM_TIME_AS_OF)
+    {
+      res= var->value->get_date(&out.ltime, 0);
+    }
+    return res;
+  }
+
+public:
+  virtual bool global_update(THD *thd, set_var *var)
+  {
+    return update(var, global_var(st_vers_asof_timestamp));
+  }
+  virtual bool session_update(THD *thd, set_var *var)
+  {
+    return update(var, session_var(thd, st_vers_asof_timestamp));
+  }
+
+private:
+  uchar *value_ptr(THD *thd, st_vers_asof_timestamp &val)
+  {
+    switch (val.type)
+    {
+    case FOR_SYSTEM_TIME_UNSPECIFIED:
+    case FOR_SYSTEM_TIME_ALL:
+      return (uchar*) thd->strdup(asof_keywords[val.type]);
+    case FOR_SYSTEM_TIME_AS_OF:
+    {
+      uchar *buf= (uchar*) thd->alloc(MAX_DATE_STRING_REP_LENGTH);
+      if (buf &&!my_datetime_to_str(&val.ltime, (char*) buf, 6))
+      {
+        my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), "versioning_asof_timestamp", "NULL (wrong datetime)");
+        return (uchar*) thd->strdup("Error: wrong datetime");
+      }
+      return buf;
+    }
+    default:
+      break;
+    }
+    my_error(ER_WRONG_VALUE_FOR_VAR, MYF(0), "versioning_asof_timestamp", "NULL (wrong range type)");
+    return (uchar*) thd->strdup("Error: wrong range type");
+  }
+
+public:
+  virtual uchar *session_value_ptr(THD *thd, const LEX_CSTRING *base)
+  { return value_ptr(thd, session_var(thd, st_vers_asof_timestamp)); }
+  virtual uchar *global_value_ptr(THD *thd, const LEX_CSTRING *base)
+  { return value_ptr(thd, global_var(st_vers_asof_timestamp)); }
 };

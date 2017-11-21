@@ -109,6 +109,13 @@ static ulonglong binlog_status_group_commit_trigger_timeout;
 static char binlog_snapshot_file[FN_REFLEN];
 static ulonglong binlog_snapshot_position;
 
+static const char *fatal_log_error=
+  "Could not use %s for logging (error %d). "
+  "Turning logging off for the whole duration of the MariaDB server process. "
+  "To turn it on again: fix the cause, shutdown the MariaDB server and "
+  "restart it.";
+
+
 static SHOW_VAR binlog_status_vars_detail[]=
 {
   {"commits",
@@ -1372,7 +1379,7 @@ bool LOGGER::slow_log_print(THD *thd, const char *query, uint query_length,
     }
 
     /* fill in user_host value: the format is "%s[%s] @ %s [%s]" */
-    user_host_len= (strxnmov(user_host_buff, MAX_USER_HOST_SIZE,
+    user_host_len= (uint)(strxnmov(user_host_buff, MAX_USER_HOST_SIZE,
                              sctx->priv_user, "[",
                              sctx->user ? sctx->user : (thd->slave_thread ? "SQL_SLAVE" : ""), "] @ ",
                              sctx->host ? sctx->host : "", " [",
@@ -2047,7 +2054,9 @@ static bool trans_cannot_safely_rollback(THD *thd, bool all)
 static int binlog_commit(handlerton *hton, THD *thd, bool all)
 {
   int error= 0;
+  PSI_stage_info org_stage;
   DBUG_ENTER("binlog_commit");
+
   binlog_cache_mngr *const cache_mngr=
     (binlog_cache_mngr*) thd_get_ha_data(thd, binlog_hton);
 
@@ -2064,6 +2073,9 @@ static int binlog_commit(handlerton *hton, THD *thd, bool all)
               YESNO(thd->transaction.all.modified_non_trans_table),
               YESNO(thd->transaction.stmt.modified_non_trans_table)));
 
+
+  thd->backup_stage(&org_stage);
+  THD_STAGE_INFO(thd, stage_binlog_write);
   if (!cache_mngr->stmt_cache.empty())
   {
     error= binlog_commit_flush_stmt_cache(thd, all, cache_mngr);
@@ -2075,6 +2087,7 @@ static int binlog_commit(handlerton *hton, THD *thd, bool all)
       we're here because cache_log was flushed in MYSQL_BIN_LOG::log_xid()
     */
     cache_mngr->reset(false, true);
+    THD_STAGE_INFO(thd, org_stage);
     DBUG_RETURN(error);
   }
 
@@ -2093,6 +2106,7 @@ static int binlog_commit(handlerton *hton, THD *thd, bool all)
   if (!all)
     cache_mngr->trx_cache.set_prev_position(MY_OFF_T_UNDEF);
 
+  THD_STAGE_INFO(thd, org_stage);
   DBUG_RETURN(error);
 }
 
@@ -2737,10 +2751,7 @@ bool MYSQL_LOG::open(
   DBUG_RETURN(0);
 
 err:
-  sql_print_error("Could not use %s for logging (error %d). \
-Turning logging off for the whole duration of the MySQL server process. \
-To turn it on again: fix the cause, \
-shutdown the MySQL server and restart it.", name, errno);
+  sql_print_error(fatal_log_error, name, errno);
   if (file >= 0)
     mysql_file_close(file, MYF(0));
   end_io_cache(&log_file);
@@ -3098,7 +3109,7 @@ bool MYSQL_QUERY_LOG::write(THD *thd, time_t current_time,
 
     if (thd->spcont)
       if (my_b_printf(&log_file, "# Stored_routine: %s\n",
-                      ErrConvDQName(thd->spcont->sp).ptr()) == (uint) -1)
+                      ErrConvDQName(thd->spcont->m_sp).ptr()) == (uint) -1)
         tmp_errno= errno;
 
      if ((thd->variables.log_slow_verbosity & LOG_SLOW_VERBOSITY_QUERY_PLAN) &&
@@ -3848,15 +3859,13 @@ bool MYSQL_BIN_LOG::open(const char *log_name,
   DBUG_RETURN(0);
 
 err:
+  int tmp_errno= errno;
 #ifdef HAVE_REPLICATION
   if (is_inited_purge_index_file())
     purge_index_entry(NULL, NULL, need_mutex);
   close_purge_index_file();
 #endif
-  sql_print_error("Could not use %s for logging (error %d). \
-Turning logging off for the whole duration of the MySQL server process. \
-To turn it on again: fix the cause, \
-shutdown the MySQL server and restart it.", name, errno);
+  sql_print_error(fatal_log_error, name, tmp_errno);
   if (new_xid_list_entry)
     my_free(new_xid_list_entry);
   if (file >= 0)
@@ -5283,12 +5292,7 @@ end:
        - ...
     */
     close(LOG_CLOSE_INDEX);
-    sql_print_error("Could not open %s for logging (error %d). "
-                     "Turning logging off for the whole duration "
-                     "of the MySQL server process. To turn it on "
-                     "again: fix the cause, shutdown the MySQL "
-                     "server and restart it.", 
-                     new_name_ptr, errno);
+    sql_print_error(fatal_log_error, new_name_ptr, errno);
   }
 
   mysql_mutex_unlock(&LOCK_index);
@@ -5364,7 +5368,7 @@ bool MYSQL_BIN_LOG::write_event_buffer(uchar* buf, uint len)
     if (!ebuf)
       goto err;
 
-    crypto.set_iv(iv, my_b_append_tell(&log_file));
+    crypto.set_iv(iv, (uint32)my_b_append_tell(&log_file));
 
     /*
       we want to encrypt everything, excluding the event length:
@@ -5591,9 +5595,9 @@ binlog_cache_mngr *THD::binlog_setup_trx_data()
   cache_mngr= (binlog_cache_mngr*) my_malloc(sizeof(binlog_cache_mngr), MYF(MY_ZEROFILL));
   if (!cache_mngr ||
       open_cached_file(&cache_mngr->stmt_cache.cache_log, mysql_tmpdir,
-                       LOG_PREFIX, binlog_stmt_cache_size, MYF(MY_WME)) ||
+                       LOG_PREFIX, (size_t)binlog_stmt_cache_size, MYF(MY_WME)) ||
       open_cached_file(&cache_mngr->trx_cache.cache_log, mysql_tmpdir,
-                       LOG_PREFIX, binlog_cache_size, MYF(MY_WME)))
+                       LOG_PREFIX, (size_t)binlog_cache_size, MYF(MY_WME)))
   {
     my_free(cache_mngr);
     DBUG_RETURN(0);                      // Didn't manage to set it up
@@ -5722,8 +5726,8 @@ int THD::binlog_write_table_map(TABLE *table, bool is_transactional,
 {
   int error;
   DBUG_ENTER("THD::binlog_write_table_map");
-  DBUG_PRINT("enter", ("table: 0x%lx  (%s: #%lu)",
-                       (long) table, table->s->table_name.str,
+  DBUG_PRINT("enter", ("table: %p  (%s: #%lu)",
+                       table, table->s->table_name.str,
                        table->s->table_map_id));
 
   /* Ensure that all events in a GTID group are in the same cache */
@@ -5872,7 +5876,7 @@ MYSQL_BIN_LOG::flush_and_set_pending_rows_event(THD *thd,
 {
   DBUG_ENTER("MYSQL_BIN_LOG::flush_and_set_pending_rows_event(event)");
   DBUG_ASSERT(WSREP_EMULATE_BINLOG(thd) || mysql_bin_log.is_open());
-  DBUG_PRINT("enter", ("event: 0x%lx", (long) event));
+  DBUG_PRINT("enter", ("event: %p", event));
 
   int error= 0;
   binlog_cache_mngr *const cache_mngr=
@@ -5883,7 +5887,7 @@ MYSQL_BIN_LOG::flush_and_set_pending_rows_event(THD *thd,
   binlog_cache_data *cache_data=
     cache_mngr->get_binlog_cache_data(use_trans_cache(thd, is_transactional));
 
-  DBUG_PRINT("info", ("cache_mngr->pending(): 0x%lx", (long) cache_data->pending()));
+  DBUG_PRINT("info", ("cache_mngr->pending(): %p", cache_data->pending()));
 
   if (Rows_log_event* pending= cache_data->pending())
   {

@@ -501,7 +501,7 @@ static void find_tool(char *tool_executable_name, const char *tool_name,
       last_fn_libchar -= 6;
     }
 
-    len= last_fn_libchar - self_name;
+    len= (int)(last_fn_libchar - self_name);
 
     my_snprintf(tool_executable_name, FN_REFLEN, "%.*s%c%s",
                 len, self_name, FN_LIBCHAR, tool_name);
@@ -965,8 +965,9 @@ static int install_used_engines(void)
 {
   char buf[512];
   DYNAMIC_STRING ds_result;
-  const char *query = "SELECT DISTINCT LOWER(engine) FROM information_schema.tables"
-                      " WHERE table_comment LIKE 'Unknown storage engine%'";
+  const char *query = "SELECT DISTINCT LOWER(engine) AS c1 FROM information_schema.tables"
+                      " WHERE table_comment LIKE 'Unknown storage engine%'"
+                      " ORDER BY c1";
 
   if (opt_systables_only || !from_before_10_1())
   {

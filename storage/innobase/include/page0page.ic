@@ -40,32 +40,7 @@ Created 2/2/1994 Heikki Tuuri
 #undef UNIV_INLINE
 #define UNIV_INLINE
 #endif
-#endif /* !UNIV_INNOCHECKSUM */
 
-/************************************************************//**
-Gets the start of a page.
-@return start of the page */
-UNIV_INLINE
-page_t*
-page_align(
-/*=======*/
-	const void*	ptr)	/*!< in: pointer to page frame */
-{
-	return((page_t*) ut_align_down(ptr, UNIV_PAGE_SIZE));
-}
-
-#ifndef UNIV_INNOCHECKSUM
-/************************************************************//**
-Gets the offset within a page.
-@return offset from the start of the page */
-UNIV_INLINE
-ulint
-page_offset(
-/*========*/
-	const void*	ptr)	/*!< in: pointer to page frame */
-{
-	return(ut_align_offset(ptr, UNIV_PAGE_SIZE));
-}
 /*************************************************************//**
 Returns the max trx id field value. */
 UNIV_INLINE
@@ -211,7 +186,7 @@ page_header_set_field(
 Returns the offset stored in the given header field.
 @return offset from the start of the page, or 0 */
 UNIV_INLINE
-ulint
+uint16_t
 page_header_get_offs(
 /*=================*/
 	const page_t*	page,	/*!< in: page */
@@ -286,34 +261,6 @@ page_header_reset_last_insert(
 	}
 }
 
-#endif /* !UNIV_INNOCHECKSUM */
-
-/************************************************************//**
-Determine whether the page is in new-style compact format.
-@return nonzero if the page is in compact format, zero if it is in
-old-style format */
-UNIV_INLINE
-ulint
-page_is_comp(
-/*=========*/
-	const page_t*	page)	/*!< in: index page */
-{
-	return(page[PAGE_HEADER + PAGE_N_HEAP] & 0x80);
-}
-
-#ifndef UNIV_INNOCHECKSUM
-/************************************************************//**
-TRUE if the record is on a page in compact format.
-@return nonzero if in compact format */
-UNIV_INLINE
-ulint
-page_rec_is_comp(
-/*=============*/
-	const rec_t*	rec)	/*!< in: record */
-{
-	return(page_is_comp(page_align(rec)));
-}
-
 /***************************************************************//**
 Returns the heap number of a record.
 @return heap number */
@@ -328,33 +275,6 @@ page_rec_get_heap_no(
 	} else {
 		return(rec_get_heap_no_old(rec));
 	}
-}
-
-#endif /* !UNIV_INNOCHECKSUM */
-
-/************************************************************//**
-Determine whether the page is a B-tree leaf.
-@return true if the page is a B-tree leaf (PAGE_LEVEL = 0) */
-UNIV_INLINE
-bool
-page_is_leaf(
-/*=========*/
-	const page_t*	page)	/*!< in: page */
-{
-	return(!*(const uint16*) (page + (PAGE_HEADER + PAGE_LEVEL)));
-}
-
-#ifndef UNIV_INNOCHECKSUM
-/************************************************************//**
-Determine whether the page is empty.
-@return true if the page is empty (PAGE_N_RECS = 0) */
-UNIV_INLINE
-bool
-page_is_empty(
-/*==========*/
-	const page_t*	page)	/*!< in: page */
-{
-	return(!*(const uint16*) (page + (PAGE_HEADER + PAGE_N_RECS)));
 }
 
 /** Determine whether a page is an index root page.
@@ -382,162 +302,36 @@ page_is_root(
 	       == IB_UINT64_MAX);
 }
 
-/************************************************************//**
-Determine whether the page contains garbage.
-@return true if the page contains garbage (PAGE_GARBAGE is not 0) */
-UNIV_INLINE
+/** Determine whether an index page record is a user record.
+@param[in]	rec	record in an index page
+@return true if a user record */
+inline
 bool
-page_has_garbage(
-/*=============*/
-	const page_t*	page)	/*!< in: page */
-{
-	return(!!*(const uint16*) (page + (PAGE_HEADER + PAGE_GARBAGE)));
-}
-
-/************************************************************//**
-Gets the offset of the first record on the page.
-@return offset of the first record in record list, relative from page */
-UNIV_INLINE
-ulint
-page_get_infimum_offset(
-/*====================*/
-	const page_t*	page)	/*!< in: page which must have record(s) */
-{
-	ut_ad(page);
-	ut_ad(!page_offset(page));
-
-	if (page_is_comp(page)) {
-		return(PAGE_NEW_INFIMUM);
-	} else {
-		return(PAGE_OLD_INFIMUM);
-	}
-}
-
-/************************************************************//**
-Gets the offset of the last record on the page.
-@return offset of the last record in record list, relative from page */
-UNIV_INLINE
-ulint
-page_get_supremum_offset(
-/*=====================*/
-	const page_t*	page)	/*!< in: page which must have record(s) */
-{
-	ut_ad(page);
-	ut_ad(!page_offset(page));
-
-	if (page_is_comp(page)) {
-		return(PAGE_NEW_SUPREMUM);
-	} else {
-		return(PAGE_OLD_SUPREMUM);
-	}
-}
-
-/************************************************************//**
-TRUE if the record is a user record on the page.
-@return TRUE if a user record */
-UNIV_INLINE
-ibool
-page_rec_is_user_rec_low(
-/*=====================*/
-	ulint	offset)	/*!< in: record offset on page */
-{
-	ut_ad(offset >= PAGE_NEW_INFIMUM);
-#if PAGE_OLD_INFIMUM < PAGE_NEW_INFIMUM
-# error "PAGE_OLD_INFIMUM < PAGE_NEW_INFIMUM"
-#endif
-#if PAGE_OLD_SUPREMUM < PAGE_NEW_SUPREMUM
-# error "PAGE_OLD_SUPREMUM < PAGE_NEW_SUPREMUM"
-#endif
-#if PAGE_NEW_INFIMUM > PAGE_OLD_SUPREMUM
-# error "PAGE_NEW_INFIMUM > PAGE_OLD_SUPREMUM"
-#endif
-#if PAGE_OLD_INFIMUM > PAGE_NEW_SUPREMUM
-# error "PAGE_OLD_INFIMUM > PAGE_NEW_SUPREMUM"
-#endif
-#if PAGE_NEW_SUPREMUM > PAGE_OLD_SUPREMUM_END
-# error "PAGE_NEW_SUPREMUM > PAGE_OLD_SUPREMUM_END"
-#endif
-#if PAGE_OLD_SUPREMUM > PAGE_NEW_SUPREMUM_END
-# error "PAGE_OLD_SUPREMUM > PAGE_NEW_SUPREMUM_END"
-#endif
-	ut_ad(offset <= UNIV_PAGE_SIZE - PAGE_EMPTY_DIR_START);
-
-	return(offset != PAGE_NEW_SUPREMUM
-	       && offset != PAGE_NEW_INFIMUM
-	       && offset != PAGE_OLD_INFIMUM
-	       && offset != PAGE_OLD_SUPREMUM);
-}
-
-/************************************************************//**
-TRUE if the record is the supremum record on a page.
-@return TRUE if the supremum record */
-UNIV_INLINE
-ibool
-page_rec_is_supremum_low(
-/*=====================*/
-	ulint	offset)	/*!< in: record offset on page */
-{
-	ut_ad(offset >= PAGE_NEW_INFIMUM);
-	ut_ad(offset <= UNIV_PAGE_SIZE - PAGE_EMPTY_DIR_START);
-
-	return(offset == PAGE_NEW_SUPREMUM
-	       || offset == PAGE_OLD_SUPREMUM);
-}
-
-/************************************************************//**
-TRUE if the record is the infimum record on a page.
-@return TRUE if the infimum record */
-UNIV_INLINE
-ibool
-page_rec_is_infimum_low(
-/*====================*/
-	ulint	offset)	/*!< in: record offset on page */
-{
-	ut_ad(offset >= PAGE_NEW_INFIMUM);
-	ut_ad(offset <= UNIV_PAGE_SIZE - PAGE_EMPTY_DIR_START);
-
-	return(offset == PAGE_NEW_INFIMUM || offset == PAGE_OLD_INFIMUM);
-}
-
-/************************************************************//**
-TRUE if the record is a user record on the page.
-@return TRUE if a user record */
-UNIV_INLINE
-ibool
-page_rec_is_user_rec(
-/*=================*/
-	const rec_t*	rec)	/*!< in: record */
+page_rec_is_user_rec(const rec_t* rec)
 {
 	ut_ad(page_rec_check(rec));
-
 	return(page_rec_is_user_rec_low(page_offset(rec)));
 }
 
-/************************************************************//**
-TRUE if the record is the supremum record on a page.
-@return TRUE if the supremum record */
-UNIV_INLINE
-ibool
-page_rec_is_supremum(
-/*=================*/
-	const rec_t*	rec)	/*!< in: record */
+/** Determine whether an index page record is the supremum record.
+@param[in]	rec	record in an index page
+@return true if the supremum record */
+inline
+bool
+page_rec_is_supremum(const rec_t* rec)
 {
 	ut_ad(page_rec_check(rec));
-
 	return(page_rec_is_supremum_low(page_offset(rec)));
 }
 
-/************************************************************//**
-TRUE if the record is the infimum record on a page.
-@return TRUE if the infimum record */
-UNIV_INLINE
-ibool
-page_rec_is_infimum(
-/*================*/
-	const rec_t*	rec)	/*!< in: record */
+/** Determine whether an index page record is the infimum record.
+@param[in]	rec	record in an index page
+@return true if the infimum record */
+inline
+bool
+page_rec_is_infimum(const rec_t* rec)
 {
 	ut_ad(page_rec_check(rec));
-
 	return(page_rec_is_infimum_low(page_offset(rec)));
 }
 
@@ -670,7 +464,7 @@ Gets the number of user records on page (infimum and supremum records
 are not user records).
 @return number of user records */
 UNIV_INLINE
-ulint
+uint16_t
 page_get_n_recs(
 /*============*/
 	const page_t*	page)	/*!< in: index page */
@@ -683,7 +477,7 @@ page_get_n_recs(
 Gets the number of dir slots in directory.
 @return number of slots */
 UNIV_INLINE
-ulint
+uint16_t
 page_dir_get_n_slots(
 /*=================*/
 	const page_t*	page)	/*!< in: index page */
@@ -708,7 +502,7 @@ page_dir_set_n_slots(
 Gets the number of records in the heap.
 @return number of user records */
 UNIV_INLINE
-ulint
+uint16_t
 page_dir_get_n_heap(
 /*================*/
 	const page_t*	page)	/*!< in: index page */
@@ -1074,21 +868,17 @@ Returns the sum of the sizes of the records in the record list, excluding
 the infimum and supremum records.
 @return data in bytes */
 UNIV_INLINE
-ulint
+uint16_t
 page_get_data_size(
 /*===============*/
 	const page_t*	page)	/*!< in: index page */
 {
-	ulint	ret;
-
-	ret = (ulint)(page_header_get_field(page, PAGE_HEAP_TOP)
-		      - (page_is_comp(page)
-			 ? PAGE_NEW_SUPREMUM_END
-			 : PAGE_OLD_SUPREMUM_END)
-		      - page_header_get_field(page, PAGE_GARBAGE));
-
+	uint16_t	ret = page_header_get_field(page, PAGE_HEAP_TOP)
+		- (page_is_comp(page)
+		   ? PAGE_NEW_SUPREMUM_END
+		   : PAGE_OLD_SUPREMUM_END)
+		- page_header_get_field(page, PAGE_GARBAGE);
 	ut_ad(ret < UNIV_PAGE_SIZE);
-
 	return(ret);
 }
 
@@ -1284,6 +1074,75 @@ page_mem_free(
 	}
 }
 
+/** Read the PAGE_DIRECTION field from a byte.
+@param[in]	ptr	pointer to PAGE_DIRECTION_B
+@return	the value of the PAGE_DIRECTION field */
+inline
+byte
+page_ptr_get_direction(const byte* ptr)
+{
+	ut_ad(page_offset(ptr) == PAGE_HEADER + PAGE_DIRECTION_B);
+	return *ptr & ((1U << 3) - 1);
+}
+
+/** Set the PAGE_DIRECTION field.
+@param[in]	ptr	pointer to PAGE_DIRECTION_B
+@param[in]	dir	the value of the PAGE_DIRECTION field */
+inline
+void
+page_ptr_set_direction(byte* ptr, byte dir)
+{
+	ut_ad(page_offset(ptr) == PAGE_HEADER + PAGE_DIRECTION_B);
+	ut_ad(dir >= PAGE_LEFT);
+	ut_ad(dir <= PAGE_NO_DIRECTION);
+	*ptr = (*ptr & ~((1U << 3) - 1)) | dir;
+}
+
+/** Read the PAGE_INSTANT field.
+@param[in]	page	index page
+@return the value of the PAGE_INSTANT field */
+inline
+uint16_t
+page_get_instant(const page_t* page)
+{
+	uint16_t i = page_header_get_field(page, PAGE_INSTANT);
+#ifdef UNIV_DEBUG
+	switch (fil_page_get_type(page)) {
+	case FIL_PAGE_TYPE_INSTANT:
+		ut_ad(page_get_direction(page) <= PAGE_NO_DIRECTION);
+		ut_ad(i >> 3);
+		break;
+	case FIL_PAGE_INDEX:
+		ut_ad(i <= PAGE_NO_DIRECTION || !page_is_comp(page));
+		break;
+	case FIL_PAGE_RTREE:
+		ut_ad(i == PAGE_NO_DIRECTION || i == 0);
+		break;
+	default:
+		ut_ad(!"invalid page type");
+		break;
+	}
+#endif /* UNIV_DEBUG */
+	return(i >> 3);
+}
+
+/** Assign the PAGE_INSTANT field.
+@param[in,out]	page	clustered index root page
+@param[in]	n	original number of clustered index fields
+@param[in,out]	mtr	mini-transaction */
+inline
+void
+page_set_instant(page_t* page, unsigned n, mtr_t* mtr)
+{
+	ut_ad(fil_page_get_type(page) == FIL_PAGE_TYPE_INSTANT);
+	ut_ad(n > 0);
+	ut_ad(n < REC_MAX_N_FIELDS);
+	uint16_t i = page_header_get_field(page, PAGE_INSTANT);
+	ut_ad(i <= PAGE_NO_DIRECTION);
+	i |= n << 3;
+	mlog_write_ulint(PAGE_HEADER + PAGE_INSTANT + page, i,
+			 MLOG_2BYTES, mtr);
+}
 #endif /* !UNIV_INNOCHECKSUM */
 
 #ifdef UNIV_MATERIALIZE

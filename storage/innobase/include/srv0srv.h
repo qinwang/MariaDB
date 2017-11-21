@@ -129,6 +129,14 @@ struct srv_stats_t
 	ulint_ctr_64_t          pages_encrypted;
    	/* Number of pages decrypted */
 	ulint_ctr_64_t          pages_decrypted;
+	/* Number of merge blocks encrypted */
+	ulint_ctr_64_t          n_merge_blocks_encrypted;
+	/* Number of merge blocks decrypted */
+	ulint_ctr_64_t          n_merge_blocks_decrypted;
+	/* Number of row log blocks encrypted */
+	ulint_ctr_64_t          n_rowlog_blocks_encrypted;
+	/* Number of row log blocks decrypted */
+	ulint_ctr_64_t          n_rowlog_blocks_decrypted;
 
 	/** Number of data read in total (in bytes) */
 	ulint_ctr_1_t		data_read;
@@ -481,10 +489,12 @@ enum srv_operation_mode {
 	SRV_OPERATION_NORMAL,
 	/** Mariabackup taking a backup */
 	SRV_OPERATION_BACKUP,
-	/** Mariabackup restoring a backup */
+	/** Mariabackup restoring a backup for subsequent --copy-back */
 	SRV_OPERATION_RESTORE,
 	/** Mariabackup restoring the incremental part of a backup */
-	SRV_OPERATION_RESTORE_DELTA
+	SRV_OPERATION_RESTORE_DELTA,
+	/** Mariabackup restoring a backup for subsequent --export */
+	SRV_OPERATION_RESTORE_EXPORT
 };
 
 /** Current mode of operation */
@@ -999,6 +1009,9 @@ struct export_var_t{
 	ulint innodb_defragment_count;		/*!< Number of defragment
 						operations*/
 
+	/** Number of instant ALTER TABLE operations that affect columns */
+	ulong innodb_instant_alter_column;
+
 	ulint innodb_onlineddl_rowlog_rows;	/*!< Online alter rows */
 	ulint innodb_onlineddl_rowlog_pct_used; /*!< Online alter percentage
 						of used row log buffer */
@@ -1032,6 +1045,15 @@ struct export_var_t{
 						encrypted */
 	int64_t innodb_pages_decrypted;      /*!< Number of pages
 						decrypted */
+
+	/*!< Number of merge blocks encrypted */
+	ib_int64_t innodb_n_merge_blocks_encrypted;
+	/*!< Number of merge blocks decrypted */
+	ib_int64_t innodb_n_merge_blocks_decrypted;
+	/*!< Number of row log blocks encrypted */
+	ib_int64_t innodb_n_rowlog_blocks_encrypted;
+	/*!< Number of row log blocks decrypted */
+	ib_int64_t innodb_n_rowlog_blocks_decrypted;
 
 	ulint innodb_sec_rec_cluster_reads;	/*!< srv_sec_rec_cluster_reads */
 	ulint innodb_sec_rec_cluster_reads_avoided;/*!< srv_sec_rec_cluster_reads_avoided */

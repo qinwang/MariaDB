@@ -61,6 +61,7 @@
 #include "sql_repl.h"
 #include "opt_range.h"
 #include "rpl_parallel.h"
+#include <ssl_compat.h>
 
 /*
   The rule for this file: everything should be 'static'. When a sys_var
@@ -380,6 +381,52 @@ static Sys_var_charptr Sys_basedir(
        "usually resolved relative to this",
        READ_ONLY GLOBAL_VAR(mysql_home_ptr), CMD_LINE(REQUIRED_ARG, 'b'),
        IN_FS_CHARSET, DEFAULT(0));
+
+static Sys_var_charptr Sys_my_bind_addr(
+       "bind_address", "IP address to bind to.",
+       READ_ONLY GLOBAL_VAR(my_bind_addr_str), CMD_LINE(REQUIRED_ARG),
+       IN_FS_CHARSET, DEFAULT(0));
+
+const char *Sys_var_vers_asof::asof_keywords[]= {"CURRENT", "ALL", NULL};
+static Sys_var_vers_asof Sys_vers_asof_timestamp(
+       "versioning_asof_timestamp", "Default AS OF value for versioned queries",
+       SESSION_VAR(vers_asof_timestamp.type), NO_CMD_LINE,
+       Sys_var_vers_asof::asof_keywords, DEFAULT(FOR_SYSTEM_TIME_UNSPECIFIED));
+
+static Sys_var_mybool Sys_vers_force(
+       "versioning_force", "Force system versioning for all created tables",
+       SESSION_VAR(vers_force), CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+static const char *vers_hide_keywords[]= {"AUTO", "IMPLICIT", "FULL", "NEVER", NULL};
+static Sys_var_enum Sys_vers_hide(
+       "versioning_hide", "Hide system versioning from being displayed in table info. "
+       "AUTO: hide implicit system fields only in non-versioned and AS OF queries; "
+       "IMPLICIT: hide implicit system fields in all queries; "
+       "FULL: hide any system fields in all queries and hide versioning info in SHOW commands; "
+       "NEVER: don't hide system fields",
+       SESSION_VAR(vers_hide), CMD_LINE(REQUIRED_ARG),
+       vers_hide_keywords, DEFAULT(VERS_HIDE_AUTO));
+
+static Sys_var_mybool Sys_vers_innodb_algorithm_simple(
+       "versioning_innodb_algorithm_simple",
+       "Use simple algorithm of timestamp handling in InnoDB instead of TRX_SEES",
+       SESSION_VAR(vers_innodb_algorithm_simple), CMD_LINE(OPT_ARG),
+       DEFAULT(TRUE));
+
+static const char *vers_alter_history_keywords[]= {"KEEP", "SURVIVE", "DROP", NULL};
+static Sys_var_enum Sys_vers_alter_history(
+       "versioning_alter_history", "Versioning ALTER TABLE mode. "
+       "KEEP: leave historical system rows as is on ALTER TABLE; "
+       "SURVIVE: use DDL survival feature; "
+       "DROP: delete historical system rows on ALTER TABLE",
+       SESSION_VAR(vers_alter_history), CMD_LINE(REQUIRED_ARG),
+       vers_alter_history_keywords, DEFAULT(VERS_ALTER_HISTORY_KEEP));
+
+static Sys_var_mybool Sys_transaction_registry(
+       "transaction_registry",
+       "Enable or disable update of transaction_registry",
+       GLOBAL_VAR(opt_transaction_registry), CMD_LINE(OPT_ARG),
+       DEFAULT(TRUE));
 
 static Sys_var_ulonglong Sys_binlog_cache_size(
        "binlog_cache_size", "The size of the transactional cache for "
@@ -1303,8 +1350,8 @@ static bool update_cached_long_query_time(sys_var *self, THD *thd,
 static Sys_var_double Sys_long_query_time(
        "long_query_time",
        "Log all queries that have taken more than long_query_time seconds "
-       "to execute to file. The argument will be treated as a decimal value "
-       "with microsecond precision",
+       "to execute to the slow query log file. The argument will be treated "
+       "as a decimal value with microsecond precision",
        SESSION_VAR(long_query_time_double),
        CMD_LINE(REQUIRED_ARG), VALID_RANGE(0, LONG_TIMEOUT), DEFAULT(10),
        NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
@@ -1517,7 +1564,7 @@ static Sys_var_ulonglong Sys_max_heap_table_size(
        "max_heap_table_size",
        "Don't allow creation of heap tables bigger than this",
        SESSION_VAR(max_heap_table_size), CMD_LINE(REQUIRED_ARG),
-       VALID_RANGE(16384, (ulonglong)~(intptr)0), DEFAULT(16*1024*1024),
+       VALID_RANGE(16384, SIZE_T_MAX), DEFAULT(16*1024*1024),
        BLOCK_SIZE(1024));
 
 static ulong mdl_locks_cache_size;
@@ -2359,10 +2406,10 @@ export sys_var *Sys_old_passwords_ptr= &Sys_old_passwords; // for sql_acl.cc
 static Sys_var_ulong Sys_open_files_limit(
        "open_files_limit",
        "If this is not 0, then mysqld will use this value to reserve file "
-       "descriptors to use with setrlimit(). If this value is 0 then mysqld "
-       "will reserve max_connections*5 or max_connections + table_cache*2 "
-       "(whichever is larger) number of file descriptors",
-       READ_ONLY GLOBAL_VAR(open_files_limit), CMD_LINE(REQUIRED_ARG),
+       "descriptors to use with setrlimit(). If this value is 0 or autoset "
+       "then mysqld will reserve max_connections*5 or max_connections + "
+       "table_cache*2 (whichever is larger) number of file descriptors",
+       AUTO_SET READ_ONLY GLOBAL_VAR(open_files_limit), CMD_LINE(REQUIRED_ARG),
        VALID_RANGE(0, OS_FILE_LIMIT), DEFAULT(0), BLOCK_SIZE(1));
 
 /// @todo change to enum
@@ -2782,7 +2829,7 @@ static Sys_var_enum Sys_thread_handling(
 #ifdef HAVE_QUERY_CACHE
 static bool fix_query_cache_size(sys_var *self, THD *thd, enum_var_type type)
 {
-  ulong new_cache_size= query_cache.resize(query_cache_size);
+  ulong new_cache_size= query_cache.resize((ulong)query_cache_size);
   /*
      Note: query_cache_size is a global variable reflecting the
      requested cache size. See also query_cache_size_arg
@@ -3132,7 +3179,7 @@ static const char *sql_mode_names[]=
   "STRICT_ALL_TABLES", "NO_ZERO_IN_DATE", "NO_ZERO_DATE",
   "ALLOW_INVALID_DATES", "ERROR_FOR_DIVISION_BY_ZERO", "TRADITIONAL",
   "NO_AUTO_CREATE_USER", "HIGH_NOT_PRECEDENCE", "NO_ENGINE_SUBSTITUTION",
-  "PAD_CHAR_TO_FULL_LENGTH",
+  "PAD_CHAR_TO_FULL_LENGTH", "EMPTY_STRING_IS_NULL",
   0
 };
 
@@ -3551,6 +3598,14 @@ static Sys_var_charptr Sys_version_compile_os(
        CMD_LINE_HELP_ONLY,
        IN_SYSTEM_CHARSET, DEFAULT(SYSTEM_TYPE));
 
+#include <source_revision.h>
+static char *server_version_source_revision;
+static Sys_var_charptr Sys_version_source_revision(
+       "version_source_revision", "Source control revision id for MariaDB source code",
+       READ_ONLY GLOBAL_VAR(server_version_source_revision),
+       CMD_LINE_HELP_ONLY,
+       IN_SYSTEM_CHARSET, DEFAULT(SOURCE_REVISION));
+
 static char *guess_malloc_library()
 {
   if (strcmp(MALLOC_LIBRARY, "system") == 0)
@@ -3577,16 +3632,6 @@ static Sys_var_charptr Sys_malloc_library(
        "version_malloc_library", "Version of the used malloc library",
        READ_ONLY GLOBAL_VAR(malloc_library), CMD_LINE_HELP_ONLY,
        IN_SYSTEM_CHARSET, DEFAULT(guess_malloc_library()));
-
-#ifdef HAVE_YASSL
-#include <openssl/ssl.h>
-#define SSL_LIBRARY "YaSSL " YASSL_VERSION
-#elif HAVE_OPENSSL
-#include <openssl/crypto.h>
-#define SSL_LIBRARY SSLeay_version(SSLEAY_VERSION)
-#else
-#error No SSL?
-#endif
 
 static char *ssl_library;
 static Sys_var_charptr Sys_ssl_library(
@@ -3616,10 +3661,10 @@ static Sys_var_uint Sys_idle_readonly_transaction_timeout(
        VALID_RANGE(0, IF_WIN(INT_MAX32/1000, LONG_TIMEOUT)),
        DEFAULT(0), BLOCK_SIZE(1));
 
-static Sys_var_uint Sys_idle_readwrite_transaction_timeout(
-       "idle_readwrite_transaction_timeout",
-       "The number of seconds the server waits for read-write idle transaction",
-       SESSION_VAR(idle_readwrite_transaction_timeout), CMD_LINE(REQUIRED_ARG),
+static Sys_var_uint Sys_idle_write_transaction_timeout(
+       "idle_write_transaction_timeout",
+       "The number of seconds the server waits for write idle transaction",
+       SESSION_VAR(idle_write_transaction_timeout), CMD_LINE(REQUIRED_ARG),
        VALID_RANGE(0, IF_WIN(INT_MAX32/1000, LONG_TIMEOUT)),
        DEFAULT(0), BLOCK_SIZE(1));
 
@@ -4836,7 +4881,7 @@ static Sys_var_multi_source_ulonglong Sys_slave_skip_counter(
 static bool update_max_relay_log_size(sys_var *self, THD *thd, Master_info *mi)
 {
   mi->rli.max_relay_log_size= thd->variables.max_relay_log_size;
-  mi->rli.relay_log.set_max_size(mi->rli.max_relay_log_size);
+  mi->rli.relay_log.set_max_size((ulong)mi->rli.max_relay_log_size);
   return false;
 }
 
@@ -5412,7 +5457,7 @@ static Sys_var_keycache Sys_key_cache_segments(
 
 static const char *log_slow_filter_names[]= 
 {
-  "admin", "filesort", "filesort_on_disk", "filsort_priority_queue",
+  "admin", "filesort", "filesort_on_disk", "filesort_priority_queue",
   "full_join", "full_scan", "not_using_index", "query_cache",
   "query_cache_miss", "tmp_table", "tmp_table_on_disk", 0
 };
@@ -5520,7 +5565,7 @@ static Sys_var_ulong Sys_rowid_merge_buff_size(
        "rowid_merge_buff_size",
        "The size of the buffers used [NOT] IN evaluation via partial matching",
        SESSION_VAR(rowid_merge_buff_size), CMD_LINE(REQUIRED_ARG),
-       VALID_RANGE(0, ((ulonglong)~(intptr)0)/2), DEFAULT(8*1024*1024),
+       VALID_RANGE(0, LONG_MAX), DEFAULT(8*1024*1024),
        BLOCK_SIZE(1));
 
 static Sys_var_mybool Sys_userstat(
@@ -5819,3 +5864,11 @@ static Sys_var_mybool Sys_session_track_state_change(
        ON_UPDATE(update_session_track_state_change));
 
 #endif //EMBEDDED_LIBRARY
+
+static Sys_var_ulong Sys_in_subquery_conversion_threshold(
+       "in_subquery_conversion_threshold",
+       "The minimum number of scalar elements in the value list of "
+       "IN predicate that triggers its conversion to IN subquery",
+       SESSION_VAR(in_subquery_conversion_threshold), CMD_LINE(OPT_ARG),
+       VALID_RANGE(0, ULONG_MAX), DEFAULT(1000), BLOCK_SIZE(1));
+

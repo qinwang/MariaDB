@@ -170,6 +170,11 @@ TABLE_FIELD_TYPE mysql_db_table_fields[MYSQL_DB_FIELD_COUNT] = {
     { C_STRING_WITH_LEN("Trigger_priv") },
     { C_STRING_WITH_LEN("enum('N','Y')") },
     { C_STRING_WITH_LEN("utf8") }
+  },
+  {
+    { C_STRING_WITH_LEN("Delete_versioning_rows_priv") },
+    { C_STRING_WITH_LEN("enum('N','Y')") },
+    { C_STRING_WITH_LEN("utf8") }
   }
 };
 
@@ -695,9 +700,9 @@ bool ROLE_GRANT_PAIR::init(MEM_ROOT *mem, const char *username,
 #endif /* HAVE_OPENSSL && !EMBEDDED_LIBRARY */
 #define NORMAL_HANDSHAKE_SIZE   6
 
-#define ROLE_ASSIGN_COLUMN_IDX  43
-#define DEFAULT_ROLE_COLUMN_IDX 44
-#define MAX_STATEMENT_TIME_COLUMN_IDX 45
+#define ROLE_ASSIGN_COLUMN_IDX  44
+#define DEFAULT_ROLE_COLUMN_IDX 45
+#define MAX_STATEMENT_TIME_COLUMN_IDX 46
 
 /* various flags valid for ACL_USER */
 #define IS_ROLE                 (1L << 0)
@@ -2012,6 +2017,9 @@ static bool acl_load(THD *thd, const Grant_tables& tables)
       */
       if (user_table.num_fields() <= 38 && (user.access & SUPER_ACL))
         user.access|= TRIGGER_ACL;
+
+      if (user_table.num_fields() <= 46 && (user.access & DELETE_ACL))
+        user.access|= DELETE_VERSIONING_ROWS_ACL;
 
       user.sort= get_sort(2, user.host.hostname, user.user.str);
       user.hostname_length= safe_strlen(user.host.hostname);
@@ -8465,13 +8473,14 @@ static const char *command_array[]=
   "ALTER", "SHOW DATABASES", "SUPER", "CREATE TEMPORARY TABLES",
   "LOCK TABLES", "EXECUTE", "REPLICATION SLAVE", "REPLICATION CLIENT",
   "CREATE VIEW", "SHOW VIEW", "CREATE ROUTINE", "ALTER ROUTINE",
-  "CREATE USER", "EVENT", "TRIGGER", "CREATE TABLESPACE"
+  "CREATE USER", "EVENT", "TRIGGER", "CREATE TABLESPACE",
+  "DELETE VERSIONING ROWS"
 };
 
 static uint command_lengths[]=
 {
   6, 6, 6, 6, 6, 4, 6, 8, 7, 4, 5, 10, 5, 5, 14, 5, 23, 11, 7, 17, 18, 11, 9,
-  14, 13, 11, 5, 7, 17
+  14, 13, 11, 5, 7, 17, 22,
 };
 
 
@@ -9238,6 +9247,16 @@ void get_mqh(const char *user, const char *host, USER_CONN *uc)
   mysql_mutex_unlock(&acl_cache->lock);
 }
 
+static int check_role_is_granted_callback(ACL_USER_BASE *grantee, void *data)
+{
+  LEX_CSTRING *rolename= static_cast<LEX_CSTRING *>(data);
+  if (rolename->length == grantee->user.length &&
+      !strcmp(rolename->str, grantee->user.str))
+    return -1; // End search, we've found our role.
+
+  /* Keep looking, we haven't found our role yet. */
+  return 0;
+}
 
 /*
   Modify a privilege table.
@@ -11258,7 +11277,6 @@ bool check_grant(THD *, ulong, TABLE_LIST *, bool, uint, bool)
 }
 #endif /*NO_EMBEDDED_ACCESS_CHECKS */
 
-
 SHOW_VAR acl_statistics[] = {
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   {"column_grants",    (char*)show_column_grants,          SHOW_SIMPLE_FUNC},
@@ -11274,6 +11292,43 @@ SHOW_VAR acl_statistics[] = {
   {NullS, NullS, SHOW_LONG},
 };
 
+/* Check if a role is granted to a user/role. We traverse the role graph
+   and return true if we find a match.
+
+   hostname == NULL means we are looking for a role as a starting point,
+   otherwise a user.
+*/
+bool check_role_is_granted(const char *username,
+                           const char *hostname,
+                           const char *rolename)
+{
+  DBUG_ENTER("check_role_is_granted");
+  bool result= false;
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  ACL_USER_BASE *root;
+  mysql_mutex_lock(&acl_cache->lock);
+  if (hostname)
+    root= find_user_exact(username, hostname);
+  else
+    root= find_acl_role(username);
+
+  LEX_CSTRING role_lex;
+  role_lex.str= rolename;
+  role_lex.length= strlen(rolename);
+
+  if (root && /* No grantee, nothing to search. */
+      traverse_role_graph_down(root, &role_lex, check_role_is_granted_callback,
+                               NULL) == -1)
+  {
+    /* We have found the role during our search. */
+    result= true;
+  }
+
+  /* We haven't found the role or we had no initial grantee to start from. */
+  mysql_mutex_unlock(&acl_cache->lock);
+#endif
+  DBUG_RETURN(result);
+}
 
 int fill_schema_enabled_roles(THD *thd, TABLE_LIST *tables, COND *cond)
 {
@@ -12359,7 +12414,7 @@ static bool find_mpvio_user(MPVIO_EXT *mpvio)
 static bool
 read_client_connect_attrs(char **ptr, char *end, CHARSET_INFO *from_cs)
 {
-  size_t length;
+  ulonglong length;
   char *ptr_save= *ptr;
 
   /* not enough bytes to hold the length */
@@ -12381,10 +12436,10 @@ read_client_connect_attrs(char **ptr, char *end, CHARSET_INFO *from_cs)
     return true;
 
 #ifdef HAVE_PSI_THREAD_INTERFACE
-  if (PSI_THREAD_CALL(set_thread_connect_attrs)(*ptr, length, from_cs) &&
+  if (PSI_THREAD_CALL(set_thread_connect_attrs)(*ptr, (size_t)length, from_cs) &&
       current_thd->variables.log_warnings)
-    sql_print_warning("Connection attributes of length %lu were truncated",
-                      (unsigned long) length);
+    sql_print_warning("Connection attributes of length %llu were truncated",
+                      length);
 #endif
   return false;
 }
@@ -12402,7 +12457,7 @@ static bool parse_com_change_user_packet(MPVIO_EXT *mpvio, uint packet_length)
   char *end= user + packet_length;
   /* Safe because there is always a trailing \0 at the end of the packet */
   char *passwd= strend(user) + 1;
-  uint user_len= passwd - user - 1;
+  uint user_len= (uint)(passwd - user - 1);
   char *db= passwd;
   char db_buff[SAFE_NAME_LEN + 1];            // buffer to store db in utf8
   char user_buff[USERNAME_LENGTH + 1];	      // buffer to store user in utf8
@@ -12641,7 +12696,7 @@ static ulong parse_client_handshake_packet(MPVIO_EXT *mpvio,
 
   char *user= end;
   char *passwd= strend(user)+1;
-  uint user_len= passwd - user - 1, db_len;
+  uint user_len= (uint)(passwd - user - 1), db_len;
   char *db= passwd;
   char user_buff[USERNAME_LENGTH + 1];	// buffer to store user in utf8
   uint dummy_errors;
@@ -12656,15 +12711,22 @@ static ulong parse_client_handshake_packet(MPVIO_EXT *mpvio,
     Cast *passwd to an unsigned char, so that it doesn't extend the sign for
     *passwd > 127 and become 2**32-127+ after casting to uint.
   */
-  uint passwd_len;
+  ulonglong len;
+  size_t passwd_len;
+
   if (!(thd->client_capabilities & CLIENT_SECURE_CONNECTION))
-    passwd_len= strlen(passwd);
+    len= strlen(passwd);
   else if (!(thd->client_capabilities & CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA))
-    passwd_len= (uchar)(*passwd++);
+    len= (uchar)(*passwd++);
   else
-    passwd_len= safe_net_field_length_ll((uchar**)&passwd,
+  {
+    len= safe_net_field_length_ll((uchar**)&passwd,
                                       net->read_pos + pkt_len - (uchar*)passwd);
-  
+    if (len > pkt_len)
+      return packet_error;
+  }
+
+  passwd_len= (size_t)len;
   db= thd->client_capabilities & CLIENT_CONNECT_WITH_DB ?
     db + passwd_len + 1 : 0;
 
@@ -13655,4 +13717,3 @@ maria_declare_plugin(mysql_password)
   MariaDB_PLUGIN_MATURITY_STABLE                /* Maturity         */
 }
 maria_declare_plugin_end;
-

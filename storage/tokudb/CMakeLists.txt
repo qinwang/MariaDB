@@ -1,4 +1,4 @@
-SET(TOKUDB_VERSION 5.6.36-82.1)
+SET(TOKUDB_VERSION 5.6.37-82.2)
 # PerconaFT only supports x86-64 and cmake-2.8.9+
 IF(CMAKE_VERSION VERSION_LESS "2.8.9")
   MESSAGE(STATUS "CMake 2.8.9 or higher is required by TokuDB")
@@ -24,7 +24,7 @@ SET(TOKUDB_SOURCES
     tokudb_thread.cc
     tokudb_dir_cmd.cc)
 MYSQL_ADD_PLUGIN(tokudb ${TOKUDB_SOURCES} STORAGE_ENGINE MODULE_ONLY
-                 COMPONENT tokudb-engine)
+                 COMPONENT tokudb-engine CONFIG tokudb.cnf)
 
 IF(NOT TARGET tokudb)
   RETURN()
@@ -38,6 +38,7 @@ IF(NOT LIBJEMALLOC)
 ENDIF()
 
 MY_CHECK_AND_SET_COMPILER_FLAG("-Wno-vla" DEBUG)
+MY_CHECK_AND_SET_COMPILER_FLAG("-Wno-implicit-fallthrough")
 
 ############################################
 MARK_AS_ADVANCED(BUILDNAME)
@@ -111,8 +112,3 @@ TARGET_LINK_LIBRARIES(tokudb tokufractaltree_static tokuportability_static
 
 SET(CMAKE_MODULE_LINKER_FLAGS_RELEASE "${CMAKE_MODULE_LINKER_FLAGS_RELEASE} -flto -fuse-linker-plugin")
 SET(CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO} -flto -fuse-linker-plugin")
-
-IF (INSTALL_SYSCONF2DIR)
-  INSTALL(FILES tokudb.cnf DESTINATION ${INSTALL_SYSCONF2DIR}
-          COMPONENT tokudb-engine)
-ENDIF(INSTALL_SYSCONF2DIR)

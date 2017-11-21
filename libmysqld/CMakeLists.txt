@@ -118,6 +118,9 @@ SET(SQL_EMBEDDED_SOURCES emb_qcache.cc libmysqld.c lib_sql.cc
            ../sql/temporary_tables.cc
            ../sql/session_tracker.cc
            ../sql/proxy_protocol.cc
+           ../sql/sql_tvc.cc ../sql/sql_tvc.h
+           ../sql/item_vers.cc
+           ../sql/vtmd.cc
            ${GEN_SOURCES}
            ${MYSYS_LIBWRAP_SOURCE}
 )
@@ -165,15 +168,6 @@ MERGE_LIBRARIES(mysqlserver STATIC ${EMBEDDED_LIBS}
 
 INSTALL(FILES embedded_priv.h DESTINATION ${INSTALL_INCLUDEDIR}/server/private COMPONENT  ${COMPONENT_MYSQLSERVER})
 
-# Visual Studio users need debug  static library 
-IF(MSVC)
- INSTALL_DEBUG_TARGET(mysqlserver DESTINATION ${INSTALL_LIBDIR}/debug)
-ENDIF()
-
-IF(UNIX)
- INSTALL_DEBUG_TARGET(mysqlserver DESTINATION ${INSTALL_LIBDIR} RENAME
-  ${CMAKE_STATIC_LIBRARY_PREFIX}mysqld-debug)
-ENDIF()
 
 SET(CLIENT_API_FUNCTIONS_5_1
 get_tty_password

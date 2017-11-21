@@ -205,9 +205,9 @@ row_sel_sec_rec_is_for_clust_rec(
 	heap = mem_heap_create(256);
 
 	clust_offs = rec_get_offsets(clust_rec, clust_index, clust_offs,
-				     ULINT_UNDEFINED, &heap);
+				     true, ULINT_UNDEFINED, &heap);
 	sec_offs = rec_get_offsets(sec_rec, sec_index, sec_offs,
-				   ULINT_UNDEFINED, &heap);
+				   true, ULINT_UNDEFINED, &heap);
 
 	n = dict_index_get_n_ordering_defined_by_user(sec_index);
 
@@ -250,7 +250,7 @@ row_sel_sec_rec_is_for_clust_rec(
 			clust_field = static_cast<byte*>(vfield->data);
 		} else {
 			clust_pos = dict_col_get_clust_pos(col, clust_index);
-
+			ut_ad(!rec_offs_nth_default(clust_offs, clust_pos));
 			clust_field = rec_get_nth_field(
 				clust_rec, clust_offs, clust_pos, &clust_len);
 		}
@@ -525,7 +525,6 @@ row_sel_fetch_columns(
 					rec, offsets,
 					dict_table_page_size(index->table),
 					field_no, &len, heap);
-				//field_no, &len, heap, NULL);
 
 				/* data == NULL means that the
 				externally stored field was not
@@ -542,9 +541,8 @@ row_sel_fetch_columns(
 
 				needs_copy = TRUE;
 			} else {
-				data = rec_get_nth_field(rec, offsets,
-							 field_no, &len);
-
+				data = rec_get_nth_cfield(rec, index, offsets,
+							  field_no, &len);
 				needs_copy = column->copy_val;
 			}
 
@@ -912,7 +910,7 @@ row_sel_get_clust_rec(
 
 	offsets = rec_get_offsets(rec,
 				  btr_pcur_get_btr_cur(&plan->pcur)->index,
-				  offsets, ULINT_UNDEFINED, &heap);
+				  offsets, true, ULINT_UNDEFINED, &heap);
 
 	row_build_row_ref_fast(plan->clust_ref, plan->clust_map, rec, offsets);
 
@@ -947,7 +945,7 @@ row_sel_get_clust_rec(
 		goto func_exit;
 	}
 
-	offsets = rec_get_offsets(clust_rec, index, offsets,
+	offsets = rec_get_offsets(clust_rec, index, offsets, true,
 				  ULINT_UNDEFINED, &heap);
 
 	if (!node->read_view) {
@@ -1166,7 +1164,7 @@ re_scan:
 
 		rec = btr_pcur_get_rec(pcur);
 		my_offsets = offsets_;
-		my_offsets = rec_get_offsets(rec, index, my_offsets,
+		my_offsets = rec_get_offsets(rec, index, my_offsets, true,
 					     ULINT_UNDEFINED, &heap);
 
 		/* No match record */
@@ -1189,8 +1187,8 @@ re_scan:
 		rtr_rec_t*	rtr_rec = &(*it);
 
 		my_offsets = rec_get_offsets(
-				rtr_rec->r_rec, index, my_offsets,
-				ULINT_UNDEFINED, &heap);
+			rtr_rec->r_rec, index, my_offsets, true,
+			ULINT_UNDEFINED, &heap);
 
 		err = lock_sec_rec_read_check_and_lock(
 			0, &match->block, rtr_rec->r_rec, index,
@@ -1204,11 +1202,9 @@ re_scan:
 		} else {
 			goto func_end;
 		}
-
 	}
 
 	match->locked = true;
-
 
 func_end:
 	rw_lock_x_unlock(&(match->block.lock));
@@ -1504,6 +1500,15 @@ row_sel_try_search_shortcut(
 		return(SEL_RETRY);
 	}
 
+	if (rec_is_default_row(rec, index)) {
+		/* Skip the 'default row' pseudo-record. */
+		if (!btr_pcur_move_to_next_user_rec(&plan->pcur, mtr)) {
+			return(SEL_RETRY);
+		}
+
+		rec = btr_pcur_get_rec(&plan->pcur);
+	}
+
 	ut_ad(plan->mode == PAGE_CUR_GE);
 
 	/* As the cursor is now placed on a user record after a search with
@@ -1518,7 +1523,8 @@ row_sel_try_search_shortcut(
 	/* This is a non-locking consistent read: if necessary, fetch
 	a previous version of the record */
 
-	offsets = rec_get_offsets(rec, index, offsets, ULINT_UNDEFINED, &heap);
+	offsets = rec_get_offsets(rec, index, offsets, true,
+				  ULINT_UNDEFINED, &heap);
 
 	if (dict_index_is_clust(index)) {
 		if (!lock_clust_rec_cons_read_sees(rec, index, offsets,
@@ -1666,8 +1672,7 @@ table_loop:
 
 #ifdef BTR_CUR_HASH_ADAPT
 	if (consistent_read && plan->unique_search && !plan->pcur_is_open
-	    && !plan->must_get_clust
-	    && !plan->table->big_rows) {
+	    && !plan->must_get_clust) {
 		if (!search_latch_locked) {
 			btr_search_s_lock(index);
 
@@ -1776,6 +1781,7 @@ rec_loop:
 			trx = thr_get_trx(thr);
 
 			offsets = rec_get_offsets(next_rec, index, offsets,
+						  true,
 						  ULINT_UNDEFINED, &heap);
 
 			/* If innodb_locks_unsafe_for_binlog option is used
@@ -1829,12 +1835,18 @@ skip_lock:
 		goto next_rec;
 	}
 
+	if (rec_is_default_row(rec, index)) {
+		/* Skip the 'default row' pseudo-record. */
+		cost_counter++;
+		goto next_rec;
+	}
+
 	if (!consistent_read) {
 		/* Try to place a lock on the index record */
 		ulint	lock_type;
 		trx_t*	trx;
 
-		offsets = rec_get_offsets(rec, index, offsets,
+		offsets = rec_get_offsets(rec, index, offsets, true,
 					  ULINT_UNDEFINED, &heap);
 
 		trx = thr_get_trx(thr);
@@ -1921,7 +1933,8 @@ skip_lock:
 	/* PHASE 3: Get previous version in a consistent read */
 
 	cons_read_requires_clust_rec = FALSE;
-	offsets = rec_get_offsets(rec, index, offsets, ULINT_UNDEFINED, &heap);
+	offsets = rec_get_offsets(rec, index, offsets, true,
+				  ULINT_UNDEFINED, &heap);
 
 	if (consistent_read) {
 		/* This is a non-locking consistent read: if necessary, fetch
@@ -1951,7 +1964,7 @@ skip_lock:
 					exhausted. */
 
 					offsets = rec_get_offsets(
-						rec, index, offsets,
+						rec, index, offsets, true,
 						ULINT_UNDEFINED, &heap);
 
 					/* Fetch the columns needed in
@@ -2092,8 +2105,7 @@ skip_lock:
 	ut_ad(plan->pcur.latch_mode == BTR_SEARCH_LEAF);
 
 	if ((plan->n_rows_fetched <= SEL_PREFETCH_LIMIT)
-	    || plan->unique_search || plan->no_prefetch
-	    || plan->table->big_rows) {
+	    || plan->unique_search || plan->no_prefetch) {
 
 		/* No prefetch in operation: go to the next table */
 
@@ -2942,6 +2954,7 @@ row_sel_field_store_in_mysql_format_func(
 	case DATA_SYS:
 		/* These column types should never be shipped to MySQL. */
 		ut_ad(0);
+		/* fall through */
 
 	case DATA_CHAR:
 	case DATA_FIXBINARY:
@@ -3032,7 +3045,6 @@ row_sel_store_mysql_field_func(
 			rec, offsets,
 			dict_table_page_size(prebuilt->table),
 			field_no, &len, heap);
-		//field_no, &len, heap, NULL);
 
 		if (UNIV_UNLIKELY(!data)) {
 			/* The externally stored field was not written
@@ -3059,9 +3071,19 @@ row_sel_store_mysql_field_func(
 			mem_heap_free(heap);
 		}
 	} else {
-		/* Field is stored in the row. */
+		/* The field is stored in the index record, or
+		in the 'default row' for instant ADD COLUMN. */
 
-		data = rec_get_nth_field(rec, offsets, field_no, &len);
+		if (rec_offs_nth_default(offsets, field_no)) {
+			ut_ad(dict_index_is_clust(index));
+			ut_ad(index->is_instant());
+			const dict_index_t* clust_index
+				= dict_table_get_first_index(prebuilt->table);
+			ut_ad(index == clust_index);
+			data = clust_index->instant_field_value(field_no,&len);
+		} else {
+			data = rec_get_nth_field(rec, offsets, field_no, &len);
+		}
 
 		if (len == UNIV_SQL_NULL) {
 			/* MySQL assumes that the field for an SQL
@@ -3400,23 +3422,12 @@ row_sel_get_clust_rec_for_mysql(
                                 goto func_exit;
 			}
 
-			ulint		page_no = page_get_page_no(
-						btr_pcur_get_page(
-							prebuilt->pcur));
-
-			page_id_t	page_id(dict_index_get_space(sec_index),
-						page_no);
-
-			buf_block_t*	block = buf_page_get_gen(
-				page_id,
-				dict_table_page_size(sec_index->table),
-				RW_NO_LATCH, NULL, BUF_GET,
-				__FILE__, __LINE__, mtr, &err);
-
+			buf_block_t* block = btr_pcur_get_block(
+				prebuilt->pcur);
 			mem_heap_t*	heap = mem_heap_create(256);
 			dtuple_t*       tuple = dict_index_build_data_tuple(
-				sec_index, const_cast<rec_t*>(rec),
-				dict_index_get_n_fields(sec_index), heap);;
+				rec, sec_index, true,
+				sec_index->n_fields, heap);
 			page_cur_t     page_cursor;
 
 		        ulint		low_match = page_cur_search(
@@ -3455,7 +3466,7 @@ row_sel_get_clust_rec_for_mysql(
 			trx_print(stderr, trx, 600);
 			fputs("\n"
 			      "InnoDB: Submit a detailed bug report"
-			      " to http://bugs.mysql.com\n", stderr);
+			      " to https://jira.mariadb.org/\n", stderr);
 			ut_ad(0);
 		}
 
@@ -3465,7 +3476,7 @@ row_sel_get_clust_rec_for_mysql(
 		goto func_exit;
 	}
 
-	*offsets = rec_get_offsets(clust_rec, clust_index, *offsets,
+	*offsets = rec_get_offsets(clust_rec, clust_index, *offsets, true,
 				   ULINT_UNDEFINED, offset_heap);
 
 	if (prebuilt->select_lock_type != LOCK_NONE) {
@@ -3606,7 +3617,12 @@ sel_restore_position_for_mysql(
 	case BTR_PCUR_ON:
 		if (!success && moves_up) {
 next:
-			btr_pcur_move_to_next(pcur, mtr);
+			if (btr_pcur_move_to_next(pcur, mtr)
+			    && rec_is_default_row(btr_pcur_get_rec(pcur),
+						  pcur->btr_cur.index)) {
+				btr_pcur_move_to_next(pcur, mtr);
+			}
+
 			return(TRUE);
 		}
 		return(!success);
@@ -3617,7 +3633,9 @@ next:
 		/* positioned to record after pcur->old_rec. */
 		pcur->pos_state = BTR_PCUR_IS_POSITIONED;
 prev:
-		if (btr_pcur_is_on_user_rec(pcur) && !moves_up) {
+		if (btr_pcur_is_on_user_rec(pcur) && !moves_up
+		    && !rec_is_default_row(btr_pcur_get_rec(pcur),
+					   pcur->btr_cur.index)) {
 			btr_pcur_move_to_prev(pcur, mtr);
 		}
 		return(TRUE);
@@ -3897,6 +3915,15 @@ row_sel_try_search_shortcut_for_mysql(
 		return(SEL_RETRY);
 	}
 
+	if (rec_is_default_row(rec, index)) {
+		/* Skip the 'default row' pseudo-record. */
+		if (!btr_pcur_move_to_next_user_rec(pcur, mtr)) {
+			return(SEL_RETRY);
+		}
+
+		rec = btr_pcur_get_rec(pcur);
+	}
+
 	/* As the cursor is now placed on a user record after a search with
 	the mode PAGE_CUR_GE, the up_match field in the cursor tells how many
 	fields in the user record matched to the search tuple */
@@ -3909,7 +3936,7 @@ row_sel_try_search_shortcut_for_mysql(
 	/* This is a non-locking consistent read: if necessary, fetch
 	a previous version of the record */
 
-	*offsets = rec_get_offsets(rec, index, *offsets,
+	*offsets = rec_get_offsets(rec, index, *offsets, true,
 				   ULINT_UNDEFINED, heap);
 
 	if (!lock_clust_rec_cons_read_sees(
@@ -4039,8 +4066,12 @@ row_sel_fill_vrow(
 	rec_offs_init(offsets_);
 
 	ut_ad(!(*vrow));
+	ut_ad(heap);
+	ut_ad(!dict_index_is_clust(index));
+	ut_ad(!index->is_instant());
+	ut_ad(page_rec_is_leaf(rec));
 
-	offsets = rec_get_offsets(rec, index, offsets,
+	offsets = rec_get_offsets(rec, index, offsets, true,
 				  ULINT_UNDEFINED, &heap);
 
 	*vrow = dtuple_create_with_vcol(
@@ -4051,18 +4082,18 @@ row_sel_fill_vrow(
 
 	for (ulint i = 0; i < dict_index_get_n_fields(index); i++) {
 		const dict_field_t*     field;
-                const dict_col_t*       col;
+		const dict_col_t*       col;
 
 		field = dict_index_get_nth_field(index, i);
 		col = dict_field_get_col(field);
 
 		if (dict_col_is_virtual(col)) {
 			const byte*     data;
-		        ulint           len;
+			ulint           len;
 
 			data = rec_get_nth_field(rec, offsets, i, &len);
 
-                        const dict_v_col_t*     vcol = reinterpret_cast<
+			const dict_v_col_t*     vcol = reinterpret_cast<
 				const dict_v_col_t*>(col);
 
 			dfield_t* dfield = dtuple_get_nth_v_field(
@@ -4600,6 +4631,7 @@ wait_table_again:
 		pcur->trx_if_known = trx;
 
 		rec = btr_pcur_get_rec(pcur);
+		ut_ad(page_rec_is_leaf(rec));
 
 		if (!moves_up
 		    && !page_rec_is_supremum(rec)
@@ -4614,6 +4646,7 @@ wait_table_again:
 			const rec_t*	next_rec = page_rec_get_next_const(rec);
 
 			offsets = rec_get_offsets(next_rec, index, offsets,
+						  true,
 						  ULINT_UNDEFINED, &heap);
 			err = sel_set_rec_lock(pcur,
 					       next_rec, index, offsets,
@@ -4671,6 +4704,7 @@ rec_loop:
 	}
 
 	ut_ad(!!page_rec_is_comp(rec) == comp);
+	ut_ad(page_rec_is_leaf(rec));
 
 	if (page_rec_is_infimum(rec)) {
 
@@ -4696,7 +4730,7 @@ rec_loop:
 			level we do not lock gaps. Supremum record is really
 			a gap and therefore we do not set locks there. */
 
-			offsets = rec_get_offsets(rec, index, offsets,
+			offsets = rec_get_offsets(rec, index, offsets, true,
 						  ULINT_UNDEFINED, &heap);
 			err = sel_set_rec_lock(pcur,
 					       rec, index, offsets,
@@ -4725,12 +4759,24 @@ rec_loop:
 	corruption */
 
 	if (comp) {
+		if (rec_get_info_bits(rec, true) & REC_INFO_MIN_REC_FLAG) {
+			/* Skip the 'default row' pseudo-record. */
+			ut_ad(index->is_instant());
+			goto next_rec;
+		}
+
 		next_offs = rec_get_next_offs(rec, TRUE);
 		if (UNIV_UNLIKELY(next_offs < PAGE_NEW_SUPREMUM)) {
 
 			goto wrong_offs;
 		}
 	} else {
+		if (rec_get_info_bits(rec, false) & REC_INFO_MIN_REC_FLAG) {
+			/* Skip the 'default row' pseudo-record. */
+			ut_ad(index->is_instant());
+			goto next_rec;
+		}
+
 		next_offs = rec_get_next_offs(rec, FALSE);
 		if (UNIV_UNLIKELY(next_offs < PAGE_OLD_SUPREMUM)) {
 
@@ -4786,7 +4832,8 @@ wrong_offs:
 	ut_ad(fil_page_index_page_check(btr_pcur_get_page(pcur)));
 	ut_ad(btr_page_get_index_id(btr_pcur_get_page(pcur)) == index->id);
 
-	offsets = rec_get_offsets(rec, index, offsets, ULINT_UNDEFINED, &heap);
+	offsets = rec_get_offsets(rec, index, offsets, true,
+				  ULINT_UNDEFINED, &heap);
 
 	if (UNIV_UNLIKELY(srv_force_recovery > 0)) {
 		if (!rec_validate(rec, offsets)
@@ -5007,8 +5054,8 @@ no_gap_lock:
 				Do a normal locking read. */
 
 				offsets = rec_get_offsets(
-					rec, index, offsets, ULINT_UNDEFINED,
-					&heap);
+					rec, index, offsets, true,
+					ULINT_UNDEFINED, &heap);
 				goto locks_ok;
 			case DB_DEADLOCK:
 				goto lock_wait_or_error;
@@ -5447,6 +5494,7 @@ requires_clust_rec:
 				/* We used 'offsets' for the clust
 				rec, recalculate them for 'rec' */
 				offsets = rec_get_offsets(rec, index, offsets,
+							  true,
 							  ULINT_UNDEFINED,
 							  &heap);
 				result_rec = rec;
@@ -5944,8 +5992,10 @@ row_search_autoinc_read_column(
 	ulint*		offsets	= offsets_;
 
 	rec_offs_init(offsets_);
+	ut_ad(page_rec_is_leaf(rec));
 
-	offsets = rec_get_offsets(rec, index, offsets, col_no + 1, &heap);
+	offsets = rec_get_offsets(rec, index, offsets, true,
+				  col_no + 1, &heap);
 
 	if (rec_offs_nth_sql_null(offsets, col_no)) {
 		/* There is no non-NULL value in the auto-increment column. */
@@ -5998,6 +6048,9 @@ row_search_get_max_rec(
 
 	btr_pcur_close(&pcur);
 
+	ut_ad(!rec
+	      || !(rec_get_info_bits(rec, dict_table_is_comp(index->table))
+		   & (REC_INFO_MIN_REC_FLAG | REC_INFO_DELETED_FLAG)));
 	return(rec);
 }
 

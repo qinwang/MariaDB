@@ -5041,13 +5041,15 @@ i_s_innodb_set_page_type(
 		in the i_s_page_type[] array is I_S_PAGE_TYPE_INDEX
 		(1) for index pages or I_S_PAGE_TYPE_IBUF for
 		change buffer index pages */
-		if (page_info->index_id
-		    == static_cast<index_id_t>(DICT_IBUF_ID_MIN
-					       + IBUF_SPACE_ID)) {
-			page_info->page_type = I_S_PAGE_TYPE_IBUF;
-		} else if (page_type == FIL_PAGE_RTREE) {
+		if (page_type == FIL_PAGE_RTREE) {
 			page_info->page_type = I_S_PAGE_TYPE_RTREE;
+		} else if (page_info->index_id
+			   == static_cast<index_id_t>(DICT_IBUF_ID_MIN
+						      + IBUF_SPACE_ID)) {
+			page_info->page_type = I_S_PAGE_TYPE_IBUF;
 		} else {
+			ut_ad(page_type == FIL_PAGE_INDEX
+			      || page_type == FIL_PAGE_TYPE_INSTANT);
 			page_info->page_type = I_S_PAGE_TYPE_INDEX;
 		}
 
@@ -6395,6 +6397,7 @@ i_s_sys_tables_fill_table_stats(
 	}
 
 	heap = mem_heap_create(1000);
+	rw_lock_s_lock(dict_operation_lock);
 	mutex_enter(&dict_sys->mutex);
 	mtr_start(&mtr);
 
@@ -6403,7 +6406,6 @@ i_s_sys_tables_fill_table_stats(
 	while (rec) {
 		const char*	err_msg;
 		dict_table_t*	table_rec;
-		ulint		ref_count;
 
 		/* Fetch the dict_table_t structure corresponding to
 		this SYS_TABLES record */
@@ -6411,16 +6413,7 @@ i_s_sys_tables_fill_table_stats(
 			heap, rec, &table_rec,
 			DICT_TABLE_LOAD_FROM_CACHE, &mtr);
 
-		if (table_rec != NULL) {
-			ut_ad(err_msg == NULL);
-
-			ref_count = table_rec->get_ref_count();
-
-			/* Protect the dict_table_t object by incrementing
-			the reference count. */
-			table_rec->acquire();
-		}
-
+		ulint ref_count = table_rec ? table_rec->get_ref_count() : 0;
 		mutex_exit(&dict_sys->mutex);
 
 		DBUG_EXECUTE_IF("test_sys_tablestats", {
@@ -6429,22 +6422,22 @@ i_s_sys_tables_fill_table_stats(
 			}});
 
 		if (table_rec != NULL) {
+			ut_ad(err_msg == NULL);
 			i_s_dict_fill_sys_tablestats(thd, table_rec, ref_count,
 						     tables->table);
 		} else {
+			ut_ad(err_msg != NULL);
 			push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
 					    ER_CANT_FIND_SYSTEM_REC, "%s",
 					    err_msg);
 		}
 
+		rw_lock_s_unlock(dict_operation_lock);
 		mem_heap_empty(heap);
 
 		/* Get the next record */
+		rw_lock_s_lock(dict_operation_lock);
 		mutex_enter(&dict_sys->mutex);
-
-		if (table_rec != NULL) {
-			table_rec->release();
-		}
 
 		mtr_start(&mtr);
 		rec = dict_getnext_system(&pcur, &mtr);
@@ -6452,6 +6445,7 @@ i_s_sys_tables_fill_table_stats(
 
 	mtr_commit(&mtr);
 	mutex_exit(&dict_sys->mutex);
+	rw_lock_s_unlock(dict_operation_lock);
 	mem_heap_free(heap);
 
 	DBUG_RETURN(0);
@@ -8007,29 +8001,20 @@ i_s_dict_fill_sys_tablespaces(
 	ulint		flags,		/*!< in: tablespace flags */
 	TABLE*		table_to_fill)	/*!< in/out: fill this table */
 {
-	Field**		fields;
-	ulint		atomic_blobs = FSP_FLAGS_HAS_ATOMIC_BLOBS(flags);
-	bool		is_compressed = FSP_FLAGS_GET_ZIP_SSIZE(flags);
-	const char*	row_format;
-	const page_size_t	page_size(flags);
-	const char*	space_type;
+	Field**	fields;
+	ulint	atomic_blobs	= FSP_FLAGS_HAS_ATOMIC_BLOBS(flags);
+	const char* row_format;
 
 	DBUG_ENTER("i_s_dict_fill_sys_tablespaces");
 
 	if (is_system_tablespace(space)) {
-		row_format = "Compact or Redundant";
-	} else if (is_compressed) {
+		row_format = "Compact, Redundant or Dynamic";
+	} else if (FSP_FLAGS_GET_ZIP_SSIZE(flags)) {
 		row_format = "Compressed";
 	} else if (atomic_blobs) {
 		row_format = "Dynamic";
 	} else {
 		row_format = "Compact or Redundant";
-	}
-
-	if (is_system_tablespace(space)) {
-		space_type = "System";
-	} else  {
-		space_type = "Single";
 	}
 
 	fields = table_to_fill->field;
@@ -8042,19 +8027,32 @@ i_s_dict_fill_sys_tablespaces(
 
 	OK(field_store_string(fields[SYS_TABLESPACES_ROW_FORMAT], row_format));
 
+	OK(field_store_string(fields[SYS_TABLESPACES_SPACE_TYPE],
+			      is_system_tablespace(space)
+			      ? "System" : "Single"));
+
+	ulint cflags = fsp_flags_is_valid(flags, space)
+		? flags : fsp_flags_convert_from_101(flags);
+	if (cflags == ULINT_UNDEFINED) {
+		fields[SYS_TABLESPACES_PAGE_SIZE]->set_null();
+		fields[SYS_TABLESPACES_ZIP_PAGE_SIZE]->set_null();
+		fields[SYS_TABLESPACES_FS_BLOCK_SIZE]->set_null();
+		fields[SYS_TABLESPACES_FILE_SIZE]->set_null();
+		fields[SYS_TABLESPACES_ALLOC_SIZE]->set_null();
+		OK(schema_table_store_record(thd, table_to_fill));
+		DBUG_RETURN(0);
+	}
+
+	const page_size_t page_size(cflags);
+
 	OK(fields[SYS_TABLESPACES_PAGE_SIZE]->store(
-			univ_page_size.physical(), true));
+		   page_size.logical(), true));
 
 	OK(fields[SYS_TABLESPACES_ZIP_PAGE_SIZE]->store(
-				page_size.is_compressed()
-				? page_size.physical()
-				: 0, true));
-
-	OK(field_store_string(fields[SYS_TABLESPACES_SPACE_TYPE],
-			      space_type));
+		   page_size.physical(), true));
 
 	char*	filepath = NULL;
-	if (FSP_FLAGS_HAS_DATA_DIR(flags)) {
+	if (FSP_FLAGS_HAS_DATA_DIR(cflags)) {
 		mutex_enter(&dict_sys->mutex);
 		filepath = dict_get_first_path(space);
 		mutex_exit(&dict_sys->mutex);

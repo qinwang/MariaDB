@@ -27,8 +27,6 @@
 
 extern size_t username_char_length;
 
-class MY_LOCALE;
-
 class Item_str_func :public Item_func
 {
 protected:
@@ -92,7 +90,7 @@ public:
   {
     return val_str_from_val_str_ascii(str, &ascii_buf);
   }
-  virtual String *val_str_ascii(String *)= 0;
+  String *val_str_ascii(String *)= 0;
 };
 
 
@@ -402,8 +400,7 @@ public:
   bool fix_fields(THD *thd, Item **ref);
   void fix_length_and_dec();
   const char *func_name() const { return "regexp_replace"; }
-  Item *get_copy(THD *thd, MEM_ROOT *mem_root)
-  { return get_item_copy<Item_func_regexp_replace>(thd, mem_root, this); }
+  Item *get_copy(THD *thd, MEM_ROOT *mem_root) { return 0;}
 };
 
 
@@ -425,8 +422,7 @@ public:
   bool fix_fields(THD *thd, Item **ref);
   void fix_length_and_dec();
   const char *func_name() const { return "regexp_substr"; }
-  Item *get_copy(THD *thd, MEM_ROOT *mem_root)
-  { return get_item_copy<Item_func_regexp_substr>(thd, mem_root, this); }
+  Item *get_copy(THD *thd, MEM_ROOT *mem_root) { return 0; }
 };
 
 
@@ -507,9 +503,12 @@ public:
 class Item_func_substr :public Item_str_func
 {
   String tmp_value;
+protected:
+  virtual longlong get_position() { return args[1]->val_int(); }
 public:
   Item_func_substr(THD *thd, Item *a, Item *b): Item_str_func(thd, a, b) {}
-  Item_func_substr(THD *thd, Item *a, Item *b, Item *c): Item_str_func(thd, a, b, c) {}
+  Item_func_substr(THD *thd, Item *a, Item *b, Item *c):
+    Item_str_func(thd, a, b, c) {}
   String *val_str(String *);
   void fix_length_and_dec();
   const char *func_name() const { return "substr"; }
@@ -517,6 +516,20 @@ public:
   { return get_item_copy<Item_func_substr>(thd, mem_root, this); }
 };
 
+class Item_func_substr_oracle :public Item_func_substr
+{
+protected:
+  longlong get_position()
+  { longlong pos= args[1]->val_int(); return pos == 0 ? 1 : pos; }
+public:
+  Item_func_substr_oracle(THD *thd, Item *a, Item *b):
+    Item_func_substr(thd, a, b) {}
+  Item_func_substr_oracle(THD *thd, Item *a, Item *b, Item *c):
+    Item_func_substr(thd, a, b, c) {}
+  const char *func_name() const { return "substr_oracle"; }
+  Item *get_copy(THD *thd, MEM_ROOT *mem_root)
+  { return get_item_copy<Item_func_substr_oracle>(thd, mem_root, this); }
+};
 
 class Item_func_substr_index :public Item_str_func
 {
@@ -559,7 +572,7 @@ public:
   String *val_str(String *);
   void fix_length_and_dec();
   const char *func_name() const { return "trim"; }
-  virtual void print(String *str, enum_query_type query_type);
+  void print(String *str, enum_query_type query_type);
   virtual const char *mode_name() const { return "both"; }
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_trim>(thd, mem_root, this); }
@@ -825,7 +838,7 @@ public:
   bool fix_fields(THD *thd, Item **ref);
   void fix_length_and_dec()
   {
-    max_length= (username_char_length +
+    max_length= (uint32) (username_char_length +
                  HOSTNAME_LENGTH + 1) * SYSTEM_CHARSET_MBMAXLEN;
   }
   const char *func_name() const { return "user"; }
@@ -867,7 +880,7 @@ public:
     Item_func_sysconst(thd), context(context_arg) {}
   bool fix_fields(THD *thd, Item **ref);
   void fix_length_and_dec()
-  { max_length= username_char_length * SYSTEM_CHARSET_MBMAXLEN; }
+  { max_length= (uint32) username_char_length * SYSTEM_CHARSET_MBMAXLEN; }
   int save_in_field(Field *field, bool no_conversions)
   { return save_str_value_in_field(field, &str_value); }
   const char *func_name() const { return "current_role"; }
@@ -932,18 +945,16 @@ public:
 
 class Item_func_format :public Item_str_ascii_func
 {
-  MY_LOCALE *locale;
+  const MY_LOCALE *locale;
 public:
   Item_func_format(THD *thd, Item *org, Item *dec):
     Item_str_ascii_func(thd, org, dec) {}
   Item_func_format(THD *thd, Item *org, Item *dec, Item *lang):
     Item_str_ascii_func(thd, org, dec, lang) {}
 
-  MY_LOCALE *get_locale(Item *item);
   String *val_str_ascii(String *);
   void fix_length_and_dec();
   const char *func_name() const { return "format"; }
-  virtual void print(String *str, enum_query_type query_type);
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_format>(thd, mem_root, this); }
 };
@@ -1022,7 +1033,6 @@ public:
   const char *func_name() const { return "binlog_gtid_pos"; }
   bool check_vcol_func_processor(void *arg)
   {
-
     return mark_unsupported_function(func_name(), "()", arg, VCOL_IMPOSSIBLE);
   }
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
@@ -1207,7 +1217,7 @@ public:
     collation.set(&my_charset_bin);
     max_length=args[0]->max_length;
   }
-  virtual void print(String *str, enum_query_type query_type);
+  void print(String *str, enum_query_type query_type);
   const char *func_name() const { return "cast_as_binary"; }
   bool need_parentheses_in_default() { return true; }
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
@@ -1351,7 +1361,7 @@ public:
   }
   void fix_length_and_dec();
   const char *func_name() const { return "convert"; }
-  virtual void print(String *str, enum_query_type query_type);
+  void print(String *str, enum_query_type query_type);
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_conv_charset>(thd, mem_root, this); }
 };
@@ -1367,7 +1377,7 @@ public:
   const char *func_name() const { return "collate"; }
   enum precedence precedence() const { return COLLATE_PRECEDENCE; }
   enum Functype functype() const { return COLLATE_FUNC; }
-  virtual void print(String *str, enum_query_type query_type);
+  void print(String *str, enum_query_type query_type);
   Item_field *field_for_view_update()
   {
     /* this function is transparent for view updating */
@@ -1456,6 +1466,8 @@ public:
 
 class Item_func_crc32 :public Item_long_func
 {
+  bool check_arguments() const
+  { return args[0]->check_type_can_return_str(func_name()); }
   String value;
 public:
   Item_func_crc32(THD *thd, Item *a): Item_long_func(thd, a)
@@ -1467,11 +1479,12 @@ public:
   { return get_item_copy<Item_func_crc32>(thd, mem_root, this); }
 };
 
-class Item_func_uncompressed_length : public Item_long_func
+class Item_func_uncompressed_length : public Item_long_func_length
 {
   String value;
 public:
-  Item_func_uncompressed_length(THD *thd, Item *a): Item_long_func(thd, a) {}
+  Item_func_uncompressed_length(THD *thd, Item *a)
+   :Item_long_func_length(thd, a) {}
   const char *func_name() const{return "uncompressed_length";}
   void fix_length_and_dec() { max_length=10; maybe_null= true; }
   longlong val_int();
@@ -1549,8 +1562,8 @@ public:
   void fix_length_and_dec();
   const char *func_name() const{ return "column_create"; }
   String *val_str(String *);
-  virtual void print(String *str, enum_query_type query_type);
-  virtual enum Functype functype() const   { return DYNCOL_FUNC; }
+  void print(String *str, enum_query_type query_type);
+  enum Functype functype() const   { return DYNCOL_FUNC; }
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_dyncol_create>(thd, mem_root, this); }
 };
@@ -1564,7 +1577,7 @@ public:
   {}
   const char *func_name() const{ return "column_add"; }
   String *val_str(String *);
-  virtual void print(String *str, enum_query_type query_type);
+  void print(String *str, enum_query_type query_type);
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_dyncol_add>(thd, mem_root, this); }
 };

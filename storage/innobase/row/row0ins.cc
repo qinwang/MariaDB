@@ -400,7 +400,7 @@ row_ins_clust_index_entry_by_modify(
 
 			DEBUG_SYNC_C("before_row_ins_upd_extern");
 			err = btr_store_big_rec_extern_fields(
-				pcur, update, *offsets, big_rec, mtr,
+				pcur, *offsets, big_rec, mtr,
 				BTR_STORE_INSERT_UPDATE);
 			DEBUG_SYNC_C("after_row_ins_upd_extern");
 			dtuple_big_rec_free(big_rec);
@@ -431,7 +431,8 @@ row_ins_cascade_ancestor_updates_table(
 
 		upd_node = static_cast<upd_node_t*>(parent);
 
-		if (upd_node->table == table && upd_node->is_delete == FALSE) {
+		if (upd_node->table == table && upd_node->is_delete == FALSE
+			&& !upd_node->vers_delete) {
 
 			return(TRUE);
 		}
@@ -954,7 +955,7 @@ row_ins_foreign_fill_virtual(
 	ulint		offsets_[REC_OFFS_NORMAL_SIZE];
 	rec_offs_init(offsets_);
 	const ulint*	offsets =
-		rec_get_offsets(rec, index, offsets_,
+		rec_get_offsets(rec, index, offsets_, true,
 				ULINT_UNDEFINED, &cascade->heap);
 	mem_heap_t*	v_heap = NULL;
 	upd_t*		update = cascade->update;
@@ -975,6 +976,8 @@ row_ins_foreign_fill_virtual(
 		delete or update after restart. */
 		innobase_init_vc_templ(index->table);
 	}
+
+	bool is_delete = node->is_delete || node->vers_delete;
 
 	for (ulint i = 0; i < n_v_fld; i++) {
 
@@ -1007,14 +1010,14 @@ row_ins_foreign_fill_virtual(
 
 		upd_field_set_v_field_no(upd_field, i, index);
 
-		if (node->is_delete
+		if (is_delete
 		    ? (foreign->type & DICT_FOREIGN_ON_DELETE_SET_NULL)
 		    : (foreign->type & DICT_FOREIGN_ON_UPDATE_SET_NULL)) {
 
 			dfield_set_null(&upd_field->new_val);
 		}
 
-		if (!node->is_delete
+		if (!is_delete
 		    && (foreign->type & DICT_FOREIGN_ON_UPDATE_CASCADE)) {
 
 			dfield_t* new_vfield = innobase_get_computed_value(
@@ -1107,7 +1110,9 @@ row_ins_foreign_check_on_constraint(
 
 	node = static_cast<upd_node_t*>(thr->run_node);
 
-	if (node->is_delete && 0 == (foreign->type
+	bool is_delete = node->is_delete || node->vers_delete;
+
+	if (is_delete && 0 == (foreign->type
 				     & (DICT_FOREIGN_ON_DELETE_CASCADE
 					| DICT_FOREIGN_ON_DELETE_SET_NULL))) {
 
@@ -1118,7 +1123,7 @@ row_ins_foreign_check_on_constraint(
 		DBUG_RETURN(DB_ROW_IS_REFERENCED);
 	}
 
-	if (!node->is_delete && 0 == (foreign->type
+	if (!is_delete && 0 == (foreign->type
 				      & (DICT_FOREIGN_ON_UPDATE_CASCADE
 					 | DICT_FOREIGN_ON_UPDATE_SET_NULL))) {
 
@@ -1147,7 +1152,7 @@ row_ins_foreign_check_on_constraint(
 
 	cascade->foreign = foreign;
 
-	if (node->is_delete
+	if (is_delete
 	    && (foreign->type & DICT_FOREIGN_ON_DELETE_CASCADE)) {
 		cascade->is_delete = TRUE;
 	} else {
@@ -1242,7 +1247,7 @@ row_ins_foreign_check_on_constraint(
 			rec_print(stderr, clust_rec, clust_index);
 			fputs("\n"
 			      "InnoDB: Submit a detailed bug report to"
-			      " http://bugs.mysql.com\n", stderr);
+			      " https://jira.mariadb.org/\n", stderr);
 			ut_ad(0);
 			err = DB_SUCCESS;
 
@@ -1286,7 +1291,7 @@ row_ins_foreign_check_on_constraint(
 						 clust_index, tmp_heap);
 	}
 
-	if (node->is_delete
+	if (is_delete
 	    ? (foreign->type & DICT_FOREIGN_ON_DELETE_SET_NULL)
 	    : (foreign->type & DICT_FOREIGN_ON_UPDATE_SET_NULL)) {
 
@@ -1366,7 +1371,7 @@ row_ins_foreign_check_on_constraint(
 		}
 	}
 
-	if (!node->is_delete
+	if (!is_delete
 	    && (foreign->type & DICT_FOREIGN_ON_UPDATE_CASCADE)) {
 
 		/* Build the appropriate update vector which sets changing
@@ -1570,6 +1575,74 @@ private:
 	ulint&		counter;
 };
 
+/*********************************************************************//**
+Reads sys_trx_end field from clustered index row.
+@return trx_id_t */
+static
+trx_id_t
+row_ins_get_sys_trx_end(
+/*===================================*/
+			const rec_t *rec,	/*!< in: clustered row */
+			ulint *offsets,		/*!< in: offsets */
+			dict_index_t *index)	/*!< in: clustered index */
+{
+	ut_a(dict_index_is_clust(index));
+
+	ulint len;
+	ulint nfield = dict_col_get_clust_pos(
+		&index->table->cols[index->table->vers_end], index);
+	const byte *field = rec_get_nth_field(rec, offsets, nfield, &len);
+	ut_a(len == 8);
+	return(mach_read_from_8(field));
+}
+
+/**
+Performs search at clustered index and returns sys_trx_end if row was found.
+@param[in]	index	secondary index of record
+@param[in]	rec	record in a secondary index
+@param[out]	end_trx_id	value from clustered index
+@return DB_SUCCESS, DB_NO_REFERENCED_ROW */
+static
+dberr_t
+row_ins_search_sys_trx_end(
+	dict_index_t *index,
+	const rec_t *rec,
+	trx_id_t *end_trx_id)
+{
+	ut_ad(!index->is_clust());
+
+	bool found = false;
+	mem_heap_t *heap = mem_heap_create(256);
+	dict_index_t *clust_index = NULL;
+	ulint offsets_[REC_OFFS_NORMAL_SIZE];
+	ulint *offsets = offsets_;
+	rec_offs_init(offsets_);
+
+	mtr_t mtr;
+	mtr_start(&mtr);
+
+	rec_t *clust_rec =
+	    row_get_clust_rec(BTR_SEARCH_LEAF, rec, index, &clust_index, &mtr);
+        if (!clust_rec)
+		goto not_found;
+
+	offsets = rec_get_offsets(clust_rec, clust_index, offsets, true,
+				  ULINT_UNDEFINED, &heap);
+
+	*end_trx_id = row_ins_get_sys_trx_end(clust_rec, offsets, clust_index);
+	found = true;
+not_found:
+	mtr_commit(&mtr);
+	mem_heap_free(heap);
+	if (!found) {
+		ib::error() << "foreign constraints: secondary index is out of "
+			       "sync";
+		ut_ad(false && "secondary index is out of sync");
+		return(DB_NO_REFERENCED_ROW);
+	}
+	return(DB_SUCCESS);
+}
+
 /***************************************************************//**
 Checks if foreign key constraint fails for an index entry. Sets shared locks
 which lock either the success or the failure of the constraint. NOTE that
@@ -1627,16 +1700,27 @@ row_ins_check_foreign_constraint(
 	/* If any of the foreign key fields in entry is SQL NULL, we
 	suppress the foreign key check: this is compatible with Oracle,
 	for example */
-	for (ulint i = 0; i < foreign->n_fields; i++) {
-		if (dfield_is_null(dtuple_get_nth_field(entry, i))) {
+	for (ulint i = 0; i < entry->n_fields; i++) {
+		dfield_t* field = dtuple_get_nth_field(entry, i);
+		if (i < foreign->n_fields && dfield_is_null(field)) {
 			goto exit_func;
+		}
+		/* System Versioning: if sys_trx_end != Inf, we
+		suppress the foreign key check */
+		if (table->versioned() &&
+		    dfield_get_type(field)->prtype & DATA_VERS_END) {
+			byte* data = static_cast<byte*>(dfield_get_data(field));
+			ut_ad(data);
+			trx_id_t end_trx_id = mach_read_from_8(data);
+			if (end_trx_id != TRX_ID_MAX)
+				goto exit_func;
 		}
 	}
 
 	if (que_node_get_type(thr->run_node) == QUE_NODE_UPDATE) {
 		upd_node = static_cast<upd_node_t*>(thr->run_node);
 
-		if (!(upd_node->is_delete) && upd_node->foreign == foreign) {
+		if (!(upd_node->is_delete) && !(upd_node->vers_delete) && upd_node->foreign == foreign) {
 			/* If a cascaded update is done as defined by a
 			foreign key constraint, do not check that
 			constraint for the child row. In ON UPDATE CASCADE
@@ -1734,8 +1818,8 @@ row_ins_check_foreign_constraint(
 			continue;
 		}
 
-		offsets = rec_get_offsets(rec, check_index,
-					  offsets, ULINT_UNDEFINED, &heap);
+		offsets = rec_get_offsets(rec, check_index, offsets, true,
+					  ULINT_UNDEFINED, &heap);
 
 		if (page_rec_is_supremum(rec)) {
 
@@ -1759,6 +1843,23 @@ row_ins_check_foreign_constraint(
 		cmp = cmp_dtuple_rec(entry, rec, offsets);
 
 		if (cmp == 0) {
+			if (check_table->versioned()) {
+				trx_id_t end_trx_id = 0;
+
+				if (dict_index_is_clust(check_index)) {
+					end_trx_id =
+						row_ins_get_sys_trx_end(
+						rec, offsets, check_index);
+				} else if (row_ins_search_sys_trx_end(
+						check_index, rec, &end_trx_id) !=
+						DB_SUCCESS) {
+					break;
+				}
+
+				if (end_trx_id != TRX_ID_MAX)
+					continue;
+			}
+
 			if (rec_get_deleted_flag(rec,
 						 rec_offs_comp(offsets))) {
 				/* In delete-marked records, DB_TRX_ID must
@@ -2124,7 +2225,7 @@ row_ins_scan_sec_index_for_duplicate(
 			continue;
 		}
 
-		offsets = rec_get_offsets(rec, index, offsets,
+		offsets = rec_get_offsets(rec, index, offsets, true,
 					  ULINT_UNDEFINED, &offsets_heap);
 
 		if (flags & BTR_NO_LOCKING_FLAG) {
@@ -2252,8 +2353,10 @@ row_ins_duplicate_error_in_clust_online(
 	dberr_t		err	= DB_SUCCESS;
 	const rec_t*	rec	= btr_cur_get_rec(cursor);
 
+	ut_ad(!cursor->index->is_instant());
+
 	if (cursor->low_match >= n_uniq && !page_rec_is_infimum(rec)) {
-		*offsets = rec_get_offsets(rec, cursor->index, *offsets,
+		*offsets = rec_get_offsets(rec, cursor->index, *offsets, true,
 					   ULINT_UNDEFINED, heap);
 		err = row_ins_duplicate_online(n_uniq, entry, rec, *offsets);
 		if (err != DB_SUCCESS) {
@@ -2264,7 +2367,7 @@ row_ins_duplicate_error_in_clust_online(
 	rec = page_rec_get_next_const(btr_cur_get_rec(cursor));
 
 	if (cursor->up_match >= n_uniq && !page_rec_is_supremum(rec)) {
-		*offsets = rec_get_offsets(rec, cursor->index, *offsets,
+		*offsets = rec_get_offsets(rec, cursor->index, *offsets, true,
 					   ULINT_UNDEFINED, heap);
 		err = row_ins_duplicate_online(n_uniq, entry, rec, *offsets);
 	}
@@ -2320,6 +2423,7 @@ row_ins_duplicate_error_in_clust(
 
 		if (!page_rec_is_infimum(rec)) {
 			offsets = rec_get_offsets(rec, cursor->index, offsets,
+						  true,
 						  ULINT_UNDEFINED, &heap);
 
 			ulint lock_type;
@@ -2379,6 +2483,7 @@ duplicate:
 
 		if (!page_rec_is_supremum(rec)) {
 			offsets = rec_get_offsets(rec, cursor->index, offsets,
+						  true,
 						  ULINT_UNDEFINED, &heap);
 
 			if (trx->duplicates) {
@@ -2487,28 +2592,30 @@ row_ins_index_entry_big_rec(
 
 	DEBUG_SYNC_C_IF_THD(thd, "before_row_ins_extern_latch");
 
-	mtr_start(&mtr);
-	mtr.set_named_space(index->space);
-	dict_disable_redo_if_temporary(index->table, &mtr);
+	mtr.start();
+	if (index->table->is_temporary()) {
+		mtr.set_log_mode(MTR_LOG_NO_REDO);
+	} else {
+		mtr.set_named_space(index->space);
+	}
 
 	btr_pcur_open(index, entry, PAGE_CUR_LE, BTR_MODIFY_TREE,
 		      &pcur, &mtr);
 	rec = btr_pcur_get_rec(&pcur);
-	offsets = rec_get_offsets(rec, index, offsets,
+	offsets = rec_get_offsets(rec, index, offsets, true,
 				  ULINT_UNDEFINED, heap);
 
 	DEBUG_SYNC_C_IF_THD(thd, "before_row_ins_extern");
 	error = btr_store_big_rec_extern_fields(
-		&pcur, 0, offsets, big_rec, &mtr, BTR_STORE_INSERT);
+		&pcur, offsets, big_rec, &mtr, BTR_STORE_INSERT);
 	DEBUG_SYNC_C_IF_THD(thd, "after_row_ins_extern");
 
 	if (error == DB_SUCCESS
 	    && dict_index_is_online_ddl(index)) {
-		row_log_table_insert(btr_pcur_get_rec(&pcur), entry,
-				     index, offsets);
+		row_log_table_insert(btr_pcur_get_rec(&pcur), index, offsets);
 	}
 
-	mtr_commit(&mtr);
+	mtr.commit();
 
 	btr_pcur_close(&pcur);
 
@@ -2580,6 +2687,7 @@ row_ins_clust_index_entry_low(
 		ut_ad(flags & BTR_NO_LOCKING_FLAG);
 		ut_ad(!dict_index_is_online_ddl(index));
 		ut_ad(!index->table->persistent_autoinc);
+		ut_ad(!index->is_instant());
 		mtr.set_log_mode(MTR_LOG_NO_REDO);
 	} else {
 		mtr.set_named_space(index->space);
@@ -2630,6 +2738,41 @@ row_ins_clust_index_entry_low(
 		      || rec_n_fields_is_sane(index, first_rec, entry));
 	}
 #endif /* UNIV_DEBUG */
+
+	if (UNIV_UNLIKELY(entry->info_bits)) {
+		ut_ad(entry->info_bits == REC_INFO_DEFAULT_ROW);
+		ut_ad(flags == BTR_NO_LOCKING_FLAG);
+		ut_ad(index->is_instant());
+		ut_ad(!dict_index_is_online_ddl(index));
+		ut_ad(!dup_chk_only);
+
+		const rec_t* rec = btr_cur_get_rec(cursor);
+
+		switch (rec_get_info_bits(rec, page_rec_is_comp(rec))
+			& (REC_INFO_MIN_REC_FLAG | REC_INFO_DELETED_FLAG)) {
+		case REC_INFO_MIN_REC_FLAG:
+			thr_get_trx(thr)->error_info = index;
+			err = DB_DUPLICATE_KEY;
+			goto err_exit;
+		case REC_INFO_MIN_REC_FLAG | REC_INFO_DELETED_FLAG:
+			/* The 'default row' is never delete-marked.
+			If a table loses its 'instantness', it happens
+			by the rollback of this first-time insert, or
+			by a call to btr_page_empty() on the root page
+			when the table becomes empty. */
+			err = DB_CORRUPTION;
+			goto err_exit;
+		default:
+			ut_ad(!row_ins_must_modify_rec(cursor));
+			goto do_insert;
+		}
+	}
+
+	if (index->is_instant()) entry->trim(*index);
+
+	if (rec_is_default_row(btr_cur_get_rec(cursor), index)) {
+		goto do_insert;
+	}
 
 	if (n_uniq
 	    && (cursor->up_match >= n_uniq || cursor->low_match >= n_uniq)) {
@@ -2686,13 +2829,14 @@ err_exit:
 			entry_heap, entry, thr, &mtr);
 
 		if (err == DB_SUCCESS && dict_index_is_online_ddl(index)) {
-			row_log_table_insert(btr_cur_get_rec(cursor), entry,
+			row_log_table_insert(btr_cur_get_rec(cursor),
 					     index, offsets);
 		}
 
 		mtr_commit(&mtr);
 		mem_heap_free(entry_heap);
 	} else {
+do_insert:
 		rec_t*	insert_rec;
 
 		if (mode != BTR_MODIFY_TREE) {
@@ -2746,7 +2890,7 @@ err_exit:
 			if (err == DB_SUCCESS
 			    && dict_index_is_online_ddl(index)) {
 				row_log_table_insert(
-					insert_rec, entry, index, offsets);
+					insert_rec, index, offsets);
 			}
 
 			mtr_commit(&mtr);
@@ -3054,7 +3198,7 @@ row_ins_sec_index_entry_low(
 
 		ut_ad(!page_rec_is_infimum(rec));
 
-		offsets = rec_get_offsets(rec, index, offsets,
+		offsets = rec_get_offsets(rec, index, offsets, true,
 					  ULINT_UNDEFINED, &offsets_heap);
 
 		err = row_ins_set_exclusive_rec_lock(
@@ -3085,7 +3229,7 @@ row_ins_sec_index_entry_low(
 		prefix, we must convert the insert into a modify of an
 		existing record */
 		offsets = rec_get_offsets(
-			btr_cur_get_rec(&cursor), index, offsets,
+			btr_cur_get_rec(&cursor), index, offsets, true,
 			ULINT_UNDEFINED, &offsets_heap);
 
 		err = row_ins_sec_index_entry_by_modify(
@@ -3189,8 +3333,6 @@ row_ins_clust_index_entry(
 
 	n_uniq = dict_index_is_unique(index) ? index->n_uniq : 0;
 
-	/* Try first optimistic descent to the B-tree */
-	log_free_check();
 #ifdef WITH_WSREP
 	const bool skip_locking
 		= wsrep_thd_skip_locking(thr_get_trx(thr)->mysql_thd);
@@ -3208,15 +3350,20 @@ row_ins_clust_index_entry(
 #endif /* UNIV_DEBUG */
 
 #else
-	const ulint	flags = dict_table_is_temporary(index->table)
+	const ulint	flags = index->table->is_temporary()
 		? BTR_NO_LOCKING_FLAG
 		: index->table->no_rollback() ? BTR_NO_ROLLBACK : 0;
 #endif /* WITH_WSREP */
+	const ulint	orig_n_fields = entry->n_fields;
+
+	/* Try first optimistic descent to the B-tree */
+	log_free_check();
 
 	err = row_ins_clust_index_entry_low(
 		flags, BTR_MODIFY_LEAF, index, n_uniq, entry,
 		n_ext, thr, dup_chk_only);
 
+	entry->n_fields = orig_n_fields;
 
 	DEBUG_SYNC_C_IF_THD(thr_get_trx(thr)->mysql_thd,
 			    "after_row_ins_clust_index_entry_leaf");
@@ -3232,6 +3379,8 @@ row_ins_clust_index_entry(
 	err = row_ins_clust_index_entry_low(
 		flags, BTR_MODIFY_TREE, index, n_uniq, entry,
 		n_ext, thr, dup_chk_only);
+
+	entry->n_fields = orig_n_fields;
 
 	DBUG_RETURN(err);
 }
@@ -3326,7 +3475,7 @@ row_ins_index_entry(
 			DBUG_SET("-d,row_ins_index_entry_timeout");
 			return(DB_LOCK_WAIT);});
 
-	if (dict_index_is_clust(index)) {
+	if (index->is_clust()) {
 		return(row_ins_clust_index_entry(index, entry, thr, 0, false));
 	} else {
 		return(row_ins_sec_index_entry(index, entry, thr, false));

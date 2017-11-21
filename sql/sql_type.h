@@ -65,6 +65,7 @@ class in_vector;
 class Type_handler_hybrid_field_type;
 class Sort_param;
 class Arg_comparator;
+class Spvar_definition;
 struct st_value;
 class Protocol;
 class handler;
@@ -227,7 +228,7 @@ static inline uint32
 char_to_byte_length_safe(size_t char_length_arg, uint32 mbmaxlen_arg)
 {
   ulonglong tmp= ((ulonglong) char_length_arg) * mbmaxlen_arg;
-  return tmp > UINT_MAX32 ? UINT_MAX32 : static_cast<uint32>(tmp);
+  return tmp > UINT_MAX32 ? (uint32) UINT_MAX32 : static_cast<uint32>(tmp);
 }
 
 /**
@@ -531,11 +532,12 @@ class Name: private LEX_CSTRING
 public:
   Name(const char *str_arg, uint length_arg)
   {
+    DBUG_ASSERT(length_arg < UINT_MAX32);
     LEX_CSTRING::str= str_arg;
     LEX_CSTRING::length= length_arg;
   }
   const char *ptr() const { return LEX_CSTRING::str; }
-  uint length() const { return LEX_CSTRING::length; }
+  uint length() const { return (uint) LEX_CSTRING::length; }
 };
 
 
@@ -687,6 +689,10 @@ public:
   type_handler_adjusted_to_max_octet_length(uint max_octet_length,
                                             CHARSET_INFO *cs) const
   { return this; }
+  virtual bool adjust_spparam_type(Spvar_definition *def, Item *from) const
+  {
+    return false;
+  }
   virtual ~Type_handler() {}
   /**
     Determines MariaDB traditional data types that always present
@@ -698,7 +704,12 @@ public:
   }
   virtual bool is_scalar_type() const { return true; }
   virtual bool can_return_int() const { return true; }
+  virtual bool can_return_decimal() const { return true; }
   virtual bool can_return_real() const { return true; }
+  virtual bool can_return_str() const { return true; }
+  virtual bool can_return_text() const { return true; }
+  virtual bool can_return_date() const { return true; }
+  virtual bool can_return_time() const { return true; }
   virtual bool is_general_purpose_string_type() const { return false; }
   virtual uint Item_time_precision(Item *item) const;
   virtual uint Item_datetime_precision(Item *item) const;
@@ -995,7 +1006,12 @@ public:
   const Name name() const { return m_name_row; }
   bool is_scalar_type() const { return false; }
   bool can_return_int() const { return false; }
+  bool can_return_decimal() const { return false; }
   bool can_return_real() const { return false; }
+  bool can_return_str() const { return false; }
+  bool can_return_text() const { return false; }
+  bool can_return_date() const { return false; }
+  bool can_return_time() const { return false; }
   enum_field_types field_type() const
   {
     DBUG_ASSERT(0);
@@ -1030,18 +1046,13 @@ public:
   }
   bool Column_definition_fix_attributes(Column_definition *c) const
   {
-    DBUG_ASSERT(0);
-    return true;
+    return false;
   }
   bool Column_definition_prepare_stage1(THD *thd,
                                         MEM_ROOT *mem_root,
                                         Column_definition *c,
                                         handler *file,
-                                        ulonglong table_flags) const
-  {
-    DBUG_ASSERT(0);
-    return true;
-  }
+                                        ulonglong table_flags) const;
   bool Column_definition_redefine_stage1(Column_definition *def,
                                          const Column_definition *dup,
                                          const handler *file,
@@ -1055,8 +1066,7 @@ public:
                                         handler *file,
                                         ulonglong table_flags) const
   {
-    DBUG_ASSERT(0);
-    return true;
+    return false;
   }
   Field *make_table_field(const LEX_CSTRING *name,
                           const Record_addr &addr,
@@ -1568,7 +1578,6 @@ public:
                                    Item *source_expr, Item *source_const) const;
   bool subquery_type_allows_materialization(const Item *inner,
                                             const Item *outer) const;
-  Item_cache *Item_get_cache(THD *thd, const Item *item) const;
   bool Item_sum_hybrid_fix_length_and_dec(Item_sum_hybrid *func) const;
   bool Item_sum_sum_fix_length_and_dec(Item_sum_sum *) const;
   bool Item_sum_avg_fix_length_and_dec(Item_sum_avg *) const;
@@ -1866,6 +1875,17 @@ public:
 };
 
 
+class Type_handler_vers_trx_id: public Type_handler_longlong
+{
+public:
+  virtual ~Type_handler_vers_trx_id() {}
+  Field *make_table_field(const LEX_CSTRING *name,
+                          const Record_addr &addr,
+                          const Type_all_attributes &attr,
+                          TABLE *table) const;
+};
+
+
 class Type_handler_int24: public Type_handler_general_purpose_int
 {
   static const Name m_name_mediumint;
@@ -2050,6 +2070,7 @@ public:
   }
   int Item_save_in_field(Item *item, Field *field, bool no_conversions) const;
   String *print_item_value(THD *thd, Item *item, String *str) const;
+  Item_cache *Item_get_cache(THD *thd, const Item *item) const;
   bool Item_hybrid_func_fix_attributes(THD *thd,
                                        const char *name,
                                        Type_handler_hybrid_field_type *,
@@ -2136,6 +2157,7 @@ public:
   bool Column_definition_fix_attributes(Column_definition *c) const;
   uint Item_decimal_precision(const Item *item) const;
   String *print_item_value(THD *thd, Item *item, String *str) const;
+  Item_cache *Item_get_cache(THD *thd, const Item *item) const;
   bool Item_hybrid_func_fix_attributes(THD *thd,
                                        const char *name,
                                        Type_handler_hybrid_field_type *,
@@ -2209,6 +2231,7 @@ public:
     return Item_send_datetime(item, protocol, buf);
   }
   String *print_item_value(THD *thd, Item *item, String *str) const;
+  Item_cache *Item_get_cache(THD *thd, const Item *item) const;
   bool Item_hybrid_func_fix_attributes(THD *thd,
                                        const char *name,
                                        Type_handler_hybrid_field_type *,
@@ -2288,6 +2311,7 @@ public:
     return Item_send_datetime(item, protocol, buf);
   }
   String *print_item_value(THD *thd, Item *item, String *str) const;
+  Item_cache *Item_get_cache(THD *thd, const Item *item) const;
   bool Item_hybrid_func_fix_attributes(THD *thd,
                                        const char *name,
                                        Type_handler_hybrid_field_type *,
@@ -2522,6 +2546,7 @@ public:
                           const Record_addr &addr,
                           const Type_all_attributes &attr,
                           TABLE *table) const;
+  bool adjust_spparam_type(Spvar_definition *def, Item *from) const;
 };
 
 
@@ -2682,7 +2707,11 @@ public:
                           TABLE *table) const;
 
   bool can_return_int() const { return false; }
+  bool can_return_decimal() const { return false; }
   bool can_return_real() const { return false; }
+  bool can_return_text() const { return false; }
+  bool can_return_date() const { return false; }
+  bool can_return_time() const { return false; }
   bool is_traditional_type() const
   {
     return false;
@@ -2793,14 +2822,16 @@ public:
 class Type_handler_hybrid_field_type
 {
   const Type_handler *m_type_handler;
+  bool m_vers_trx_id;
   bool aggregate_for_min_max(const Type_handler *other);
+
 public:
   Type_handler_hybrid_field_type();
   Type_handler_hybrid_field_type(const Type_handler *handler)
-   :m_type_handler(handler)
+   :m_type_handler(handler), m_vers_trx_id(false)
   { }
   Type_handler_hybrid_field_type(const Type_handler_hybrid_field_type *other)
-    :m_type_handler(other->m_type_handler)
+    :m_type_handler(other->m_type_handler), m_vers_trx_id(other->m_vers_trx_id)
   { }
   const Type_handler *type_handler() const { return m_type_handler; }
   enum_field_types real_field_type() const
@@ -2885,6 +2916,7 @@ extern MYSQL_PLUGIN_IMPORT Type_handler_int24       type_handler_int24;
 extern MYSQL_PLUGIN_IMPORT Type_handler_long        type_handler_long;
 extern MYSQL_PLUGIN_IMPORT Type_handler_longlong    type_handler_longlong;
 extern MYSQL_PLUGIN_IMPORT Type_handler_longlong    type_handler_ulonglong;
+extern MYSQL_PLUGIN_IMPORT Type_handler_vers_trx_id type_handler_vers_trx_id;
 
 extern MYSQL_PLUGIN_IMPORT Type_handler_newdecimal  type_handler_newdecimal;
 extern MYSQL_PLUGIN_IMPORT Type_handler_olddecimal  type_handler_olddecimal;

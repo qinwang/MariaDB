@@ -152,6 +152,7 @@ extern my_bool opt_enable_shared_memory;
 extern ulong opt_replicate_events_marked_for_skip;
 extern char *default_tz_name;
 extern Time_zone *default_tz;
+extern char *my_bind_addr_str;
 extern char *default_storage_engine, *default_tmp_storage_engine;
 extern char *enforced_storage_engine;
 extern char *gtid_pos_auto_engines;
@@ -178,6 +179,43 @@ extern char *opt_backup_history_logname, *opt_backup_progress_logname,
             *opt_backup_settings_name;
 extern const char *log_output_str;
 extern const char *log_backup_output_str;
+
+/* System Versioning begin */
+enum vers_range_type_t
+{
+  FOR_SYSTEM_TIME_UNSPECIFIED = 0,
+  FOR_SYSTEM_TIME_ALL,
+  FOR_SYSTEM_TIME_AS_OF,
+  FOR_SYSTEM_TIME_FROM_TO,
+  FOR_SYSTEM_TIME_BETWEEN,
+  FOR_SYSTEM_TIME_BEFORE
+};
+
+struct st_vers_asof_timestamp
+{
+  ulong type;
+  MYSQL_TIME ltime;
+  st_vers_asof_timestamp() :
+    type(FOR_SYSTEM_TIME_UNSPECIFIED)
+  {}
+};
+
+enum vers_hide_enum
+{
+  VERS_HIDE_AUTO= 0,
+  VERS_HIDE_IMPLICIT,
+  VERS_HIDE_FULL,
+  VERS_HIDE_NEVER
+};
+
+enum vers_alter_history_enum
+{
+  VERS_ALTER_HISTORY_KEEP= 0,
+  VERS_ALTER_HISTORY_SURVIVE,
+  VERS_ALTER_HISTORY_DROP
+};
+/* System Versioning end */
+
 extern char *mysql_home_ptr, *pidfile_name_ptr;
 extern MYSQL_PLUGIN_IMPORT char glob_hostname[FN_REFLEN];
 extern char mysql_home[FN_REFLEN];
@@ -274,6 +312,7 @@ extern my_bool encrypt_tmp_disk_tables, encrypt_tmp_files;
 extern ulong encryption_algorithm;
 extern const char *encryption_algorithm_names[];
 extern const char *quoted_string;
+extern my_bool opt_transaction_registry;
 
 #ifdef HAVE_PSI_INTERFACE
 #ifdef HAVE_MMAP
@@ -312,13 +351,16 @@ extern PSI_mutex_key key_LOCK_slave_state, key_LOCK_binlog_state,
 
 extern PSI_mutex_key key_TABLE_SHARE_LOCK_share, key_LOCK_stats,
   key_LOCK_global_user_client_stats, key_LOCK_global_table_stats,
-  key_LOCK_global_index_stats, key_LOCK_wakeup_ready, key_LOCK_wait_commit;
+  key_LOCK_global_index_stats, key_LOCK_wakeup_ready, key_LOCK_wait_commit,
+  key_TABLE_SHARE_LOCK_rotation;
 extern PSI_mutex_key key_LOCK_gtid_waiting;
 
 extern PSI_rwlock_key key_rwlock_LOCK_grant, key_rwlock_LOCK_logger,
   key_rwlock_LOCK_sys_init_connect, key_rwlock_LOCK_sys_init_slave,
   key_rwlock_LOCK_system_variables_hash, key_rwlock_query_cache_query_lock,
-  key_LOCK_SEQUENCE;
+  key_LOCK_SEQUENCE,
+  key_rwlock_LOCK_vers_stats, key_rwlock_LOCK_stat_serial;
+
 #ifdef HAVE_MMAP
 extern PSI_cond_key key_PAGE_cond, key_COND_active, key_COND_pool;
 #endif /* HAVE_MMAP */
@@ -346,6 +388,7 @@ extern PSI_cond_key key_COND_rpl_thread, key_COND_rpl_thread_queue,
   key_COND_rpl_thread_stop, key_COND_rpl_thread_pool,
   key_COND_parallel_entry, key_COND_group_commit_orderer;
 extern PSI_cond_key key_COND_wait_gtid, key_COND_gtid_ignore_duplicates;
+extern PSI_cond_key key_TABLE_SHARE_COND_rotation;
 
 extern PSI_thread_key key_thread_bootstrap, key_thread_delayed_insert,
   key_thread_handle_manager, key_thread_kill_server, key_thread_main,
@@ -414,6 +457,7 @@ extern PSI_stage_info stage_fulltext_initialization;
 extern PSI_stage_info stage_got_handler_lock;
 extern PSI_stage_info stage_got_old_table;
 extern PSI_stage_info stage_init;
+extern PSI_stage_info stage_init_update;
 extern PSI_stage_info stage_insert;
 extern PSI_stage_info stage_invalidating_query_cache_entries_table;
 extern PSI_stage_info stage_invalidating_query_cache_entries_table_list;
@@ -428,6 +472,11 @@ extern PSI_stage_info stage_optimizing;
 extern PSI_stage_info stage_preparing;
 extern PSI_stage_info stage_purging_old_relay_logs;
 extern PSI_stage_info stage_query_end;
+extern PSI_stage_info stage_starting_cleanup;
+extern PSI_stage_info stage_rollback;
+extern PSI_stage_info stage_rollback_implicit;
+extern PSI_stage_info stage_commit;
+extern PSI_stage_info stage_commit_implicit;
 extern PSI_stage_info stage_queueing_master_event_to_the_relay_log;
 extern PSI_stage_info stage_reading_event_from_the_relay_log;
 extern PSI_stage_info stage_recreating_table;
@@ -483,6 +532,7 @@ extern PSI_stage_info stage_waiting_for_the_slave_thread_to_advance_position;
 extern PSI_stage_info stage_waiting_to_finalize_termination;
 extern PSI_stage_info stage_waiting_to_get_readlock;
 extern PSI_stage_info stage_binlog_waiting_background_tasks;
+extern PSI_stage_info stage_binlog_write;
 extern PSI_stage_info stage_binlog_processing_checkpoint_notify;
 extern PSI_stage_info stage_binlog_stopping_background_thread;
 extern PSI_stage_info stage_waiting_for_work_from_sql_thread;

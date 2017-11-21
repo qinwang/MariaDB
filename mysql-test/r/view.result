@@ -943,74 +943,6 @@ create table t3 (col1 datetime not null);
 create view v1 as select * from t1;
 create view v2 as select * from v1;
 create view v3 as select v2.col1 from v2,t2 where v2.col1 = t2.col1;
-update v2 set col1 = (select max(col1) from v1);
-ERROR HY000: The definition of table 'v1' prevents operation UPDATE on table 'v2'
-update v2 set col1 = (select max(col1) from t1);
-ERROR HY000: The definition of table 'v2' prevents operation UPDATE on table 'v2'
-update v2 set col1 = (select max(col1) from v2);
-ERROR HY000: Table 'v2' is specified twice, both as a target for 'UPDATE' and as a separate source for data
-update v2,t2 set v2.col1 = (select max(col1) from v1) where v2.col1 = t2.col1;
-ERROR HY000: The definition of table 'v1' prevents operation UPDATE on table 'v2'
-update t1,t2 set t1.col1 = (select max(col1) from v1) where t1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v1' prevents operation UPDATE on table 't1'
-update v1,t2 set v1.col1 = (select max(col1) from v1) where v1.col1 = t2.col1;
-ERROR HY000: Table 'v1' is specified twice, both as a target for 'UPDATE' and as a separate source for data
-update t2,v2 set v2.col1 = (select max(col1) from v1) where v2.col1 = t2.col1;
-ERROR HY000: The definition of table 'v1' prevents operation UPDATE on table 't2'
-update t2,t1 set t1.col1 = (select max(col1) from v1) where t1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v1' prevents operation UPDATE on table 't2'
-update t2,v1 set v1.col1 = (select max(col1) from v1) where v1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v1' prevents operation UPDATE on table 't2'
-update v2,t2 set v2.col1 = (select max(col1) from t1) where v2.col1 = t2.col1;
-ERROR HY000: The definition of table 'v2' prevents operation UPDATE on table 'v2'
-update t1,t2 set t1.col1 = (select max(col1) from t1) where t1.col1 = t2.col1;
-ERROR HY000: Table 't1' is specified twice, both as a target for 'UPDATE' and as a separate source for data
-update v1,t2 set v1.col1 = (select max(col1) from t1) where v1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v1' prevents operation UPDATE on table 'v1'
-update t2,v2 set v2.col1 = (select max(col1) from t1) where v2.col1 = t2.col1;
-ERROR HY000: Table 't2' is specified twice, both as a target for 'UPDATE' and as a separate source for data
-update t2,t1 set t1.col1 = (select max(col1) from t1) where t1.col1 = t2.col1;
-ERROR HY000: Table 't2' is specified twice, both as a target for 'UPDATE' and as a separate source for data
-update t2,v1 set v1.col1 = (select max(col1) from t1) where v1.col1 = t2.col1;
-ERROR HY000: Table 't2' is specified twice, both as a target for 'UPDATE' and as a separate source for data
-update v2,t2 set v2.col1 = (select max(col1) from v2) where v2.col1 = t2.col1;
-ERROR HY000: Table 'v2' is specified twice, both as a target for 'UPDATE' and as a separate source for data
-update t1,t2 set t1.col1 = (select max(col1) from v2) where t1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v2' prevents operation UPDATE on table 't1'
-update v1,t2 set v1.col1 = (select max(col1) from v2) where v1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v2' prevents operation UPDATE on table 'v1'
-update t2,v2 set v2.col1 = (select max(col1) from v2) where v2.col1 = t2.col1;
-ERROR HY000: The definition of table 'v2' prevents operation UPDATE on table 't2'
-update t2,t1 set t1.col1 = (select max(col1) from v2) where t1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v2' prevents operation UPDATE on table 't2'
-update t2,v1 set v1.col1 = (select max(col1) from v2) where v1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v2' prevents operation UPDATE on table 't2'
-update v3 set v3.col1 = (select max(col1) from v1);
-ERROR HY000: The definition of table 'v1' prevents operation UPDATE on table 'v3'
-update v3 set v3.col1 = (select max(col1) from t1);
-ERROR HY000: The definition of table 'v3' prevents operation UPDATE on table 'v3'
-update v3 set v3.col1 = (select max(col1) from v2);
-ERROR HY000: The definition of table 'v2' prevents operation UPDATE on table 'v3'
-update v3 set v3.col1 = (select max(col1) from v3);
-ERROR HY000: Table 'v3' is specified twice, both as a target for 'UPDATE' and as a separate source for data
-delete v2 from v2,t2 where (select max(col1) from v1) > 0 and v2.col1 = t2.col1;
-ERROR HY000: The definition of table 'v1' prevents operation DELETE on table 'v2'
-delete t1 from t1,t2 where (select max(col1) from v1) > 0 and t1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v1' prevents operation DELETE on table 't1'
-delete v1 from v1,t2 where (select max(col1) from v1) > 0 and v1.col1 = t2.col1;
-ERROR HY000: Table 'v1' is specified twice, both as a target for 'DELETE' and as a separate source for data
-delete v2 from v2,t2 where (select max(col1) from t1) > 0 and v2.col1 = t2.col1;
-ERROR HY000: The definition of table 'v2' prevents operation DELETE on table 'v2'
-delete t1 from t1,t2 where (select max(col1) from t1) > 0 and t1.col1 = t2.col1;
-ERROR HY000: Table 't1' is specified twice, both as a target for 'DELETE' and as a separate source for data
-delete v1 from v1,t2 where (select max(col1) from t1) > 0 and v1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v1' prevents operation DELETE on table 'v1'
-delete v2 from v2,t2 where (select max(col1) from v2) > 0 and v2.col1 = t2.col1;
-ERROR HY000: Table 'v2' is specified twice, both as a target for 'DELETE' and as a separate source for data
-delete t1 from t1,t2 where (select max(col1) from v2) > 0 and t1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v2' prevents operation DELETE on table 't1'
-delete v1 from v1,t2 where (select max(col1) from v2) > 0 and v1.col1 = t2.col1;
-ERROR HY000: The definition of table 'v2' prevents operation DELETE on table 'v1'
 insert into v2 values ((select max(col1) from v1));
 ERROR HY000: The definition of table 'v1' prevents operation INSERT on table 'v2'
 insert into t1 values ((select max(col1) from v1));
@@ -2024,8 +1956,6 @@ create view v1 as select f59, f60 from t1 where f59 in
 (select f59 from t1);
 update v1 set f60=2345;
 ERROR HY000: The target table v1 of the UPDATE is not updatable
-update t1 set f60=(select max(f60) from v1);
-ERROR HY000: The definition of table 'v1' prevents operation UPDATE on table 't1'
 drop view v1;
 drop table t1;
 create table t1 (s1 int);
@@ -5236,7 +5166,7 @@ CREATE TABLE t4 (i4 INT);
 INSERT INTO t4 VALUES (1),(2);
 DROP VIEW IF EXISTS v1;
 Warnings:
-Note	4089	Unknown VIEW: 'test.v1'
+Note	4090	Unknown VIEW: 'test.v1'
 CREATE VIEW v1 AS select coalesce(j1,i3) AS v1_field1 from t2 join t3 left join t1 on ( i1 = i2 );
 CREATE VIEW v2 AS select v1_field1 from t4 join v1;
 prepare my_stmt from "select v1_field1 from v2";
@@ -5707,7 +5637,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 3	DEPENDENT SUBQUERY	t2	ALL	NULL	NULL	NULL	NULL	6	100.00	Using where
 Warnings:
 Note	1276	Field or reference 'test.t1.a' of SELECT #3 was resolved in SELECT #2
-Note	1003	/* select#1 */ select `test`.`t1`.`a` AS `a`,(/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`) AS `c` from `test`.`t1`
+Note	1003	/* select#1 */ select `test`.`t1`.`a` AS `a`,<expr_cache><`test`.`t1`.`a`>((/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`)) AS `c` from `test`.`t1`
 select * from v1;
 a	c
 1	2
@@ -5724,7 +5654,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 3	DEPENDENT SUBQUERY	t2	ALL	NULL	NULL	NULL	NULL	6	100.00	Using where
 Warnings:
 Note	1276	Field or reference 'test.t1.a' of SELECT #3 was resolved in SELECT #2
-Note	1003	/* select#1 */ select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t1`.`a` AS `a`,(/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`) AS `c` from `test`.`t2` join `test`.`t1` where `test`.`t1`.`a` = `test`.`t2`.`a`
+Note	1003	/* select#1 */ select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t1`.`a` AS `a`,<expr_cache><`test`.`t1`.`a`>((/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`)) AS `c` from `test`.`t2` join `test`.`t1` where `test`.`t1`.`a` = `test`.`t2`.`a`
 select * from t2, v1 where t2.a=v1.a;
 a	b	a	c
 1	2	1	2
@@ -5743,7 +5673,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 3	DEPENDENT SUBQUERY	t2	ALL	NULL	NULL	NULL	NULL	6	100.00	Using where
 Warnings:
 Note	1276	Field or reference 'test.t1.a' of SELECT #3 was resolved in SELECT #2
-Note	1003	/* select#1 */ select `test`.`t1`.`a` AS `a`,`test`.`t1`.`b` AS `b`,`test`.`t1`.`a` AS `a`,(/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`) AS `c` from `test`.`t1` join `test`.`t1` where `test`.`t1`.`a` = `test`.`t1`.`a`
+Note	1003	/* select#1 */ select `test`.`t1`.`a` AS `a`,`test`.`t1`.`b` AS `b`,`test`.`t1`.`a` AS `a`,<expr_cache><`test`.`t1`.`a`>((/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`)) AS `c` from `test`.`t1` join `test`.`t1` where `test`.`t1`.`a` = `test`.`t1`.`a`
 select * from t1, v1 where t1.a=v1.a;
 a	b	a	c
 1	2	1	2
@@ -5762,7 +5692,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 3	DEPENDENT SUBQUERY	t2	ALL	NULL	NULL	NULL	NULL	6	100.00	Using where
 Warnings:
 Note	1276	Field or reference 'test.t1.a' of SELECT #3 was resolved in SELECT #2
-Note	1003	/* select#1 */ select `test`.`t1`.`a` AS `a`,`test`.`t1`.`b` AS `b`,`test`.`t1`.`a` AS `a`,(/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`) AS `c` from `test`.`t1` join `test`.`t1` where `test`.`t1`.`b` = (/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`)
+Note	1003	/* select#1 */ select `test`.`t1`.`a` AS `a`,`test`.`t1`.`b` AS `b`,`test`.`t1`.`a` AS `a`,<expr_cache><`test`.`t1`.`a`>((/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`)) AS `c` from `test`.`t1` join `test`.`t1` where `test`.`t1`.`b` = <expr_cache><`test`.`t1`.`a`>((/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`))
 select * from t1, v1 where t1.b=v1.c;
 a	b	a	c
 1	2	1	2
@@ -5780,7 +5710,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 3	DEPENDENT SUBQUERY	t2	ALL	NULL	NULL	NULL	NULL	6	100.00	Using where
 Warnings:
 Note	1276	Field or reference 'test.t1.a' of SELECT #3 was resolved in SELECT #2
-Note	1003	/* select#1 */ select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t1`.`a` AS `a`,`test`.`t1`.`b` AS `b`,`test`.`t1`.`a` AS `a`,(/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`) AS `c` from `test`.`t2` join `test`.`t1` join `test`.`t1` where `test`.`t1`.`a` = `test`.`t2`.`a` and `test`.`t1`.`a` = `test`.`t2`.`a`
+Note	1003	/* select#1 */ select `test`.`t2`.`a` AS `a`,`test`.`t2`.`b` AS `b`,`test`.`t1`.`a` AS `a`,`test`.`t1`.`b` AS `b`,`test`.`t1`.`a` AS `a`,<expr_cache><`test`.`t1`.`a`>((/* select#3 */ select max(`test`.`t2`.`b`) from `test`.`t2` where `test`.`t1`.`a` = `test`.`t2`.`a`)) AS `c` from `test`.`t2` join `test`.`t1` join `test`.`t1` where `test`.`t1`.`a` = `test`.`t2`.`a` and `test`.`t1`.`a` = `test`.`t2`.`a`
 select * from t2, t1, v1 where t1.a=t2.a and t1.a=v1.a;
 a	b	a	b	a	c
 1	2	1	2	1	2

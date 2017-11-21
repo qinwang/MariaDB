@@ -853,7 +853,6 @@ typedef enum {
 	TRX_WSREP_ABORT  = 1
 } trx_abort_t;
 
-
 /** Represents an instance of rollback segment along with its state variables.*/
 struct trx_undo_ptr_t {
 	trx_rseg_t*	rseg;		/*!< rollback segment assigned to the
@@ -1194,10 +1193,8 @@ struct trx_t {
 	trx_rsegs_t	rsegs;		/* rollback segments for undo logging */
 	undo_no_t	roll_limit;	/*!< least undo number to undo during
 					a partial rollback; 0 otherwise */
-#ifdef UNIV_DEBUG
 	bool		in_rollback;	/*!< true when the transaction is
 					executing a partial or full rollback */
-#endif /* UNIV_DEBUG */
 	ulint		pages_undone;	/*!< number of undo log pages undone
 					since the last undo log truncation */
 	/*------------------------------*/
@@ -1288,6 +1285,9 @@ struct trx_t {
 	os_event_t	wsrep_event;	/* event waited for in srv_conc_slot */
 #endif /* WITH_WSREP */
 
+	/* System Versioning */
+	bool		vers_update_trt;
+					/*!< Notify TRT on System Versioned write */
 	ulint		magic_n;
 
 	/** @return whether any persistent undo log has been generated */

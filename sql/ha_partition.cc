@@ -1,6 +1,6 @@
 /*
-  Copyright (c) 2005, 2013, Oracle and/or its affiliates.
-  Copyright (c) 2009, 2013, Monty Program Ab & SkySQL Ab
+  Copyright (c) 2005, 2017, Oracle and/or its affiliates.
+  Copyright (c) 2009, 2017, MariaDB
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -160,18 +160,11 @@ static int partition_initialize(void *p)
 bool Partition_share::init(uint num_parts)
 {
   DBUG_ENTER("Partition_share::init");
-  mysql_mutex_init(key_partition_auto_inc_mutex,
-                   &auto_inc_mutex,
-                   MY_MUTEX_INIT_FAST);
   auto_inc_initialized= false;
   partition_name_hash_initialized= false;
   next_auto_inc_val= 0;
-  partitions_share_refs= new Parts_share_refs;
-  if (!partitions_share_refs)
-    DBUG_RETURN(true);
-  if (partitions_share_refs->init(num_parts))
+  if (partitions_share_refs.init(num_parts))
   {
-    delete partitions_share_refs;
     DBUG_RETURN(true);
   }
   DBUG_RETURN(false);
@@ -1276,12 +1269,12 @@ int ha_partition::handle_opt_part(THD *thd, HA_CHECK_OPT *check_opt,
    (modelled after mi_check_print_msg)
    TODO: move this into the handler, or rewrite mysql_admin_table.
 */
-static bool print_admin_msg(THD* thd, uint len,
+bool print_admin_msg(THD* thd, uint len,
                             const char* msg_type,
                             const char* db_name, String &table_name,
                             const char* op_name, const char *fmt, ...)
   ATTRIBUTE_FORMAT(printf, 7, 8);
-static bool print_admin_msg(THD* thd, uint len,
+bool print_admin_msg(THD* thd, uint len,
                             const char* msg_type,
                             const char* db_name, String &table_name,
                             const char* op_name, const char *fmt, ...)
@@ -1942,7 +1935,7 @@ int ha_partition::change_partitions(HA_CREATE_INFO *create_info,
           cleanup_new_partition(part_count);
           DBUG_RETURN(error);
         }
-        
+
         DBUG_PRINT("info", ("Add partition %s", part_name_buff));
         if ((error= prepare_new_partition(table, create_info,
                                           new_file_array[i],
@@ -2517,7 +2510,7 @@ register_query_cache_dependant_tables(THD *thd,
         part= i * num_subparts + j;
         /* we store the end \0 as part of the key */
         end= strmov(engine_pos, sub_elem->partition_name);
-        length= end - engine_key;
+        length= (uint)(end - engine_key);
         /* Copy the suffix also to query cache key */
         memcpy(query_cache_key_end, engine_key_end, (end - engine_key_end));
         if (reg_query_cache_dependant_table(thd, engine_key, length,
@@ -2533,7 +2526,7 @@ register_query_cache_dependant_tables(THD *thd,
     else
     {
       char *end= engine_pos+1;                  // copy end \0
-      uint length= end - engine_key;
+      uint length= (uint)(end - engine_key);
       /* Copy the suffix also to query cache key */
       memcpy(query_cache_key_end, engine_key_end, (end - engine_key_end));
       if (reg_query_cache_dependant_table(thd, engine_key, length,
@@ -3312,9 +3305,8 @@ bool ha_partition::set_ha_share_ref(Handler_share **ha_share_arg)
     DBUG_RETURN(true);
   if (!(part_share= get_share()))
     DBUG_RETURN(true);
-  DBUG_ASSERT(part_share->partitions_share_refs);
-  DBUG_ASSERT(part_share->partitions_share_refs->num_parts >= m_tot_parts);
-  ha_shares= part_share->partitions_share_refs->ha_shares;
+  DBUG_ASSERT(part_share->partitions_share_refs.num_parts >= m_tot_parts);
+  ha_shares= part_share->partitions_share_refs.ha_shares;
   for (i= 0; i < m_tot_parts; i++)
   {
     if (m_file[i]->set_ha_share_ref(&ha_shares[i]))
@@ -4333,6 +4325,15 @@ int ha_partition::update_row(const uchar *old_data, const uchar *new_data)
     if (error)
       goto exit;
 
+    if (m_part_info->part_type == VERSIONING_PARTITION)
+    {
+      uint sub_factor= m_part_info->num_subparts ? m_part_info->num_subparts : 1;
+      DBUG_ASSERT(m_tot_parts == m_part_info->num_parts * sub_factor);
+      uint lpart_id= new_part_id / sub_factor;
+      // lpart_id is VERSIONING partition because new_part_id != old_part_id
+      m_part_info->vers_update_stats(thd, lpart_id);
+    }
+
     tmp_disable_binlog(thd); /* Do not replicate the low-level changes. */
     error= m_file[old_part_id]->ha_delete_row(old_data);
     reenable_binlog(thd);
@@ -4814,8 +4815,8 @@ int ha_partition::rnd_init(bool scan)
   }
 
   /* Now we see what the index of our first important partition is */
-  DBUG_PRINT("info", ("m_part_info->read_partitions: 0x%lx",
-                      (long) m_part_info->read_partitions.bitmap));
+  DBUG_PRINT("info", ("m_part_info->read_partitions: %p",
+                      m_part_info->read_partitions.bitmap));
   part_id= bitmap_get_first_set(&(m_part_info->read_partitions));
   DBUG_PRINT("info", ("m_part_spec.start_part %d", part_id));
 
@@ -5763,6 +5764,22 @@ int ha_partition::index_next_same(uchar *buf, const uchar *key, uint keylen)
   if (!m_ordered_scan_ongoing)
     DBUG_RETURN(handle_unordered_next(buf, TRUE));
   DBUG_RETURN(handle_ordered_next(buf, TRUE));
+}
+
+
+int ha_partition::index_read_last_map(uchar *buf,
+                                          const uchar *key,
+                                          key_part_map keypart_map)
+{
+  DBUG_ENTER("ha_partition::index_read_last_map");
+
+  m_ordered= true;                              // Safety measure
+  end_range= NULL;
+  m_index_scan_type= partition_index_read_last;
+  m_start_key.key= key;
+  m_start_key.keypart_map= keypart_map;
+  m_start_key.flag= HA_READ_PREFIX_LAST;
+  DBUG_RETURN(common_index_read(buf, true));
 }
 
 
@@ -6749,7 +6766,7 @@ int ha_partition::info(uint flag)
       /* Get variables if not already done */
       if (!(flag & HA_STATUS_VARIABLE) ||
           !bitmap_is_set(&(m_part_info->read_partitions),
-                         (file_array - m_file)))
+                         (uint)(file_array - m_file)))
         file->info(HA_STATUS_VARIABLE | no_lock_flag | extra_var_flag);
       if (file->stats.records > max_records)
       {
@@ -7716,7 +7733,7 @@ ha_rows ha_partition::estimate_rows_upper_bound()
 
   do
   {
-    if (bitmap_is_set(&(m_part_info->read_partitions), (file - m_file)))
+    if (bitmap_is_set(&(m_part_info->read_partitions), (uint)(file - m_file)))
     {
       rows= (*file)->estimate_rows_upper_bound();
       if (rows == HA_POS_ERROR)

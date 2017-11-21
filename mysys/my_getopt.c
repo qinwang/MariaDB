@@ -23,7 +23,6 @@
 #include <mysys_err.h>
 #include <my_getopt.h>
 #include <errno.h>
-#include <m_string.h>
 
 typedef void (*init_func_p)(const struct my_option *option, void *variable,
                             longlong value);
@@ -835,6 +834,7 @@ static int setval(const struct my_option *opts, void *value, char *argument,
           goto ret;
         };
       }
+      break;
     case GET_BIT:
     {
       uint tmp;
@@ -1433,7 +1433,7 @@ static uint print_name(const struct my_option *optp)
 
   for (;*s;s++)
     putchar(*s == '_' ? '-' : *s);
-  return s - optp->name;
+  return (uint)(s - optp->name);
 }
 
 /** prints option comment with indentation and wrapping.
@@ -1474,7 +1474,7 @@ static uint print_comment(const char *comment,
       putchar(' ');
   }
   printf("%s", comment);
-  return curpos + (end - comment);
+  return curpos + (int)(end - comment);
 }
 
 

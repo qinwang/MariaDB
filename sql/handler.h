@@ -34,6 +34,7 @@
 #include "structs.h"                            /* SHOW_COMP_OPTION */
 #include "sql_array.h"          /* Dynamic_array<> */
 #include "mdl.h"
+#include "vers_string.h"
 
 #include "sql_analyze_stmt.h" // for Exec_time_tracker 
 
@@ -400,6 +401,8 @@ enum enum_alter_inplace_result {
 #define HA_LEX_CREATE_TMP_TABLE	1U
 #define HA_CREATE_TMP_ALTER     8U
 #define HA_LEX_CREATE_SEQUENCE  16U
+#define HA_VERSIONED_TABLE      32U
+#define HA_VTMD                 64U
 
 #define HA_MAX_REC_LENGTH	65535
 
@@ -789,9 +792,9 @@ struct TABLE_SHARE;
 struct HA_CREATE_INFO;
 struct st_foreign_key_info;
 typedef struct st_foreign_key_info FOREIGN_KEY_INFO;
-typedef bool (stat_print_fn)(THD *thd, const char *type, uint type_len,
-                             const char *file, uint file_len,
-                             const char *status, uint status_len);
+typedef bool (stat_print_fn)(THD *thd, const char *type, size_t type_len,
+                             const char *file, size_t file_len,
+                             const char *status, size_t status_len);
 enum ha_stat_type { HA_ENGINE_STATUS, HA_ENGINE_LOGS, HA_ENGINE_MUTEX };
 extern st_plugin_int *hton2plugin[MAX_HA];
 
@@ -977,6 +980,7 @@ struct handler_iterator {
 class handler;
 class group_by_handler;
 struct Query;
+class TR_table;
 typedef class st_select_lex SELECT_LEX;
 typedef struct st_order ORDER;
 
@@ -1382,6 +1386,14 @@ struct handlerton
    */
    int (*discover_table_structure)(handlerton *hton, THD* thd,
                                    TABLE_SHARE *share, HA_CREATE_INFO *info);
+
+   /*
+     System Versioning
+   */
+   /** Fill TRT record for update.
+    @param[out]   trt       TRT table which record[0] will be filled with
+                            transaction data. */
+   void (*vers_get_trt_data)(TR_table &trt);
 };
 
 
@@ -1429,6 +1441,7 @@ handlerton *ha_default_tmp_handlerton(THD *thd);
 */
 #define HTON_NO_BINLOG_ROW_OPT       (1 << 9)
 #define HTON_SUPPORTS_EXTENDED_KEYS  (1 <<10) //supports extended keys
+#define HTON_NATIVE_SYS_VERSIONING (1 << 11) //Engine supports System Versioning
 
 // MySQL compatibility. Unused.
 #define HTON_SUPPORTS_FOREIGN_KEYS   (1 << 0) //Foreign key constraint supported.
@@ -1674,6 +1687,86 @@ struct Schema_specification_st
   }
 };
 
+class Create_field;
+
+struct Vers_parse_info
+{
+  Vers_parse_info() :
+    with_system_versioning(false),
+    without_system_versioning(false),
+    versioned_fields(false),
+    unversioned_fields(false)
+  {}
+
+  struct start_end_t
+  {
+    start_end_t()
+    {}
+    start_end_t(LEX_CSTRING _start, LEX_CSTRING _end) :
+      start(_start),
+      end(_end) {}
+    LString_i start;
+    LString_i end;
+  };
+
+  start_end_t system_time;
+  start_end_t as_row;
+
+  void set_period_for_system_time(LString start, LString end)
+  {
+    system_time.start= start;
+    system_time.end= end;
+  }
+
+private:
+  bool is_trx_start(const char *name) const;
+  bool is_trx_end(const char *name) const;
+  bool is_trx_start(const Create_field &f) const;
+  bool is_trx_end(const Create_field &f) const;
+  bool fix_implicit(THD *thd, Alter_info *alter_info, bool integer_fields);
+  bool need_check() const
+  {
+    return
+      versioned_fields ||
+      unversioned_fields ||
+      with_system_versioning ||
+      without_system_versioning ||
+      system_time.start ||
+      system_time.end ||
+      as_row.start ||
+      as_row.end;
+  }
+  bool check_with_conditions(const char *table_name) const;
+  bool check_generated_type(const char *table_name, Alter_info *alter_info,
+                            bool integer_fields) const;
+
+public:
+  bool check_and_fix_implicit(THD *thd, Alter_info *alter_info,
+                              HA_CREATE_INFO *create_info,
+                              const char *table_name);
+  bool check_and_fix_alter(THD *thd, Alter_info *alter_info,
+                           HA_CREATE_INFO *create_info, TABLE_SHARE *share);
+  bool fix_create_like(THD *thd, Alter_info *alter_info,
+                       HA_CREATE_INFO *create_info, TABLE_LIST *table);
+
+  /** User has added 'WITH SYSTEM VERSIONING' to table definition */
+  bool with_system_versioning : 1;
+
+  /** Use has added 'WITHOUT SYSTEM VERSIONING' to ALTER TABLE */
+  bool without_system_versioning : 1;
+
+  /**
+     At least one field was specified 'WITH SYSTEM VERSIONING'. Useful for
+     error handling.
+  */
+  bool versioned_fields : 1;
+
+  /**
+     At least one field was specified 'WITHOUT SYSTEM VERSIONING'. Useful for
+     error handling.
+  */
+  bool unversioned_fields : 1;
+};
 
 /**
   A helper struct for table DDL statements, e.g.:
@@ -1749,6 +1842,8 @@ struct Table_scope_and_contents_source_st
   bool table_was_deleted;
   sequence_definition *seq_create_info;
 
+  Vers_parse_info vers_info;
+
   void init()
   {
     bzero(this, sizeof(*this));
@@ -1758,6 +1853,16 @@ struct Table_scope_and_contents_source_st
   {
     db_type= tmp_table() ? ha_default_tmp_handlerton(thd)
                          : ha_default_handlerton(thd);
+  }
+
+  bool versioned() const
+  {
+    return options & HA_VERSIONED_TABLE;
+  }
+
+  bool vtmd() const
+  {
+    return options & HA_VTMD;
   }
 };
 
@@ -1890,10 +1995,6 @@ public:
 
   // Add non-unique, non-primary index
   static const HA_ALTER_FLAGS ADD_INDEX                  = 1ULL << 0;
-  //
-  // Adds a spatial index. At the moment all engines treat it
-  // identically to the ADD_INDEX, so it gets the same code
-  static const HA_ALTER_FLAGS ADD_SPATIAL_INDEX          = ADD_INDEX;
 
   // Drop non-unique, non-primary index
   static const HA_ALTER_FLAGS DROP_INDEX                 = 1ULL << 1;
@@ -2028,6 +2129,8 @@ public:
   static const HA_ALTER_FLAGS ALTER_ADD_CHECK_CONSTRAINT = 1ULL << 39;
 
   static const HA_ALTER_FLAGS ALTER_DROP_CHECK_CONSTRAINT= 1ULL << 40;
+
+  static const HA_ALTER_FLAGS ALTER_DROP_HISTORICAL      = 1ULL << 41;
 
   /**
     Create options (like MAX_ROWS) for the new version of table.
@@ -2761,6 +2864,8 @@ public:
   */
   uint auto_inc_intervals_count;
 
+  ulonglong vers_auto_decrement;
+
   /**
     Instrumented table associated with this handler.
     This member should be set to NULL when no instrumentation is in place,
@@ -3195,6 +3300,18 @@ protected:
   virtual int index_last(uchar * buf)
    { return  HA_ERR_WRONG_COMMAND; }
   virtual int index_next_same(uchar *buf, const uchar *key, uint keylen);
+  /**
+     @brief
+     The following functions works like index_read, but it find the last
+     row with the current key value or prefix.
+     @returns @see index_read_map().
+  */
+  virtual int index_read_last_map(uchar * buf, const uchar * key,
+                                  key_part_map keypart_map)
+  {
+    uint key_len= calculate_key_len(table, active_index, key, keypart_map);
+    return index_read_last(buf, key, key_len);
+  }
   virtual int close(void)=0;
   inline void update_rows_read()
   {
@@ -3274,7 +3391,7 @@ public:
   void ft_end() { ft_handler=NULL; }
   virtual FT_INFO *ft_init_ext(uint flags, uint inx,String *key)
     { return NULL; }
-private:
+public:
   virtual int ft_read(uchar *buf) { return HA_ERR_WRONG_COMMAND; }
   virtual int rnd_next(uchar *buf)=0;
   virtual int rnd_pos(uchar * buf, uchar *pos)=0;
@@ -4005,8 +4122,8 @@ protected:
   virtual int delete_table(const char *name);
 
 public:
-  inline bool check_table_binlog_row_based(bool binlog_row);
-private:
+  bool check_table_binlog_row_based(bool binlog_row);
+
   /* Cache result to avoid extra calls */
   inline void mark_trx_read_write()
   {
@@ -4016,6 +4133,8 @@ private:
       mark_trx_read_write_internal();
     }
   }
+
+private:
   void mark_trx_read_write_internal();
   bool check_table_binlog_row_based_internal(bool binlog_row);
 
@@ -4134,6 +4253,11 @@ protected:
   virtual int index_read(uchar * buf, const uchar * key, uint key_len,
                          enum ha_rkey_function find_flag)
    { return  HA_ERR_WRONG_COMMAND; }
+  virtual int index_read_last(uchar * buf, const uchar * key, uint key_len)
+  {
+    my_errno= HA_ERR_WRONG_COMMAND;
+    return HA_ERR_WRONG_COMMAND;
+  }
   friend class ha_partition;
   friend class ha_sequence;
 public:
@@ -4257,6 +4381,15 @@ public:
   */
   virtual int find_unique_row(uchar *record, uint unique_ref)
   { return -1; /*unsupported */}
+
+  bool native_versioned() const
+  { DBUG_ASSERT(ht); return partition_ht()->flags & HTON_NATIVE_SYS_VERSIONING; }
+  virtual ha_rows part_records(void *_part_elem)
+  { DBUG_ASSERT(0); return false; }
+  virtual handler* part_handler(uint32 part_id)
+  { DBUG_ASSERT(0); return NULL; }
+  virtual void update_partition(uint	part_id)
+  {}
 protected:
   Handler_share *get_ha_share_ptr();
   void set_ha_share_ptr(Handler_share *arg_ha_share);
@@ -4360,6 +4493,13 @@ public:
 
   void sort();
   void remove_duplicates(); // assumes that the list is sorted
+#ifndef DBUG_OFF
+  /*
+     Used to find unstable mtr tests querying
+     INFORMATION_SCHEMA.TABLES without ORDER BY.
+  */
+  void sort_desc();
+#endif
 };
 
 int ha_discover_table(THD *thd, TABLE_SHARE *share);

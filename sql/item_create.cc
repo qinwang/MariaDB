@@ -43,38 +43,6 @@
 */
 
 /**
-  Adapter for native functions with a variable number of arguments.
-  The main use of this class is to discard the following calls:
-  <code>foo(expr1 AS name1, expr2 AS name2, ...)</code>
-  which are syntactically correct (the syntax can refer to a UDF),
-  but semantically invalid for native functions.
-*/
-
-class Create_native_func : public Create_func
-{
-public:
-  virtual Item *create_func(THD *thd, LEX_CSTRING *name,
-                            List<Item> *item_list);
-
-  /**
-    Builder method, with no arguments.
-    @param thd The current thread
-    @param name The native function name
-    @param item_list The function parameters, none of which are named
-    @return An item representing the function call
-  */
-  virtual Item *create_native(THD *thd, LEX_CSTRING *name,
-                              List<Item> *item_list) = 0;
-
-protected:
-  /** Constructor. */
-  Create_native_func() {}
-  /** Destructor. */
-  virtual ~Create_native_func() {}
-};
-
-
-/**
   Adapter for functions that takes exactly zero arguments.
 */
 
@@ -623,6 +591,19 @@ protected:
 };
 
 
+class Create_func_decode_oracle : public Create_native_func
+{
+public:
+  virtual Item *create_native(THD *thd, LEX_CSTRING *name, List<Item> *item_list);
+
+  static Create_func_decode_oracle s_singleton;
+
+protected:
+  Create_func_decode_oracle() {}
+  virtual ~Create_func_decode_oracle() {}
+};
+
+
 class Create_func_concat_ws : public Create_native_func
 {
 public:
@@ -768,19 +749,6 @@ protected:
   virtual ~Create_func_crosses() {}
 };
 #endif
-
-
-class Create_func_date_format : public Create_func_arg2
-{
-public:
-  virtual Item *create_2_arg(THD *thd, Item *arg1, Item *arg2);
-
-  static Create_func_date_format s_singleton;
-
-protected:
-  Create_func_date_format() {}
-  virtual ~Create_func_date_format() {}
-};
 
 
 class Create_func_datediff : public Create_func_arg2
@@ -2876,6 +2844,20 @@ protected:
 };
 
 
+class Create_func_substr_oracle : public Create_native_func
+{
+public:
+  virtual Item *create_native(THD *thd, LEX_CSTRING *name,
+                              List<Item> *item_list);
+
+  static Create_func_substr_oracle s_singleton;
+
+protected:
+  Create_func_substr_oracle() {}
+  virtual ~Create_func_substr_oracle() {}
+};
+
+
 class Create_func_subtime : public Create_func_arg2
 {
 public:
@@ -3341,7 +3323,7 @@ Create_udf_func Create_udf_func::s_singleton;
 Item*
 Create_udf_func::create_func(THD *thd, LEX_CSTRING *name, List<Item> *item_list)
 {
-  udf_func *udf= find_udf(name->str, name->length);
+  udf_func *udf= find_udf(name->str, (uint) name->length);
   DBUG_ASSERT(udf);
   return create(thd, udf, item_list);
 }
@@ -3933,6 +3915,21 @@ Create_func_decode_histogram::create_2_arg(THD *thd, Item *arg1, Item *arg2)
   return new (thd->mem_root) Item_func_decode_histogram(thd, arg1, arg2);
 }
 
+Create_func_decode_oracle Create_func_decode_oracle::s_singleton;
+
+Item*
+Create_func_decode_oracle::create_native(THD *thd, LEX_CSTRING *name,
+                                         List<Item> *item_list)
+{
+  uint arg_count= item_list ? item_list->elements : 0;
+  if (arg_count < 3)
+  {
+    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
+    return NULL;
+  }
+  return new (thd->mem_root) Item_func_decode_oracle(thd, *item_list);
+}
+
 Create_func_concat_ws Create_func_concat_ws::s_singleton;
 
 Item*
@@ -4060,15 +4057,6 @@ Create_func_crosses::create_2_arg(THD *thd, Item *arg1, Item *arg2)
                                                    Item_func::SP_CROSSES_FUNC);
 }
 #endif
-
-
-Create_func_date_format Create_func_date_format::s_singleton;
-
-Item*
-Create_func_date_format::create_2_arg(THD *thd, Item *arg1, Item *arg2)
-{
-  return new (thd->mem_root) Item_func_date_format(thd, arg1, arg2, 0);
-}
 
 
 Create_func_datediff Create_func_datediff::s_singleton;
@@ -4569,7 +4557,7 @@ Create_func_from_unixtime::create_native(THD *thd, LEX_CSTRING *name,
     Item *param_1= item_list->pop();
     Item *param_2= item_list->pop();
     Item *ut= new (thd->mem_root) Item_func_from_unixtime(thd, param_1);
-    func= new (thd->mem_root) Item_func_date_format(thd, ut, param_2, 0);
+    func= new (thd->mem_root) Item_func_date_format(thd, ut, param_2);
     break;
   }
   default:
@@ -6499,6 +6487,40 @@ Create_func_substr_index::create_3_arg(THD *thd, Item *arg1, Item *arg2, Item *a
 }
 
 
+Create_func_substr_oracle Create_func_substr_oracle::s_singleton;
+
+Item*
+Create_func_substr_oracle::create_native(THD *thd, LEX_CSTRING *name,
+                                List<Item> *item_list)
+{
+  Item *func= NULL;
+  int arg_count= item_list ? item_list->elements : 0;
+
+  switch (arg_count) {
+  case 2:
+  {
+    Item *param_1= item_list->pop();
+    Item *param_2= item_list->pop();
+    func= new (thd->mem_root) Item_func_substr_oracle(thd, param_1, param_2);
+    break;
+  }
+  case 3:
+  {
+    Item *param_1= item_list->pop();
+    Item *param_2= item_list->pop();
+    Item *param_3= item_list->pop();
+    func= new (thd->mem_root) Item_func_substr_oracle(thd, param_1, param_2, param_3);
+    break;
+  }
+  default:
+    my_error(ER_WRONG_PARAMCOUNT_TO_NATIVE_FCT, MYF(0), name->str);
+    break;
+  }
+
+  return func;
+}
+
+
 Create_func_subtime Create_func_subtime::s_singleton;
 
 Item*
@@ -6522,7 +6544,7 @@ Create_func_time_format Create_func_time_format::s_singleton;
 Item*
 Create_func_time_format::create_2_arg(THD *thd, Item *arg1, Item *arg2)
 {
-  return new (thd->mem_root) Item_func_date_format(thd, arg1, arg2, 1);
+  return new (thd->mem_root) Item_func_time_format(thd, arg1, arg2);
 }
 
 
@@ -6869,12 +6891,6 @@ Create_func_year_week::create_native(THD *thd, LEX_CSTRING *name,
 }
 
 
-struct Native_func_registry
-{
-  LEX_CSTRING name;
-  Create_func *builder;
-};
-
 #define BUILDER(F) & F::s_singleton
 
 #ifdef HAVE_SPATIAL
@@ -6940,13 +6956,13 @@ static Native_func_registry func_array[] =
   { { C_STRING_WITH_LEN("CRC32") }, BUILDER(Create_func_crc32)},
   { { C_STRING_WITH_LEN("CROSSES") }, GEOM_BUILDER(Create_func_crosses)},
   { { C_STRING_WITH_LEN("DATEDIFF") }, BUILDER(Create_func_datediff)},
-  { { C_STRING_WITH_LEN("DATE_FORMAT") }, BUILDER(Create_func_date_format)},
   { { C_STRING_WITH_LEN("DAYNAME") }, BUILDER(Create_func_dayname)},
   { { C_STRING_WITH_LEN("DAYOFMONTH") }, BUILDER(Create_func_dayofmonth)},
   { { C_STRING_WITH_LEN("DAYOFWEEK") }, BUILDER(Create_func_dayofweek)},
   { { C_STRING_WITH_LEN("DAYOFYEAR") }, BUILDER(Create_func_dayofyear)},
   { { C_STRING_WITH_LEN("DEGREES") }, BUILDER(Create_func_degrees)},
   { { C_STRING_WITH_LEN("DECODE_HISTOGRAM") }, BUILDER(Create_func_decode_histogram)},
+  { { C_STRING_WITH_LEN("DECODE_ORACLE") }, BUILDER(Create_func_decode_oracle)},
   { { C_STRING_WITH_LEN("DES_DECRYPT") }, BUILDER(Create_func_des_decrypt)},
   { { C_STRING_WITH_LEN("DES_ENCRYPT") }, BUILDER(Create_func_des_encrypt)},
   { { C_STRING_WITH_LEN("DIMENSION") }, GEOM_BUILDER(Create_func_dimension)},
@@ -7209,6 +7225,8 @@ static Native_func_registry func_array[] =
   { { C_STRING_WITH_LEN("ST_WITHIN") }, GEOM_BUILDER(Create_func_within)},
   { { C_STRING_WITH_LEN("ST_X") }, GEOM_BUILDER(Create_func_x)},
   { { C_STRING_WITH_LEN("ST_Y") }, GEOM_BUILDER(Create_func_y)},
+  { { C_STRING_WITH_LEN("SUBSTR_ORACLE") },
+      BUILDER(Create_func_substr_oracle)},
   { { C_STRING_WITH_LEN("SUBSTRING_INDEX") }, BUILDER(Create_func_substr_index)},
   { { C_STRING_WITH_LEN("SUBTIME") }, BUILDER(Create_func_subtime)},
   { { C_STRING_WITH_LEN("TAN") }, BUILDER(Create_func_tan)},
@@ -7263,8 +7281,6 @@ get_native_fct_hash_key(const uchar *buff, size_t *length,
 
 int item_create_init()
 {
-  Native_func_registry *func;
-
   DBUG_ENTER("item_create_init");
 
   if (my_hash_init(& native_functions_hash,
@@ -7277,7 +7293,16 @@ int item_create_init()
                    MYF(0)))
     DBUG_RETURN(1);
 
-  for (func= func_array; func->builder != NULL; func++)
+  DBUG_RETURN(item_create_append(func_array));
+}
+
+int item_create_append(Native_func_registry array[])
+{
+  Native_func_registry *func;
+
+  DBUG_ENTER("item_create_append");
+
+  for (func= array; func->builder != NULL; func++)
   {
     if (my_hash_insert(& native_functions_hash, (uchar*) func))
       DBUG_RETURN(1);

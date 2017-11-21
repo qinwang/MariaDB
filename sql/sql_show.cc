@@ -62,6 +62,8 @@
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
 #endif
+#include "vtmd.h"
+#include "transaction.h"
 
 enum enum_i_s_events_fields
 {
@@ -92,7 +94,6 @@ enum enum_i_s_events_fields
 };
 
 #define USERNAME_WITH_HOST_CHAR_LENGTH (USERNAME_CHAR_LENGTH + HOSTNAME_LENGTH + 2)
-
 
 static const LEX_CSTRING trg_action_time_type_names[]=
 {
@@ -141,6 +142,12 @@ bool get_lookup_field_values(THD *, COND *, TABLE_LIST *, LOOKUP_FIELD_VALUES *)
 /***************************************************************************
 ** List all table types supported
 ***************************************************************************/
+
+
+static bool is_show_command(THD *thd)
+{
+  return sql_command_flags[thd->lex->sql_command] & CF_STATUS_COMMAND;
+}
 
 static int make_version_string(char *buf, int buf_length, uint version)
 {
@@ -281,7 +288,7 @@ int fill_plugins(THD *thd, TABLE_LIST *tables, COND *cond)
   TABLE *table= tables->table;
 
   if (plugin_foreach_with_mask(thd, show_plugins, MYSQL_ANY_PLUGIN,
-                               ~PLUGIN_IS_FREED, table))
+                               ~(PLUGIN_IS_FREED | PLUGIN_IS_DYING), table))
     DBUG_RETURN(1);
 
   DBUG_RETURN(0);
@@ -563,6 +570,7 @@ static struct show_privileges_st sys_privileges[]=
   {"Create view", "Tables",  "To create new views"},
   {"Create user", "Server Admin",  "To create new users"},
   {"Delete", "Tables",  "To delete existing rows"},
+  {"Delete versioning rows", "Tables", "To delete versioning table historical rows"},
   {"Drop", "Databases,Tables", "To drop databases, tables, and views"},
 #ifdef HAVE_EVENT_SCHEDULER
   {"Event","Server Admin","To create, alter, drop and execute events"},
@@ -989,13 +997,31 @@ find_files(THD *thd, Dynamic_array<LEX_CSTRING*> *files, LEX_CSTRING *db,
       if (tl.add_file(file->name))
         goto err;
     }
-    tl.sort();
   }
   else
   {
     if (ha_discover_table_names(thd, db, dirp, &tl, false))
       goto err;
   }
+#if MYSQL_VERSION_ID < 100300
+  /* incomplete optimization, but a less drastic change in GA version */
+  if (!thd->lex->select_lex.order_list.elements &&
+      !thd->lex->select_lex.group_list.elements)
+#else
+  if (is_show_command(thd))
+#endif
+    tl.sort();
+#ifndef DBUG_OFF
+  else
+  {
+    /*
+      sort_desc() is used to find easier unstable mtr tests that query
+      INFORMATION_SCHEMA.{SCHEMATA|TABLES} without a proper ORDER BY.
+      This can be removed in some release after 10.3 (e.g. in 10.4).
+    */
+    tl.sort_desc();
+  }
+#endif
 
   DBUG_PRINT("info",("found: %zu files", files->elements()));
   my_dirend(dirp);
@@ -1268,6 +1294,15 @@ mysqld_show_create(THD *thd, TABLE_LIST *table_list)
   */
   MDL_savepoint mdl_savepoint= thd->mdl_context.mdl_savepoint();
 
+  TABLE_LIST archive;
+  bool versioned= table_list->vers_conditions;
+  if (versioned)
+  {
+    DBUG_ASSERT(table_list->vers_conditions == FOR_SYSTEM_TIME_AS_OF);
+    VTMD_table vtmd(*table_list);
+    if (vtmd.setup_select(thd))
+      goto exit;
+  }
 
   if (mysqld_show_create_get_fields(thd, table_list, &field_list, &buffer))
     goto exit;
@@ -1310,6 +1345,13 @@ mysqld_show_create(THD *thd, TABLE_LIST *table_list)
   my_eof(thd);
 
 exit:
+  if (versioned)
+  {
+    /* If commit fails, we should be able to reset the OK status. */
+    thd->get_stmt_da()->set_overwrite_status(true);
+    trans_commit_stmt(thd);
+    thd->get_stmt_da()->set_overwrite_status(false);
+  }
   close_thread_tables(thd);
   /* Release any metadata locks taken during SHOW CREATE. */
   thd->mdl_context.rollback_to_savepoint(mdl_savepoint);
@@ -1672,6 +1714,7 @@ static bool get_field_default_value(THD *thd, Field *field, String *def_value,
 
   has_default= (field->default_value ||
                 (!(field->flags & NO_DEFAULT_VALUE_FLAG) &&
+		 !field->vers_sys_field() &&
                  field->unireg_check != Field::NEXT_NUMBER));
 
   def_value->length(0);
@@ -1991,6 +2034,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
   TABLE *table= table_list->table;
   TABLE_SHARE *share= table->s;
   sql_mode_t sql_mode= thd->variables.sql_mode;
+  ulong vers_hide= thd->variables.vers_hide;
   bool foreign_db_mode=  sql_mode & (MODE_POSTGRESQL | MODE_ORACLE |
                                      MODE_MSSQL | MODE_DB2 |
                                      MODE_MAXDB | MODE_ANSI);
@@ -2030,7 +2074,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
     alias= table_list->schema_table->table_name;
   else
   {
-    if (lower_case_table_names == 2)
+    if (lower_case_table_names == 2 || table_list->vers_force_alias)
       alias= table->alias.c_ptr();
     else
     {
@@ -2068,6 +2112,10 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
   for (ptr=table->field ; (field= *ptr); ptr++)
   {
     uint flags = field->flags;
+
+    if (vers_hide == VERS_HIDE_FULL &&
+        (flags & (VERS_SYS_START_FLAG | VERS_SYS_END_FLAG)))
+      continue;
 
     if (ptr != table->field)
       packet->append(STRING_WITH_LEN(",\n"));
@@ -2113,9 +2161,18 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
     }
     else
     {
+      if (field->flags & VERS_SYS_START_FLAG)
+      {
+        packet->append(STRING_WITH_LEN(" GENERATED ALWAYS AS ROW START"));
+      }
+      else if (field->flags & VERS_SYS_END_FLAG)
+      {
+        packet->append(STRING_WITH_LEN(" GENERATED ALWAYS AS ROW END"));
+      }
+
       if (flags & NOT_NULL_FLAG)
         packet->append(STRING_WITH_LEN(" NOT NULL"));
-      else if (field->type() == MYSQL_TYPE_TIMESTAMP)
+      else if (field->type() == MYSQL_TYPE_TIMESTAMP && !field->vers_sys_field())
       {
         /*
           TIMESTAMP field require explicit NULL flag, because unlike
@@ -2129,6 +2186,11 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
       {
         packet->append(STRING_WITH_LEN(" DEFAULT "));
         packet->append(def_value.ptr(), def_value.length(), system_charset_info);
+      }
+
+      if (field->flags & VERS_OPTIMIZED_UPDATE_FLAG)
+      {
+        packet->append(STRING_WITH_LEN(" WITHOUT SYSTEM VERSIONING"));
       }
 
       if (!limited_mysql_mode &&
@@ -2222,6 +2284,17 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
                           hton->index_options);
   }
 
+  if (table->versioned() && vers_hide != VERS_HIDE_FULL)
+  {
+    const Field *fs = table->vers_start_field();
+    const Field *fe = table->vers_end_field();
+    packet->append(STRING_WITH_LEN(",\n  PERIOD FOR SYSTEM_TIME ("));
+    append_identifier(thd,packet,fs->field_name.str, fs->field_name.length);
+    packet->append(STRING_WITH_LEN(", "));
+    append_identifier(thd,packet,fe->field_name.str, fe->field_name.length);
+    packet->append(STRING_WITH_LEN(")"));
+  }
+
   /*
     Get possible foreign key definitions stored in InnoDB and append them
     to the CREATE TABLE statement
@@ -2259,6 +2332,11 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
   if (show_table_options)
     add_table_options(thd, table, create_info_arg,
                       table_list->schema_table != 0, 0, packet);
+
+  if (table->versioned() && vers_hide != VERS_HIDE_FULL)
+  {
+    packet->append(STRING_WITH_LEN(" WITH SYSTEM VERSIONING"));
+  }
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   {
@@ -2527,7 +2605,7 @@ public:
                               size_t size __attribute__((unused)))
   { TRASH(ptr, size); }
 
-  ulong thread_id;
+  my_thread_id thread_id;
   uint32 os_thread_id;
   ulonglong start_time;
   uint   command;
@@ -2701,7 +2779,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
   while ((thd_info=thread_infos.get()))
   {
     protocol->prepare_for_resend();
-    protocol->store((ulonglong) thd_info->thread_id);
+    protocol->store(thd_info->thread_id);
     protocol->store(thd_info->user, system_charset_info);
     protocol->store(thd_info->host, system_charset_info);
     protocol->store(thd_info->db, system_charset_info);
@@ -3079,17 +3157,17 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
       {
         table->field[7]->store(tmp->query(),
                                MY_MIN(PROCESS_LIST_INFO_WIDTH,
-                                   tmp->query_length()), cs);
+                                      tmp->query_length()), cs);
         table->field[7]->set_notnull();
       }
 
       /* INFO_BINARY */
       if (tmp->query())
       {
-        table->field[15]->store(tmp->query(),
+        table->field[16]->store(tmp->query(),
                                 MY_MIN(PROCESS_LIST_INFO_WIDTH,
                                 tmp->query_length()), &my_charset_bin);
-        table->field[15]->set_notnull();
+        table->field[16]->set_notnull();
       }
 
       /*
@@ -3112,14 +3190,14 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, COND* cond)
       */
       table->field[12]->store((longlong) tmp->status_var.local_memory_used,
                               FALSE);
-      table->field[12]->set_notnull();
-      table->field[13]->store((longlong) tmp->get_examined_row_count(), TRUE);
-      table->field[13]->set_notnull();
+      table->field[13]->store((longlong) tmp->status_var.max_local_memory_used,
+                              FALSE);
+      table->field[14]->store((longlong) tmp->get_examined_row_count(), TRUE);
 
       /* QUERY_ID */
-      table->field[14]->store(tmp->query_id, TRUE);
+      table->field[15]->store(tmp->query_id, TRUE);
 
-      table->field[16]->store(tmp->os_thread_id);
+      table->field[17]->store(tmp->os_thread_id);
 
       if (schema_table_store_record(thd, table))
       {
@@ -3460,7 +3538,7 @@ static bool show_status_array(THD *thd, const char *wild,
   prefix_end=strnmov(name_buffer, prefix, sizeof(name_buffer)-1);
   if (*prefix)
     *prefix_end++= '_';
-  len=name_buffer + sizeof(name_buffer) - prefix_end;
+  len=(int)(name_buffer + sizeof(name_buffer) - prefix_end);
 
 #ifdef WITH_WSREP
   bool is_wsrep_var= FALSE;
@@ -3803,6 +3881,15 @@ bool uses_only_table_name_fields(Item *item, TABLE_LIST *table)
         return 0;
     }
   }
+  else if (item->type() == Item::ROW_ITEM)
+  {
+    Item_row *item_row= static_cast<Item_row*>(item);
+    for (uint i= 0; i < item_row->cols(); i++)
+    {
+      if (!uses_only_table_name_fields(item_row->element_index(i), table))
+        return 0;
+    }
+  }
   else if (item->type() == Item::FIELD_ITEM)
   {
     Item_field *item_field= (Item_field*)item;
@@ -3821,6 +3908,11 @@ bool uses_only_table_name_fields(Item *item, TABLE_LIST *table)
                                (uchar *) item_field->field_name.str,
                                item_field->field_name.length)))
       return 0;
+  }
+  else if (item->type() == Item::EXPR_CACHE_ITEM)
+  {
+    Item_cache_wrapper *tmp= static_cast<Item_cache_wrapper*>(item);
+    return uses_only_table_name_fields(tmp->get_orig_item(), table);
   }
   else if (item->type() == Item::REF_ITEM)
     return uses_only_table_name_fields(item->real_item(), table);
@@ -4157,7 +4249,7 @@ int schema_tables_add(THD *thd, Dynamic_array<LEX_CSTRING*> *files,
     @retval       2           Not fatal error; Safe to ignore this file list
 */
 
-static int
+int
 make_table_name_list(THD *thd, Dynamic_array<LEX_CSTRING*> *table_names,
                      LEX *lex, LOOKUP_FIELD_VALUES *lookup_field_vals,
                      LEX_CSTRING *db_name)
@@ -4216,7 +4308,7 @@ make_table_name_list(THD *thd, Dynamic_array<LEX_CSTRING*> *table_names,
     */
     if (res == FIND_FILES_DIR)
     {
-      if (sql_command_flags[lex->sql_command] & CF_STATUS_COMMAND)
+      if (is_show_command(thd))
         return 1;
       thd->clear_error();
       return 2;
@@ -4266,14 +4358,15 @@ static void get_table_engine_for_i_s(THD *thd, char *buf, TABLE_LIST *tl,
   @retval TRUE  - Failure.
 */
 static bool
-fill_schema_table_by_open(THD *thd, bool is_show_fields_or_keys,
+fill_schema_table_by_open(THD *thd, MEM_ROOT *mem_root,
+                          bool is_show_fields_or_keys,
                           TABLE *table, ST_SCHEMA_TABLE *schema_table,
                           LEX_CSTRING *orig_db_name,
                           LEX_CSTRING *orig_table_name,
                           Open_tables_backup *open_tables_state_backup,
                           bool can_deadlock)
 {
-  Query_arena i_s_arena(thd->mem_root,
+  Query_arena i_s_arena(mem_root,
                         Query_arena::STMT_CONVENTIONAL_EXECUTION),
               backup_arena, *old_arena;
   LEX *old_lex= thd->lex, temp_lex, *lex;
@@ -4808,6 +4901,62 @@ public:
   }
 };
 
+static bool get_all_archive_tables(THD *thd,
+                                   Dynamic_array<String> &all_archive_tables)
+{
+  if (thd->variables.vers_hide == VERS_HIDE_NEVER)
+    return false;
+
+  if (thd->variables.vers_alter_history != VERS_ALTER_HISTORY_SURVIVE)
+    return false;
+
+  Dynamic_array<LEX_CSTRING *> all_db;
+  LOOKUP_FIELD_VALUES lookup_field_values= {
+    {C_STRING_WITH_LEN("%")}, {NULL, 0}, true, false};
+  if (make_db_list(thd, &all_db, &lookup_field_values))
+    return true;
+
+  LEX_STRING information_schema= {C_STRING_WITH_LEN("information_schema")};
+  for (size_t i= 0; i < all_db.elements(); i++)
+  {
+    LEX_CSTRING db= *all_db.at(i);
+    if (db.length == information_schema.length &&
+        !memcmp(db.str, information_schema.str, db.length))
+    {
+      all_db.del(i);
+      break;
+    }
+  }
+
+  for (size_t i= 0; i < all_db.elements(); i++)
+  {
+    LEX_CSTRING db_name= *all_db.at(i);
+    Dynamic_array<String> archive_tables;
+    if (VTMD_table::get_archive_tables(thd, db_name.str, db_name.length,
+                                       archive_tables))
+      return true;
+    for (size_t i= 0; i < archive_tables.elements(); i++)
+      if (all_archive_tables.push(archive_tables.at(i)))
+        return true;
+  }
+
+  return false;
+}
+
+static bool is_archive_table(const Dynamic_array<String> &all_archive_tables,
+                             const LEX_CSTRING candidate)
+{
+  for (size_t i= 0; i < all_archive_tables.elements(); i++)
+  {
+    const String &archive_table= all_archive_tables.at(i);
+    if (candidate.length == archive_table.length() &&
+        !memcmp(candidate.str, archive_table.ptr(), candidate.length))
+    {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
   @brief          Fill I_S tables whose data are retrieved
@@ -4850,7 +4999,11 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
 #endif
   uint table_open_method= tables->table_open_method;
   bool can_deadlock;
+  Dynamic_array<String> all_archive_tables;
+  MEM_ROOT tmp_mem_root;
   DBUG_ENTER("get_all_tables");
+
+  bzero(&tmp_mem_root, sizeof(tmp_mem_root));
 
   /*
     In cases when SELECT from I_S table being filled by this call is
@@ -4887,7 +5040,7 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
     table_name.str= lsel->table_list.first->table_name;
     table_name.length= lsel->table_list.first->table_name_length;
 
-    error= fill_schema_table_by_open(thd, TRUE,
+    error= fill_schema_table_by_open(thd, thd->mem_root, TRUE,
                                      table, schema_table,
                                      &db_name, &table_name,
                                      &open_tables_state_backup,
@@ -4912,6 +5065,14 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
 
   if (make_db_list(thd, &db_names, &plan->lookup_field_vals))
     goto err;
+
+  if (get_all_archive_tables(thd, all_archive_tables))
+    goto err;
+
+  /* Use tmp_mem_root to allocate data for opened tables */
+  init_alloc_root(&tmp_mem_root, SHOW_ALLOC_BLOCK_SIZE, SHOW_ALLOC_BLOCK_SIZE,
+                  MY_THREAD_SPECIFIC);
+
   for (size_t i=0; i < db_names.elements(); i++)
   {
     LEX_CSTRING *db_name= db_names.at(i);
@@ -4936,6 +5097,9 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
       {
         LEX_CSTRING *table_name= table_names.at(i);
         DBUG_ASSERT(table_name->length <= NAME_LEN);
+
+        if (is_archive_table(all_archive_tables, *table_name))
+          continue;
 
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
         if (!(thd->col_access & TABLE_ACLS))
@@ -4997,12 +5161,13 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
             }
 
             DEBUG_SYNC(thd, "before_open_in_get_all_tables");
-            if (fill_schema_table_by_open(thd, FALSE,
+            if (fill_schema_table_by_open(thd, &tmp_mem_root, FALSE,
                                           table, schema_table,
                                           db_name, table_name,
                                           &open_tables_state_backup,
                                           can_deadlock))
               goto err;
+            free_root(&tmp_mem_root, MY_MARK_BLOCKS_FREE);
           }
         }
       }
@@ -5012,6 +5177,7 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, COND *cond)
   error= 0;
 err:
   thd->restore_backup_open_tables_state(&open_tables_state_backup);
+  free_root(&tmp_mem_root, 0);
 
   DBUG_RETURN(error);
 }
@@ -5435,7 +5601,7 @@ static void store_column_type(TABLE *table, Field *field, CHARSET_INFO *cs,
     */
     tmp_buff= strchr(column_type.c_ptr_safe(), ' ');
   table->field[offset]->store(column_type.ptr(),
-                              (tmp_buff ? tmp_buff - column_type.ptr() :
+                              (tmp_buff ? (uint)(tmp_buff - column_type.ptr()) :
                                column_type.length()), cs);
 
   is_blob= (field->type() == MYSQL_TYPE_BLOB);
@@ -5757,7 +5923,8 @@ int fill_schema_engines(THD *thd, TABLE_LIST *tables, COND *cond)
   DBUG_ENTER("fill_schema_engines");
   if (plugin_foreach_with_mask(thd, iter_schema_engines,
                                MYSQL_STORAGE_ENGINE_PLUGIN,
-                               ~PLUGIN_IS_FREED, tables->table))
+                               ~(PLUGIN_IS_FREED | PLUGIN_IS_DYING),
+                               tables->table))
     DBUG_RETURN(1);
   DBUG_RETURN(0);
 }
@@ -6017,11 +6184,8 @@ bool store_schema_proc(THD *thd, TABLE *table, TABLE *proc_table,
       check_some_routine_access(thd, db.str, name.str, sph))
     return 0;
 
-  if ((lex->sql_command == SQLCOM_SHOW_STATUS_PROC &&
-      sph->type() == TYPE_ENUM_PROCEDURE) ||
-      (lex->sql_command == SQLCOM_SHOW_STATUS_FUNC &&
-      sph->type() == TYPE_ENUM_FUNCTION) ||
-      (sql_command_flags[lex->sql_command] & CF_STATUS_COMMAND) == 0)
+  if (!is_show_command(thd) ||
+      sph == Sp_handler::handler(lex->sql_command))
   {
     restore_record(table, s->default_values);
     if (!wild || !wild[0] || !wild_case_compare(system_charset_info,
@@ -6147,6 +6311,10 @@ int fill_schema_proc(THD *thd, TABLE_LIST *tables, COND *cond)
     DBUG_RETURN(1);
   }
 
+  /* Disable padding temporarily so it doesn't break the query */
+  ulonglong sql_mode_was = thd->variables.sql_mode;
+  thd->variables.sql_mode &= ~MODE_PAD_CHAR_TO_FULL_LENGTH;
+
   if (proc_table->file->ha_index_init(0, 1))
   {
     res= 1;
@@ -6182,6 +6350,7 @@ err:
     (void) proc_table->file->ha_index_end();
 
   close_system_tables(thd, &open_tables_state_backup);
+  thd->variables.sql_mode = sql_mode_was;
   DBUG_RETURN(res);
 }
 
@@ -6405,7 +6574,7 @@ static int get_schema_views_record(THD *thd, TABLE_LIST *tables,
         table->field[5]->store(STRING_WITH_LEN("NO"), cs);
     }
 
-    definer_len= (strxmov(definer, tables->definer.user.str, "@",
+    definer_len= (uint)(strxmov(definer, tables->definer.user.str, "@",
                           tables->definer.host.str, NullS) - definer);
     table->field[6]->store(definer, definer_len, cs);
     if (tables->view_suid)
@@ -6563,7 +6732,7 @@ static bool store_trigger(THD *thd, Trigger *trigger,
   {
     table->field[16]->set_notnull();
     thd->variables.time_zone->gmt_sec_to_TIME(&timestamp,
-                                              trigger->create_time/100);
+                                              (my_time_t)(trigger->create_time/100));
     /* timestamp is with 6 digits */
     timestamp.second_part= (trigger->create_time % 100) * 10000;
     ((Field_temporal_with_date*) table->field[16])->store_time_dec(&timestamp,
@@ -6994,6 +7163,10 @@ static int get_schema_partitions_record(THD *thd, TABLE_LIST *tables,
       else
         tmp_res.append(STRING_WITH_LEN("HASH"));
       table->field[7]->store(tmp_res.ptr(), tmp_res.length(), cs);
+      break;
+    case VERSIONING_PARTITION:
+      tmp_res.length(0);
+      tmp_res.append(STRING_WITH_LEN("SYSTEM_TIME"));
       break;
     default:
       DBUG_ASSERT(0);
@@ -7700,7 +7873,8 @@ TABLE *create_schema_table(THD *thd, TABLE_LIST *table_list)
       if (!(item=new (mem_root)
             Item_return_date_time(thd, fields_info->field_name,
                                   field_name_length,
-                                  fields_info->field_type)))
+                                  fields_info->field_type,
+                                  fields_info->field_length)))
         DBUG_RETURN(0);
       item->decimals= fields_info->field_length;
       break;
@@ -7769,7 +7943,7 @@ TABLE *create_schema_table(THD *thd, TABLE_LIST *table_list)
   tmp_table_param->field_count= field_count;
   tmp_table_param->schema_table= 1;
   SELECT_LEX *select_lex= thd->lex->current_select;
-  bool keep_row_order= sql_command_flags[thd->lex->sql_command] & CF_STATUS_COMMAND;
+  bool keep_row_order= is_show_command(thd);
   if (!(table= create_tmp_table(thd, tmp_table_param,
                                 field_list, (ORDER*) 0, 0, 0, 
                                 (select_lex->options | thd->variables.option_bits |
@@ -9033,6 +9207,7 @@ ST_FIELD_INFO processlist_fields_info[]=
   {"PROGRESS", 703, MYSQL_TYPE_DECIMAL,  0, 0, "Progress",
    SKIP_OPEN_TABLE},
   {"MEMORY_USED", 7, MYSQL_TYPE_LONGLONG, 0, 0, "Memory_used", SKIP_OPEN_TABLE},
+  {"MAX_MEMORY_USED", 7, MYSQL_TYPE_LONGLONG, 0, 0, "Max_memory_used", SKIP_OPEN_TABLE},
   {"EXAMINED_ROWS", 7, MYSQL_TYPE_LONG, 0, 0, "Examined_rows", SKIP_OPEN_TABLE},
   {"QUERY_ID", 4, MYSQL_TYPE_LONGLONG, 0, 0, 0, SKIP_OPEN_TABLE},
   {"INFO_BINARY", PROCESS_LIST_INFO_WIDTH, MYSQL_TYPE_BLOB, 0, 1,
@@ -9590,7 +9765,7 @@ static bool show_create_trigger_impl(THD *thd, Trigger *trigger)
   {
     MYSQL_TIME timestamp;
     thd->variables.time_zone->gmt_sec_to_TIME(&timestamp,
-                                              trigger->create_time/100);
+                                              (my_time_t)(trigger->create_time/100));
     timestamp.second_part= (trigger->create_time % 100) * 10000;
     p->store(&timestamp, 2);
   }

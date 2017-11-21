@@ -30,7 +30,9 @@ mysql.time_zone_leap_second                        OK
 mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
+mysql.transaction_registry                         OK
 mysql.user                                         OK
+mysql.vtmd_template                                OK
 Phase 2/7: Installing used storage engines... Skipped
 Phase 3/7: Fixing views
 Phase 4/7: Running 'mysql_fix_privilege_tables'
@@ -78,7 +80,9 @@ mysql.time_zone_leap_second                        OK
 mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
+mysql.transaction_registry                         OK
 mysql.user                                         OK
+mysql.vtmd_template                                OK
 Phase 2/7: Installing used storage engines... Skipped
 Phase 3/7: Fixing views
 Phase 4/7: Running 'mysql_fix_privilege_tables'
@@ -126,7 +130,9 @@ mysql.time_zone_leap_second                        OK
 mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
+mysql.transaction_registry                         OK
 mysql.user                                         OK
+mysql.vtmd_template                                OK
 Phase 2/7: Installing used storage engines... Skipped
 Phase 3/7: Fixing views
 Phase 4/7: Running 'mysql_fix_privilege_tables'
@@ -179,7 +185,9 @@ mysql.time_zone_leap_second                        OK
 mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
+mysql.transaction_registry                         OK
 mysql.user                                         OK
+mysql.vtmd_template                                OK
 Phase 2/7: Installing used storage engines... Skipped
 Phase 3/7: Fixing views
 Phase 4/7: Running 'mysql_fix_privilege_tables'
@@ -233,7 +241,9 @@ mysql.time_zone_leap_second                        OK
 mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
+mysql.transaction_registry                         OK
 mysql.user                                         OK
+mysql.vtmd_template                                OK
 Phase 2/7: Installing used storage engines... Skipped
 Phase 3/7: Fixing views
 Phase 4/7: Running 'mysql_fix_privilege_tables'
@@ -290,7 +300,9 @@ mysql.time_zone_leap_second                        OK
 mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
+mysql.transaction_registry                         OK
 mysql.user                                         OK
+mysql.vtmd_template                                OK
 Phase 2/7: Installing used storage engines... Skipped
 Phase 3/7: Fixing views
 Phase 4/7: Running 'mysql_fix_privilege_tables'
@@ -342,7 +354,9 @@ mysql.time_zone_leap_second                        OK
 mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
+mysql.transaction_registry                         OK
 mysql.user                                         OK
+mysql.vtmd_template                                OK
 Phase 2/7: Installing used storage engines... Skipped
 Phase 3/7: Fixing views... Skipped
 Phase 4/7: Running 'mysql_fix_privilege_tables'
@@ -386,7 +400,9 @@ mysql.time_zone_leap_second                        OK
 mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
+mysql.transaction_registry                         OK
 mysql.user                                         OK
+mysql.vtmd_template                                OK
 Phase 2/7: Installing used storage engines... Skipped
 Phase 3/7: Fixing views
 Phase 4/7: Running 'mysql_fix_privilege_tables'
@@ -451,7 +467,9 @@ mysql.time_zone_leap_second                        OK
 mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
+mysql.transaction_registry                         OK
 mysql.user                                         OK
+mysql.vtmd_template                                OK
 Phase 2/7: Installing used storage engines... Skipped
 Phase 3/7: Fixing views
 Phase 4/7: Running 'mysql_fix_privilege_tables'
@@ -533,7 +551,9 @@ mysql.time_zone_leap_second                        OK
 mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
+mysql.transaction_registry                         OK
 mysql.user                                         OK
+mysql.vtmd_template                                OK
 Phase 2/7: Installing used storage engines... Skipped
 Phase 3/7: Fixing views
 Phase 4/7: Running 'mysql_fix_privilege_tables'
@@ -552,7 +572,7 @@ OK
 # Should return 2
 SELECT count(*) FROM information_schema.tables where ENGINE="InnoDB";
 count(*)
-2
+4
 SHOW CREATE TABLE test.t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (

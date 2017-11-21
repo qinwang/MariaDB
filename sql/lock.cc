@@ -421,8 +421,11 @@ void mysql_unlock_tables(THD *thd, MYSQL_LOCK *sql_lock)
 
 void mysql_unlock_tables(THD *thd, MYSQL_LOCK *sql_lock, bool free_lock)
 {
-  DBUG_ENTER("mysql_unlock_tables");
   bool errors= thd->is_error();
+  PSI_stage_info org_stage;
+  DBUG_ENTER("mysql_unlock_tables");
+
+  thd->backup_stage(&org_stage);
   THD_STAGE_INFO(thd, stage_unlocking_tables);
 
   if (sql_lock->table_count)
@@ -433,6 +436,7 @@ void mysql_unlock_tables(THD *thd, MYSQL_LOCK *sql_lock, bool free_lock)
     my_free(sql_lock);
   if (!errors)
     thd->clear_error();
+  THD_STAGE_INFO(thd, org_stage);
   DBUG_VOID_RETURN;
 }
 
@@ -827,7 +831,7 @@ MYSQL_LOCK *get_lock_data(THD *thd, TABLE **table_ptr, uint count, uint flags)
     we may allocate too much, but better safe than memory overrun.
     And in the FLUSH case, the memory is released quickly anyway.
   */
-  sql_lock->lock_count= locks - locks_buf;
+  sql_lock->lock_count= (uint)(locks - locks_buf);
   DBUG_ASSERT(sql_lock->lock_count <= lock_count);
   DBUG_PRINT("info", ("sql_lock->table_count %d sql_lock->lock_count %d",
                       sql_lock->table_count, sql_lock->lock_count));

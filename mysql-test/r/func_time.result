@@ -2772,7 +2772,33 @@ SELECT 1 MOD ADDTIME( '13:58:57', '00:00:01' ) + 2;
 1 MOD ADDTIME( '13:58:57', '00:00:01' ) + 2
 3
 #
-# Start of 10.0 tests
+# MDEV-11819 NO_ZERO_IN_DATE: Incorrect generated column value
+#
+SET sql_mode='NO_ZERO_IN_DATE';
+CREATE TABLE t1 (a TIME(6));
+INSERT INTO t1 SELECT timediff(timestamp'2008-12-31 23:59:59.000001',timestamp'2008-12-30 01:01:01.000002');
+SELECT * FROM t1;
+a
+46:58:57.999999
+DROP TABLE t1;
+SET sql_mode=DEFAULT;
+#
+# MDEV-13972 crash in Item_func_sec_to_time::get_date
+#
+DO TO_DAYS(SEC_TO_TIME(TIME(CEILING(UUID()))));
+DO TO_DAYS(SEC_TO_TIME(MAKEDATE('',RAND(~('')))));
+Warnings:
+Warning	1292	Truncated incorrect INTEGER value: ''
+Warning	1292	Truncated incorrect INTEGER value: ''
+Warning	1292	Truncated incorrect INTEGER value: ''
+Warning	1292	Truncated incorrect time value: '20000101'
+SELECT SEC_TO_TIME(MAKEDATE(0,RAND(~0)));
+SEC_TO_TIME(MAKEDATE(0,RAND(~0)))
+838:59:59
+Warnings:
+Warning	1292	Truncated incorrect time value: '20000101'
+#
+# End of 5.5 tests
 #
 #
 # MDEV-8205 timediff returns null when comparing decimal time to time string value
@@ -3294,3 +3320,34 @@ t1	CREATE TABLE `t1` (
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 DROP TABLE t1;
 SET sql_mode=DEFAULT;
+#
+# MDEV-13966 Parameter data type control for Item_temporal_func
+#
+SELECT FROM_DAYS(ROW(1,1));
+ERROR HY000: Illegal parameter data type row for operation 'from_days'
+SELECT MAKEDATE(ROW(1,1),1);
+ERROR HY000: Illegal parameter data type row for operation 'makedate'
+SELECT MAKEDATE(1, ROW(1,1));
+ERROR HY000: Illegal parameter data type row for operation 'makedate'
+SELECT LAST_DAY(ROW(1,1));
+ERROR HY000: Illegal parameter data type row for operation 'last_day'
+SELECT SEC_TO_TIME(ROW(1,1));
+ERROR HY000: Illegal parameter data type row for operation 'sec_to_time'
+SELECT TIMEDIFF(ROW(1,1),1);
+ERROR HY000: Illegal parameter data type row for operation 'timediff'
+SELECT TIMEDIFF(1, ROW(1,1));
+ERROR HY000: Illegal parameter data type row for operation 'timediff'
+SELECT MAKETIME(ROW(1,1),1,1);
+ERROR HY000: Illegal parameter data type row for operation 'maketime'
+SELECT MAKETIME(1, ROW(1,1), 1);
+ERROR HY000: Illegal parameter data type row for operation 'maketime'
+SELECT MAKETIME(1, 1, ROW(1,1));
+ERROR HY000: Illegal parameter data type row for operation 'maketime'
+SELECT FROM_UNIXTIME(ROW(1,1));
+ERROR HY000: Illegal parameter data type row for operation 'from_unixtime'
+SELECT CONVERT_TZ(ROW(1,1),1,1);
+ERROR HY000: Illegal parameter data type row for operation 'convert_tz'
+SELECT CONVERT_TZ(1, ROW(1,1), 1);
+ERROR HY000: Illegal parameter data type row for operation 'convert_tz'
+SELECT CONVERT_TZ(1, 1, ROW(1,1));
+ERROR HY000: Illegal parameter data type row for operation 'convert_tz'

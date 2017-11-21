@@ -40,7 +40,7 @@
 #include "my_readline.h"
 #include <signal.h>
 #include <violite.h>
-
+#include <source_revision.h>
 #if defined(USE_LIBEDIT_INTERFACE) && defined(HAVE_LOCALE_H)
 #include <locale.h>
 #endif
@@ -1065,8 +1065,7 @@ static void fix_history(String *final_command);
 
 static COMMANDS *find_command(char *name);
 static COMMANDS *find_command(char cmd_name);
-static bool add_line(String &buffer, char *line, ulong line_length,
-                     char *in_string, bool *ml_comment, bool truncated);
+static bool add_line(String &, char *, ulong, char *, bool *, bool);
 static void remove_cntrl(String &buffer);
 static void print_table_data(MYSQL_RES *result);
 static void print_table_data_html(MYSQL_RES *result);
@@ -1076,7 +1075,7 @@ static void print_table_data_vertically(MYSQL_RES *result);
 static void print_warnings(void);
 static void end_timer(ulonglong start_time, char *buff);
 static void nice_time(double sec,char *buff,bool part_second);
-extern "C" sig_handler mysql_end(int sig);
+extern "C" sig_handler mysql_end(int sig) __attribute__ ((noreturn));
 extern "C" sig_handler handle_sigint(int sig);
 #if defined(HAVE_TERMIOS_H) && defined(GWINSZ_IN_SYS_IOCTL)
 static sig_handler window_resize(int sig);
@@ -1093,7 +1092,7 @@ inline bool is_delimiter_command(char *name, ulong len)
     only name(first DELIMITER_NAME_LEN bytes) is checked.
   */
   return (len >= DELIMITER_NAME_LEN &&
-          !my_strnncoll(charset_info, (uchar*) name, DELIMITER_NAME_LEN,
+          !my_strnncoll(&my_charset_latin1, (uchar*) name, DELIMITER_NAME_LEN,
                         (uchar *) DELIMITER_NAME, DELIMITER_NAME_LEN));
 }
 
@@ -1719,8 +1718,8 @@ static void usage(int version)
 	 my_progname, VER, MYSQL_SERVER_VERSION, SYSTEM_TYPE, MACHINE_TYPE,
          readline, rl_library_version);
 #else
-  printf("%s  Ver %s Distrib %s, for %s (%s)\n", my_progname, VER,
-	MYSQL_SERVER_VERSION, SYSTEM_TYPE, MACHINE_TYPE);
+  printf("%s  Ver %s Distrib %s, for %s (%s), source revision %s\n", my_progname, VER,
+	MYSQL_SERVER_VERSION, SYSTEM_TYPE, MACHINE_TYPE,SOURCE_REVISION);
 #endif
 
   if (version)
@@ -1893,6 +1892,7 @@ get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
     usage(1);
     status.exit_status= 0;
     mysql_end(-1);
+    break;
   case 'I':
   case '?':
     usage(0);

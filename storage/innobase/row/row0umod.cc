@@ -196,7 +196,7 @@ row_undo_mod_remove_clust_low(
 
 		offsets = rec_get_offsets(
 			btr_cur_get_rec(btr_cur), btr_cur_get_index(btr_cur),
-			NULL, trx_id_col + 1, &heap);
+			NULL, true, trx_id_col + 1, &heap);
 
 		trx_id_offset = rec_get_nth_field_offs(
 			offsets, trx_id_col, &len);
@@ -272,9 +272,12 @@ row_undo_mod_clust(
 	pcur = &node->pcur;
 	index = btr_cur_get_index(btr_pcur_get_btr_cur(pcur));
 
-	mtr_start(&mtr);
-	mtr.set_named_space(index->space);
-	dict_disable_redo_if_temporary(index->table, &mtr);
+	mtr.start();
+	if (index->table->is_temporary()) {
+		mtr.set_log_mode(MTR_LOG_NO_REDO);
+	} else {
+		mtr.set_named_space(index->space);
+	}
 
 	online = dict_index_is_online_ddl(index);
 	if (online) {
@@ -304,8 +307,11 @@ row_undo_mod_clust(
 		descent down the index tree */
 
 		mtr_start_trx(&mtr, thr_get_trx(thr));
-		mtr.set_named_space(index->space);
-		dict_disable_redo_if_temporary(index->table, &mtr);
+		if (index->table->is_temporary()) {
+			mtr.set_log_mode(MTR_LOG_NO_REDO);
+		} else {
+			mtr.set_named_space(index->space);
+		}
 
 		err = row_undo_mod_clust_low(
 			node, &offsets, &offsets_heap,
@@ -328,18 +334,16 @@ row_undo_mod_clust(
 		switch (node->rec_type) {
 		case TRX_UNDO_DEL_MARK_REC:
 			row_log_table_insert(
-				btr_pcur_get_rec(pcur), node->row,
-				index, offsets);
+				btr_pcur_get_rec(pcur), index, offsets);
 			break;
 		case TRX_UNDO_UPD_EXIST_REC:
 			row_log_table_update(
 				btr_pcur_get_rec(pcur), index, offsets,
-				rebuilt_old_pk, node->undo_row, node->row);
+				rebuilt_old_pk);
 			break;
 		case TRX_UNDO_UPD_DEL_REC:
 			row_log_table_delete(
-				btr_pcur_get_rec(pcur), node->row,
-				index, offsets, sys);
+				btr_pcur_get_rec(pcur), index, offsets, sys);
 			break;
 		default:
 			ut_ad(0);
@@ -363,8 +367,11 @@ row_undo_mod_clust(
 	if (err == DB_SUCCESS && node->rec_type == TRX_UNDO_UPD_DEL_REC) {
 
 		mtr_start_trx(&mtr, thr_get_trx(thr));
-		mtr.set_named_space(index->space);
-		dict_disable_redo_if_temporary(index->table, &mtr);
+		if (index->table->is_temporary()) {
+			mtr.set_log_mode(MTR_LOG_NO_REDO);
+		} else {
+			mtr.set_named_space(index->space);
+		}
 
 		/* It is not necessary to call row_log_table,
 		because the record is delete-marked and would thus
@@ -378,8 +385,11 @@ row_undo_mod_clust(
 			pessimistic descent down the index tree */
 
 			mtr_start_trx(&mtr, thr_get_trx(thr));
-			mtr.set_named_space(index->space);
-			dict_disable_redo_if_temporary(index->table, &mtr);
+			if (index->table->is_temporary()) {
+				mtr.set_log_mode(MTR_LOG_NO_REDO);
+			} else {
+				mtr.set_named_space(index->space);
+			}
 
 			err = row_undo_mod_remove_clust_low(
 				node, &mtr,
@@ -751,7 +761,7 @@ try_again:
 		offsets_heap = NULL;
 		offsets = rec_get_offsets(
 			btr_cur_get_rec(btr_cur),
-			index, NULL, ULINT_UNDEFINED, &offsets_heap);
+			index, NULL, true, ULINT_UNDEFINED, &offsets_heap);
 		update = row_upd_build_sec_rec_difference_binary(
 			btr_cur_get_rec(btr_cur), index, offsets, entry, heap);
 		if (upd_get_n_fields(update) == 0) {
@@ -1159,10 +1169,25 @@ close_table:
 				       node->heap);
 
 	ptr = trx_undo_update_rec_get_update(ptr, clust_index, type, trx_id,
-				       roll_ptr, info_bits, node->trx,
+				       roll_ptr, info_bits,
 				       node->heap, &(node->update));
 	node->new_trx_id = trx_id;
 	node->cmpl_info = cmpl_info;
+	ut_ad(!node->ref->info_bits);
+
+	if (node->update->info_bits & REC_INFO_MIN_REC_FLAG) {
+		/* This must be an undo log record for a subsequent
+		instant ADD COLUMN on a table, extending the
+		'default value' record. */
+		ut_ad(clust_index->is_instant());
+		if (node->update->info_bits != REC_INFO_MIN_REC_FLAG) {
+			ut_ad(!"wrong info_bits in undo log record");
+			goto close_table;
+		}
+		node->update->info_bits = REC_INFO_DEFAULT_ROW;
+		const_cast<dtuple_t*>(node->ref)->info_bits
+			= REC_INFO_DEFAULT_ROW;
+	}
 
 	if (!row_undo_search_clust_to_pcur(node)) {
 		/* As long as this rolling-back transaction exists,
@@ -1224,6 +1249,12 @@ row_undo_mod(
 
 	node->index = dict_table_get_first_index(node->table);
 	ut_ad(dict_index_is_clust(node->index));
+
+	if (node->ref->info_bits) {
+		ut_ad(node->ref->info_bits == REC_INFO_DEFAULT_ROW);
+		goto rollback_clust;
+	}
+
 	/* Skip the clustered index (the first index) */
 	node->index = dict_table_get_next_index(node->index);
 
@@ -1246,6 +1277,7 @@ row_undo_mod(
 	}
 
 	if (err == DB_SUCCESS) {
+rollback_clust:
 		err = row_undo_mod_clust(node, thr);
 
 		bool update_statistics

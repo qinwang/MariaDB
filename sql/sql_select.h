@@ -1464,6 +1464,8 @@ public:
     ordered_index_usage= ordered_index_void;
     need_distinct= 0;
     skip_sort_order= 0;
+    with_two_phase_optimization= 0;
+    is_for_splittable_grouping_derived= 0;
     need_tmp= 0;
     hidden_group_fields= 0; /*safety*/
     error= 0;
@@ -1676,6 +1678,7 @@ public:
   bool inject_cond_into_where(Item *injected_cond);
   bool push_splitting_cond_into_derived(THD *thd, Item *cond);
   bool improve_chosen_plan(THD *thd);
+  bool transform_in_predicates_into_in_subq(THD *thd);
 private:
   /**
     Create a temporary table to be used for processing DISTINCT/ORDER
@@ -1707,6 +1710,7 @@ private:
   void optimize_distinct();
 
   void cleanup_item_list(List<Item> &items) const;
+  bool add_having_as_table_cond(JOIN_TAB *tab);
   bool make_aggr_tables_info();
 
 };
@@ -2013,7 +2017,7 @@ Field *create_tmp_field(THD *thd, TABLE *table,Item *item, Item::Type type,
 class Virtual_tmp_table: public TABLE
 {
   /**
-    Destruct collected fields. This method is called on errors only,
+    Destruct collected fields. This method can be called on errors,
     when we could not make the virtual temporary table completely,
     e.g. when some of the fields could not be created or added.
 
@@ -2024,7 +2028,10 @@ class Virtual_tmp_table: public TABLE
   void destruct_fields()
   {
     for (uint i= 0; i < s->fields; i++)
+    {
+      field[i]->free();
       delete field[i];  // to invoke the field destructor
+    }
     s->fields= 0;       // safety
   }
 
@@ -2144,7 +2151,7 @@ public:
     TABLE object ready for read and write in case of success
 */
 
-inline TABLE *
+inline Virtual_tmp_table *
 create_virtual_tmp_table(THD *thd, List<Spvar_definition> &field_list)
 {
   Virtual_tmp_table *table;
@@ -2326,5 +2333,8 @@ int create_sort_index(THD *thd, JOIN *join, JOIN_TAB *tab, Filesort *fsort);
 
 JOIN_TAB *first_explain_order_tab(JOIN* join);
 JOIN_TAB *next_explain_order_tab(JOIN* join, JOIN_TAB* tab);
+
+int vers_setup_select(THD *thd, TABLE_LIST *tables, COND **where_expr,
+                      SELECT_LEX *slex);
 
 #endif /* SQL_SELECT_INCLUDED */

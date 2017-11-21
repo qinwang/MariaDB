@@ -145,6 +145,8 @@ trx_init(
 
 	trx->check_unique_secondary = true;
 
+	trx->vers_update_trt = false;
+
 	trx->lock.n_rec_locks = 0;
 
 	trx->dict_operation = TRX_DICT_OP_NONE;
@@ -616,10 +618,12 @@ trx_free_prepared(
 	trx_t*	trx)	/*!< in, own: trx object */
 {
 	ut_a(trx_state_eq(trx, TRX_STATE_PREPARED)
-	     || (trx_state_eq(trx, TRX_STATE_ACTIVE)
-		 && trx->is_recovered
+	     || (trx->is_recovered
+		 && (trx_state_eq(trx, TRX_STATE_ACTIVE)
+		     || trx_state_eq(trx, TRX_STATE_COMMITTED_IN_MEMORY))
 		 && (!srv_was_started
 		     || srv_operation == SRV_OPERATION_RESTORE
+		     || srv_operation == SRV_OPERATION_RESTORE_EXPORT
 		     || srv_read_only_mode
 		     || srv_force_recovery >= SRV_FORCE_NO_TRX_UNDO)));
 	ut_a(trx->magic_n == TRX_MAGIC_N);
@@ -3023,15 +3027,6 @@ trx_start_for_ddl_low(
 		return;
 
 	case TRX_STATE_ACTIVE:
-
-		/* We have this start if not started idiom, therefore we
-		can't add stronger checks here. */
-		trx->ddl = true;
-
-		ut_ad(trx->dict_operation != TRX_DICT_OP_NONE);
-		ut_ad(trx->will_lock > 0);
-		return;
-
 	case TRX_STATE_PREPARED:
 	case TRX_STATE_COMMITTED_IN_MEMORY:
 		break;

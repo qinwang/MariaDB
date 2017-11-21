@@ -385,7 +385,7 @@ wsrep_run_wsrep_commit(THD *thd, bool all)
     mysql_mutex_unlock(&thd->LOCK_wsrep_thd);
 
     mysql_mutex_lock(&thd->mysys_var->mutex);
-    thd_proc_info(thd, "wsrep waiting on replaying");
+    thd_proc_info(thd, "WSREP waiting on replaying");
     thd->mysys_var->current_mutex= &LOCK_wsrep_replaying;
     thd->mysys_var->current_cond=  &COND_wsrep_replaying;
     mysql_mutex_unlock(&thd->mysys_var->mutex);
@@ -544,6 +544,7 @@ wsrep_run_wsrep_commit(THD *thd, bool all)
     break;
   case WSREP_BF_ABORT:
     DBUG_ASSERT(thd->wsrep_trx_meta.gtid.seqno != WSREP_SEQNO_UNDEFINED);
+    /* fall through */
   case WSREP_TRX_FAIL:
     WSREP_DEBUG("commit failed for reason: %d", rcode);
     DBUG_PRINT("wsrep", ("replicating commit fail"));

@@ -614,8 +614,8 @@ int get_connection(MEM_ROOT *mem_root, FEDERATED_SHARE *share)
     error_num=1;
     goto error;
   }
-  DBUG_PRINT("info", ("get_server_by_name returned server at %lx",
-                      (long unsigned int) server));
+  DBUG_PRINT("info", ("get_server_by_name returned server at %p",
+                      server));
 
   /*
     Most of these should never be empty strings, error handling will
@@ -716,15 +716,15 @@ static int parse_url(MEM_ROOT *mem_root, FEDERATED_SHARE *share, TABLE *table,
 
   share->port= 0;
   share->socket= 0;
-  DBUG_PRINT("info", ("share at %lx", (long unsigned int) share));
+  DBUG_PRINT("info", ("share at %p", share));
   DBUG_PRINT("info", ("Length: %u", (uint) table->s->connect_string.length));
   DBUG_PRINT("info", ("String: '%.*s'", (int) table->s->connect_string.length,
                       table->s->connect_string.str));
   share->connection_string= strmake_root(mem_root, table->s->connect_string.str,
                                        table->s->connect_string.length);
 
-  DBUG_PRINT("info",("parse_url alloced share->connection_string %lx",
-                     (long unsigned int) share->connection_string));
+  DBUG_PRINT("info",("parse_url alloced share->connection_string %p",
+                     share->connection_string));
 
   DBUG_PRINT("info",("share->connection_string %s",share->connection_string));
   /*
@@ -737,9 +737,9 @@ static int parse_url(MEM_ROOT *mem_root, FEDERATED_SHARE *share, TABLE *table,
 
     DBUG_PRINT("info",
                ("share->connection_string %s internal format \
-                share->connection_string %lx",
+                share->connection_string %p",
                 share->connection_string,
-                (long unsigned int) share->connection_string));
+                share->connection_string));
 
     /* ok, so we do a little parsing, but not completely! */
     share->parsed= FALSE;
@@ -793,8 +793,8 @@ static int parse_url(MEM_ROOT *mem_root, FEDERATED_SHARE *share, TABLE *table,
     // Add a null for later termination of table name
     share->connection_string[table->s->connect_string.length]= 0;
     share->scheme= share->connection_string;
-    DBUG_PRINT("info",("parse_url alloced share->scheme %lx",
-                       (long unsigned int) share->scheme));
+    DBUG_PRINT("info",("parse_url alloced share->scheme %p",
+                       share->scheme));
 
     /*
       remove addition of null terminator and store length
@@ -2980,6 +2980,9 @@ int ha_federated::reset(void)
   }
   reset_dynamic(&results);
 
+  if (mysql)
+    mysql->net.thd= NULL;
+
   return 0;
 }
 
@@ -3200,11 +3203,13 @@ int ha_federated::real_query(const char *query, size_t length)
   int rc= 0;
   DBUG_ENTER("ha_federated::real_query");
 
+  if (!query || !length)
+    goto end;
+
   if (!mysql && (rc= real_connect()))
     goto end;
 
-  if (!query || !length)
-    goto end;
+  mysql->net.thd= table->in_use;
 
   rc= mysql_real_query(mysql, query, (uint) length);
   
@@ -3289,66 +3294,6 @@ int ha_federated::external_lock(THD *thd, int lock_type)
   int error= 0;
   DBUG_ENTER("ha_federated::external_lock");
 
-  /*
-    Support for transactions disabled until WL#2952 fixes it.
-  */
-#ifdef XXX_SUPERCEDED_BY_WL2952
-  if (lock_type != F_UNLCK)
-  {
-    ha_federated *trx= (ha_federated *)thd_get_ha_data(thd, ht);
-
-    DBUG_PRINT("info",("federated not lock F_UNLCK"));
-    if (!(thd->options & (OPTION_NOT_AUTOCOMMIT | OPTION_BEGIN))) 
-    {
-      DBUG_PRINT("info",("federated autocommit"));
-      /* 
-        This means we are doing an autocommit
-      */
-      error= connection_autocommit(TRUE);
-      if (error)
-      {
-        DBUG_PRINT("info", ("error setting autocommit TRUE: %d", error));
-        DBUG_RETURN(error);
-      }
-      trans_register_ha(thd, FALSE, ht);
-    }
-    else 
-    { 
-      DBUG_PRINT("info",("not autocommit"));
-      if (!trx)
-      {
-        /* 
-          This is where a transaction gets its start
-        */
-        error= connection_autocommit(FALSE);
-        if (error)
-        { 
-          DBUG_PRINT("info", ("error setting autocommit FALSE: %d", error));
-          DBUG_RETURN(error);
-        }
-        thd_set_ha_data(thd, ht, this);
-        trans_register_ha(thd, TRUE, ht);
-        /*
-          Send a lock table to the remote end.
-          We do not support this at the moment
-        */
-        if (thd->options & (OPTION_TABLE_LOCK))
-        {
-          DBUG_PRINT("info", ("We do not support lock table yet"));
-        }
-      }
-      else
-      {
-        ha_federated *ptr;
-        for (ptr= trx; ptr; ptr= ptr->trx_next)
-          if (ptr == this)
-            break;
-          else if (!ptr->trx_next)
-            ptr->trx_next= this;
-      }
-    }
-  }
-#endif /* XXX_SUPERCEDED_BY_WL2952 */
   table_will_be_deleted = FALSE;
   DBUG_RETURN(error);
 }

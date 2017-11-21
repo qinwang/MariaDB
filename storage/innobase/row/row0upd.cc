@@ -272,6 +272,7 @@ row_upd_check_references_constraints(
 
 		if (foreign->referenced_index == index
 		    && (node->is_delete
+			|| node->vers_delete
 			|| row_upd_changes_first_fields_binary(
 				entry, index, node->update,
 				foreign->n_fields))) {
@@ -412,6 +413,7 @@ wsrep_row_upd_check_foreign_constraints(
 
 		if (foreign->foreign_index == index
 		    && (node->is_delete
+			|| node->vers_delete
 			|| row_upd_changes_first_fields_binary(
 				entry, index, node->update,
 				foreign->n_fields))) {
@@ -460,19 +462,18 @@ func_exit:
 @param[in]	node	query node
 @param[in]	trx	transaction
 @return	whether the node cannot be ignored */
-static
+inline
 bool
 wsrep_must_process_fk(const upd_node_t* node, const trx_t* trx)
 {
 	if (que_node_get_type(node->common.parent) != QUE_NODE_UPDATE
-	    || !wsrep_on(trx->mysql_thd)) {
+	    || !wsrep_on_trx(trx)) {
 		return false;
 	}
 
-	const upd_cascade_t&	nodes = *static_cast<const upd_node_t*>(
-		node->common.parent)->cascade_upd_nodes;
-	const upd_cascade_t::const_iterator end = nodes.end();
-	return std::find(nodes.begin(), end, node) == end;
+	const upd_node_t* parent = static_cast<const upd_node_t*>(node->common.parent);
+
+	return parent->cascade_upd_nodes->empty();
 }
 #endif /* WITH_WSREP */
 
@@ -492,6 +493,8 @@ upd_node_create(
 	node->common.type = QUE_NODE_UPDATE;
 	node->state = UPD_NODE_UPDATE_CLUSTERED;
 	node->heap = mem_heap_create(128);
+	node->cmpl_info = 0;
+	node->versioned = false;
 	node->magic_n = UPD_NODE_MAGIC_N;
 
 	return(node);
@@ -595,7 +598,11 @@ row_upd_changes_field_size_or_external(
 		}
 
 		new_val = &(upd_field->new_val);
+		if (dfield_is_ext(new_val)) {
+			return(TRUE);
+		}
 		new_len = dfield_get_len(new_val);
+		ut_ad(new_len != UNIV_SQL_DEFAULT);
 
 		if (dfield_is_null(new_val) && !rec_offs_comp(offsets)) {
 			/* A bug fixed on Dec 31st, 2004: we looked at the
@@ -609,11 +616,14 @@ row_upd_changes_field_size_or_external(
 				0);
 		}
 
-		old_len = rec_offs_nth_size(offsets, upd_field->field_no);
+		if (rec_offs_nth_default(offsets, upd_field->field_no)) {
+			/* This is an instantly added column that is
+			at the initial default value. */
+			return(TRUE);
+		}
 
 		if (rec_offs_comp(offsets)
-		    && rec_offs_nth_sql_null(offsets,
-					     upd_field->field_no)) {
+		    && rec_offs_nth_sql_null(offsets, upd_field->field_no)) {
 			/* Note that in the compact table format, for a
 			variable length field, an SQL NULL will use zero
 			bytes in the offset array at the start of the physical
@@ -622,9 +632,12 @@ row_upd_changes_field_size_or_external(
 			if we update an SQL NULL varchar to an empty string! */
 
 			old_len = UNIV_SQL_NULL;
+		} else {
+			old_len = rec_offs_nth_size(offsets,
+						    upd_field->field_no);
 		}
 
-		if (dfield_is_ext(new_val) || old_len != new_len
+		if (old_len != new_len
 		    || rec_offs_nth_extern(offsets, upd_field->field_no)) {
 
 			return(TRUE);
@@ -698,6 +711,20 @@ row_upd_rec_in_place(
 	ut_ad(rec_offs_validate(rec, index, offsets));
 
 	if (rec_offs_comp(offsets)) {
+#ifdef UNIV_DEBUG
+		switch (rec_get_status(rec)) {
+		case REC_STATUS_ORDINARY:
+			break;
+		case REC_STATUS_COLUMNS_ADDED:
+			ut_ad(index->is_instant());
+			break;
+		case REC_STATUS_INFIMUM:
+		case REC_STATUS_SUPREMUM:
+		case REC_STATUS_NODE_PTR:
+			ut_ad(!"wrong record status in update");
+		}
+#endif /* UNIV_DEBUG */
+
 		rec_set_info_bits_new(rec, update->info_bits);
 	} else {
 		rec_set_info_bits_old(rec, update->info_bits);
@@ -979,6 +1006,7 @@ row_upd_build_sec_rec_difference_binary(
 	ut_ad(rec_offs_validate(rec, index, offsets));
 	ut_ad(rec_offs_n_fields(offsets) == dtuple_get_n_fields(entry));
 	ut_ad(!rec_offs_any_extern(offsets));
+	ut_ad(!rec_offs_any_default(offsets));
 
 	update = upd_create(dtuple_get_n_fields(entry), heap);
 
@@ -1007,7 +1035,7 @@ row_upd_build_sec_rec_difference_binary(
 
 			dfield_copy(&(upd_field->new_val), dfield);
 
-			upd_field_set_field_no(upd_field, i, index, NULL);
+			upd_field_set_field_no(upd_field, i, index);
 
 			n_diff++;
 		}
@@ -1070,15 +1098,14 @@ row_upd_build_difference_binary(
 	      == trx_id_pos + 1);
 
 	if (!offsets) {
-		offsets = rec_get_offsets(rec, index, offsets_,
+		offsets = rec_get_offsets(rec, index, offsets_, true,
 					  ULINT_UNDEFINED, &heap);
 	} else {
 		ut_ad(rec_offs_validate(rec, index, offsets));
 	}
 
 	for (i = 0; i < n_fld; i++) {
-
-		data = rec_get_nth_field(rec, offsets, i, &len);
+		data = rec_get_nth_cfield(rec, index, offsets, i, &len);
 
 		dfield = dtuple_get_nth_field(entry, i);
 
@@ -1104,7 +1131,7 @@ row_upd_build_difference_binary(
 
 			dfield_copy(&(upd_field->new_val), dfield);
 
-			upd_field_set_field_no(upd_field, i, index, trx);
+			upd_field_set_field_no(upd_field, i, index);
 
 			n_diff++;
 		}
@@ -1309,41 +1336,25 @@ row_upd_index_replace_new_col_val(
 	}
 }
 
-/***********************************************************//**
-Replaces the new column values stored in the update vector to the index entry
-given. */
+/** Apply an update vector to an index entry.
+@param[in,out]	entry	index entry to be updated; the clustered index record
+			must be covered by a lock or a page latch to prevent
+			deletion (rollback or purge)
+@param[in]	index	index of the entry
+@param[in]	update	update vector built for the entry
+@param[in,out]	heap	memory heap for copying off-page columns */
 void
 row_upd_index_replace_new_col_vals_index_pos(
-/*=========================================*/
-	dtuple_t*	entry,	/*!< in/out: index entry where replaced;
-				the clustered index record must be
-				covered by a lock or a page latch to
-				prevent deletion (rollback or purge) */
-	dict_index_t*	index,	/*!< in: index; NOTE that this may also be a
-				non-clustered index */
-	const upd_t*	update,	/*!< in: an update vector built for the index so
-				that the field number in an upd_field is the
-				index position */
-	ibool		order_only,
-				/*!< in: if TRUE, limit the replacement to
-				ordering fields of index; note that this
-				does not work for non-clustered indexes. */
-	mem_heap_t*	heap)	/*!< in: memory heap for allocating and
-				copying the new values */
+	dtuple_t*		entry,
+	const dict_index_t*	index,
+	const upd_t*		update,
+	mem_heap_t*		heap)
 {
-	ulint		i;
-	ulint		n_fields;
 	const page_size_t&	page_size = dict_table_page_size(index->table);
 
 	dtuple_set_info_bits(entry, update->info_bits);
 
-	if (order_only) {
-		n_fields = dict_index_get_n_unique(index);
-	} else {
-		n_fields = dict_index_get_n_fields(index);
-	}
-
-	for (i = 0; i < n_fields; i++) {
+	for (unsigned i = index->n_fields; i--; ) {
 		const dict_field_t*	field;
 		const dict_col_t*	col;
 		const upd_field_t*	uf;
@@ -2046,16 +2057,19 @@ row_upd_copy_columns(
 /*=================*/
 	rec_t*		rec,	/*!< in: record in a clustered index */
 	const ulint*	offsets,/*!< in: array returned by rec_get_offsets() */
+	const dict_index_t*	index, /*!< in: index of rec */
 	sym_node_t*	column)	/*!< in: first column in a column list, or
 				NULL */
 {
-	byte*	data;
+	ut_ad(dict_index_is_clust(index));
+
+	const byte*	data;
 	ulint	len;
 
 	while (column) {
-		data = rec_get_nth_field(rec, offsets,
-					 column->field_nos[SYM_CLUST_FIELD_NO],
-					 &len);
+		data = rec_get_nth_cfield(
+			rec, index, offsets,
+			column->field_nos[SYM_CLUST_FIELD_NO], &len);
 		eval_node_copy_and_alloc_val(column, data, len);
 
 		column = UT_LIST_GET_NEXT(col_var_list, column);
@@ -2197,7 +2211,7 @@ row_upd_store_row(
 
 	rec = btr_pcur_get_rec(node->pcur);
 
-	offsets = rec_get_offsets(rec, clust_index, offsets_,
+	offsets = rec_get_offsets(rec, clust_index, offsets_, true,
 				  ULINT_UNDEFINED, &heap);
 
 	if (dict_table_has_atomic_blobs(node->table)) {
@@ -2443,9 +2457,10 @@ row_upd_sec_index_entry(
 			if (!referenced && foreign
 			    && wsrep_must_process_fk(node, trx)
 			    && !wsrep_thd_is_BF(trx->mysql_thd, FALSE)) {
+
 				ulint*	offsets = rec_get_offsets(
-					rec, index, NULL, ULINT_UNDEFINED,
-					&heap);
+					rec, index, NULL, true,
+					ULINT_UNDEFINED, &heap);
 
 				err = wsrep_row_upd_check_foreign_constraints(
 					node, &pcur, index->table,
@@ -2481,7 +2496,7 @@ row_upd_sec_index_entry(
 			ulint*	offsets;
 
 			offsets = rec_get_offsets(
-				rec, index, NULL, ULINT_UNDEFINED,
+				rec, index, NULL, true, ULINT_UNDEFINED,
 				&heap);
 
 			/* NOTE that the following call loses
@@ -2588,6 +2603,7 @@ row_upd_clust_rec_by_insert_inherit_func(
 
 #ifdef UNIV_DEBUG
 		if (UNIV_LIKELY(rec != NULL)) {
+			ut_ad(!rec_offs_nth_default(offsets, i));
 			const byte* rec_data
 				= rec_get_nth_field(rec, offsets, i, &len);
 			ut_ad(len == dfield_get_len(dfield));
@@ -2660,9 +2676,6 @@ row_upd_clust_rec_by_insert(
 	rec_t*		rec;
 	ulint*		offsets			= NULL;
 
-#ifdef WITH_WSREP
-	que_node_t *parent = que_node_get_parent(node);
-#endif /* WITH_WSREP */
 	ut_ad(node);
 	ut_ad(dict_index_is_clust(index));
 
@@ -2675,6 +2688,7 @@ row_upd_clust_rec_by_insert(
 
 	entry = row_build_index_entry_low(node->upd_row, node->upd_ext,
 					  index, heap, ROW_BUILD_FOR_INSERT);
+	if (index->is_instant()) entry->trim(*index);
 	ut_ad(dtuple_get_info_bits(entry) == 0);
 
 	row_upd_index_entry_sys_field(entry, index, DATA_TRX_ID, trx->id);
@@ -2693,7 +2707,7 @@ row_upd_clust_rec_by_insert(
 		we update the primary key.  Delete-mark the old record
 		in the clustered index and prepare to insert a new entry. */
 		rec = btr_cur_get_rec(btr_cur);
-		offsets = rec_get_offsets(rec, index, NULL,
+		offsets = rec_get_offsets(rec, index, NULL, true,
 					  ULINT_UNDEFINED, &heap);
 		ut_ad(page_rec_is_user_rec(rec));
 
@@ -2751,12 +2765,10 @@ check_fk:
 			}
 		}
 #ifdef WITH_WSREP
-		else if (wsrep_on(trx->mysql_thd) && foreign                        &&
-			 (!parent || (que_node_get_type(parent) != QUE_NODE_UPDATE) ||
-			 ((upd_node_t*)parent)->cascade_upd_nodes->empty())
-		) {
+		else if (foreign && wsrep_must_process_fk(node, trx)) {
 			err = wsrep_row_upd_check_foreign_constraints(
 				node, pcur, table, index, offsets, thr, mtr);
+
 			switch (err) {
 			case DB_SUCCESS:
 			case DB_NO_REFERENCED_ROW:
@@ -2768,16 +2780,11 @@ check_fk:
 						   << " index " << index->name
 						   << " table " << index->table->name;
 				}
-				break;
+				goto err_exit;
 			default:
 				ib::error() << "WSREP: referenced FK check fail: " << ut_strerr(err)
 					    << " index " << index->name
 					    << " table " << index->table->name;
-
-				break;
-			}
-
-			if (err != DB_SUCCESS) {
 				goto err_exit;
 			}
 		}
@@ -2905,26 +2912,16 @@ row_upd_clust_rec(
 
 		DEBUG_SYNC_C("before_row_upd_extern");
 		err = btr_store_big_rec_extern_fields(
-			pcur, node->update, offsets, big_rec, mtr,
-			BTR_STORE_UPDATE);
+			pcur, offsets, big_rec, mtr, BTR_STORE_UPDATE);
 		DEBUG_SYNC_C("after_row_upd_extern");
 	}
 
 	if (err == DB_SUCCESS) {
 success:
 		if (dict_index_is_online_ddl(index)) {
-			dtuple_t*	new_v_row = NULL;
-			dtuple_t*	old_v_row = NULL;
-
-			if (!(node->cmpl_info & UPD_NODE_NO_ORD_CHANGE)) {
-				new_v_row = node->upd_row;
-				old_v_row = node->update->old_vrow;
-			}
-
 			row_log_table_update(
 				btr_cur_get_rec(btr_cur),
-				index, offsets, rebuilt_old_pk, new_v_row,
-				old_v_row);
+				index, offsets, rebuilt_old_pk);
 		}
 	}
 
@@ -2964,8 +2961,10 @@ row_upd_del_mark_clust_rec(
 	dberr_t		err;
 	rec_t*		rec;
 	trx_t*		trx = thr_get_trx(thr);
-
+#ifdef WITH_WSREP
 	que_node_t *parent = que_node_get_parent(node);
+#endif /* WITH_WSREP */
+
 	ut_ad(node);
 	ut_ad(dict_index_is_clust(index));
 	ut_ad(node->is_delete);
@@ -2977,7 +2976,8 @@ row_upd_del_mark_clust_rec(
 	entries */
 
 	row_upd_store_row(node, trx->mysql_thd,
-			  thr->prebuilt ? thr->prebuilt->m_mysql_table : NULL);
+			  thr->prebuilt  && thr->prebuilt->table == node->table
+			  ? thr->prebuilt->m_mysql_table : NULL);
 
 	/* Mark the clustered index record deleted; we do not have to check
 	locks, because we assume that we have an x-lock on the record */
@@ -3002,6 +3002,7 @@ row_upd_del_mark_clust_rec(
 	) {
 		err = wsrep_row_upd_check_foreign_constraints(
 			node, pcur, index->table, index, offsets, thr, mtr);
+
 		switch (err) {
 		case DB_SUCCESS:
 		case DB_NO_REFERENCED_ROW:
@@ -3146,7 +3147,7 @@ row_upd_clust_step(
 	}
 
 	rec = btr_pcur_get_rec(pcur);
-	offsets = rec_get_offsets(rec, index, offsets_,
+	offsets = rec_get_offsets(rec, index, offsets_, true,
 				  ULINT_UNDEFINED, &heap);
 
 	if (!flags && !node->has_clust_rec_x_lock) {
@@ -3184,7 +3185,7 @@ row_upd_clust_step(
 	if (UNIV_UNLIKELY(!node->in_mysql_interface)) {
 		/* Copy the necessary columns from clust_rec and calculate the
 		new values to set */
-		row_upd_copy_columns(rec, offsets,
+		row_upd_copy_columns(rec, offsets, index,
 				     UT_LIST_GET_FIRST(node->columns));
 		row_upd_eval_new_vals(node->update);
 	}

@@ -158,6 +158,7 @@ enum enum_binlog_row_image {
 #define MODE_HIGH_NOT_PRECEDENCE        (1ULL << 29)
 #define MODE_NO_ENGINE_SUBSTITUTION     (1ULL << 30)
 #define MODE_PAD_CHAR_TO_FULL_LENGTH    (1ULL << 31)
+#define MODE_EMPTY_STRING_IS_NULL       (1ULL << 32)
 
 /* Bits for different old style modes */
 #define OLD_MODE_NO_DUP_KEY_WARNINGS_WITH_IGNORE	(1 << 0)
@@ -713,15 +714,21 @@ typedef struct system_variables
   ulong session_track_transaction_info;
   my_bool session_track_schema;
   my_bool session_track_state_change;
-  my_bool sequence_read_skip_cache;
 
   ulong threadpool_priority;
 
   uint idle_transaction_timeout;
   uint idle_readonly_transaction_timeout;
-  uint idle_readwrite_transaction_timeout;
+  uint idle_write_transaction_timeout;
   uint column_compression_threshold;
   uint column_compression_zlib_level;
+  ulong in_subquery_conversion_threshold;
+
+  st_vers_asof_timestamp vers_asof_timestamp;
+  my_bool vers_force;
+  ulong vers_hide;
+  my_bool vers_innodb_algorithm_simple;
+  ulong vers_alter_history;
 } SV;
 
 /**
@@ -843,10 +850,14 @@ typedef struct system_status_var
   ulonglong rows_sent;
   ulonglong rows_tmp_read;
   ulonglong binlog_bytes_written;
+  ulonglong table_open_cache_hits;
+  ulonglong table_open_cache_misses;
+  ulonglong table_open_cache_overflows;
   double last_query_cost;
   double cpu_time, busy_time;
   /* Don't initialize */
   /* Memory used for thread local storage */
+  int64 max_local_memory_used;
   volatile int64 local_memory_used;
   /* Memory allocated for global usage */
   volatile int64 global_memory_used;
@@ -958,6 +969,11 @@ public:
 
   enum_state state;
 
+protected:
+  friend class sp_head;
+  bool is_stored_procedure;
+
+public:
   /* We build without RTTI, so dynamic_cast can't be used. */
   enum Type
   {
@@ -965,7 +981,8 @@ public:
   };
 
   Query_arena(MEM_ROOT *mem_root_arg, enum enum_state state_arg) :
-    free_list(0), mem_root(mem_root_arg), state(state_arg)
+    free_list(0), mem_root(mem_root_arg), state(state_arg),
+    is_stored_procedure(state_arg == STMT_INITIALIZED_FOR_SP ? true : false)
   { INIT_ARENA_DBUG_INFO; }
   /*
     This constructor is used only when Query_arena is created as
@@ -985,6 +1002,8 @@ public:
   { return state == STMT_PREPARED || state == STMT_EXECUTED; }
   inline bool is_conventional() const
   { return state == STMT_CONVENTIONAL_EXECUTION; }
+  inline bool is_sp_execute() const
+  { return is_stored_procedure; }
 
   inline void* alloc(size_t size) { return alloc_root(mem_root,size); }
   inline void* calloc(size_t size)
@@ -1026,6 +1045,22 @@ public:
   {}
 
   virtual ~Query_arena_memroot() {}
+};
+
+
+class Query_arena_stmt
+{
+  THD *thd;
+  Query_arena backup;
+  Query_arena *arena;
+
+public:
+  Query_arena_stmt(THD *_thd);
+  ~Query_arena_stmt();
+  bool arena_replaced()
+  {
+    return arena != NULL;
+  }
 };
 
 
@@ -1101,6 +1136,10 @@ public:
   inline uint32 query_length() const
   {
     return static_cast<uint32>(query_string.length());
+  }
+  inline char *query_end() const
+  {
+    return query_string.str() + query_string.length();
   }
   CHARSET_INFO *query_charset() const { return query_string.charset(); }
   void set_query_inner(const CSET_STRING &string_arg)
@@ -1675,6 +1714,29 @@ public:
 
 
 /**
+  Implements the trivial error handler which counts errors as they happen.
+*/
+
+class Counting_error_handler : public Internal_error_handler
+{
+public:
+  int errors;
+  bool handle_condition(THD *thd,
+                        uint sql_errno,
+                        const char* sqlstate,
+                        Sql_condition::enum_warning_level *level,
+                        const char* msg,
+                        Sql_condition ** cond_hdl)
+  {
+    if (*level == Sql_condition::WARN_LEVEL_ERROR)
+      errors++;
+    return false;
+  }
+  Counting_error_handler() : errors(0) {}
+};
+
+
+/**
   This class is an internal error handler implementation for
   DROP TABLE statements. The thing is that there may be warnings during
   execution of these statements, which should not be exposed to the user.
@@ -2214,12 +2276,13 @@ public:
                    const char *calling_file,
                    const unsigned int calling_line)
   {
-    DBUG_PRINT("THD::enter_stage", ("%s:%d", calling_file, calling_line));
+    DBUG_PRINT("THD::enter_stage", ("%s at %s:%d", stage->m_name,
+                                    calling_file, calling_line));
     DBUG_ASSERT(stage);
     m_current_stage_key= stage->m_key;
     proc_info= stage->m_name;
 #if defined(ENABLED_PROFILING)
-    profiling.status_change(stage->m_name, calling_func, calling_file,
+    profiling.status_change(proc_info, calling_func, calling_file,
                             calling_line);
 #endif
 #ifdef HAVE_PSI_THREAD_INTERFACE
@@ -3280,6 +3343,7 @@ public:
   inline my_time_t query_start() { query_start_used=1; return start_time; }
   inline ulong query_start_sec_part()
   { query_start_sec_part_used=1; return start_time_sec_part; }
+  MYSQL_TIME query_start_TIME();
   inline void set_current_time()
   {
     my_hrtime_t hrtime= my_hrtime();
@@ -3542,14 +3606,17 @@ public:
     @param length     - length of the string
     @param repertoire - the repertoire of the string
   */
-  Item_string *make_string_literal(const char *str, size_t length,
-                                   uint repertoire);
-  Item_string *make_string_literal(const Lex_string_with_metadata_st &str)
+  Item *make_string_literal(const char *str, size_t length,
+                            uint repertoire);
+  Item *make_string_literal(const Lex_string_with_metadata_st &str)
   {
     uint repertoire= str.repertoire(variables.character_set_client);
     return make_string_literal(str.str, str.length, repertoire);
   }
-
+  Item *make_string_literal_nchar(const Lex_string_with_metadata_st &str);
+  Item *make_string_literal_charset(const Lex_string_with_metadata_st &str,
+                                    CHARSET_INFO *cs);
+  Item *make_string_literal_concat(Item *item1, const LEX_CSTRING &str);
   void add_changed_table(TABLE *table);
   void add_changed_table(const char *key, long key_length);
   CHANGED_TABLE_LIST * changed_table_dup(const char *key, long key_length);
@@ -3943,7 +4010,7 @@ public:
     mysql_mutex_unlock(&LOCK_thd_data);
 #ifdef HAVE_PSI_THREAD_INTERFACE
     if (result)
-      PSI_THREAD_CALL(set_thread_db)(new_db, new_db_len);
+      PSI_THREAD_CALL(set_thread_db)(new_db, (int) new_db_len);
 #endif
     return result;
   }
@@ -3968,7 +4035,7 @@ public:
       db_length= new_db_len;
       mysql_mutex_unlock(&LOCK_thd_data);
 #ifdef HAVE_PSI_THREAD_INTERFACE
-      PSI_THREAD_CALL(set_thread_db)(new_db, new_db_len);
+      PSI_THREAD_CALL(set_thread_db)(new_db, (int) new_db_len);
 #endif
     }
   }
@@ -4073,7 +4140,12 @@ public:
     Lex_input_stream *lip= &m_parser_state->m_lip;
     if (!yytext)
     {
-      if (!(yytext= lip->get_tok_start()))
+      if (lip->lookahead_token >= 0)
+        yytext= lip->get_tok_start_prev();
+      else
+        yytext= lip->get_tok_start();
+
+      if (!yytext)
         yytext= "";
     }
     /* Push an error into the error stack */
@@ -4769,6 +4841,9 @@ public:
 
   /* Handling of timeouts for commands */
   thr_timer_t query_timer;
+
+  bool vers_update_trt;
+
 public:
   void set_query_timer()
   {
@@ -4830,8 +4905,8 @@ public:
     {
       if (transaction.all.is_trx_read_write())
       {
-        if (variables.idle_readwrite_transaction_timeout > 0)
-          return variables.idle_readwrite_transaction_timeout;
+        if (variables.idle_write_transaction_timeout > 0)
+          return variables.idle_write_transaction_timeout;
       }
       else
       {
@@ -5863,6 +5938,7 @@ public:
   {
     db= *db_name;
   }
+  bool resolve_table_rowtype_ref(THD *thd, Row_definition_list &defs);
 };
 
 
@@ -5886,6 +5962,7 @@ public:
    :Table_ident(thd, db, table, false),
     m_column(*column)
   { }
+  bool resolve_type_ref(THD *thd, Column_definition *def);
 };
 
 
@@ -5914,7 +5991,6 @@ user_var_entry *get_variable(HASH *hash, LEX_CSTRING *name,
 				    bool create_if_not_exists);
 
 class SORT_INFO;
-
 class multi_delete :public select_result_interceptor
 {
   TABLE_LIST *delete_tables, *table_being_deleted;
@@ -5979,6 +6055,12 @@ class multi_update :public select_result_interceptor
   
   /* Need this to protect against multiple prepare() calls */
   bool prepared;
+
+  // For System Versioning (may need to insert new fields to a table).
+  ha_rows updated_sys_ver;
+
+  bool has_vers_fields;
+
 public:
   multi_update(THD *thd_arg, TABLE_LIST *ut, List<TABLE_LIST> *leaves_list,
 	       List<Item> *fields, List<Item> *values,
@@ -6503,6 +6585,82 @@ inline bool lex_string_eq(const LEX_CSTRING *a,
   return strcasecmp(a->str, b->str) != 0;
 }
 
-#endif /* MYSQL_SERVER */
+class Type_holder: public Sql_alloc,
+                   public Item_args,
+                   public Type_handler_hybrid_field_type,
+                   public Type_all_attributes,
+                   public Type_geometry_attributes
+{
+  TYPELIB *m_typelib;
+  bool m_maybe_null;
+public:
+  Type_holder()
+   :m_typelib(NULL),
+    m_maybe_null(false)
+  { }
 
+  void set_maybe_null(bool maybe_null_arg) { m_maybe_null= maybe_null_arg; }
+  bool get_maybe_null() const { return m_maybe_null; }
+
+  uint decimal_precision() const
+  {
+    /*
+      Type_holder is not used directly to create fields, so
+      its virtual decimal_precision() is never called.
+      We should eventually extend create_result_table() to accept
+      an array of Type_holders directly, without having to allocate
+      Item_type_holder's and put them into List<Item>.
+    */
+    DBUG_ASSERT(0);
+    return 0;
+  }
+  void set_geometry_type(uint type)
+  {
+    Type_geometry_attributes::set_geometry_type(type);
+  }
+  uint uint_geometry_type() const
+  {
+    return Type_geometry_attributes::get_geometry_type();
+  }
+  void set_typelib(TYPELIB *typelib)
+  {
+    m_typelib= typelib;
+  }
+  TYPELIB *get_typelib() const
+  {
+    return m_typelib;
+  }
+
+  bool aggregate_attributes(THD *thd)
+  {
+    for (uint i= 0; i < arg_count; i++)
+      m_maybe_null|= args[i]->maybe_null;
+    return
+       type_handler()->Item_hybrid_func_fix_attributes(thd,
+                                                       "UNION", this, this,
+                                                       args, arg_count);
+  }
+};
+
+
+class ScopedStatementReplication
+{
+public:
+  ScopedStatementReplication(THD *thd) : thd(thd)
+  {
+    if (thd)
+      saved_binlog_format= thd->set_current_stmt_binlog_format_stmt();
+  }
+  ~ScopedStatementReplication()
+  {
+    if (thd)
+      thd->restore_stmt_binlog_format(saved_binlog_format);
+  }
+
+private:
+  enum_binlog_format saved_binlog_format;
+  THD *thd;
+};
+
+#endif /* MYSQL_SERVER */
 #endif /* SQL_CLASS_INCLUDED */

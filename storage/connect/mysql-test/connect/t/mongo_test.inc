@@ -1,3 +1,5 @@
+#set connect_enable_mongo=1;
+
 --echo #
 --echo # Test the MONGO table type
 --echo #
@@ -154,7 +156,7 @@ eval CREATE TABLE t1 (
   loc_1 char(12) NOT NULL `FIELD_FORMAT`='loc.1',
   pop int(11) NOT NULL,
   state char(2) NOT NULL)
-ENGINE=CONNECT CONNECTION='mongodb://localhost:27017' TABLE_TYPE='MONGO' TABNAME='cities'
+ENGINE=CONNECT CONNECTION='mongodb://localhost:27017' TABLE_TYPE=$TYPE TABNAME='cities'
 OPTION_LIST='Driver=$DRV,Version=$VERS' $CONN DATA_CHARSET='utf8';
 --echo # Using SQL for grouping
 SELECT state, sum(pop) AS totalPop FROM t1 GROUP BY state HAVING totalPop >= 10000000 ORDER BY totalPop DESC;
@@ -201,3 +203,5 @@ OPTION_LIST='Driver=$DRV,Version=$VERS,Pipeline=YES' $CONN;
 SELECT * FROM t1;
 DROP TABLE t1;
 --exec $MONGO --eval "db.testcoll.drop()" --quiet
+
+#set connect_enable_mongo=0;

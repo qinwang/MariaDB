@@ -112,6 +112,12 @@ int ha_sequence::open(const char *name, int mode, uint flags)
     }
     else
       table->m_needs_reopen= true;
+
+    /*
+      The following is needed to fix comparison of rows in
+      ha_update_first_row() for InnoDB
+    */
+    memcpy(table->record[1], table->s->default_values, table->s->reclength);
   }
   DBUG_RETURN(error);
 }
@@ -253,7 +259,8 @@ int ha_sequence::write_row(uchar *buf)
       sequence->copy(&tmp_seq);
     rows_changed++;
     /* We have to do the logging while we hold the sequence mutex */
-    error= binlog_log_row(table, 0, buf, log_func);
+    if (table->file->check_table_binlog_row_based(1))
+      error= binlog_log_row(table, 0, buf, log_func);
     row_already_logged= 1;
   }
 

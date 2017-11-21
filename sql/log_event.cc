@@ -44,6 +44,7 @@
 #include <strfunc.h>
 #include "compat56.h"
 #include "wsrep_mysqld.h"
+#include "sql_insert.h"
 #endif /* MYSQL_CLIENT */
 
 #include <my_bitmap.h>
@@ -838,19 +839,19 @@ query_event_uncompress(const Format_description_log_event *description_event,
   if (end <= tmp)
     return 1;
 
-  int32 comp_len = len - (tmp - src) - 
-                  (contain_checksum ? BINLOG_CHECKSUM_LEN : 0);
+  int32 comp_len = (int32)(len - (tmp - src) - 
+                  (contain_checksum ? BINLOG_CHECKSUM_LEN : 0));
   uint32 un_len = binlog_get_uncompress_len(tmp);
 
   // bad event 
   if (comp_len < 0 || un_len == 0)
     return 1;
 
-  *newlen = (tmp - src) + un_len;
+  *newlen = (ulong)(tmp - src) + un_len;
   if(contain_checksum)
     *newlen += BINLOG_CHECKSUM_LEN;
   
-  uint32 alloc_size = ALIGN_SIZE(*newlen);
+  uint32 alloc_size = (uint32)ALIGN_SIZE(*newlen);
   char *new_dst = NULL;
 
   
@@ -963,17 +964,17 @@ row_log_event_uncompress(const Format_description_log_event *description_event,
   if (un_len == 0)
     return 1;
 
-  long comp_len = len - (tmp - src) - 
-    (contain_checksum ? BINLOG_CHECKSUM_LEN : 0);
+  int32 comp_len = (int32)(len - (tmp - src) - 
+    (contain_checksum ? BINLOG_CHECKSUM_LEN : 0));
   //bad event
   if (comp_len <=0)
     return 1;
 
-  *newlen = (tmp - src) + un_len;
+  *newlen = ulong(tmp - src) + un_len;
   if(contain_checksum)
     *newlen += BINLOG_CHECKSUM_LEN;
 
-  uint32 alloc_size = ALIGN_SIZE(*newlen);
+  size_t alloc_size = ALIGN_SIZE(*newlen);
   
   *is_malloc = false;
   if (alloc_size <= buf_size) 
@@ -1131,7 +1132,7 @@ int append_query_string(CHARSET_INFO *csinfo, String *to,
 
     *ptr++= '\'';
   }
-  to->length(orig_len + ptr - beg);
+  to->length((uint32)(orig_len + ptr - beg));
   return 0;
 }
 #endif
@@ -1626,7 +1627,7 @@ int Log_event_writer::write_header(uchar *pos, size_t len)
   if (ctx)
   {
     uchar iv[BINLOG_IV_LENGTH];
-    crypto->set_iv(iv, my_b_safe_tell(file));
+    crypto->set_iv(iv, (uint32)my_b_safe_tell(file));
     if (encryption_ctx_init(ctx, crypto->key, crypto->key_length,
            iv, sizeof(iv), ENCRYPTION_FLAG_ENCRYPT | ENCRYPTION_FLAG_NOPAD,
            ENCRYPTION_KEY_SYSTEM_DATA, crypto->key_version))
@@ -2427,9 +2428,9 @@ void Log_event::print_header(IO_CACHE* file,
   if (checksum_alg != BINLOG_CHECKSUM_ALG_OFF &&
       checksum_alg != BINLOG_CHECKSUM_ALG_UNDEF)
   {
-    char checksum_buf[BINLOG_CHECKSUM_LEN * 2 + 4]; // to fit to "0x%lx "
+    char checksum_buf[BINLOG_CHECKSUM_LEN * 2 + 4]; // to fit to "%p "
     size_t const bytes_written=
-      my_snprintf(checksum_buf, sizeof(checksum_buf), "0x%08lx ", (ulong) crc);
+      my_snprintf(checksum_buf, sizeof(checksum_buf), "0x%08x ", crc);
     my_b_printf(file, "%s ", get_type(&binlog_checksum_typelib, checksum_alg));
     my_b_printf(file, checksum_buf, bytes_written);
   }
@@ -3968,7 +3969,7 @@ Query_log_event::Query_log_event(THD* thd_arg, const char* query_arg,
    db(thd_arg->db), q_len((uint32) query_length),
    thread_id(thd_arg->thread_id),
    /* save the original thread id; we already know the server id */
-   slave_proxy_id(thd_arg->variables.pseudo_thread_id),
+   slave_proxy_id((ulong)thd_arg->variables.pseudo_thread_id),
    flags2_inited(1), sql_mode_inited(1), charset_inited(1),
    sql_mode(thd_arg->variables.sql_mode),
    auto_increment_increment(thd_arg->variables.auto_increment_increment),
@@ -4172,7 +4173,7 @@ get_str_len_and_pointer(const Log_event::Byte **src,
   if (length > 0)
   {
     if (*src + length >= end)
-      return *src + length - end + 1;       // Number of bytes missing
+      return (int)(*src + length - end + 1);   // Number of bytes missing
     *dst= (char *)*src + 1;                    // Will be copied later
   }
   *len= length;
@@ -4273,7 +4274,7 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
   data_len = event_len - (common_header_len + post_header_len);
   buf+= common_header_len;
   
-  slave_proxy_id= thread_id = uint4korr(buf + Q_THREAD_ID_OFFSET);
+  thread_id = slave_proxy_id = uint4korr(buf + Q_THREAD_ID_OFFSET);
   exec_time = uint4korr(buf + Q_EXEC_TIME_OFFSET);
   db_len = (uchar)buf[Q_DB_LEN_OFFSET]; // TODO: add a check of all *_len vars
   error_code = uint2korr(buf + Q_ERR_CODE_OFFSET);
@@ -4347,8 +4348,8 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
       break;
     }
     case Q_CATALOG_NZ_CODE:
-      DBUG_PRINT("info", ("case Q_CATALOG_NZ_CODE; pos: 0x%lx; end: 0x%lx",
-                          (ulong) pos, (ulong) end));
+      DBUG_PRINT("info", ("case Q_CATALOG_NZ_CODE; pos:%p; end:%p",
+                          pos, end));
       if (get_str_len_and_pointer(&pos, &catalog, &catalog_len, end))
       {
         DBUG_PRINT("info", ("query= 0"));
@@ -6498,7 +6499,7 @@ Load_log_event::Load_log_event(THD *thd_arg, sql_exchange *ex,
              thd_arg->thread_specific_used ? LOG_EVENT_THREAD_SPECIFIC_F : 0,
              using_trans),
    thread_id(thd_arg->thread_id),
-   slave_proxy_id(thd_arg->variables.pseudo_thread_id),
+   slave_proxy_id((ulong)thd_arg->variables.pseudo_thread_id),
    num_fields(0),fields(0),
    field_lens(0),field_block_len(0),
    table_name(table_name_arg ? table_name_arg : ""),
@@ -6622,7 +6623,7 @@ int Load_log_event::copy_log_event(const char *buf, ulong event_len,
   char* buf_end = (char*)buf + event_len;
   /* this is the beginning of the post-header */
   const char* data_head = buf + description_event->common_header_len;
-  slave_proxy_id= thread_id= uint4korr(data_head + L_THREAD_ID_OFFSET);
+  thread_id= slave_proxy_id= uint4korr(data_head + L_THREAD_ID_OFFSET);
   exec_time = uint4korr(data_head + L_EXEC_TIME_OFFSET);
   skip_lines = uint4korr(data_head + L_SKIP_LINES_OFFSET);
   table_name_len = (uint)data_head[L_TBL_LEN_OFFSET];
@@ -7680,7 +7681,7 @@ Gtid_log_event::print(FILE *file, PRINT_EVENT_INFO *print_event_info)
   char buf[21];
   char buf2[21];
 
-  if (!print_event_info->short_form & !is_flashback)
+  if (!print_event_info->short_form && !is_flashback)
   {
     print_header(&cache, print_event_info, FALSE);
     longlong10_to_str(seq_no, buf, 10);
@@ -8688,22 +8689,7 @@ User_var_log_event(const char* buf, uint event_len,
       Old events will not have this extra byte, thence,
       we keep the flags set to UNDEF_F.
     */
-    uint bytes_read= ((val + val_len) - buf_start);
-#ifdef DBUG_ASSERT_EXISTS
-    bool old_pre_checksum_fd= description_event->is_version_before_checksum(
-        &description_event->server_version_split);
-#endif
-    DBUG_ASSERT((bytes_read == data_written -
-                 (old_pre_checksum_fd ||
-                  (description_event->checksum_alg ==
-                   BINLOG_CHECKSUM_ALG_OFF)) ?
-                 0 : BINLOG_CHECKSUM_LEN)
-                ||
-                (bytes_read == data_written -1 -
-                 (old_pre_checksum_fd ||
-                  (description_event->checksum_alg ==
-                   BINLOG_CHECKSUM_ALG_OFF)) ?
-                 0 : BINLOG_CHECKSUM_LEN));
+    size_t bytes_read= ((val + val_len) - buf_start);
     if ((data_written - bytes_read) > 0)
     {
       flags= (uint) *(buf + UV_VAL_IS_NULL + UV_VAL_TYPE_SIZE +
@@ -10049,7 +10035,7 @@ Execute_load_query_log_event::do_apply_event(rpl_group_info *rgi)
   p= strmake(p, STRING_WITH_LEN(" INTO "));
   p= strmake(p, query+fn_pos_end, q_len-fn_pos_end);
 
-  error= Query_log_event::do_apply_event(rgi, buf, p-buf);
+  error= Query_log_event::do_apply_event(rgi, buf, (uint32)(p-buf));
 
   /* Forging file name for deletion in same buffer */
   *fname_end= 0;
@@ -10397,7 +10383,7 @@ void Rows_log_event::uncompress_buf()
   if (new_buf)
   {
     if(!binlog_buf_uncompress((char *)m_rows_buf, (char *)new_buf,
-                              m_rows_cur - m_rows_buf, &un_len))
+                              (uint32)(m_rows_cur - m_rows_buf), &un_len))
     {
       my_free(m_rows_buf);
       m_rows_buf = new_buf;
@@ -10433,9 +10419,9 @@ int Rows_log_event::get_data_size()
   uchar *end= net_store_length(buf, m_width);
 
   DBUG_EXECUTE_IF("old_row_based_repl_4_byte_map_id_master",
-                  return 6 + no_bytes_in_map(&m_cols) + (end - buf) +
+                  return (int)(6 + no_bytes_in_map(&m_cols) + (end - buf) +
                   (general_type_code == UPDATE_ROWS_EVENT ? no_bytes_in_map(&m_cols_ai) : 0) +
-                  (m_rows_cur - m_rows_buf););
+                  m_rows_cur - m_rows_buf););
 
   int data_size= 0;
   Log_event_type type = get_type_code();
@@ -10471,7 +10457,7 @@ int Rows_log_event::do_add_row_data(uchar *row_data, size_t length)
     would save binlog space. TODO
   */
   DBUG_ENTER("Rows_log_event::do_add_row_data");
-  DBUG_PRINT("enter", ("row_data: 0x%lx  length: %lu", (ulong) row_data,
+  DBUG_PRINT("enter", ("row_data:%p  length: %lu", row_data,
                        (ulong) length));
 
   /*
@@ -10501,7 +10487,7 @@ int Rows_log_event::do_add_row_data(uchar *row_data, size_t length)
   if (static_cast<size_t>(m_rows_end - m_rows_cur) <= length)
   {
     size_t const block_size= 1024;
-    ulong cur_size= m_rows_cur - m_rows_buf;
+    size_t cur_size= m_rows_cur - m_rows_buf;
     DBUG_EXECUTE_IF("simulate_too_big_row_case1",
                      cur_size= UINT_MAX32 - (block_size * 10);
                      length= UINT_MAX32 - (block_size * 10););
@@ -10514,21 +10500,21 @@ int Rows_log_event::do_add_row_data(uchar *row_data, size_t length)
     DBUG_EXECUTE_IF("simulate_too_big_row_case4",
                      cur_size= UINT_MAX32 - (block_size * 10);
                      length= (block_size * 10) - block_size + 1;);
-    ulong remaining_space= UINT_MAX32 - cur_size;
+    size_t remaining_space= UINT_MAX32 - cur_size;
     /* Check that the new data fits within remaining space and we can add
        block_size without wrapping.
      */
-    if (length > remaining_space ||
+    if (cur_size > UINT_MAX32 || length > remaining_space ||
         ((length + block_size) > remaining_space))
     {
       sql_print_error("The row data is greater than 4GB, which is too big to "
                       "write to the binary log.");
       DBUG_RETURN(ER_BINLOG_ROW_LOGGING_FAILED);
     }
-    ulong const new_alloc= 
+    size_t const new_alloc= 
         block_size * ((cur_size + length + block_size - 1) / block_size);
 
-    uchar* const new_buf= (uchar*)my_realloc((uchar*)m_rows_buf, (uint) new_alloc,
+    uchar* const new_buf= (uchar*)my_realloc((uchar*)m_rows_buf, new_alloc,
                                            MYF(MY_ALLOW_ZERO_PTR|MY_WME));
     if (unlikely(!new_buf))
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
@@ -10851,8 +10837,8 @@ int Rows_log_event::do_apply_event(rpl_group_info *rgi)
 
   table= m_table= rgi->m_table_map.get_table(m_table_id);
 
-  DBUG_PRINT("debug", ("m_table: 0x%lx, m_table_id: %lu%s",
-                       (ulong) m_table, m_table_id,
+  DBUG_PRINT("debug", ("m_table:%p, m_table_id: %lu%s",
+                       m_table, m_table_id,
                        table && master_had_triggers ?
                        " (master had triggers)" : ""));
   if (table)
@@ -10979,8 +10965,8 @@ int Rows_log_event::do_apply_event(rpl_group_info *rgi)
        m_curr_row_end.
       */ 
    
-      DBUG_PRINT("info", ("curr_row: 0x%lu; curr_row_end: 0x%lu; rows_end: 0x%lu",
-                          (ulong) m_curr_row, (ulong) m_curr_row_end, (ulong) m_rows_end));
+      DBUG_PRINT("info", ("curr_row: %p; curr_row_end: %p; rows_end:%p",
+                          m_curr_row, m_curr_row_end, m_rows_end));
 
       if (!m_curr_row_end && !error)
         error= unpack_current_row(rgi);
@@ -11268,11 +11254,11 @@ bool Rows_log_event::write_compressed()
   uchar *m_rows_cur_tmp = m_rows_cur;
   bool ret = true;
   uint32 comlen, alloc_size;
-  comlen= alloc_size= binlog_get_compress_len(m_rows_cur_tmp - m_rows_buf_tmp);
+  comlen= alloc_size= binlog_get_compress_len((uint32)(m_rows_cur_tmp - m_rows_buf_tmp));
   m_rows_buf = (uchar *)my_safe_alloca(alloc_size);
   if(m_rows_buf &&
      !binlog_buf_compress((const char *)m_rows_buf_tmp, (char *)m_rows_buf,
-                          m_rows_cur_tmp - m_rows_buf_tmp, &comlen))
+                          (uint32)(m_rows_cur_tmp - m_rows_buf_tmp), &comlen))
   {
     m_rows_cur= comlen + m_rows_buf;
     ret= Log_event::write();
@@ -12508,7 +12494,7 @@ Rows_log_event::write_row(rpl_group_info *rgi,
        the size of the first row and use that value to initialize
        storage engine for bulk insertion */
     DBUG_ASSERT(!(m_curr_row > m_curr_row_end));
-    ulong estimated_rows= 0;
+    ha_rows estimated_rows= 0;
     if (m_curr_row < m_curr_row_end)
       estimated_rows= (m_rows_end - m_curr_row) / (m_curr_row_end - m_curr_row);
     else if (m_curr_row == m_curr_row_end)
@@ -12532,6 +12518,22 @@ Rows_log_event::write_row(rpl_group_info *rgi,
       process_triggers(TRG_EVENT_INSERT, TRG_ACTION_BEFORE, TRUE))
   {
       DBUG_RETURN(HA_ERR_GENERIC); // in case if error is not set yet
+  }
+
+  // Handle INSERT.
+  // Set vers fields when replicating from not system-versioned table.
+  if (m_type == WRITE_ROWS_EVENT_V1 && table->versioned_by_sql())
+  {
+    bitmap_set_bit(table->read_set, table->vers_start_field()->field_index);
+    // Check whether a row came from unversioned table and fix vers fields.
+    if (table->vers_start_field()->get_timestamp() == 0)
+    {
+      bitmap_set_bit(table->write_set, table->vers_start_field()->field_index);
+      bitmap_set_bit(table->write_set, table->vers_end_field()->field_index);
+      thd->set_current_time();
+      table->vers_start_field()->set_time();
+      table->vers_end_field()->set_max();
+    }
   }
 
   /* 
@@ -12727,7 +12729,7 @@ int Rows_log_event::update_sequence()
     longlong round= table->field[ROUND_FIELD_NO]->val_int();
     dbug_tmp_restore_column_map(table->read_set, old_map);
 
-    return table->s->sequence->set_value(table, nextval, round, 0);
+    return table->s->sequence->set_value(table, nextval, round, 0) > 0;
   }
 
   /*
@@ -12746,6 +12748,7 @@ Write_rows_log_event::do_exec_row(rpl_group_info *rgi)
   DBUG_ASSERT(m_table != NULL);
   const char *tmp= thd->get_proc_info();
   const char *message= "Write_rows_log_event::write_row()";
+  int error;
 
 #ifdef WSREP_PROC_INFO
   my_snprintf(thd->wsrep_info, sizeof(thd->wsrep_info) - 1,
@@ -12755,7 +12758,7 @@ Write_rows_log_event::do_exec_row(rpl_group_info *rgi)
 #endif /* WSREP_PROC_INFO */
 
   thd_proc_info(thd, message);
-  int error= write_row(rgi, slave_exec_mode == SLAVE_EXEC_MODE_IDEMPOTENT);
+  error= write_row(rgi, slave_exec_mode == SLAVE_EXEC_MODE_IDEMPOTENT);
   thd_proc_info(thd, tmp);
 
   if (error && !thd->is_error())
@@ -12853,7 +12856,10 @@ static bool record_compare(TABLE *table)
   /* Compare fields */
   for (Field **ptr=table->field ; *ptr ; ptr++)
   {
-
+    if (table->versioned() && (*ptr)->vers_sys_field())
+    {
+      continue;
+    }
     /**
       We only compare field contents that are not null.
       NULL fields (i.e., their null bits) were compared 
@@ -13047,6 +13053,27 @@ int Rows_log_event::find_row(rpl_group_info *rgi)
   
   prepare_record(table, m_width, FALSE);
   error= unpack_current_row(rgi);
+
+  m_vers_from_plain= false;
+  if (table->versioned())
+  {
+    Field *sys_trx_end= table->vers_end_field();
+    DBUG_ASSERT(table->read_set);
+    bitmap_set_bit(table->read_set, sys_trx_end->field_index);
+    // check whether master table is unversioned
+    if (sys_trx_end->val_int() == 0)
+    {
+      // sys_trx_start initialized with NULL when came from plain table.
+      // Set it notnull() because record_compare() count NULLs.
+      table->vers_start_field()->set_notnull();
+      bitmap_set_bit(table->write_set, sys_trx_end->field_index);
+      // Plain source table may have a PRIMARY KEY. And sys_trx_end is always
+      // a part of PRIMARY KEY. Set it to max value for engine to find it in
+      // index. Needed for an UPDATE/DELETE cases.
+      table->vers_end_field()->set_max();
+      m_vers_from_plain= true;
+    }
+  }
 
   DBUG_PRINT("info",("looking for the following record"));
   DBUG_DUMP("record[0]", table->record[0], table->s->reclength);
@@ -13429,7 +13456,19 @@ int Delete_rows_log_event::do_exec_row(rpl_group_info *rgi)
     if (!error)
     {
       m_table->mark_columns_per_binlog_row_image();
-      error= m_table->file->ha_delete_row(m_table->record[0]);
+      if (m_vers_from_plain && m_table->versioned_by_sql())
+      {
+        Field *end= m_table->vers_end_field();
+        bitmap_set_bit(m_table->write_set, end->field_index);
+        store_record(m_table, record[1]);
+        end->set_time();
+        error= m_table->file->ha_update_row(m_table->record[1],
+                                            m_table->record[0]);
+      }
+      else
+      {
+        error= m_table->file->ha_delete_row(m_table->record[0]);
+      }
       m_table->default_column_bitmaps();
     }
     if (invoke_triggers && !error &&
@@ -13686,9 +13725,22 @@ Update_rows_log_event::do_exec_row(rpl_group_info *rgi)
   memcpy(m_table->write_set->bitmap, m_cols_ai.bitmap, (m_table->write_set->n_bits + 7) / 8);
 
   m_table->mark_columns_per_binlog_row_image();
+  if (m_vers_from_plain && m_table->versioned_by_sql())
+  {
+    bitmap_set_bit(m_table->write_set,
+                   m_table->vers_start_field()->field_index);
+    thd->set_current_time();
+    m_table->vers_start_field()->set_time();
+  }
   error= m_table->file->ha_update_row(m_table->record[1], m_table->record[0]);
   if (error == HA_ERR_RECORD_IS_THE_SAME)
     error= 0;
+  if (m_vers_from_plain && m_table->versioned_by_sql())
+  {
+    store_record(m_table, record[2]);
+    error= vers_insert_history_row(m_table);
+    restore_record(m_table, record[2]);
+  }
   m_table->default_column_bitmaps();
 
   if (invoke_triggers && !error &&

@@ -284,7 +284,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
    Comments for TOKENS.
    For each token, please include in the same line a comment that contains
    the following tags:
-   SQL-2011-N : Non Reserved keywird as per SQL-2011
+   SQL-2011-N : Non Reserved keyword as per SQL-2011
    SQL-2003-R : Reserved keyword as per SQL-2003
    SQL-2003-N : Non Reserved keyword as per SQL-2003
    SQL-1999-R : Reserved keyword as per SQL-1999
@@ -419,6 +419,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  DATA_SYM                      /* SQL-2003-N */
 %token  DATETIME
 %token  DATE_ADD_INTERVAL             /* MYSQL-FUNC */
+%token  DATE_FORMAT_SYM               /* MYSQL-FUNC */
 %token  DATE_SUB_INTERVAL             /* MYSQL-FUNC */
 %token  DATE_SYM                      /* SQL-2003-R */
 %token  DAY_HOUR_SYM
@@ -482,7 +483,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  EXCEPT_SYM                    /* SQL-2003-R */
 %token  EXCLUDE_SYM                   /* SQL-2011-N */
 %token  EXECUTE_SYM                   /* SQL-2003-R */
-%token  EXCEPTION_SYM                 /* SQL-2003-N */
+%token  EXCEPTION_SYM                 /* SQL-2003-N, Oracle-PLSQL-R */
 %token  EXISTS                        /* SQL-2003-R */
 %token  EXIT_SYM
 %token  EXPANSION_SYM
@@ -506,6 +507,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  FORCE_SYM
 %token  FOREIGN                       /* SQL-2003-R */
 %token  FOR_SYM                       /* SQL-2003-R */
+%token  FOR_SYSTEM_TIME_SYM           /* INTERNAL */
 %token  FORMAT_SYM
 %token  FOUND_SYM                     /* SQL-2003-R */
 %token  FROM
@@ -644,6 +646,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  MAX_STATEMENT_TIME_SYM
 %token  MAX_USER_CONNECTIONS_SYM
 %token  MAXVALUE_SYM                 /* SQL-2003-N */
+%token  MEDIAN_SYM
 %token  MEDIUMBLOB
 %token  MEDIUMINT
 %token  MEDIUMTEXT
@@ -736,6 +739,9 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  PARTITIONING_SYM
 %token  PASSWORD_SYM
 %token  PERCENT_RANK_SYM
+%token  PERCENTILE_CONT_SYM
+%token  PERCENTILE_DISC_SYM
+%token  PERIOD_SYM                    /* 32N2439 */
 %token  PERSISTENT_SYM
 %token  PHASE_SYM
 %token  PLUGINS_SYM
@@ -902,6 +908,8 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  SWAPS_SYM
 %token  SWITCHES_SYM
 %token  SYSDATE
+%token  SYSTEM                        /* 32N2439 */
+%token  SYSTEM_TIME_SYM               /* 32N2439 */
 %token  TABLES
 %token  TABLESPACE
 %token  TABLE_REF_PRIORITY
@@ -962,6 +970,8 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  UTC_TIMESTAMP_SYM
 %token  UTC_TIME_SYM
 %token  VALUES                        /* SQL-2003-R */
+%token  VALUES_IN_SYM
+%token  VALUES_LESS_SYM
 %token  VALUE_SYM                     /* SQL-2003-R */
 %token  VARBINARY
 %token  VARCHAR                       /* SQL-2003-R */
@@ -970,6 +980,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  VARIANCE_SYM
 %token  VARYING                       /* SQL-2003-R */
 %token  VAR_SAMP_SYM
+%token  VERSIONING_SYM                /* 32N2439 */
 %token  VIA_SYM
 %token  VIEW_SYM                      /* SQL-2003-N */
 %token  VIRTUAL_SYM
@@ -982,8 +993,11 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  WINDOW_SYM
 %token  WHILE_SYM
 %token  WITH                          /* SQL-2003-R */
+%token  WITHIN
+%token  WITHOUT                       /* SQL-2003-R */
 %token  WITH_CUBE_SYM                 /* INTERNAL */
 %token  WITH_ROLLUP_SYM               /* INTERNAL */
+%token  WITH_SYSTEM_SYM               /* INTERNAL */
 %token  WORK_SYM                      /* SQL-2003-N */
 %token  WRAPPER_SYM
 %token  WRITE_SYM                     /* SQL-2003-N */
@@ -1054,8 +1068,6 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 
 %type <const_simple_string>
         field_length opt_field_length opt_field_length_default_1
-        opt_field_length_default_sp_param_varchar
-        opt_field_length_default_sp_param_char
 
 %type <string>
         text_string hex_or_bin_String opt_gconcat_separator
@@ -1134,7 +1146,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 
 %type <item>
         literal text_literal insert_ident order_ident temporal_literal
-        simple_ident expr opt_expr opt_else sum_expr in_sum_expr
+        simple_ident expr sum_expr in_sum_expr
         variable variable_aux bool_pri
         predicate bit_expr parenthesized_expr
         table_wild simple_expr column_default_non_parenthesized_expr udf_expr
@@ -1148,6 +1160,9 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         window_func_expr
         window_func
         simple_window_func
+        inverse_distribution_function
+        percentile_function
+        inverse_distribution_function_def
         explicit_cursor_attr
         function_call_keyword
         function_call_nonkeyword
@@ -1164,7 +1179,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
         NUM_literal
 
 %type <item_list>
-        expr_list opt_udf_expr_list udf_expr_list when_list
+        expr_list opt_udf_expr_list udf_expr_list when_list when_list_opt_else
         ident_list ident_list_arg opt_expr_list
         decode_when_list
 
@@ -1219,6 +1234,8 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %type <Lex_cast_type> cast_type cast_type_numeric cast_type_temporal
 
 %type <Lex_length_and_dec> precision opt_precision float_options
+        opt_field_length_default_sp_param_varchar
+        opt_field_length_default_sp_param_char
 
 %type <symbol> keyword keyword_sp
                keyword_directly_assignable
@@ -4831,8 +4848,15 @@ part_type_def:
           { Lex->part_info->part_type= RANGE_PARTITION; }
         | RANGE_SYM part_column_list
           { Lex->part_info->part_type= RANGE_PARTITION; }
-        | LIST_SYM part_func
-          { Lex->part_info->part_type= LIST_PARTITION; }
+        | LIST_SYM 
+	  {
+	    Select->parsing_place= IN_PART_FUNC;
+          }
+          part_func
+          { 
+	    Lex->part_info->part_type= LIST_PARTITION; 
+	    Select->parsing_place= NO_MATTER;
+	  }
         | LIST_SYM part_column_list
           { Lex->part_info->part_type= LIST_PARTITION; }
         ;
@@ -5082,7 +5106,7 @@ opt_part_values:
             else
               part_info->part_type= HASH_PARTITION;
           }
-        | VALUES LESS_SYM THAN_SYM
+        | VALUES_LESS_SYM THAN_SYM
           {
             LEX *lex= Lex;
             partition_info *part_info= lex->part_info;
@@ -5096,7 +5120,7 @@ opt_part_values:
               part_info->part_type= RANGE_PARTITION;
           }
           part_func_max {}
-        | VALUES IN_SYM
+        | VALUES_IN_SYM
           {
             LEX *lex= Lex;
             partition_info *part_info= lex->part_info;
@@ -5776,7 +5800,7 @@ create_table_option:
         | SEQUENCE_SYM opt_equal choice
           {
 	    Lex->create_info.used_fields|= HA_CREATE_USED_SEQUENCE;
-            Lex->create_info.sequence= $3;
+            Lex->create_info.sequence= ($3 == HA_CHOICE_YES);
           }
         ;
 
@@ -6549,9 +6573,11 @@ opt_field_length_default_1:
 
 
 /*
-  In sql_mode=ORACLE, a VARCHAR with no length is used
-  in SP parameters and return values and it's translated to VARCHAR(4000),
-  where 4000 is the maximum possible size for VARCHAR.
+  In sql_mode=ORACLE, real size of VARCHAR and CHAR with no length
+  in SP parameters is fixed at runtime with the length of real args.
+  Let's translate VARCHAR to VARCHAR(4000) for return value.
+
+  Since Oracle 9, maximum size for VARCHAR in PL/SQL is 32767.
 
   In MariaDB the limit for VARCHAR is 65535 bytes.
   We could translate VARCHAR with no length to VARCHAR(65535), but
@@ -6562,17 +6588,14 @@ opt_field_length_default_1:
   the maximum possible length in characters in case of mbmaxlen=4
   (e.g. utf32, utf16, utf8mb4). However, we'll have character sets with
   mbmaxlen=5 soon (e.g. gb18030).
-
-  Let's translate VARCHAR to VARCHAR(4000), which covert all possible Oracle
-  values.
 */
 opt_field_length_default_sp_param_varchar:
-          /* empty */  { $$= (char*) "4000"; }
-        | field_length { $$= $1; }
+          /* empty */  { $$.set("4000", "4000"); }
+        | field_length { $$.set($1, NULL); }
 
 opt_field_length_default_sp_param_char:
-          /* empty */  { $$= (char*) "2000"; }
-        | field_length { $$= $1; }
+          /* empty */  { $$.set("2000", "2000"); }
+        | field_length { $$.set($1, NULL); }
 
 opt_precision:
           /* empty */    { $$.set(0, 0); }
@@ -9389,6 +9412,7 @@ column_default_non_parenthesized_expr:
         | variable
         | sum_expr
         | window_func_expr
+        | inverse_distribution_function
         | ROW_SYM '(' expr ',' expr_list ')'
           {
             $5->push_front($3, thd->mem_root);
@@ -9441,10 +9465,15 @@ column_default_non_parenthesized_expr:
             if (!($$= $5.create_typecast_item(thd, $3, Lex->charset)))
               MYSQL_YYABORT;
           }
-        | CASE_SYM opt_expr when_list opt_else END
+        | CASE_SYM when_list_opt_else END
           {
-            $$= new (thd->mem_root) Item_func_case(thd, *$3, $2, $4);
-            if ($$ == NULL)
+            if (!($$= new(thd->mem_root) Item_func_case_searched(thd, *$2)))
+              MYSQL_YYABORT;
+          }
+        | CASE_SYM expr when_list_opt_else END
+          {
+            $3->push_front($2, thd->mem_root);
+            if (!($$= new (thd->mem_root) Item_func_case_simple(thd, *$3)))
               MYSQL_YYABORT;
           }
         | CONVERT_SYM '(' expr ',' cast_type ')'
@@ -9458,34 +9487,22 @@ column_default_non_parenthesized_expr:
             if ($$ == NULL)
               MYSQL_YYABORT;
           }
+        | DATE_FORMAT_SYM '(' expr ',' expr ')'
+          {
+            $$= new (thd->mem_root) Item_func_date_format(thd, $3, $5);
+            if ($$ == NULL)
+              MYSQL_YYABORT;
+          }
+        | DATE_FORMAT_SYM '(' expr ',' expr ',' expr ')'
+          {
+            $$= new (thd->mem_root) Item_func_date_format(thd, $3, $5, $7);
+            if ($$ == NULL)
+              MYSQL_YYABORT;
+          }
         | DECODE_SYM '(' expr ',' decode_when_list ')'
           {
-            if (($5->elements % 2) == 0)
-            {
-              // No default expression
-              $$= new (thd->mem_root) Item_func_case(thd, *$5, $3, NULL);
-            }
-            else
-            {
-              /*
-                There is a default expression at the end of the list $5.
-                Create a new list without the default expression.
-              */
-              List<Item> tmp;
-              List_iterator_fast<Item> it(*$5);
-              for (uint i= 0; i < $5->elements - 1; i++) // copy all but last
-              {
-                Item *item= it++;
-                tmp.push_back(item);
-              }
-              /*
-                Now the new list "tmp" contains only WHEN-THEN pairs,
-                The default expression is pointed by the iterator "it"
-                and will be returned by the next call for it++ below.
-              */
-              $$= new (thd->mem_root) Item_func_case(thd, tmp, $3, it++);
-            }
-            if ($$ == NULL)
+            $5->push_front($3, thd->mem_root);
+            if (!($$= new (thd->mem_root) Item_func_decode_oracle(thd, *$5)))
               MYSQL_YYABORT;
           }
         | DEFAULT '(' simple_ident ')'
@@ -9498,7 +9515,7 @@ column_default_non_parenthesized_expr:
             if ($$ == NULL)
               MYSQL_YYABORT;
           }
-        | VALUES '(' simple_ident_nospvar ')'
+        | VALUE_SYM '(' simple_ident_nospvar ')'
           {
             $$= new (thd->mem_root) Item_insert_value(thd, Lex->current_context(),
                                                         $3);
@@ -9903,26 +9920,22 @@ function_call_nonkeyword:
           }
         | SUBSTRING '(' expr ',' expr ',' expr ')'
           {
-            $$= new (thd->mem_root) Item_func_substr(thd, $3, $5, $7);
-            if ($$ == NULL)
+            if (!($$= Lex->make_item_func_substr(thd, $3, $5, $7)))
               MYSQL_YYABORT;
           }
         | SUBSTRING '(' expr ',' expr ')'
           {
-            $$= new (thd->mem_root) Item_func_substr(thd, $3, $5);
-            if ($$ == NULL)
+            if (!($$= Lex->make_item_func_substr(thd, $3, $5)))
               MYSQL_YYABORT;
           }
         | SUBSTRING '(' expr FROM expr FOR_SYM expr ')'
           {
-            $$= new (thd->mem_root) Item_func_substr(thd, $3, $5, $7);
-            if ($$ == NULL)
+            if (!($$= Lex->make_item_func_substr(thd, $3, $5, $7)))
               MYSQL_YYABORT;
           }
         | SUBSTRING '(' expr FROM expr ')'
           {
-            $$= new (thd->mem_root) Item_func_substr(thd, $3, $5);
-            if ($$ == NULL)
+            if (!($$= Lex->make_item_func_substr(thd, $3, $5)))
               MYSQL_YYABORT;
           }
         | SYSDATE opt_time_precision
@@ -10728,6 +10741,67 @@ simple_window_func:
               MYSQL_YYABORT;
           }
         ;
+inverse_distribution_function:
+          percentile_function OVER_SYM
+          '(' opt_window_partition_clause ')'
+          {
+            LEX *lex= Lex;
+            if (Select->add_window_spec(thd, lex->win_ref,
+                                       Select->group_list,
+                                       Select->order_list,
+                                       NULL))
+              MYSQL_YYABORT;
+            $$= new (thd->mem_root) Item_window_func(thd, (Item_sum *) $1,
+                                                     thd->lex->win_spec);
+            if ($$ == NULL)
+              MYSQL_YYABORT;
+            if (Select->add_window_func((Item_window_func *) $$))
+              MYSQL_YYABORT;
+          }
+        ;
+
+percentile_function:
+          inverse_distribution_function_def  WITHIN GROUP_SYM '('
+           { Select->prepare_add_window_spec(thd); }
+           order_by_single_element_list ')'
+           {
+             $$= $1;
+           }
+        | MEDIAN_SYM '(' expr ')'
+          {
+            Item *args= new (thd->mem_root) Item_decimal(thd, "0.5", 3,
+                                                   thd->charset());
+            if (($$ == NULL) || (thd->is_error()))
+            {
+              MYSQL_YYABORT;
+            }
+            if (add_order_to_list(thd, $3,FALSE)) MYSQL_YYABORT;
+
+            $$= new (thd->mem_root) Item_sum_percentile_cont(thd, args);
+            if ($$ == NULL)
+              MYSQL_YYABORT;
+          }
+        ;
+
+inverse_distribution_function_def:
+          PERCENTILE_CONT_SYM '(' expr ')'
+          {
+            $$= new (thd->mem_root) Item_sum_percentile_cont(thd, $3);
+            if ($$ == NULL)
+              MYSQL_YYABORT;
+          }
+        |  PERCENTILE_DISC_SYM '(' expr ')'
+          {
+            $$= new (thd->mem_root) Item_sum_percentile_disc(thd, $3);
+            if ($$ == NULL)
+              MYSQL_YYABORT;
+          }
+        ;
+
+order_by_single_element_list:
+          ORDER_SYM BY order_ident order_dir
+          { if (add_order_to_list(thd, $3,(bool) $4)) MYSQL_YYABORT; }
+        ;
 
 window_name:
           ident
@@ -10908,16 +10982,6 @@ ident_list:
           }
         ;
 
-opt_expr:
-          /* empty */    { $$= NULL; }
-        | expr           { $$= $1; }
-        ;
-
-opt_else:
-          /* empty */  { $$= NULL; }
-        | ELSE expr    { $$= $2; }
-        ;
-
 when_list:
           WHEN_SYM expr THEN_SYM expr
           {
@@ -10935,6 +10999,15 @@ when_list:
           }
         ;
 
+
+when_list_opt_else:
+          when_list
+        | when_list ELSE expr
+          {
+            $1->push_back($3, thd->mem_root);
+            $$= $1;
+          }
+        ;
 
 decode_when_list:
           expr ',' expr
@@ -11991,9 +12064,7 @@ limit_option:
           LEX *lex= thd->lex;
           Lex_input_stream *lip= & thd->m_parser_state->m_lip;
           if (!($$= lex->create_item_limit(thd, &$1,
-                                           $1.m_pos -
-                                           lex->substatement_query(thd),
-                                           lip->get_tok_end() - $1.m_pos)))
+                                           $1.m_pos, lip->get_tok_end())))
             MYSQL_YYABORT;
         }
         | ident_with_tok_start '.' ident
@@ -12001,9 +12072,7 @@ limit_option:
           LEX *lex= thd->lex;
           Lex_input_stream *lip= & thd->m_parser_state->m_lip;
           if (!($$= lex->create_item_limit(thd, &$1, &$3,
-                                           $1.m_pos -
-                                           lex->substatement_query(thd),
-                                           lip->get_ptr() - $1.m_pos)))
+                                           $1.m_pos, lip->get_ptr())))
             MYSQL_YYABORT;
         }
         | param_marker
@@ -12697,7 +12766,14 @@ expr_or_default:
 opt_insert_update:
           /* empty */
         | ON DUPLICATE_SYM { Lex->duplicates= DUP_UPDATE; }
-          KEY_SYM UPDATE_SYM insert_update_list
+          KEY_SYM UPDATE_SYM 
+          {
+	    Select->parsing_place= IN_UPDATE_ON_DUP_KEY;
+          }
+          insert_update_list
+          {
+	    Select->parsing_place= NO_MATTER;
+          }
         ;
 
 /* Update rows in a table */
@@ -13936,36 +14012,18 @@ text_literal:
           }
         | NCHAR_STRING
           {
-            DBUG_ASSERT(my_charset_is_ascii_based(national_charset_info));
-            $$= new (thd->mem_root) Item_string(thd, $1.str, $1.length,
-                                                  national_charset_info,
-                                                  DERIVATION_COERCIBLE,
-                                                  $1.repertoire());
-            if ($$ == NULL)
+            if (!($$= thd->make_string_literal_nchar($1)))
               MYSQL_YYABORT;
           }
         | UNDERSCORE_CHARSET TEXT_STRING
           {
-            $$= new (thd->mem_root) Item_string_with_introducer(thd, $2.str,
-                                                                $2.length, $1);
-            if ($$ == NULL)
+            if (!($$= thd->make_string_literal_charset($2, $1)))
               MYSQL_YYABORT;
           }
         | text_literal TEXT_STRING_literal
           {
-            Item_string* item= (Item_string*) $1;
-            item->append($2.str, $2.length);
-            if (!(item->collation.repertoire & MY_REPERTOIRE_EXTENDED))
-            {
-              /*
-                 If the string has been pure ASCII so far,
-                 check the new part.
-              */
-              CHARSET_INFO *cs= thd->variables.collation_connection;
-              item->collation.repertoire|= my_string_repertoire(cs,
-                                                                $2.str,
-                                                                $2.length);
-            }
+            if (!($$= thd->make_string_literal_concat($1, $2)))
+              MYSQL_YYABORT;
           }
         ;
 
@@ -14329,9 +14387,7 @@ simple_ident:
           {
             LEX *lex= thd->lex;
             if (!($$= lex->create_item_ident(thd, &$1, &$3,
-                                             $1.m_pos -
-                                             lex->substatement_query(thd),
-                                             YYLIP->get_tok_end() - $1.m_pos)))
+                                             $1.m_pos, YYLIP->get_tok_end())))
               MYSQL_YYABORT;
           }
         ;
@@ -14739,6 +14795,7 @@ keyword_directly_assignable:
         | UNICODE_SYM           {}
         | UNINSTALL_SYM         {}
         | UNBOUNDED_SYM         {}
+        | WITHIN                {}
         | WRAPPER_SYM           {}
         | XA_SYM                {}
         | UPGRADE_SYM           {}
@@ -14803,7 +14860,7 @@ keyword_sp:
 
 
 /*
-  Keywords that start a statement.
+  Keywords that start a statement or an SP block section.
   Generally allowed as identifiers (e.g. table, column names)
   - not allowed as SP label names
   - not allowed as variable names in Oracle-style assignments:
@@ -14813,6 +14870,7 @@ keyword_sp_verb_clause:
           BEGIN_SYM             { /* Compound.    Reserved in Oracle */ }
         | CLOSE_SYM             { /* Verb clause. Reserved in Oracle */ }
         | COMMIT_SYM            { /* Verb clause. Reserved in Oracle */ }
+        | EXCEPTION_SYM         { /* EXCEPTION section in SP blocks  */ }
         | DO_SYM                { /* Verb clause                     */ }
         | END                   { /* Compound.    Reserved in Oracle */ }
         | HANDLER_SYM           { /* Verb clause                     */ }
@@ -14919,6 +14977,7 @@ keyword_sp_not_data_type:
         | CYCLE_SYM                {}
         | DATA_SYM                 {}
         | DATAFILE_SYM             {}
+        | DATE_FORMAT_SYM          {}
         | DAY_SYM                  {}
         | DECODE_SYM               {}
         | DEFINER_SYM              {}
@@ -16698,7 +16757,7 @@ view_select:
           opt_with_clause query_expression_body_view view_check_option
           {
             LEX *lex= Lex;
-            uint len= YYLIP->get_cpp_ptr() - lex->create_view->select.str;
+            size_t len= YYLIP->get_cpp_ptr() - lex->create_view->select.str;
             uint not_used;
             void *create_view_select= thd->memdup(lex->create_view->select.str, len);
             lex->create_view->select.length= len;

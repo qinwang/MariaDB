@@ -32,7 +32,10 @@
 #define MYSQL_CLIENT
 #undef MYSQL_SERVER
 #define TABLE TABLE_CLIENT
+/* This hack is here to avoid adding COMPRESSED data types to libmariadb. */
+#define MYSQL_TYPE_TIME2 MYSQL_TYPE_TIME2,MYSQL_TYPE_BLOB_COMPRESSED=140,MYSQL_TYPE_VARCHAR_COMPRESSED=141
 #include "client_priv.h"
+#undef MYSQL_TYPE_TIME2
 #include <my_time.h>
 #include <sslopt-vars.h>
 /* That one is necessary for defines of OPTION_NO_FOREIGN_KEY_CHECKS etc */
@@ -604,7 +607,7 @@ Exit_status Load_log_processor::process_first_event(const char *bname,
 Exit_status  Load_log_processor::process(Create_file_log_event *ce)
 {
   const char *bname= ce->fname + dirname_length(ce->fname);
-  uint blen= ce->fname_len - (bname-ce->fname);
+  size_t blen= ce->fname_len - (bname-ce->fname);
 
   return process_first_event(bname, blen, ce->block, ce->block_len,
                              ce->file_id, ce);

@@ -72,8 +72,12 @@ static void reset_start_time_for_sp(THD *thd)
 
 
 Item::Type
-sp_map_item_type(enum enum_field_types type)
+sp_map_item_type(const Type_handler *handler)
 {
+  if (handler == &type_handler_row)
+    return Item::ROW_ITEM;
+  enum_field_types type= real_type_to_type(handler->real_field_type());
+
   switch (type) {
   case MYSQL_TYPE_BIT:
   case MYSQL_TYPE_TINY:
@@ -517,7 +521,7 @@ sp_head::operator new(size_t size) throw()
   if (sp == NULL)
     DBUG_RETURN(NULL);
   sp->main_mem_root= own_root;
-  DBUG_PRINT("info", ("mem_root 0x%lx", (ulong) &sp->mem_root));
+  DBUG_PRINT("info", ("mem_root %p", &sp->mem_root));
   DBUG_RETURN(sp);
 }
 
@@ -534,8 +538,8 @@ sp_head::operator delete(void *ptr, size_t size) throw()
 
   /* Make a copy of main_mem_root as free_root will free the sp */
   own_root= sp->main_mem_root;
-  DBUG_PRINT("info", ("mem_root 0x%lx moved to 0x%lx",
-                      (ulong) &sp->mem_root, (ulong) &own_root));
+  DBUG_PRINT("info", ("mem_root %p moved to %p",
+                      &sp->mem_root, &own_root));
   free_root(&own_root, MYF(0));
 
   DBUG_VOID_RETURN;
@@ -547,6 +551,7 @@ sp_head::sp_head(const Sp_handler *sph)
    Database_qualified_name(&null_clex_str, &null_clex_str),
    m_handler(sph),
    m_flags(0),
+   m_tmp_query(NULL),
    m_explicit_name(false),
    /*
      FIXME: the only use case when name is NULL is events, and it should
@@ -995,7 +1000,7 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
   sp_rcontext *ctx= thd->spcont;
   bool err_status= FALSE;
   uint ip= 0;
-  ulonglong save_sql_mode;
+  sql_mode_t save_sql_mode;
   bool save_abort_on_warning;
   Query_arena *old_arena;
   /* per-instruction arena */
@@ -1028,9 +1033,9 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
   if (m_next_cached_sp)
   {
     DBUG_PRINT("info",
-               ("first free for 0x%lx ++: 0x%lx->0x%lx  level: %lu  flags %x",
-                (ulong)m_first_instance, (ulong) this,
-                (ulong) m_next_cached_sp,
+               ("first free for %p ++: %p->%p  level: %lu  flags %x",
+               m_first_instance, this,
+                m_next_cached_sp,
                 m_next_cached_sp->m_recursion_level,
                 m_next_cached_sp->m_flags));
   }
@@ -1341,10 +1346,10 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
   }
   m_flags&= ~IS_INVOKED;
   DBUG_PRINT("info",
-             ("first free for 0x%lx --: 0x%lx->0x%lx, level: %lu, flags %x",
-              (ulong) m_first_instance,
-              (ulong) m_first_instance->m_first_free_instance,
-              (ulong) this, m_recursion_level, m_flags));
+             ("first free for %p --: %p->%p, level: %lu, flags %x",
+              m_first_instance,
+              m_first_instance->m_first_free_instance,
+              this, m_recursion_level, m_flags));
   /*
     Check that we have one of following:
 
@@ -1435,7 +1440,7 @@ bool sp_head::check_execute_access(THD *thd) const
 
 
 /**
-  Create rcontext using the routine security.
+  Create rcontext optionally using the routine security.
   This is important for sql_mode=ORACLE to make sure that the invoker has
   access to the tables mentioned in the %TYPE references.
 
@@ -1447,22 +1452,49 @@ bool sp_head::check_execute_access(THD *thd) const
   @retval           NULL - error (access denided or EOM)
   @retval          !NULL - success (the invoker has rights to all %TYPE tables)
 */
-sp_rcontext *sp_head::rcontext_create(THD *thd, Field *ret_value)
+sp_rcontext *sp_head::rcontext_create(THD *thd, Field *ret_value,
+                                      Row_definition_list *defs,
+                                      bool switch_security_ctx)
 {
-  bool has_column_type_refs= m_flags & HAS_COLUMN_TYPE_REFS;
+  if (!(m_flags & HAS_COLUMN_TYPE_REFS))
+    return sp_rcontext::create(thd, this, m_pcont, ret_value, *defs);
+  sp_rcontext *res= NULL;
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   Security_context *save_security_ctx;
-  if (has_column_type_refs &&
+  if (switch_security_ctx &&
       set_routine_security_ctx(thd, this, &save_security_ctx))
     return NULL;
 #endif
-  sp_rcontext *res= sp_rcontext::create(thd, m_pcont, ret_value,
-                                        has_column_type_refs);
+  if (!defs->resolve_type_refs(thd))
+    res= sp_rcontext::create(thd, this, m_pcont, ret_value, *defs);
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
-  if (has_column_type_refs)
+  if (switch_security_ctx)
     m_security_ctx.restore_security_context(thd, save_security_ctx);
 #endif
   return res;
+}
+
+
+sp_rcontext *sp_head::rcontext_create(THD *thd, Field *ret_value,
+                                      List<Item> *args)
+{
+  DBUG_ASSERT(args);
+  Row_definition_list defs;
+  m_pcont->retrieve_field_definitions(&defs);
+  if (defs.adjust_formal_params_to_actual_params(thd, args))
+    return NULL;
+  return rcontext_create(thd, ret_value, &defs, true);
+}
+
+
+sp_rcontext *sp_head::rcontext_create(THD *thd, Field *ret_value,
+                                      Item **args, uint arg_count)
+{
+  Row_definition_list defs;
+  m_pcont->retrieve_field_definitions(&defs);
+  if (defs.adjust_formal_params_to_actual_params(thd, args, arg_count))
+    return NULL;
+  return rcontext_create(thd, ret_value, &defs, true);
 }
 
 
@@ -1563,15 +1595,13 @@ sp_head::execute_trigger(THD *thd,
   init_sql_alloc(&call_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
-  if (!(nctx= sp_rcontext::create(thd, m_pcont, NULL,
-                                  m_flags & HAS_COLUMN_TYPE_REFS)))
+  Row_definition_list defs;
+  m_pcont->retrieve_field_definitions(&defs);
+  if (!(nctx= rcontext_create(thd, NULL, &defs, false)))
   {
     err_status= TRUE;
     goto err_with_cleanup;
   }
-
-  /* Needed by slow log */
-  nctx->sp= this;
 
   thd->spcont= nctx;
 
@@ -1678,7 +1708,7 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
   init_sql_alloc(&call_mem_root, MEM_ROOT_BLOCK_SIZE, 0, MYF(0));
   thd->set_n_backup_active_arena(&call_arena, &backup_arena);
 
-  if (!(nctx= rcontext_create(thd, return_value_fld)))
+  if (!(nctx= rcontext_create(thd, return_value_fld, argp, argcount)))
   {
     thd->restore_active_arena(&call_arena, &backup_arena);
     err_status= TRUE;
@@ -1692,9 +1722,6 @@ sp_head::execute_function(THD *thd, Item **argp, uint argcount,
     this function call will be finished (e.g. in Item::cleanup()).
   */
   thd->restore_active_arena(&call_arena, &backup_arena);
-
-  /* Needed by slow log */
-  nctx->sp= this;
 
   /* Pass arguments. */
   for (arg_no= 0; arg_no < argcount; arg_no++)
@@ -1892,26 +1919,24 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
   if (! octx)
   {
     /* Create a temporary old context. */
-    if (!(octx= rcontext_create(thd, NULL)))
+    if (!(octx= rcontext_create(thd, NULL, args)))
     {
       DBUG_PRINT("error", ("Could not create octx"));
       DBUG_RETURN(TRUE);
     }
 
-    octx->sp= 0;
     thd->spcont= octx;
 
     /* set callers_arena to thd, for upper-level function to work */
     thd->spcont->callers_arena= thd;
   }
 
-  if (!(nctx= rcontext_create(thd, NULL)))
+  if (!(nctx= rcontext_create(thd, NULL, args)))
   {
     delete nctx; /* Delete nctx if it was init() that failed. */
     thd->spcont= save_spcont;
     DBUG_RETURN(TRUE);
   }
-  nctx->sp= this;
 
   if (params > 0)
   {
@@ -1986,7 +2011,6 @@ sp_head::execute_procedure(THD *thd, List<Item> *args)
       thd->get_stmt_da()->set_overwrite_status(false);
     }
 
-    thd_proc_info(thd, "closing tables");
     close_thread_tables(thd);
     thd_proc_info(thd, 0);
 
@@ -2304,8 +2328,8 @@ sp_head::backpatch(sp_label *lab)
   {
     if (bp->lab == lab)
     {
-      DBUG_PRINT("info", ("backpatch: (m_ip %d, label 0x%lx <%s>) to dest %d",
-                          bp->instr->m_ip, (ulong) lab, lab->name.str, dest));
+      DBUG_PRINT("info", ("backpatch: (m_ip %d, label %p <%s>) to dest %d",
+                          bp->instr->m_ip, lab, lab->name.str, dest));
       bp->instr->backpatch(dest, lab->ctx);
     }
   }
@@ -2335,8 +2359,8 @@ sp_head::backpatch_goto(THD *thd, sp_label *lab,sp_label *lab_begin_block)
       if (bp->instr_type == GOTO)
       {
         DBUG_PRINT("info",
-                   ("backpatch_goto: (m_ip %d, label 0x%lx <%s>) to dest %d",
-                    bp->instr->m_ip, (ulong) lab, lab->name.str, dest));
+                   ("backpatch_goto: (m_ip %d, label %p <%s>) to dest %d",
+                    bp->instr->m_ip, lab, lab->name.str, dest));
         bp->instr->backpatch(dest, lab->ctx);
         // Jump resolved, remove from the list
         li.remove();
@@ -2484,8 +2508,8 @@ sp_head::reset_thd_mem_root(THD *thd)
   DBUG_ENTER("sp_head::reset_thd_mem_root");
   m_thd_root= thd->mem_root;
   thd->mem_root= &main_mem_root;
-  DBUG_PRINT("info", ("mem_root 0x%lx moved to thd mem root 0x%lx",
-                      (ulong) &mem_root, (ulong) &thd->mem_root));
+  DBUG_PRINT("info", ("mem_root %p moved to thd mem root %p",
+                      &mem_root, &thd->mem_root));
   free_list= thd->free_list; // Keep the old list
   thd->free_list= NULL; // Start a new one
   m_thd= thd;
@@ -2514,9 +2538,10 @@ sp_head::restore_thd_mem_root(THD *thd)
   Item *flist= free_list;	// The old list
   set_query_arena(thd);         // Get new free_list and mem_root
   state= STMT_INITIALIZED_FOR_SP;
+  is_stored_procedure= true;
 
-  DBUG_PRINT("info", ("mem_root 0x%lx returned from thd mem root 0x%lx",
-                      (ulong) &mem_root, (ulong) &thd->mem_root));
+  DBUG_PRINT("info", ("mem_root %p returned from thd mem root %p",
+                      &mem_root, &thd->mem_root));
   thd->free_list= flist;        // Restore the old one
   thd->mem_root= m_thd_root;
   m_thd= NULL;
@@ -2546,10 +2571,18 @@ bool check_show_routine_access(THD *thd, sp_head *sp, bool *full_access)
   *full_access= ((!check_table_access(thd, SELECT_ACL, &tables, FALSE,
                                      1, TRUE) &&
                   (tables.grant.privilege & SELECT_ACL) != 0) ||
+                 /* Check if user owns the routine. */
                  (!strcmp(sp->m_definer.user.str,
                           thd->security_ctx->priv_user) &&
                   !strcmp(sp->m_definer.host.str,
-                          thd->security_ctx->priv_host)));
+                          thd->security_ctx->priv_host)) ||
+                 /* Check if current role or any of the sub-granted roles
+                    own the routine. */
+                 (sp->m_definer.host.length == 0 &&
+                  (!strcmp(sp->m_definer.user.str,
+                           thd->security_ctx->priv_role) ||
+                   check_role_is_granted(thd->security_ctx->priv_role, NULL,
+                                         sp->m_definer.user.str))));
   if (!*full_access)
     return check_some_routine_access(thd, sp->m_db.str, sp->m_name.str,
                                      sp->m_handler);
@@ -3101,7 +3134,6 @@ sp_lex_keeper::reset_lex_and_exec_core(THD *thd, uint *nextp,
       thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd);
       thd->get_stmt_da()->set_overwrite_status(false);
     }
-    thd_proc_info(thd, "closing tables");
     close_thread_tables(thd);
     thd_proc_info(thd, 0);
 
@@ -4792,11 +4824,11 @@ bool sp_head::spvar_fill_row(THD *thd,
                              sp_variable *spvar,
                              Row_definition_list *defs)
 {
+  spvar->field_def.set_row_field_definitions(defs);
   spvar->field_def.field_name= spvar->name;
   if (fill_spvar_definition(thd, &spvar->field_def))
     return true;
   row_fill_field_definitions(thd, defs);
-  spvar->field_def.set_row_field_definitions(defs);
   return false;
 }
 

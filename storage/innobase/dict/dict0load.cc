@@ -990,7 +990,7 @@ dict_replace_tablespace_and_filepath(
 	SYS_DATAFILES. Assume the record is also missing in
 	SYS_TABLESPACES.  Insert records into them both. */
 	err = dict_replace_tablespace_in_dictionary(
-		space_id, name, fsp_flags, filepath, trx, false);
+		space_id, name, fsp_flags, filepath, trx);
 
 	trx_commit_for_mysql(trx);
 	trx->dict_operation_lock_mode = 0;
@@ -3005,10 +3005,11 @@ err_exit:
 
 	dict_load_virtual(table, heap);
 
+	dict_table_add_system_columns(table, heap);
+
 	if (cached) {
-		dict_table_add_to_cache(table, TRUE, heap);
-	} else {
-		dict_table_add_system_columns(table, heap);
+		table->can_be_evicted = true;
+		table->add_to_cache();
 	}
 
 	mem_heap_empty(heap);
@@ -3048,6 +3049,11 @@ err_exit:
 				table->corrupted = true;
 			}
 		}
+	}
+
+	if (err == DB_SUCCESS && cached && table->is_readable()
+	    && table->supports_instant()) {
+		err = btr_cur_instant_init(table);
 	}
 
 	/* Initialize table foreign_child value. Its value could be

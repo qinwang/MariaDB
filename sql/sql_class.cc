@@ -569,8 +569,8 @@ char *thd_get_error_context_description(THD *thd, char *buffer,
   const char *proc_info= thd->proc_info;
 
   len= my_snprintf(header, sizeof(header),
-                   "MySQL thread id %lu, OS thread handle %p, query id %lu",
-                   (ulong) thd->thread_id, (void*) thd->real_id, (ulong) thd->query_id);
+                   "MySQL thread id %lu, OS thread handle %lu, query id %lu",
+                   (ulong) thd->thread_id, (ulong) thd->real_id, (ulong) thd->query_id);
   str.length(0);
   str.append(header, len);
 
@@ -709,6 +709,16 @@ extern "C" void thd_kill_timeout(THD* thd)
   mysql_mutex_unlock(&thd->LOCK_thd_data);
 }
 
+Time_zone * thd_get_timezone(THD * thd)
+{
+	DBUG_ASSERT(thd && thd->variables.time_zone);
+	return thd->variables.time_zone;
+}
+
+void thd_vers_update_trt(THD * thd, bool value)
+{
+  thd->vers_update_trt= value;
+}
 
 THD::THD(my_thread_id id, bool is_wsrep_applier)
   :Statement(&main_lex, &main_mem_root, STMT_CONVENTIONAL_EXECUTION,
@@ -943,7 +953,7 @@ THD::THD(my_thread_id id, bool is_wsrep_applier)
     by adding the address of the stack.
   */
   tmp= (ulong) (my_rnd(&sql_rand) * 0xffffffff);
-  my_rnd_init(&rand, tmp + (ulong) &rand, tmp + (ulong) ::global_query_id);
+  my_rnd_init(&rand, tmp + (ulong)((size_t) &rand), tmp + (ulong) ::global_query_id);
   substitute_null_with_insert_id = FALSE;
   lock_info.mysql_thd= (void *)this;
 
@@ -1184,13 +1194,13 @@ Sql_condition* THD::raise_condition(uint sql_errno,
 }
 
 extern "C"
-void *thd_alloc(MYSQL_THD thd, unsigned int size)
+void *thd_alloc(MYSQL_THD thd, size_t size)
 {
   return thd->alloc(size);
 }
 
 extern "C"
-void *thd_calloc(MYSQL_THD thd, unsigned int size)
+void *thd_calloc(MYSQL_THD thd, size_t size)
 {
   return thd->calloc(size);
 }
@@ -1202,14 +1212,14 @@ char *thd_strdup(MYSQL_THD thd, const char *str)
 }
 
 extern "C"
-char *thd_strmake(MYSQL_THD thd, const char *str, unsigned int size)
+char *thd_strmake(MYSQL_THD thd, const char *str, size_t size)
 {
   return thd->strmake(str, size);
 }
 
 extern "C"
 LEX_CSTRING *thd_make_lex_string(THD *thd, LEX_CSTRING *lex_str,
-                                const char *str, unsigned int size,
+                                const char *str, size_t size,
                                 int allocate_lex_string)
 {
   return allocate_lex_string ? thd->make_clex_string(str, size)
@@ -1217,7 +1227,7 @@ LEX_CSTRING *thd_make_lex_string(THD *thd, LEX_CSTRING *lex_str,
 }
 
 extern "C"
-void *thd_memdup(MYSQL_THD thd, const void* str, unsigned int size)
+void *thd_memdup(MYSQL_THD thd, const void* str, size_t size)
 {
   return thd->memdup(str, size);
 }
@@ -1361,6 +1371,8 @@ void THD::init(void)
   wsrep_replicate_GTID    = false;
   wsrep_skip_wsrep_GTID   = false;
 #endif /* WITH_WSREP */
+
+  vers_update_trt = false;
 
   if (variables.sql_log_bin)
     variables.option_bits|= OPTION_BIN_LOG;
@@ -1811,6 +1823,9 @@ void add_to_status(STATUS_VAR *to_var, STATUS_VAR *from_var)
   to_var->binlog_bytes_written+= from_var->binlog_bytes_written;
   to_var->cpu_time+=            from_var->cpu_time;
   to_var->busy_time+=           from_var->busy_time;
+  to_var->table_open_cache_hits+= from_var->table_open_cache_hits;
+  to_var->table_open_cache_misses+= from_var->table_open_cache_misses;
+  to_var->table_open_cache_overflows+= from_var->table_open_cache_overflows;
 
   /*
     Update global_memory_used. We have to do this with atomic_add as the
@@ -1862,6 +1877,12 @@ void add_diff_to_status(STATUS_VAR *to_var, STATUS_VAR *from_var,
                                  dec_var->binlog_bytes_written;
   to_var->cpu_time+=             from_var->cpu_time - dec_var->cpu_time;
   to_var->busy_time+=            from_var->busy_time - dec_var->busy_time;
+  to_var->table_open_cache_hits+= from_var->table_open_cache_hits -
+                                  dec_var->table_open_cache_hits;
+  to_var->table_open_cache_misses+= from_var->table_open_cache_misses -
+                                    dec_var->table_open_cache_misses;
+  to_var->table_open_cache_overflows+= from_var->table_open_cache_overflows -
+                                       dec_var->table_open_cache_overflows;
 
   /*
     We don't need to accumulate memory_used as these are not reset or used by
@@ -2496,9 +2517,11 @@ bool THD::convert_string(String *s, CHARSET_INFO *from_cs, CHARSET_INFO *to_cs)
 }
 
 
-Item_string *THD::make_string_literal(const char *str, size_t length,
-                                      uint repertoire)
+Item *THD::make_string_literal(const char *str, size_t length,
+                               uint repertoire)
 {
+  if (!length && (variables.sql_mode & MODE_EMPTY_STRING_IS_NULL))
+    return new (mem_root) Item_null(this, 0, variables.collation_connection);
   if (!charset_is_collation_connection &&
       (repertoire != MY_REPERTOIRE_ASCII ||
        !my_charset_is_ascii_based(variables.collation_connection)))
@@ -2513,6 +2536,57 @@ Item_string *THD::make_string_literal(const char *str, size_t length,
   return new (mem_root) Item_string(this, str, length,
                                     variables.collation_connection,
                                     DERIVATION_COERCIBLE, repertoire);
+}
+
+
+Item *THD::make_string_literal_nchar(const Lex_string_with_metadata_st &str)
+{
+  DBUG_ASSERT(my_charset_is_ascii_based(national_charset_info));
+  if (!str.length && (variables.sql_mode & MODE_EMPTY_STRING_IS_NULL))
+    return new (mem_root) Item_null(this, 0, national_charset_info);
+
+  return new (mem_root) Item_string(this, str.str, str.length,
+                                    national_charset_info,
+                                    DERIVATION_COERCIBLE,
+                                    str.repertoire());
+}
+
+
+Item *THD::make_string_literal_charset(const Lex_string_with_metadata_st &str,
+                                       CHARSET_INFO *cs)
+{
+  if (!str.length && (variables.sql_mode & MODE_EMPTY_STRING_IS_NULL))
+    return new (mem_root) Item_null(this, 0, cs);
+  return new (mem_root) Item_string_with_introducer(this,
+                                                    str.str, str.length, cs);
+}
+
+
+Item *THD::make_string_literal_concat(Item *item, const LEX_CSTRING &str)
+{
+  if (item->type() == Item::NULL_ITEM)
+  {
+    DBUG_ASSERT(variables.sql_mode & MODE_EMPTY_STRING_IS_NULL);
+    if (str.length)
+    {
+      CHARSET_INFO *cs= variables.collation_connection;
+      uint repertoire= my_string_repertoire(cs, str.str, str.length);
+      return new (mem_root) Item_string(this, str.str, str.length, cs,
+                                        DERIVATION_COERCIBLE, repertoire);
+    }
+    return item;
+  }
+
+  DBUG_ASSERT(item->type() == Item::STRING_ITEM);
+  DBUG_ASSERT(item->basic_const_item());
+  static_cast<Item_string*>(item)->append(str.str, str.length);
+  if (!(item->collation.repertoire & MY_REPERTOIRE_EXTENDED))
+  {
+    // If the string has been pure ASCII so far, check the new part.
+    CHARSET_INFO *cs= variables.collation_connection;
+    item->collation.repertoire|= my_string_repertoire(cs, str.str, str.length);
+  }
+  return item;
 }
 
 
@@ -3724,7 +3798,7 @@ void Query_arena::free_items()
   {
     next= free_list->next;
     DBUG_ASSERT(free_list != next);
-    DBUG_PRINT("info", ("free item: 0x%lx", (ulong) free_list));
+    DBUG_PRINT("info", ("free item: %p", free_list));
     free_list->delete_self();
   }
   /* Postcondition: free_list is 0 */
@@ -3737,6 +3811,7 @@ void Query_arena::set_query_arena(Query_arena *set)
   mem_root=  set->mem_root;
   free_list= set->free_list;
   state= set->state;
+  is_stored_procedure= set->is_stored_procedure;
 }
 
 
@@ -4193,7 +4268,7 @@ int select_materialize_with_stats::send_data(List<Item> &items)
 void TMP_TABLE_PARAM::init()
 {
   DBUG_ENTER("TMP_TABLE_PARAM::init");
-  DBUG_PRINT("enter", ("this: 0x%lx", (ulong)this));
+  DBUG_PRINT("enter", ("this: %p", this));
   field_count= sum_func_count= func_count= hidden_field_count= 0;
   group_parts= group_length= group_null_parts= 0;
   quick_group= 1;
@@ -4809,12 +4884,18 @@ extern "C" int thd_rpl_is_parallel(const MYSQL_THD thd)
   return thd->rgi_slave && thd->rgi_slave->is_parallel_exec;
 }
 
+/* Returns high resolution timestamp for the start
+  of the current query. */
+extern "C" time_t thd_start_time(const MYSQL_THD thd)
+{
+  return thd->start_time;
+}
 
 /* Returns high resolution timestamp for the start
   of the current query. */
 extern "C" unsigned long long thd_start_utime(const MYSQL_THD thd)
 {
-  return thd->start_utime;
+  return thd->start_time * 1000000 + thd->start_time_sec_part;
 }
 
 
@@ -5494,9 +5575,9 @@ void THD::inc_status_sort_range()
 
 void THD::inc_status_sort_rows(ha_rows count)
 {
-  statistic_add(status_var.filesort_rows_, count, &LOCK_status);
+  statistic_add(status_var.filesort_rows_, (ulong)count, &LOCK_status);
 #ifdef HAVE_PSI_STATEMENT_INTERFACE
-  PSI_STATEMENT_CALL(inc_statement_sort_rows)(m_statement_psi, count);
+  PSI_STATEMENT_CALL(inc_statement_sort_rows)(m_statement_psi, (ulong)count);
 #endif
 }
 
@@ -7114,6 +7195,15 @@ static bool protect_against_unsafe_warning_flood(int unsafe_type)
   DBUG_RETURN(unsafe_warning_suppression_active[unsafe_type]);
 }
 
+MYSQL_TIME THD::query_start_TIME()
+{
+  MYSQL_TIME res;
+  variables.time_zone->gmt_sec_to_TIME(&res, query_start());
+  res.second_part= query_start_sec_part();
+  time_zone_used= 1;
+  return res;
+}
+
 /**
   Auxiliary method used by @c binlog_query() to raise warnings.
 
@@ -7733,3 +7823,16 @@ void Database_qualified_name::copy(MEM_ROOT *mem_root,
 
 
 #endif /* !defined(MYSQL_CLIENT) */
+
+
+Query_arena_stmt::Query_arena_stmt(THD *_thd) :
+  thd(_thd)
+{
+  arena= thd->activate_stmt_arena_if_needed(&backup);
+}
+
+Query_arena_stmt::~Query_arena_stmt()
+{
+  if (arena)
+    thd->restore_active_arena(arena, &backup);
+}

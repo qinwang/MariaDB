@@ -56,7 +56,7 @@
 ulong tdc_size; /**< Table definition cache threshold for LRU eviction. */
 ulong tc_size; /**< Table cache threshold for LRU eviction. */
 uint32 tc_instances;
-static uint32 tc_active_instances= 1;
+uint32 tc_active_instances= 1;
 static uint32 tc_contention_warning_reported;
 
 /** Data collections. */
@@ -68,7 +68,7 @@ I_P_List <TDC_element,
           I_P_List_null_counter,
           I_P_List_fast_push_back<TDC_element> > unused_shares;
 
-static int64 tdc_version;  /* Increments on each reload */
+static tdc_version_t tdc_version;  /* Increments on each reload */
 static bool tdc_inited;
 
 
@@ -369,18 +369,30 @@ void tc_add_table(THD *thd, TABLE *table)
   mysql_mutex_unlock(&element->LOCK_table_share);
 
   mysql_mutex_lock(&tc[i].LOCK_table_cache);
-  if (tc[i].records == tc_size && (LRU_table= tc[i].free_tables.pop_front()))
+  if (tc[i].records == tc_size)
   {
-    LRU_table->s->tdc->free_tables[i].list.remove(LRU_table);
-    /* Needed if MDL deadlock detector chimes in before tc_remove_table() */
-    LRU_table->in_use= thd;
+    if ((LRU_table= tc[i].free_tables.pop_front()))
+    {
+      LRU_table->s->tdc->free_tables[i].list.remove(LRU_table);
+      /* Needed if MDL deadlock detector chimes in before tc_remove_table() */
+      LRU_table->in_use= thd;
+      mysql_mutex_unlock(&tc[i].LOCK_table_cache);
+      /* Keep out of locked LOCK_table_cache */
+      tc_remove_table(LRU_table);
+    }
+    else
+    {
+      tc[i].records++;
+      mysql_mutex_unlock(&tc[i].LOCK_table_cache);
+    }
+    /* Keep out of locked LOCK_table_cache */
+    status_var_increment(thd->status_var.table_open_cache_overflows);
   }
   else
+  {
     tc[i].records++;
-  mysql_mutex_unlock(&tc[i].LOCK_table_cache);
-
-  if (LRU_table)
-    tc_remove_table(LRU_table);
+    mysql_mutex_unlock(&tc[i].LOCK_table_cache);
+  }
 }
 
 
@@ -841,7 +853,10 @@ retry:
 
     tdc_purge(false);
     if (out_table)
+    {
+      status_var_increment(thd->status_var.table_open_cache_misses);
       *out_table= 0;
+    }
     share->m_psi= PSI_CALL_get_table_share(false, share);
     goto end;
   }
@@ -858,8 +873,10 @@ retry:
       DBUG_ASSERT(element->share);
       DBUG_ASSERT(!element->share->error);
       DBUG_ASSERT(!element->share->is_view);
+      status_var_increment(thd->status_var.table_open_cache_hits);
       DBUG_RETURN(element->share);
     }
+    status_var_increment(thd->status_var.table_open_cache_misses);
   }
 
   mysql_mutex_lock(&element->LOCK_table_share);
@@ -913,8 +930,8 @@ retry:
   }
 
 end:
-  DBUG_PRINT("exit", ("share: 0x%lx  ref_count: %u",
-                      (ulong) share, share->tdc->ref_count));
+  DBUG_PRINT("exit", ("share: %p  ref_count: %u",
+                      share, share->tdc->ref_count));
   if (flags & GTS_NOLOCK)
   {
     tdc_release_share(share);
@@ -945,8 +962,8 @@ void tdc_release_share(TABLE_SHARE *share)
 
   mysql_mutex_lock(&share->tdc->LOCK_table_share);
   DBUG_PRINT("enter",
-             ("share: 0x%lx  table: %s.%s  ref_count: %u  version: %lu",
-              (ulong) share, share->db.str, share->table_name.str,
+             ("share: %p  table: %s.%s  ref_count: %u  version: %lld",
+              share, share->db.str, share->table_name.str,
               share->tdc->ref_count, share->tdc->version));
   DBUG_ASSERT(share->tdc->ref_count);
 
@@ -1181,8 +1198,7 @@ bool tdc_remove_table(THD *thd, enum_tdc_remove_table_type remove_type,
 */
 
 int tdc_wait_for_old_version(THD *thd, const char *db, const char *table_name,
-                             ulong wait_timeout, uint deadlock_weight,
-                             ulong refresh_version)
+                             ulong wait_timeout, uint deadlock_weight, tdc_version_t refresh_version)
 {
   TDC_element *element;
 
@@ -1201,16 +1217,16 @@ int tdc_wait_for_old_version(THD *thd, const char *db, const char *table_name,
 }
 
 
-ulong tdc_refresh_version(void)
+tdc_version_t tdc_refresh_version(void)
 {
-  return my_atomic_load64_explicit(&tdc_version, MY_MEMORY_ORDER_RELAXED);
+  return (tdc_version_t)my_atomic_load64_explicit(&tdc_version, MY_MEMORY_ORDER_RELAXED);
 }
 
 
-ulong tdc_increment_refresh_version(void)
+tdc_version_t tdc_increment_refresh_version(void)
 {
-  ulong v= my_atomic_add64_explicit(&tdc_version, 1, MY_MEMORY_ORDER_RELAXED);
-  DBUG_PRINT("tcache", ("incremented global refresh_version to: %lu", v));
+  tdc_version_t v= (tdc_version_t)my_atomic_add64_explicit(&tdc_version, 1, MY_MEMORY_ORDER_RELAXED);
+  DBUG_PRINT("tcache", ("incremented global refresh_version to: %lld", v));
   return v + 1;
 }
 

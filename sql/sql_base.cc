@@ -326,7 +326,7 @@ OPEN_TABLE_LIST *list_open_tables(THD *thd, const char *db, const char *wild)
 
 struct close_cached_tables_arg
 {
-  ulong refresh_version;
+  tdc_version_t refresh_version;
   TDC_element *element;
 };
 
@@ -352,7 +352,7 @@ bool close_cached_tables(THD *thd, TABLE_LIST *tables,
 {
   bool result= FALSE;
   struct timespec abstime;
-  ulong refresh_version;
+  tdc_version_t refresh_version;
   DBUG_ENTER("close_cached_tables");
   DBUG_ASSERT(thd || (!wait_for_refresh && !tables));
 
@@ -717,8 +717,8 @@ void close_thread_tables(THD *thd)
 #ifdef EXTRA_DEBUG
   DBUG_PRINT("tcache", ("open tables:"));
   for (table= thd->open_tables; table; table= table->next)
-    DBUG_PRINT("tcache", ("table: '%s'.'%s' 0x%lx", table->s->db.str,
-                          table->s->table_name.str, (long) table));
+    DBUG_PRINT("tcache", ("table: '%s'.'%s' %p", table->s->db.str,
+                          table->s->table_name.str, table));
 #endif
 
 #if defined(ENABLED_DEBUG_SYNC)
@@ -858,8 +858,8 @@ void close_thread_table(THD *thd, TABLE **table_ptr)
 {
   TABLE *table= *table_ptr;
   DBUG_ENTER("close_thread_table");
-  DBUG_PRINT("tcache", ("table: '%s'.'%s' 0x%lx", table->s->db.str,
-                        table->s->table_name.str, (long) table));
+  DBUG_PRINT("tcache", ("table: '%s'.'%s' %p", table->s->db.str,
+                        table->s->table_name.str, table));
   DBUG_ASSERT(!table->file->keyread_enabled());
   DBUG_ASSERT(!table->file || table->file->inited == handler::NONE);
 
@@ -1202,8 +1202,8 @@ bool wait_while_table_is_used(THD *thd, TABLE *table,
 {
   DBUG_ENTER("wait_while_table_is_used");
   DBUG_ASSERT(!table->s->tmp_table);
-  DBUG_PRINT("enter", ("table: '%s'  share: 0x%lx  db_stat: %u  version: %lu",
-                       table->s->table_name.str, (ulong) table->s,
+  DBUG_PRINT("enter", ("table: '%s'  share: %p  db_stat: %u  version: %lld",
+                       table->s->table_name.str, table->s,
                        table->db_stat, table->s->tdc->version));
 
   if (thd->mdl_context.upgrade_shared_lock(
@@ -1822,7 +1822,7 @@ retry_share:
   {
     if (share->tdc->flushed)
     {
-      DBUG_PRINT("info", ("Found old share version: %lu  current: %lu",
+      DBUG_PRINT("info", ("Found old share version: %lld  current: %lld",
                           share->tdc->version, tdc_refresh_version()));
       /*
         We already have an MDL lock. But we have encountered an old
@@ -3056,6 +3056,46 @@ thr_lock_type read_lock_type_for_table(THD *thd,
 
 
 /*
+  Extend the prelocking set with tables and routines used by a routine.
+
+  @param[in]  thd                   Thread context.
+  @param[in]  rt                    Element of prelocking set to be processed.
+  @param[in]  ot_ctx                Context of open_table used to recover from
+                                    locking failures.
+  @retval false  Success.
+  @retval true   Failure (Conflicting metadata lock, OOM, other errors).
+*/
+static bool
+sp_acquire_mdl(THD *thd, Sroutine_hash_entry *rt, Open_table_context *ot_ctx)
+{
+  DBUG_ENTER("sp_acquire_mdl");
+  /*
+    Since we acquire only shared lock on routines we don't
+    need to care about global intention exclusive locks.
+  */
+  DBUG_ASSERT(rt->mdl_request.type == MDL_SHARED);
+
+  /*
+    Waiting for a conflicting metadata lock to go away may
+    lead to a deadlock, detected by MDL subsystem.
+    If possible, we try to resolve such deadlocks by releasing all
+    metadata locks and restarting the pre-locking process.
+    To prevent the error from polluting the diagnostics area
+    in case of successful resolution, install a special error
+    handler for ER_LOCK_DEADLOCK error.
+  */
+  MDL_deadlock_handler mdl_deadlock_handler(ot_ctx);
+
+  thd->push_internal_handler(&mdl_deadlock_handler);
+  bool result= thd->mdl_context.acquire_lock(&rt->mdl_request,
+                                             ot_ctx->get_timeout());
+  thd->pop_internal_handler();
+
+  DBUG_RETURN(result);
+}
+
+
+/*
   Handle element of prelocking set other than table. E.g. cache routine
   and, if prelocking strategy prescribes so, extend the prelocking set
   with tables and routines used by it.
@@ -3109,29 +3149,7 @@ open_and_process_routine(THD *thd, Query_tables_list *prelocking_ctx,
       if (rt != (Sroutine_hash_entry*)prelocking_ctx->sroutines_list.first ||
           mdl_type != MDL_key::PROCEDURE)
       {
-        /*
-          Since we acquire only shared lock on routines we don't
-          need to care about global intention exclusive locks.
-        */
-        DBUG_ASSERT(rt->mdl_request.type == MDL_SHARED);
-
-        /*
-          Waiting for a conflicting metadata lock to go away may
-          lead to a deadlock, detected by MDL subsystem.
-          If possible, we try to resolve such deadlocks by releasing all
-          metadata locks and restarting the pre-locking process.
-          To prevent the error from polluting the diagnostics area
-          in case of successful resolution, install a special error
-          handler for ER_LOCK_DEADLOCK error.
-        */
-        MDL_deadlock_handler mdl_deadlock_handler(ot_ctx);
-
-        thd->push_internal_handler(&mdl_deadlock_handler);
-        bool result= thd->mdl_context.acquire_lock(&rt->mdl_request,
-                                                   ot_ctx->get_timeout());
-        thd->pop_internal_handler();
-
-        if (result)
+        if (sp_acquire_mdl(thd, rt, ot_ctx))
           DBUG_RETURN(TRUE);
 
         DEBUG_SYNC(thd, "after_shared_lock_pname");
@@ -3330,9 +3348,14 @@ open_and_process_table(THD *thd, LEX *lex, TABLE_LIST *tables,
     /*
       If this TABLE_LIST object has an associated open TABLE object
       (TABLE_LIST::table is not NULL), that TABLE object must be a pre-opened
-      temporary table.
+      temporary table or SEQUENCE (see sequence_insert()).
     */
-    DBUG_ASSERT(is_temporary_table(tables));
+    DBUG_ASSERT(is_temporary_table(tables) || tables->table->s->sequence);
+    if (tables->sequence && tables->table->s->table_type != TABLE_TYPE_SEQUENCE)
+    {
+        my_error(ER_NOT_SEQUENCE, MYF(0), tables->db, tables->alias);
+        DBUG_RETURN(true);
+    }
   }
   else if (tables->open_type == OT_TEMPORARY_ONLY)
   {
@@ -5263,8 +5286,8 @@ find_field_in_view(THD *thd, TABLE_LIST *table_list,
 {
   DBUG_ENTER("find_field_in_view");
   DBUG_PRINT("enter",
-             ("view: '%s', field name: '%s', item name: '%s', ref 0x%lx",
-              table_list->alias, name, item_name, (ulong) ref));
+             ("view: '%s', field name: '%s', item name: '%s', ref %p",
+              table_list->alias, name, item_name, ref));
   Field_iterator_view field_it;
   field_it.set(table_list);
   Query_arena *arena= 0, backup;  
@@ -5348,8 +5371,8 @@ find_field_in_natural_join(THD *thd, TABLE_LIST *table_ref, const char *name,
   Field *UNINIT_VAR(found_field);
   Query_arena *UNINIT_VAR(arena), backup;
   DBUG_ENTER("find_field_in_natural_join");
-  DBUG_PRINT("enter", ("field name: '%s', ref 0x%lx",
-		       name, (ulong) ref));
+  DBUG_PRINT("enter", ("field name: '%s', ref %p",
+		       name, ref));
   DBUG_ASSERT(table_ref->is_natural_join && table_ref->join_columns);
   DBUG_ASSERT(*actual_table == NULL);
 
@@ -5498,7 +5521,7 @@ find_field_in_table(THD *thd, TABLE *table, const char *name, uint length,
 
   if (field_ptr && *field_ptr)
   {
-    *cached_field_index_ptr= field_ptr - table->field;
+    *cached_field_index_ptr= (uint)(field_ptr - table->field);
     field= *field_ptr;
   }
   else
@@ -5575,8 +5598,8 @@ find_field_in_table_ref(THD *thd, TABLE_LIST *table_list,
   DBUG_ASSERT(name);
   DBUG_ASSERT(item_name);
   DBUG_PRINT("enter",
-             ("table: '%s'  field name: '%s'  item name: '%s'  ref 0x%lx",
-              table_list->alias, name, item_name, (ulong) ref));
+             ("table: '%s'  field name: '%s'  item name: '%s'  ref %p",
+              table_list->alias, name, item_name, ref));
 
   /*
     Check that the table and database that qualify the current field name
@@ -5708,6 +5731,7 @@ find_field_in_table_ref(THD *thd, TABLE_LIST *table_list,
         if (field_to_set)
         {
           TABLE *table= field_to_set->table;
+          DBUG_ASSERT(table);
           if (thd->mark_used_columns == MARK_COLUMNS_READ)
             bitmap_set_bit(table->read_set, field_to_set->field_index);
           else
@@ -6385,6 +6409,19 @@ mark_common_columns(THD *thd, TABLE_LIST *table_ref_1, TABLE_LIST *table_ref_2,
     bool is_using_column_1;
     if (!(nj_col_1= it_1.get_or_create_column_ref(thd, leaf_1)))
       goto err;
+
+    if (nj_col_1->field() && nj_col_1->field()->vers_sys_field())
+      continue;
+
+    if (table_ref_1->is_view() && table_ref_1->table->versioned())
+    {
+      Item *item= nj_col_1->view_field->item;
+      DBUG_ASSERT(item->type() == Item::FIELD_ITEM);
+      Item_field *item_field= (Item_field *)item;
+      if (item_field->field->vers_sys_field())
+        continue;
+    }
+
     field_name_1= nj_col_1->name();
     is_using_column_1= using_fields && 
       test_if_string_in_list(field_name_1->str, using_fields);
@@ -7057,13 +7094,15 @@ int setup_wild(THD *thd, TABLE_LIST *tables, List<Item> &fields,
 
 bool setup_fields(THD *thd, Ref_ptr_array ref_pointer_array,
                   List<Item> &fields, enum_mark_columns mark_used_columns,
-                  List<Item> *sum_func_list, bool allow_sum_func)
+                  List<Item> *sum_func_list, List<Item> *pre_fix,
+                  bool allow_sum_func)
 {
   reg2 Item *item;
   enum_mark_columns save_mark_used_columns= thd->mark_used_columns;
   nesting_map save_allow_sum_func= thd->lex->allow_sum_func;
   List_iterator<Item> it(fields);
   bool save_is_item_list_lookup;
+  bool make_pre_fix= (pre_fix && (pre_fix->elements == 0));
   DBUG_ENTER("setup_fields");
   DBUG_PRINT("enter", ("ref_pointer_array: %p", ref_pointer_array.array()));
 
@@ -7077,7 +7116,7 @@ bool setup_fields(THD *thd, Ref_ptr_array ref_pointer_array,
   thd->lex->current_select->is_item_list_lookup= 0;
 
   /*
-    To prevent fail on forward lookup we fill it with zerows,
+    To prevent fail on forward lookup we fill it with zeroes,
     then if we got pointer on zero after find_item_in_list we will know
     that it is forward lookup.
 
@@ -7113,6 +7152,9 @@ bool setup_fields(THD *thd, Ref_ptr_array ref_pointer_array,
   thd->lex->current_select->cur_pos_in_select_list= 0;
   while ((item= it++))
   {
+    if (make_pre_fix)
+      pre_fix->push_back(item, thd->stmt_arena->mem_root);
+
     if ((!item->fixed && item->fix_fields(thd, it.ref())) ||
 	(item= *(it.ref()))->check_cols(1))
     {
@@ -7474,8 +7516,9 @@ insert_fields(THD *thd, Name_resolution_context *context, const char *db_name,
   Field_iterator_table_ref field_iterator;
   bool found;
   char name_buff[SAFE_NAME_LEN+1];
+  ulong vers_hide= thd->variables.vers_hide;
   DBUG_ENTER("insert_fields");
-  DBUG_PRINT("arena", ("stmt arena: 0x%lx", (ulong)thd->stmt_arena));
+  DBUG_PRINT("arena", ("stmt arena: %p",thd->stmt_arena));
 
   if (db_name && lower_case_table_names)
   {
@@ -7576,6 +7619,52 @@ insert_fields(THD *thd, Name_resolution_context *context, const char *db_name,
 
       if (!(item= field_iterator.create_item(thd)))
         DBUG_RETURN(TRUE);
+
+      if (item->type() == Item::FIELD_ITEM)
+      {
+        Item_field *f= static_cast<Item_field *>(item);
+        DBUG_ASSERT(f->field);
+        uint32 fl= f->field->flags;
+        bool sys_field= fl & (VERS_SYS_START_FLAG | VERS_SYS_END_FLAG);
+        SELECT_LEX *slex= thd->lex->current_select;
+        TABLE *table= f->field->table;
+        DBUG_ASSERT(table && table->pos_in_table_list);
+        TABLE_LIST *tl= table->pos_in_table_list;
+        vers_range_type_t vers_type= tl->vers_conditions.type;
+
+        enum_sql_command sql_command= thd->lex->sql_command;
+        unsigned int create_options= thd->lex->create_info.options;
+
+        if (
+          sql_command == SQLCOM_CREATE_TABLE ?
+            sys_field && !(create_options & HA_VERSIONED_TABLE) : (
+            sys_field ?
+              (sql_command == SQLCOM_CREATE_VIEW ||
+              slex->nest_level > 0 ||
+              vers_hide == VERS_HIDE_FULL ||
+              ((fl & HIDDEN_FLAG) && (
+                vers_hide == VERS_HIDE_IMPLICIT ||
+                  (vers_hide == VERS_HIDE_AUTO && (
+                    vers_type == FOR_SYSTEM_TIME_UNSPECIFIED ||
+                    vers_type == FOR_SYSTEM_TIME_AS_OF))))) :
+            (fl & HIDDEN_FLAG)))
+        {
+          continue;
+        }
+      }
+      else if (item->type() == Item::REF_ITEM)
+      {
+        Item *i= item;
+        while (i->type() == Item::REF_ITEM)
+          i= *((Item_ref *)i)->ref;
+        if (i->type() == Item::FIELD_ITEM)
+        {
+          Item_field *f= (Item_field *)i;
+          DBUG_ASSERT(f->field);
+          if (f->field->flags & HIDDEN_FLAG)
+            continue;
+        }
+      }
 
       /* cache the table for the Item_fields inserted by expanding stars */
       if (item->type() == Item::FIELD_ITEM && tables->cacheable_table)
@@ -7971,6 +8060,13 @@ fill_record(THD *thd, TABLE *table_arg, List<Item> &fields, List<Item> &values,
                           ER_THD(thd, ER_WARNING_NON_DEFAULT_VALUE_FOR_VIRTUAL_COLUMN),
                           rfield->field_name.str, table->s->table_name.str);
     }
+    if (table->versioned() && rfield->vers_sys_field() &&
+        !ignore_errors)
+    {
+      my_error(ER_VERS_READONLY_FIELD, MYF(0), rfield->field_name.str);
+      goto err;
+    }
+
     if (rfield->stored_in_db() &&
         (value->save_in_field(rfield, 0)) < 0 && !ignore_errors)
     {
@@ -8011,7 +8107,7 @@ void switch_to_nullable_trigger_fields(List<Item> &items, TABLE *table)
   Field** field= table->field_to_fill();
 
  /* True if we have NOT NULL fields and BEFORE triggers */
-  if (field != table->field)
+  if (field != table->field && field != table->non_generated_field)
   {
     List_iterator_fast<Item> it(items);
     Item *item;
@@ -8216,6 +8312,13 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
                             ER_THD(thd, ER_WARNING_NON_DEFAULT_VALUE_FOR_VIRTUAL_COLUMN),
                             field->field_name.str, table->s->table_name.str);
       }
+    }
+
+    if (table->versioned() && field->vers_sys_field() &&
+        !ignore_errors)
+    {
+      my_error(ER_VERS_READONLY_FIELD, MYF(0), field->field_name.str);
+      goto err;
     }
 
     if (use_value)
@@ -8469,7 +8572,6 @@ int init_ftfuncs(THD *thd, SELECT_LEX *select_lex, bool no_order)
   {
     List_iterator<Item_func_match> li(*(select_lex->ftfunc_list));
     Item_func_match *ifm;
-    DBUG_PRINT("info",("Performing FULLTEXT search"));
 
     while ((ifm=li++))
       ifm->init_search(thd, no_order);
@@ -8658,10 +8760,31 @@ open_log_table(THD *thd, TABLE_LIST *one_table, Open_tables_backup *backup)
 
   if ((table= open_ltable(thd, one_table, one_table->lock_type, flags)))
   {
-    DBUG_ASSERT(table->s->table_category == TABLE_CATEGORY_LOG);
-    /* Make sure all columns get assigned to a default value */
-    table->use_all_columns();
-    DBUG_ASSERT(table->s->no_replicate);
+    if (table->s->table_category == TABLE_CATEGORY_LOG)
+    {
+      /* Make sure all columns get assigned to a default value */
+      table->use_all_columns();
+      DBUG_ASSERT(table->s->no_replicate);
+    }
+    else
+    {
+      my_error(ER_NOT_LOG_TABLE, MYF(0), table->s->db.str, table->s->table_name.str);
+      int error= 0;
+      if (table->current_lock != F_UNLCK)
+      {
+        table->current_lock= F_UNLCK;
+        error= table->file->ha_external_lock(thd, F_UNLCK);
+      }
+      if (error)
+        table->file->print_error(error, MYF(0));
+      else
+      {
+        tc_release_table(table);
+        thd->reset_open_tables_state(thd);
+        thd->restore_backup_open_tables_state(backup);
+        table= NULL;
+      }
+    }
   }
   else
     thd->restore_backup_open_tables_state(backup);

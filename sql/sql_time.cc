@@ -274,7 +274,7 @@ to_ascii(CHARSET_INFO *cs,
     *dst++= static_cast<char>(wc);
   }
   *dst= '\0';
-  return dst - dst0;
+  return (uint)(dst - dst0);
 }
 
 
@@ -474,6 +474,7 @@ void localtime_to_TIME(MYSQL_TIME *to, struct tm *from)
   to->minute=	(int) from->tm_min;
   to->second=   (int) from->tm_sec;
 }
+
 
 void calc_time_from_sec(MYSQL_TIME *to, long seconds, long microseconds)
 {

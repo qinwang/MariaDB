@@ -1254,6 +1254,48 @@ execute stmt1;
 deallocate prepare stmt1;
 drop table t2;
 
+--echo #
+--echo # MDEV-8960 Can't refer the same column twice in one ALTER TABLE
+--echo #
+
+CREATE TABLE t1 (
+  `a` int(11) DEFAULT NULL
+) DEFAULT CHARSET=utf8;
+
+ALTER TABLE t1 ADD COLUMN `consultant_id` integer NOT NULL,
+ALTER COLUMN `consultant_id` DROP DEFAULT;
+
+SHOW CREATE TABLE t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (
+  `a` int(11) DEFAULT NULL
+) DEFAULT CHARSET=utf8;
+
+ALTER TABLE t1 ADD COLUMN `consultant_id` integer NOT NULL,
+ALTER COLUMN `consultant_id` SET DEFAULT 2;
+SHOW CREATE TABLE t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (
+  `a` int(11) DEFAULT NULL
+) DEFAULT CHARSET=utf8;
+
+ALTER TABLE t1 ADD COLUMN `consultant_id` integer NOT NULL DEFAULT 2,
+ALTER COLUMN `consultant_id` DROP DEFAULT;
+SHOW CREATE TABLE t1;
+DROP TABLE t1;
+
+CREATE TABLE t1 (
+  `a` int(11) DEFAULT NULL
+) DEFAULT CHARSET=utf8;
+
+ALTER TABLE t1 ADD COLUMN `consultant_id` integer NOT NULL DEFAULT 2,
+ALTER COLUMN `consultant_id` DROP DEFAULT,
+MODIFY COLUMN `consultant_id` BIGINT;
+SHOW CREATE TABLE t1;
+DROP TABLE t1;
+
 #
 # Test of ALTER TABLE IF [NOT] EXISTS
 #
@@ -1766,49 +1808,7 @@ SHOW CREATE TABLE t1;
 DROP TABLE t1;
 
 --echo #
---echo # MDEV-8960 Can't refer the same column twice in one ALTER TABLE
---echo #
-
-CREATE TABLE t1 (
-  `a` int(11) DEFAULT NULL
-) DEFAULT CHARSET=utf8;
-
-ALTER TABLE t1 ADD COLUMN `consultant_id` integer NOT NULL,
-ALTER COLUMN `consultant_id` DROP DEFAULT;
-
-SHOW CREATE TABLE t1;
-DROP TABLE t1;
-
-CREATE TABLE t1 (
-  `a` int(11) DEFAULT NULL
-) DEFAULT CHARSET=utf8;
-
-ALTER TABLE t1 ADD COLUMN `consultant_id` integer NOT NULL,
-ALTER COLUMN `consultant_id` SET DEFAULT 2;
-SHOW CREATE TABLE t1;
-DROP TABLE t1;
-
-CREATE TABLE t1 (
-  `a` int(11) DEFAULT NULL
-) DEFAULT CHARSET=utf8;
-
-ALTER TABLE t1 ADD COLUMN `consultant_id` integer NOT NULL DEFAULT 2,
-ALTER COLUMN `consultant_id` DROP DEFAULT;
-SHOW CREATE TABLE t1;
-DROP TABLE t1;
-
-CREATE TABLE t1 (
-  `a` int(11) DEFAULT NULL
-) DEFAULT CHARSET=utf8;
-
-ALTER TABLE t1 ADD COLUMN `consultant_id` integer NOT NULL DEFAULT 2,
-ALTER COLUMN `consultant_id` DROP DEFAULT,
-MODIFY COLUMN `consultant_id` BIGINT;
-SHOW CREATE TABLE t1;
-DROP TABLE t1;
-
---echo #
---echo # Start of 10.1 tests
+--echo # End of 10.0 tests
 --echo #
 
 --echo #
@@ -1828,6 +1828,10 @@ CREATE INDEX i1 ON t1(a) COMMENT 'comment1';
 ALTER TABLE t1 DROP INDEX i1, ADD INDEX i1(a) COMMENT 'comment2';
 SHOW CREATE TABLE t1;
 DROP TABLE t1;
+
+--echo #
+--echo # End of 10.1 tests
+--echo #
 
 --echo #
 --echo # MDEV-10421 duplicate CHECK CONSTRAINTs
@@ -1852,6 +1856,7 @@ create table t1 (a int, b int, check(a>b));
 alter table t1 drop column a;
 --error ER_BAD_FIELD_ERROR
 alter table t1 drop column b, add column b bigint first;
+alter table t1 drop column a, drop constraint constraint_1;
 show create table t1;
 drop table t1;
 
@@ -1873,5 +1878,10 @@ drop table t1;
 create table t1 (a int, b int, c int, unique(a,b));
 --error ER_KEY_COLUMN_DOES_NOT_EXITS
 alter table t1 drop column a;
+alter table t1 drop column a, drop index a;
 show create table t1;
 drop table t1;
+
+--echo #
+--echo # End of 10.2 tests
+--echo #

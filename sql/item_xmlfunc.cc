@@ -176,7 +176,7 @@ public:
   {
     nodebeg= (MY_XML_NODE*) pxml->ptr();
     nodeend= (MY_XML_NODE*) (pxml->ptr() + pxml->length());
-    numnodes= nodeend - nodebeg;
+    numnodes= (uint)(nodeend - nodebeg);
   }
   void prepare(String *nodeset)
   {
@@ -615,7 +615,7 @@ public:
         if ((node->parent == flt->num) &&
             (node->type == MY_XML_NODE_TEXT))
         {
-          fake->set_value(node->beg, node->end - node->beg,
+          fake->set_value(node->beg, (uint)(node->end - node->beg),
                           collation.collation);
           if (args[1]->val_int())
             return 1;
@@ -817,7 +817,7 @@ String *Item_nodeset_func_predicate::val_nodeset(String *str)
   Item_func *comp_func= (Item_func*)args[1];
   uint pos= 0, size;
   prepare(str);
-  size= fltend - fltbeg;
+  size= (uint)(fltend - fltbeg);
   for (MY_XPATH_FLT *flt= fltbeg; flt < fltend; flt++)
   {
     nodeset_func->context_cache.length(0);
@@ -836,7 +836,7 @@ String *Item_nodeset_func_elementbyindex::val_nodeset(String *nodeset)
   Item_nodeset_func *nodeset_func= (Item_nodeset_func*) args[0];
   prepare(nodeset);
   MY_XPATH_FLT *flt;
-  uint pos, size= fltend - fltbeg;
+  uint pos, size= (uint)(fltend - fltbeg);
   for (pos= 0, flt= fltbeg; flt < fltend; flt++)
   {
     nodeset_func->context_cache.length(0);
@@ -995,7 +995,7 @@ static Item *create_comparator(MY_XPATH *xpath,
   else if (a->type() == Item::XPATH_NODESET &&
            b->type() == Item::XPATH_NODESET)
   {
-    uint len= xpath->query.end - context->beg;
+    uint len= (uint)(xpath->query.end - context->beg);
     set_if_smaller(len, 32);
     my_printf_error(ER_UNKNOWN_ERROR,
                     "XPATH error: "
@@ -1399,7 +1399,7 @@ MY_XPATH_FUNC *
 my_xpath_function(const char *beg, const char *end)
 {
   MY_XPATH_FUNC *k, *function_names;
-  uint length= end-beg;
+  uint length= (uint)(end-beg);
   switch (length)
   {
     case 1: return 0;
@@ -1961,7 +1961,7 @@ static int my_xpath_parse_PrimaryExpr_literal(MY_XPATH *xpath)
     return 0;
   xpath->item= new (xpath->thd->mem_root)
     Item_string(xpath->thd, xpath->prevtok.beg + 1,
-                xpath->prevtok.end - xpath->prevtok.beg - 2,
+                (uint)(xpath->prevtok.end - xpath->prevtok.beg - 2),
                 xpath->cs);
   return 1;
 }
@@ -2464,6 +2464,21 @@ static int my_xpath_parse_UnaryExpr(MY_XPATH *xpath)
 }
 
 
+/**
+  A helper class to make a null-terminated string from XPath fragments.
+  The string is allocated on the THD memory root.
+*/
+class XPath_cstring_null_terminated: public LEX_CSTRING
+{
+public:
+  XPath_cstring_null_terminated(THD *thd, const char *str, size_t length)
+  {
+    if (thd->make_lex_string(this, str, length))
+      static_cast<LEX_CSTRING>(*this)= empty_clex_str;
+  }
+};
+
+
 /*
   Scan Number
 
@@ -2498,14 +2513,15 @@ static int my_xpath_parse_Number(MY_XPATH *xpath)
   thd= xpath->thd;
   if (!my_xpath_parse_term(xpath, MY_XPATH_LEX_DOT))
   {
-    xpath->item= new (thd->mem_root) Item_int(thd, xpath->prevtok.beg,
-                              xpath->prevtok.end - xpath->prevtok.beg);
-    return 1;
+    XPath_cstring_null_terminated nr(thd, beg, xpath->prevtok.end - beg);
+    xpath->item= new (thd->mem_root) Item_int(thd, nr.str, (uint) nr.length);
   }
-  my_xpath_parse_term(xpath, MY_XPATH_LEX_DIGITS);
-
-  xpath->item= new (thd->mem_root) Item_float(thd, beg,
-                                              xpath->prevtok.end - beg);
+  else
+  {
+    my_xpath_parse_term(xpath, MY_XPATH_LEX_DIGITS);
+    XPath_cstring_null_terminated nr(thd, beg, xpath->prevtok.end - beg);
+    xpath->item= new (thd->mem_root) Item_float(thd, nr.str, (uint) nr.length);
+  }
   return 1;
 }
 
@@ -2621,7 +2637,7 @@ my_xpath_parse_VariableReference(MY_XPATH *xpath)
         (spv= spc->find_variable(&name, false)))
     {
       Item_splocal *splocal= new (thd->mem_root)
-        Item_splocal(thd, &name, spv->offset, spv->sql_type(), 0);
+        Item_splocal(thd, &name, spv->offset, spv->type_handler(), 0);
 #ifdef DBUG_ASSERT_EXISTS
       if (splocal)
         splocal->m_sp= lex->sphead;
@@ -2632,7 +2648,7 @@ my_xpath_parse_VariableReference(MY_XPATH *xpath)
     {
       xpath->item= NULL;
       DBUG_ASSERT(xpath->query.end > dollar_pos);
-      uint len= xpath->query.end - dollar_pos;
+      uint len= (uint)(xpath->query.end - dollar_pos);
       set_if_smaller(len, 32);
       my_printf_error(ER_UNKNOWN_ERROR, "Unknown XPATH variable at: '%.*s'", 
                       MYF(0), len, dollar_pos);
@@ -2660,7 +2676,7 @@ my_xpath_parse_NodeTest_QName(MY_XPATH *xpath)
   if (!my_xpath_parse_QName(xpath))
     return 0;
   DBUG_ASSERT(xpath->context);
-  uint len= xpath->prevtok.end - xpath->prevtok.beg;
+  uint len= (uint)(xpath->prevtok.end - xpath->prevtok.beg);
   xpath->context= nametestfunc(xpath, xpath->axis, xpath->context,
                                xpath->prevtok.beg, len);
   return 1;
@@ -2759,7 +2775,7 @@ bool Item_xml_str_func::fix_fields(THD *thd, Item **ref)
 
   if (!rc)
   {
-    uint clen= xpath.query.end - xpath.lasttok.beg;
+    uint clen= (uint)(xpath.query.end - xpath.lasttok.beg);
     set_if_smaller(clen, 32);
     my_printf_error(ER_UNKNOWN_ERROR, "XPATH syntax error: '%.*s'",
                     MYF(0), clen, xpath.lasttok.beg);

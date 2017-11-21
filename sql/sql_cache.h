@@ -186,7 +186,7 @@ struct Query_cache_query
   inline void set_results_ready()          { ready= 1; }
   inline bool is_results_ready()           { return ready; }
   inline void increment_hits() { hit_count++; }
-  inline ulong hits() { return hit_count; }
+  inline ulonglong hits() { return hit_count; }
   void lock_writing();
   void lock_reading();
   bool try_lock_writing();
@@ -560,8 +560,8 @@ struct Query_cache_query_flags
   ha_rows limit;
   Time_zone *time_zone;
   sql_mode_t sql_mode;
-  ulong max_sort_length;
-  ulong group_concat_max_len;
+  ulonglong max_sort_length;
+  ulonglong group_concat_max_len;
   ulong default_week_format;
   ulong div_precision_increment;
   MY_LOCALE *lc_time_names;

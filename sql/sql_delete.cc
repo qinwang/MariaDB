@@ -45,7 +45,7 @@
                                                 // end_read_record
 #include "sql_partition.h"       // make_used_partitions_str
 
-#define MEM_STRIP_BUF_SIZE thd->variables.sortbuff_size
+#define MEM_STRIP_BUF_SIZE ((size_t) thd->variables.sortbuff_size)
 
 /*
   @brief
@@ -217,6 +217,18 @@ void Update_plan::save_explain_data_intern(MEM_ROOT *mem_root,
 static bool record_should_be_deleted(THD *thd, TABLE *table, SQL_SELECT *sel,
                                      Explain_delete *explain)
 {
+  if (table->versioned())
+  {
+    bool row_is_alive= table->vers_end_field()->is_max();
+    /* If we are doing TRUNCATE TABLE with SYSTEM_TIME condition then historical
+       record is deleted and current record is kept. Otherwise alive record is
+       deleted and historical record is kept. */
+    if ((thd->lex->sql_command == SQLCOM_TRUNCATE && table->pos_in_table_list->vers_conditions)
+      ? row_is_alive
+      : !row_is_alive)
+      return false;
+  }
+
   explain->tracker.on_record_read();
   thd->inc_examined_row_count(1);
   if (table->vfield)
@@ -227,6 +239,18 @@ static bool record_should_be_deleted(THD *thd, TABLE *table, SQL_SELECT *sel,
     return true;
   }
   return false;
+}
+
+
+inline
+int TABLE::delete_row()
+{
+  if (!versioned_by_sql() || !vers_end_field()->is_max())
+    return file->ha_delete_row(record[0]);
+
+  store_record(this, record[1]);
+  vers_end_field()->set_time();
+  return file->ha_update_row(record[1], record[0]);
 }
 
 
@@ -273,6 +297,25 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
   if (open_and_lock_tables(thd, table_list, TRUE, 0))
     DBUG_RETURN(TRUE);
 
+  THD_STAGE_INFO(thd, stage_init_update);
+
+  bool truncate_history= table_list->vers_conditions;
+  if (truncate_history)
+  {
+    TABLE *table= table_list->table;
+    DBUG_ASSERT(table);
+
+    DBUG_ASSERT(!conds);
+    if (vers_setup_select(thd, table_list, &conds, select_lex))
+      DBUG_RETURN(TRUE);
+
+    // trx_sees() in InnoDB reads sys_trx_start
+    if (!table->versioned_by_sql()) {
+      DBUG_ASSERT(table_list->vers_conditions.type == FOR_SYSTEM_TIME_BEFORE);
+      bitmap_set_bit(table->read_set, table->vers_end_field()->field_index);
+    }
+  }
+
   if (mysql_handle_list_of_derived(thd->lex, table_list, DT_MERGE_FOR_INSERT))
     DBUG_RETURN(TRUE);
   if (mysql_handle_list_of_derived(thd->lex, table_list, DT_PREPARE))
@@ -289,7 +332,6 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
 	       table_list->view_db.str, table_list->view_name.str);
     DBUG_RETURN(TRUE);
   }
-  THD_STAGE_INFO(thd, stage_init);
   table->map=1;
   query_plan.select_lex= &thd->lex->select_lex;
   query_plan.table= table;
@@ -365,7 +407,8 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
   */
   if (!with_select && !using_limit && const_cond_result &&
       (!thd->is_current_stmt_binlog_format_row() &&
-       !(table->triggers && table->triggers->has_delete_triggers())))
+       !(table->triggers && table->triggers->has_delete_triggers()))
+      && !table->versioned_by_sql())
   {
     /* Update the table->file->stats.records number */
     table->file->info(HA_STATUS_VARIABLE | HA_STATUS_NO_LOCK);
@@ -556,7 +599,6 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
     goto got_error;
   
   init_ftfuncs(thd, select_lex, 1);
-  THD_STAGE_INFO(thd, stage_updating);
 
   if (table->prepare_triggers_for_delete_stmt_or_event())
   {
@@ -588,6 +630,8 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
     deltempfile= new (thd->mem_root) Unique (refpos_order_cmp, table->file,
                                              table->file->ref_length,
                                              MEM_STRIP_BUF_SIZE);
+
+    THD_STAGE_INFO(thd, stage_searching_rows_for_update);
     while (!(error=info.read_record()) && !thd->killed &&
           ! thd->is_error())
     {
@@ -613,6 +657,7 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
     delete_record= true;
   }
 
+  THD_STAGE_INFO(thd, stage_updating);
   while (!(error=info.read_record()) && !thd->killed &&
         ! thd->is_error())
   {
@@ -620,7 +665,7 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
       delete_record= record_should_be_deleted(thd, table, select, explain);
     if (delete_record)
     {
-      if (table->triggers &&
+      if (!truncate_history && table->triggers &&
           table->triggers->process_triggers(thd, TRG_EVENT_DELETE,
                                             TRG_ACTION_BEFORE, FALSE))
       {
@@ -634,10 +679,11 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, COND *conds,
         break;
       }
 
-      if (!(error= table->file->ha_delete_row(table->record[0])))
+      error= table->delete_row();
+      if (!error)
       {
 	deleted++;
-        if (table->triggers &&
+        if (!truncate_history && table->triggers &&
             table->triggers->process_triggers(thd, TRG_EVENT_DELETE,
                                               TRG_ACTION_AFTER, FALSE))
         {
@@ -723,6 +769,8 @@ cleanup:
       else
         errcode= query_error_code(thd, killed_status == NOT_KILLED);
 
+      ScopedStatementReplication scoped_stmt_rpl(
+          table->versioned_by_engine() ? thd : NULL);
       /*
         [binlog]: If 'handler::delete_all_rows()' was called and the
         storage engine does not inject the rows itself, we replicate
@@ -821,7 +869,7 @@ l
     DBUG_RETURN(TRUE);
   if ((wild_num && setup_wild(thd, table_list, field_list, NULL, wild_num)) ||
       setup_fields(thd, Ref_ptr_array(),
-                   field_list, MARK_COLUMNS_READ, NULL, 0) ||
+                   field_list, MARK_COLUMNS_READ, NULL, NULL, 0) ||
       setup_conds(thd, table_list, select_lex->leaf_tables, conds) ||
       setup_ftfuncs(select_lex))
     DBUG_RETURN(TRUE);
@@ -1104,6 +1152,11 @@ int multi_delete::send_data(List<Item> &values)
     if (table->status & (STATUS_NULL_ROW | STATUS_DELETED))
       continue;
 
+    if (table->versioned() && !table->vers_end_field()->is_max())
+    {
+      continue;
+    }
+
     table->file->position(table->record[0]);
     found++;
 
@@ -1116,7 +1169,9 @@ int multi_delete::send_data(List<Item> &values)
                                             TRG_ACTION_BEFORE, FALSE))
         DBUG_RETURN(1);
       table->status|= STATUS_DELETED;
-      if (!(error=table->file->ha_delete_row(table->record[0])))
+
+      error= table->delete_row();
+      if (!error)
       {
         deleted++;
         if (!table->file->has_transactions())
@@ -1295,8 +1350,8 @@ int multi_delete::do_table_deletes(TABLE *table, SORT_INFO *sort_info,
       local_error= 1;
       break;
     }
-      
-    local_error= table->file->ha_delete_row(table->record[0]);
+
+    local_error= table->delete_row();
     if (local_error && !ignore)
     {
       table->file->print_error(local_error, MYF(0));

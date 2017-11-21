@@ -136,7 +136,6 @@ trx_undo_update_rec_get_update(
 	trx_id_t	trx_id,	/*!< in: transaction id from this undorecord */
 	roll_ptr_t	roll_ptr,/*!< in: roll pointer from this undo record */
 	ulint		info_bits,/*!< in: info bits from this undo record */
-	trx_t*		trx,	/*!< in: transaction */
 	mem_heap_t*	heap,	/*!< in: memory heap from which the memory
 				needed is allocated */
 	upd_t**		upd);	/*!< out, own: update vector */
@@ -277,15 +276,13 @@ trx_undo_rec_get_col_val(
 @param[in]	table		the table
 @param[in]	ptr		undo log pointer
 @param[in,out]	row		the dtuple to fill
-@param[in]	in_purge        called by purge thread
-@param[in]	col_map		online rebuild column map */
+@param[in]	in_purge	whether this is called by purge */
 void
 trx_undo_read_v_cols(
 	const dict_table_t*	table,
 	const byte*		ptr,
 	const dtuple_t*		row,
-	bool			in_purge,
-	const ulint*		col_map);
+	bool			in_purge);
 
 /** Read virtual column index from undo log if the undo log contains such
 info, and verify the column is still indexed, and output its position
@@ -310,6 +307,8 @@ trx_undo_read_v_idx(
 compilation info multiplied by 16 is ORed to this value in an undo log
 record */
 
+#define TRX_UNDO_INSERT_DEFAULT	10	/* insert a "default value"
+					pseudo-record for instant ALTER */
 #define	TRX_UNDO_INSERT_REC	11	/* fresh insert into clustered index */
 #define	TRX_UNDO_UPD_EXIST_REC	12	/* update of a non-delete-marked
 					record */
@@ -324,6 +323,9 @@ record */
 					to denote that we updated external
 					storage fields: used by purge to
 					free the external storage */
+
+/** The search tuple corresponding to TRX_UNDO_INSERT_DEFAULT */
+extern const dtuple_t trx_undo_default_rec;
 
 #include "trx0rec.ic"
 

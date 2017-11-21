@@ -1,6 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1994, 2016, Oracle and/or its affiliates. All Rights Reserved.
+Copyright (c) 2017, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -586,11 +587,10 @@ struct dfield_t{
 	unsigned	len;	/*!< data length; UNIV_SQL_NULL if SQL null */
 	dtype_t		type;	/*!< type of data */
 
-	/** Create a deep copy of this object
-	@param[in]	heap	the memory heap in which the clone will be
-				created.
-	@return	the cloned object. */
-	dfield_t* clone(mem_heap_t* heap);
+	/** Create a deep copy of this object.
+	@param[in,out]	heap	memory heap in which the clone will be created
+	@return	the cloned object */
+	dfield_t* clone(mem_heap_t* heap) const;
 };
 
 /** Structure for an SQL data tuple of fields (logical record) */
@@ -619,6 +619,15 @@ struct dtuple_t {
 /** Value of dtuple_t::magic_n */
 # define		DATA_TUPLE_MAGIC_N	65478679
 #endif /* UNIV_DEBUG */
+
+	/** Trim the tail of an index tuple before insert or update.
+	After instant ADD COLUMN, if the last fields of a clustered index tuple
+	match the 'default row', there will be no need to store them.
+	NOTE: A page latch in the index must be held, so that the index
+	may not lose 'instantness' before the trimmed tuple has been
+	inserted or updated.
+	@param[in]	index	index possibly with instantly added columns */
+	void trim(const dict_index_t& index);
 };
 
 /** A slot for a field in a big rec vector */

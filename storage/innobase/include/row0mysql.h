@@ -235,14 +235,23 @@ row_lock_table_for_mysql(
 					(ignored if table==NULL) */
 	MY_ATTRIBUTE((nonnull(1)));
 
+/** System Versioning: row_insert_for_mysql() modes */
+enum ins_mode_t {
+	ROW_INS_NORMAL = 0,	///< plain row (without versioning)
+	ROW_INS_VERSIONED,	///< sys_trx_start = TRX_ID, sys_trx_end = MAX
+	ROW_INS_HISTORICAL	///< sys_trx_end = TRX_ID
+};
+
 /** Does an insert for MySQL.
 @param[in]	mysql_rec	row in the MySQL format
 @param[in,out]	prebuilt	prebuilt struct in MySQL handle
+@param[in]	ins_mode	what row type we're inserting
 @return error code or DB_SUCCESS*/
 dberr_t
 row_insert_for_mysql(
 	const byte*		mysql_rec,
-	row_prebuilt_t*		prebuilt)
+	row_prebuilt_t*		prebuilt,
+	ins_mode_t		ins_mode)
 	MY_ATTRIBUTE((warn_unused_result));
 
 /*********************************************************************//**
@@ -262,20 +271,14 @@ row_get_prebuilt_update_vector(
 /*===========================*/
 	row_prebuilt_t*	prebuilt);	/*!< in: prebuilt struct in MySQL
 					handle */
-/*********************************************************************//**
-Checks if a table is such that we automatically created a clustered
-index on it (on row id).
-@return TRUE if the clustered index was generated automatically */
-ibool
-row_table_got_default_clust_index(
-/*==============================*/
-	const dict_table_t*	table);	/*!< in: table */
-
 /** Does an update or delete of a row for MySQL.
 @param[in,out]	prebuilt	prebuilt struct in MySQL handle
+@param[in]	vers_set_fields	working with system versioned table
 @return error code or DB_SUCCESS */
 dberr_t
-row_update_for_mysql(row_prebuilt_t* prebuilt)
+row_update_for_mysql(
+	row_prebuilt_t*		prebuilt,
+	bool			vers_set_fields)
 	MY_ATTRIBUTE((warn_unused_result));
 
 /** This can only be used when srv_locks_unsafe_for_binlog is TRUE or this
@@ -361,7 +364,6 @@ row_create_table_for_mysql(
 				(will be freed, or on DB_SUCCESS
 				added to the data dictionary cache) */
 	trx_t*		trx,	/*!< in/out: transaction */
-	bool		commit,	/*!< in: if true, commit the transaction */
 	fil_encryption_t mode,	/*!< in: encryption mode */
 	uint32_t	key_id)	/*!< in: encryption key_id */
 	MY_ATTRIBUTE((warn_unused_result));
@@ -854,9 +856,6 @@ struct row_prebuilt_t {
 
 	/** The MySQL table object */
 	TABLE*		m_mysql_table;
-
-	/** limit value to avoid fts result overflow */
-	ulonglong	m_fts_limit;
 };
 
 /** Callback for row_mysql_sys_index_iterate() */

@@ -170,13 +170,15 @@ PageBulk::insert(
 	ut_ad(m_heap != NULL);
 
 	rec_size = rec_offs_size(offsets);
+	ut_d(const bool is_leaf = page_rec_is_leaf(m_cur_rec));
 
 #ifdef UNIV_DEBUG
 	/* Check whether records are in order. */
 	if (!page_rec_is_infimum(m_cur_rec)) {
 		rec_t*	old_rec = m_cur_rec;
 		ulint*	old_offsets = rec_get_offsets(
-			old_rec, m_index, NULL,	ULINT_UNDEFINED, &m_heap);
+			old_rec, m_index, NULL,	is_leaf,
+			ULINT_UNDEFINED, &m_heap);
 
 		ut_ad(cmp_rec_rec(rec, old_rec, offsets, old_offsets, m_index)
 		      > 0);
@@ -187,7 +189,7 @@ PageBulk::insert(
 
 	/* 1. Copy the record to page. */
 	rec_t*	insert_rec = rec_copy(m_heap_top, rec, offsets);
-	rec_offs_make_valid(insert_rec, m_index, offsets);
+	rec_offs_make_valid(insert_rec, m_index, is_leaf, offsets);
 
 	/* 2. Insert the record in the linked list. */
 	rec_t*	next_rec = page_rec_get_next(m_cur_rec);
@@ -290,12 +292,12 @@ PageBulk::finish()
 	page_dir_set_n_slots(m_page, NULL, 2 + slot_index);
 	page_header_set_ptr(m_page, NULL, PAGE_HEAP_TOP, m_heap_top);
 	page_dir_set_n_heap(m_page, NULL, PAGE_HEAP_NO_USER_LOW + m_rec_no);
-	page_header_set_field(m_page, NULL, PAGE_N_RECS, m_rec_no);
-
 	page_header_set_ptr(m_page, NULL, PAGE_LAST_INSERT, m_cur_rec);
-	page_header_set_field(m_page, NULL, PAGE_DIRECTION, PAGE_RIGHT);
-	page_header_set_field(m_page, NULL, PAGE_N_DIRECTION, 0);
-
+	mach_write_to_2(PAGE_HEADER + PAGE_N_RECS + m_page, m_rec_no);
+	ut_ad(!page_get_instant(m_page));
+	m_page[PAGE_HEADER + PAGE_DIRECTION_B] = PAGE_RIGHT;
+	*reinterpret_cast<uint16_t*>(PAGE_HEADER + PAGE_N_DIRECTION + m_page)
+		= 0;
 	m_block->skip_flush_check = false;
 }
 
@@ -377,9 +379,9 @@ PageBulk::getSplitRec()
 		rec = page_rec_get_next(rec);
 		ut_ad(page_rec_is_user_rec(rec));
 
-		offsets = rec_get_offsets(rec, m_index,
-					  offsets, ULINT_UNDEFINED,
-					  &(m_heap));
+		offsets = rec_get_offsets(rec, m_index, offsets,
+					  page_is_leaf(m_page),
+					  ULINT_UNDEFINED, &m_heap);
 		total_recs_size += rec_offs_size(offsets);
 		n_recs++;
 	} while (total_recs_size + page_dir_calc_reserved_space(n_recs)
@@ -409,7 +411,8 @@ PageBulk::copyIn(
 
 	do {
 		offsets = rec_get_offsets(rec, m_index, offsets,
-					  ULINT_UNDEFINED, &(m_heap));
+					  page_rec_is_leaf(split_rec),
+					  ULINT_UNDEFINED, &m_heap);
 
 		insert(rec, offsets);
 
@@ -449,18 +452,18 @@ PageBulk::copyOut(
 	/* Set last record's next in page */
 	ulint*		offsets = NULL;
 	rec = page_rec_get_prev(split_rec);
-	offsets = rec_get_offsets(rec, m_index,
-				  offsets, ULINT_UNDEFINED,
-				  &(m_heap));
+	offsets = rec_get_offsets(rec, m_index, offsets,
+				  page_rec_is_leaf(split_rec),
+				  ULINT_UNDEFINED, &m_heap);
 	page_rec_set_next(rec, page_get_supremum_rec(m_page));
 
 	/* Set related members */
 	m_cur_rec = rec;
 	m_heap_top = rec_get_end(rec, offsets);
 
-	offsets = rec_get_offsets(last_rec, m_index,
-				  offsets, ULINT_UNDEFINED,
-				  &(m_heap));
+	offsets = rec_get_offsets(last_rec, m_index, offsets,
+				  page_rec_is_leaf(split_rec),
+				  ULINT_UNDEFINED, &m_heap);
 
 	m_free_space += rec_get_end(last_rec, offsets)
 		- m_heap_top
@@ -562,8 +565,7 @@ PageBulk::storeExt(
 	page_cur->block = m_block;
 
 	dberr_t	err = btr_store_big_rec_extern_fields(
-		&btr_pcur, NULL, offsets, big_rec, m_mtr,
-		BTR_STORE_INSERT_BULK);
+		&btr_pcur, offsets, big_rec, m_mtr, BTR_STORE_INSERT_BULK);
 
 	ut_ad(page_offset(m_cur_rec) == page_offset(page_cur->rec));
 
@@ -876,8 +878,8 @@ BtrBulk::insert(
 	/* Convert tuple to rec. */
         rec = rec_convert_dtuple_to_rec(static_cast<byte*>(mem_heap_alloc(
 		page_bulk->m_heap, rec_size)), m_index, tuple, n_ext);
-        offsets = rec_get_offsets(rec, m_index, offsets, ULINT_UNDEFINED,
-		&(page_bulk->m_heap));
+        offsets = rec_get_offsets(rec, m_index, offsets, !level,
+				  ULINT_UNDEFINED, &page_bulk->m_heap);
 
 	page_bulk->insert(rec, offsets);
 

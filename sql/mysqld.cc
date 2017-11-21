@@ -100,6 +100,8 @@
 
 #include "rpl_handler.h"
 
+#include "transaction.h"
+
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
 #endif
@@ -384,6 +386,7 @@ mysql_cond_t COND_thread_cache;
 static mysql_cond_t COND_flush_thread_cache;
 mysql_cond_t COND_slave_background;
 static DYNAMIC_ARRAY all_options;
+static longlong start_memory_used;
 
 /* Global variables */
 
@@ -531,6 +534,7 @@ ulonglong slave_skipped_errors;
 ulong feature_files_opened_with_delayed_keys= 0, feature_check_constraint= 0;
 ulonglong denied_connections;
 my_decimal decimal_zero;
+my_bool opt_transaction_registry= 1;
 
 /*
   Maximum length of parameter value which can be set through
@@ -943,6 +947,9 @@ PSI_mutex_key key_LOCK_prepare_ordered, key_LOCK_commit_ordered,
   key_LOCK_slave_background;
 PSI_mutex_key key_TABLE_SHARE_LOCK_share;
 
+PSI_mutex_key key_TABLE_SHARE_LOCK_rotation;
+PSI_cond_key key_TABLE_SHARE_COND_rotation;
+
 static PSI_mutex_info all_server_mutexes[]=
 {
 #ifdef HAVE_MMAP
@@ -1004,6 +1011,7 @@ static PSI_mutex_info all_server_mutexes[]=
   { &key_structure_guard_mutex, "Query_cache::structure_guard_mutex", 0},
   { &key_TABLE_SHARE_LOCK_ha_data, "TABLE_SHARE::LOCK_ha_data", 0},
   { &key_TABLE_SHARE_LOCK_share, "TABLE_SHARE::LOCK_share", 0},
+  { &key_TABLE_SHARE_LOCK_rotation, "TABLE_SHARE::LOCK_rotation", 0},
   { &key_LOCK_error_messages, "LOCK_error_messages", PSI_FLAG_GLOBAL},
   { &key_LOCK_prepare_ordered, "LOCK_prepare_ordered", PSI_FLAG_GLOBAL},
   { &key_LOCK_after_binlog_sync, "LOCK_after_binlog_sync", PSI_FLAG_GLOBAL},
@@ -1024,8 +1032,8 @@ static PSI_mutex_info all_server_mutexes[]=
 PSI_rwlock_key key_rwlock_LOCK_grant, key_rwlock_LOCK_logger,
   key_rwlock_LOCK_sys_init_connect, key_rwlock_LOCK_sys_init_slave,
   key_rwlock_LOCK_system_variables_hash, key_rwlock_query_cache_query_lock,
-  key_LOCK_SEQUENCE;
-
+  key_LOCK_SEQUENCE,
+  key_rwlock_LOCK_vers_stats, key_rwlock_LOCK_stat_serial;
 
 static PSI_rwlock_info all_server_rwlocks[]=
 {
@@ -1038,7 +1046,9 @@ static PSI_rwlock_info all_server_rwlocks[]=
   { &key_rwlock_LOCK_sys_init_slave, "LOCK_sys_init_slave", PSI_FLAG_GLOBAL},
   { &key_LOCK_SEQUENCE, "LOCK_SEQUENCE", 0},
   { &key_rwlock_LOCK_system_variables_hash, "LOCK_system_variables_hash", PSI_FLAG_GLOBAL},
-  { &key_rwlock_query_cache_query_lock, "Query_cache_query::lock", 0}
+  { &key_rwlock_query_cache_query_lock, "Query_cache_query::lock", 0},
+  { &key_rwlock_LOCK_vers_stats, "Vers_field_stats::lock", 0},
+  { &key_rwlock_LOCK_stat_serial, "TABLE_SHARE::LOCK_stat_serial", 0}
 };
 
 #ifdef HAVE_MMAP
@@ -1121,7 +1131,8 @@ static PSI_cond_info all_server_conds[]=
   { &key_COND_slave_background, "COND_slave_background", 0},
   { &key_COND_start_thread, "COND_start_thread", PSI_FLAG_GLOBAL},
   { &key_COND_wait_gtid, "COND_wait_gtid", 0},
-  { &key_COND_gtid_ignore_duplicates, "COND_gtid_ignore_duplicates", 0}
+  { &key_COND_gtid_ignore_duplicates, "COND_gtid_ignore_duplicates", 0},
+  { &key_TABLE_SHARE_COND_rotation, "TABLE_SHARE::COND_rotation", 0}
 };
 
 PSI_thread_key key_thread_bootstrap, key_thread_delayed_insert,
@@ -1593,8 +1604,8 @@ static void close_connections(void)
 
   /* kill connection thread */
 #if !defined(__WIN__)
-  DBUG_PRINT("quit", ("waiting for select thread: 0x%lx",
-                      (ulong) select_thread));
+  DBUG_PRINT("quit", ("waiting for select thread: %lu",
+                      (ulong)select_thread));
 
   mysql_mutex_lock(&LOCK_start_thread);
   while (select_thread_in_use)
@@ -2170,7 +2181,10 @@ static void mysqld_exit(int exit_code)
   shutdown_performance_schema();        // we do it as late as possible
 #endif
   set_malloc_size_cb(NULL);
-  if (!opt_debugging && !my_disable_leak_check)
+  if (opt_endinfo && global_status_var.global_memory_used)
+    fprintf(stderr, "Warning: Memory not freed: %ld\n",
+            (long) global_status_var.global_memory_used);
+  if (!opt_debugging && !my_disable_leak_check && exit_code == 0)
   {
     fprintf(stderr, "Seppo Warning: Memory not freed: %ld\n",
             (long) global_status_var.global_memory_used);
@@ -2178,9 +2192,6 @@ static void mysqld_exit(int exit_code)
   }
   cleanup_tls();
   DBUG_LEAVE;
-  if (opt_endinfo && global_status_var.global_memory_used)
-    fprintf(stderr, "Warning: Memory not freed: %ld\n",
-            (long) global_status_var.global_memory_used);
   sd_notify(0, "STATUS=MariaDB server is down");
   exit(exit_code); /* purecov: inspected */
 }
@@ -2909,7 +2920,7 @@ void signal_thd_deleted()
 void unlink_thd(THD *thd)
 {
   DBUG_ENTER("unlink_thd");
-  DBUG_PRINT("enter", ("thd: 0x%lx", (long) thd));
+  DBUG_PRINT("enter", ("thd: %p", thd));
 
   /*
     Do not decrement when its wsrep system thread. wsrep_applier is set for
@@ -4073,6 +4084,8 @@ static void my_malloc_size_cb_func(long long size, my_bool is_thread_specific)
                         (longlong) thd->status_var.local_memory_used,
                         size));
     thd->status_var.local_memory_used+= size;
+    set_if_bigger(thd->status_var.max_local_memory_used,
+                  thd->status_var.local_memory_used);
     if (size > 0 &&
         thd->status_var.local_memory_used > (int64)thd->variables.max_mem_used &&
         !thd->killed && !thd->get_stmt_da()->is_set())
@@ -4444,21 +4457,6 @@ static int init_common_variables()
     SYSVAR_AUTOSIZE(threadpool_size, my_getncpus());
 #endif
 
-  /* Fix host_cache_size. */
-  if (IS_SYSVAR_AUTOSIZE(&host_cache_size))
-  {
-    if (max_connections <= 628 - 128)
-      SYSVAR_AUTOSIZE(host_cache_size, 128 + max_connections);
-    else if (max_connections <= ((ulong)(2000 - 628)) * 20 + 500)
-      SYSVAR_AUTOSIZE(host_cache_size, 628 + ((max_connections - 500) / 20));
-    else
-      SYSVAR_AUTOSIZE(host_cache_size, 2000);
-  }
-
-  /* Fix back_log (back_log == 0 added for MySQL compatibility) */
-  if (back_log == 0 || IS_SYSVAR_AUTOSIZE(&back_log))
-    SYSVAR_AUTOSIZE(back_log, MY_MIN(900, (50 + max_connections / 5)));
-
   /* connections and databases needs lots of files */
   {
     uint files, wanted_files, max_open_files;
@@ -4483,7 +4481,7 @@ static int init_common_variables()
 
     if (files < wanted_files)
     {
-      if (!open_files_limit)
+      if (!open_files_limit || IS_SYSVAR_AUTOSIZE(&open_files_limit))
       {
         /*
           If we have requested too much file handles than we bring
@@ -4512,6 +4510,36 @@ static int init_common_variables()
     }
     SYSVAR_AUTOSIZE(open_files_limit, files);
   }
+
+  /*
+    Max_connections is now set.
+    Now we can fix other variables depending on this variable.
+  */
+
+  /* Fix host_cache_size */
+  if (IS_SYSVAR_AUTOSIZE(&host_cache_size))
+  {
+    /*
+      The default value is 128.
+      The autoset value is 128, plus 1 for a value of max_connections
+      up to 500, plus 1 for every increment of 20 over 500 in the
+      max_connections value, capped at 2000.
+    */
+    uint size= (HOST_CACHE_SIZE + MY_MIN(max_connections, 500) +
+                MY_MAX(((long) max_connections)-500,0)/20);
+    SYSVAR_AUTOSIZE(host_cache_size, size);
+  }
+
+  /* Fix back_log (back_log == 0 added for MySQL compatibility) */
+  if (back_log == 0 || IS_SYSVAR_AUTOSIZE(&back_log))
+  {
+    /*
+      The default value is 150.
+      The autoset value is 50 + max_connections / 5 capped at 900
+    */
+    SYSVAR_AUTOSIZE(back_log, MY_MIN(900, (50 + max_connections / 5)));
+  }
+
   unireg_init(opt_specialflag); /* Set up extern variabels */
   if (!(my_default_lc_messages=
         my_locale_by_name(lc_messages)))
@@ -4877,7 +4905,7 @@ static void init_ssl()
 					  opt_ssl_ca, opt_ssl_capath,
 					  opt_ssl_cipher, &error,
                                           opt_ssl_crl, opt_ssl_crlpath);
-    DBUG_PRINT("info",("ssl_acceptor_fd: 0x%lx", (long) ssl_acceptor_fd));
+    DBUG_PRINT("info",("ssl_acceptor_fd: %p", ssl_acceptor_fd));
     if (!ssl_acceptor_fd)
     {
       sql_print_warning("Failed to setup SSL");
@@ -5028,7 +5056,8 @@ static int init_server_components()
     global_system_variables.query_cache_type= 1;
   }
   query_cache_init();
-  query_cache_resize(query_cache_size);
+  DBUG_ASSERT(query_cache_size < ULONG_MAX);
+  query_cache_resize((ulong)query_cache_size);
   my_rnd_init(&sql_rand,(ulong) server_start_time,(ulong) server_start_time/2);
   setup_fpu();
   init_thr_lock();
@@ -5875,7 +5904,7 @@ int mysqld_main(int argc, char **argv)
 
   ulonglong new_thread_stack_size;
   new_thread_stack_size= my_setstacksize(&connection_attrib,
-                                         my_thread_stack_size);
+                                         (size_t)my_thread_stack_size);
   if (new_thread_stack_size != my_thread_stack_size)
     SYSVAR_AUTOSIZE(my_thread_stack_size, new_thread_stack_size);
 
@@ -6010,6 +6039,26 @@ int mysqld_main(int argc, char **argv)
   if (Events::init((THD*) 0, opt_noacl || opt_bootstrap))
     unireg_abort(1);
 
+  if (!opt_bootstrap && opt_transaction_registry)
+  {
+    THD *thd = new THD(0);
+    thd->thread_stack= (char*) &thd;
+    thd->store_globals();
+
+    {
+      TR_table trt(thd);
+      if (trt.check())
+      {
+        sql_print_error("%s schema is incorrect", trt.table_name);
+        delete thd;
+        unireg_abort(1);
+      }
+    }
+
+    trans_commit_stmt(thd);
+    delete thd;
+  }
+
   if (WSREP_ON)
   {
     if (opt_bootstrap)
@@ -6113,6 +6162,9 @@ int mysqld_main(int argc, char **argv)
   mysql_mutex_unlock(&LOCK_server_started);
 
   MYSQL_SET_STAGE(0 ,__FILE__, __LINE__);
+
+  /* Memory used when everything is setup */
+  start_memory_used= global_status_var.global_memory_used;
 
 #if defined(_WIN32) || defined(HAVE_SMEM)
   handle_connections_methods();
@@ -7290,9 +7342,6 @@ struct my_option my_long_options[]=
   {"autocommit", 0, "Set default value for autocommit (0 or 1)",
    &opt_autocommit, &opt_autocommit, 0,
    GET_BOOL, OPT_ARG, 1, 0, 0, 0, 0, NULL},
-  {"bind-address", 0, "IP address to bind to.",
-   &my_bind_addr_str, &my_bind_addr_str, 0, GET_STR,
-   REQUIRED_ARG, 0, 0, 0, 0, 0, 0},
   {"binlog-do-db", OPT_BINLOG_DO_DB,
    "Tells the master it should log updates for the specified database, "
    "and exclude all others not explicitly mentioned.",
@@ -7929,9 +7978,9 @@ static int show_table_definitions(THD *thd, SHOW_VAR *var, char *buff,
 static int show_flush_commands(THD *thd, SHOW_VAR *var, char *buff,
                                enum enum_var_type scope)
 {
-  var->type= SHOW_LONG;
+  var->type= SHOW_LONGLONG;
   var->value= buff;
-  *((long *) buff)= (long) tdc_refresh_version();
+  *((longlong *) buff)= (longlong)tdc_refresh_version();
   return 0;
 }
 
@@ -8224,7 +8273,7 @@ static int show_ssl_get_cipher_list(THD *thd, SHOW_VAR *var, char *buff,
 #ifdef HAVE_YASSL
 
 static char *
-my_asn1_time_to_string(ASN1_TIME *time, char *buf, size_t len)
+my_asn1_time_to_string(const ASN1_TIME *time, char *buf, size_t len)
 {
   return yaSSL_ASN1_TIME_to_string(time, buf, len);
 }
@@ -8232,7 +8281,7 @@ my_asn1_time_to_string(ASN1_TIME *time, char *buf, size_t len)
 #else /* openssl */
 
 static char *
-my_asn1_time_to_string(ASN1_TIME *time, char *buf, size_t len)
+my_asn1_time_to_string(const ASN1_TIME *time, char *buf, size_t len)
 {
   int n_read;
   char *res= NULL;
@@ -8280,7 +8329,7 @@ show_ssl_get_server_not_before(THD *thd, SHOW_VAR *var, char *buff,
   {
     SSL *ssl= (SSL*) thd->net.vio->ssl_arg;
     X509 *cert= SSL_get_certificate(ssl);
-    ASN1_TIME *not_before= X509_get_notBefore(cert);
+    const ASN1_TIME *not_before= X509_get0_notBefore(cert);
 
     var->value= my_asn1_time_to_string(not_before, buff,
                                        SHOW_VAR_FUNC_BUFF_SIZE);
@@ -8314,7 +8363,7 @@ show_ssl_get_server_not_after(THD *thd, SHOW_VAR *var, char *buff,
   {
     SSL *ssl= (SSL*) thd->net.vio->ssl_arg;
     X509 *cert= SSL_get_certificate(ssl);
-    ASN1_TIME *not_after= X509_get_notAfter(cert);
+    const ASN1_TIME *not_after= X509_get0_notAfter(cert);
 
     var->value= my_asn1_time_to_string(not_after, buff,
                                        SHOW_VAR_FUNC_BUFF_SIZE);
@@ -8522,6 +8571,7 @@ SHOW_VAR status_vars[]= {
   {"Master_gtid_wait_time",    (char*) offsetof(STATUS_VAR, master_gtid_wait_time), SHOW_LONGLONG_STATUS},
   {"Max_used_connections",     (char*) &max_used_connections,  SHOW_LONG},
   {"Memory_used",              (char*) &show_memory_used, SHOW_SIMPLE_FUNC},
+  {"Memory_used_initial",      (char*) &start_memory_used, SHOW_LONGLONG},
   {"Not_flushed_delayed_rows", (char*) &delayed_rows_in_use,    SHOW_LONG_NOFLUSH},
   {"Open_files",               (char*) &my_file_opened,         SHOW_LONG_NOFLUSH},
   {"Open_streams",             (char*) &my_stream_opened,       SHOW_LONG_NOFLUSH},
@@ -8612,6 +8662,10 @@ SHOW_VAR status_vars[]= {
   {"Subquery_cache_miss",      (char*) &subquery_cache_miss,    SHOW_LONG},
   {"Table_locks_immediate",    (char*) &locks_immediate,        SHOW_LONG},
   {"Table_locks_waited",       (char*) &locks_waited,           SHOW_LONG},
+  {"Table_open_cache_active_instances", (char*) &tc_active_instances, SHOW_UINT},
+  {"Table_open_cache_hits",    (char*) offsetof(STATUS_VAR, table_open_cache_hits), SHOW_LONGLONG_STATUS},
+  {"Table_open_cache_misses",  (char*) offsetof(STATUS_VAR, table_open_cache_misses), SHOW_LONGLONG_STATUS},
+  {"Table_open_cache_overflows", (char*) offsetof(STATUS_VAR, table_open_cache_overflows), SHOW_LONGLONG_STATUS},
 #ifdef HAVE_MMAP
   {"Tc_log_max_pages_used",    (char*) &tc_log_max_pages_used,  SHOW_LONG},
   {"Tc_log_page_size",         (char*) &tc_log_page_size,       SHOW_LONG_NOFLUSH},
@@ -8876,8 +8930,8 @@ static int mysql_init_variables(void)
 
   /* Set directory paths */
   mysql_real_data_home_len=
-    strmake_buf(mysql_real_data_home,
-                get_relative_path(MYSQL_DATADIR)) - mysql_real_data_home;
+    (uint)(strmake_buf(mysql_real_data_home,
+                get_relative_path(MYSQL_DATADIR)) - mysql_real_data_home);
   /* Replication parameters */
   master_info_file= (char*) "master.info",
     relay_log_info_file= (char*) "relay-log.info";
@@ -9802,7 +9856,10 @@ static int get_options(int *argc_ptr, char ***argv_ptr)
   /* Ensure that some variables are not set higher than needed */
   if (thread_cache_size > max_connections)
     SYSVAR_AUTOSIZE(thread_cache_size, max_connections);
-  
+
+  if (opt_bootstrap)
+    global_system_variables.vers_force= 0;
+
   return 0;
 }
 
@@ -10172,104 +10229,110 @@ static PSI_file_info all_server_files[]=
 };
 #endif /* HAVE_PSI_INTERFACE */
 
-PSI_stage_info stage_after_apply_event= { 0, "after apply log event", 0};
+PSI_stage_info stage_after_apply_event= { 0, "After apply log event", 0};
 PSI_stage_info stage_after_create= { 0, "After create", 0};
 PSI_stage_info stage_after_opening_tables= { 0, "After opening tables", 0};
 PSI_stage_info stage_after_table_lock= { 0, "After table lock", 0};
-PSI_stage_info stage_allocating_local_table= { 0, "allocating local table", 0};
-PSI_stage_info stage_alter_inplace_prepare= { 0, "preparing for alter table", 0};
-PSI_stage_info stage_alter_inplace= { 0, "altering table", 0};
-PSI_stage_info stage_alter_inplace_commit= { 0, "committing alter table to storage engine", 0};
-PSI_stage_info stage_apply_event= { 0, "apply log event", 0};
+PSI_stage_info stage_allocating_local_table= { 0, "Allocating local table", 0};
+PSI_stage_info stage_alter_inplace_prepare= { 0, "Preparing for alter table", 0};
+PSI_stage_info stage_alter_inplace= { 0, "Altering table", 0};
+PSI_stage_info stage_alter_inplace_commit= { 0, "Committing alter table to storage engine", 0};
+PSI_stage_info stage_apply_event= { 0, "Apply log event", 0};
 PSI_stage_info stage_changing_master= { 0, "Changing master", 0};
 PSI_stage_info stage_checking_master_version= { 0, "Checking master version", 0};
-PSI_stage_info stage_checking_permissions= { 0, "checking permissions", 0};
-PSI_stage_info stage_checking_privileges_on_cached_query= { 0, "checking privileges on cached query", 0};
-PSI_stage_info stage_checking_query_cache_for_query= { 0, "checking query cache for query", 0};
-PSI_stage_info stage_cleaning_up= { 0, "cleaning up", 0};
-PSI_stage_info stage_closing_tables= { 0, "closing tables", 0};
+PSI_stage_info stage_checking_permissions= { 0, "Checking permissions", 0};
+PSI_stage_info stage_checking_privileges_on_cached_query= { 0, "Checking privileges on cached query", 0};
+PSI_stage_info stage_checking_query_cache_for_query= { 0, "Checking query cache for query", 0};
+PSI_stage_info stage_cleaning_up= { 0, "Reset for next command", 0};
+PSI_stage_info stage_closing_tables= { 0, "Closing tables", 0};
 PSI_stage_info stage_connecting_to_master= { 0, "Connecting to master", 0};
-PSI_stage_info stage_converting_heap_to_myisam= { 0, "converting HEAP to " TMP_ENGINE_NAME, 0};
+PSI_stage_info stage_converting_heap_to_myisam= { 0, "Converting HEAP to " TMP_ENGINE_NAME, 0};
 PSI_stage_info stage_copying_to_group_table= { 0, "Copying to group table", 0};
 PSI_stage_info stage_copying_to_tmp_table= { 0, "Copying to tmp table", 0};
-PSI_stage_info stage_copy_to_tmp_table= { 0, "copy to tmp table", 0};
+PSI_stage_info stage_copy_to_tmp_table= { 0, "Copy to tmp table", 0};
 PSI_stage_info stage_creating_delayed_handler= { 0, "Creating delayed handler", 0};
 PSI_stage_info stage_creating_sort_index= { 0, "Creating sort index", 0};
-PSI_stage_info stage_creating_table= { 0, "creating table", 0};
+PSI_stage_info stage_creating_table= { 0, "Creating table", 0};
 PSI_stage_info stage_creating_tmp_table= { 0, "Creating tmp table", 0};
-PSI_stage_info stage_deleting_from_main_table= { 0, "deleting from main table", 0};
-PSI_stage_info stage_deleting_from_reference_tables= { 0, "deleting from reference tables", 0};
-PSI_stage_info stage_discard_or_import_tablespace= { 0, "discard_or_import_tablespace", 0};
-PSI_stage_info stage_enabling_keys= { 0, "enabling keys", 0};
-PSI_stage_info stage_end= { 0, "end", 0};
-PSI_stage_info stage_executing= { 0, "executing", 0};
+PSI_stage_info stage_deleting_from_main_table= { 0, "Deleting from main table", 0};
+PSI_stage_info stage_deleting_from_reference_tables= { 0, "Deleting from reference tables", 0};
+PSI_stage_info stage_discard_or_import_tablespace= { 0, "Discard_or_import_tablespace", 0};
+PSI_stage_info stage_enabling_keys= { 0, "Enabling keys", 0};
+PSI_stage_info stage_end= { 0, "End of update loop", 0};
+PSI_stage_info stage_executing= { 0, "Executing", 0};
 PSI_stage_info stage_execution_of_init_command= { 0, "Execution of init_command", 0};
-PSI_stage_info stage_explaining= { 0, "explaining", 0};
+PSI_stage_info stage_explaining= { 0, "Explaining", 0};
 PSI_stage_info stage_finding_key_cache= { 0, "Finding key cache", 0};
 PSI_stage_info stage_finished_reading_one_binlog_switching_to_next_binlog= { 0, "Finished reading one binlog; switching to next binlog", 0};
 PSI_stage_info stage_flushing_relay_log_and_master_info_repository= { 0, "Flushing relay log and master info repository.", 0};
 PSI_stage_info stage_flushing_relay_log_info_file= { 0, "Flushing relay-log info file.", 0};
-PSI_stage_info stage_freeing_items= { 0, "freeing items", 0};
-PSI_stage_info stage_fulltext_initialization= { 0, "FULLTEXT initialization", 0};
-PSI_stage_info stage_got_handler_lock= { 0, "got handler lock", 0};
-PSI_stage_info stage_got_old_table= { 0, "got old table", 0};
-PSI_stage_info stage_init= { 0, "init", 0};
-PSI_stage_info stage_insert= { 0, "insert", 0};
-PSI_stage_info stage_invalidating_query_cache_entries_table= { 0, "invalidating query cache entries (table)", 0};
-PSI_stage_info stage_invalidating_query_cache_entries_table_list= { 0, "invalidating query cache entries (table list)", 0};
+PSI_stage_info stage_freeing_items= { 0, "Freeing items", 0};
+PSI_stage_info stage_fulltext_initialization= { 0, "Fulltext initialization", 0};
+PSI_stage_info stage_got_handler_lock= { 0, "Got handler lock", 0};
+PSI_stage_info stage_got_old_table= { 0, "Got old table", 0};
+PSI_stage_info stage_init= { 0, "Init", 0};
+PSI_stage_info stage_init_update= { 0, "Init for update", 0};
+PSI_stage_info stage_insert= { 0, "Insert", 0};
+PSI_stage_info stage_invalidating_query_cache_entries_table= { 0, "Invalidating query cache entries (table)", 0};
+PSI_stage_info stage_invalidating_query_cache_entries_table_list= { 0, "Invalidating query cache entries (table list)", 0};
 PSI_stage_info stage_killing_slave= { 0, "Killing slave", 0};
-PSI_stage_info stage_logging_slow_query= { 0, "logging slow query", 0};
+PSI_stage_info stage_logging_slow_query= { 0, "Logging slow query", 0};
 PSI_stage_info stage_making_temp_file_append_before_load_data= { 0, "Making temporary file (append) before replaying LOAD DATA INFILE.", 0};
 PSI_stage_info stage_making_temp_file_create_before_load_data= { 0, "Making temporary file (create) before replaying LOAD DATA INFILE.", 0};
-PSI_stage_info stage_manage_keys= { 0, "manage keys", 0};
+PSI_stage_info stage_manage_keys= { 0, "Manage keys", 0};
 PSI_stage_info stage_master_has_sent_all_binlog_to_slave= { 0, "Master has sent all binlog to slave; waiting for binlog to be updated", 0};
 PSI_stage_info stage_opening_tables= { 0, "Opening tables", 0};
-PSI_stage_info stage_optimizing= { 0, "optimizing", 0};
-PSI_stage_info stage_preparing= { 0, "preparing", 0};
+PSI_stage_info stage_optimizing= { 0, "Optimizing", 0};
+PSI_stage_info stage_preparing= { 0, "Preparing", 0};
 PSI_stage_info stage_purging_old_relay_logs= { 0, "Purging old relay logs", 0};
-PSI_stage_info stage_query_end= { 0, "query end", 0};
+PSI_stage_info stage_query_end= { 0, "Query end", 0};
+PSI_stage_info stage_starting_cleanup= { 0, "Starting cleanup", 0};
+PSI_stage_info stage_rollback= { 0, "Rollback", 0};
+PSI_stage_info stage_rollback_implicit= { 0, "Rollback_implicit", 0};
+PSI_stage_info stage_commit= { 0, "Commit", 0};
+PSI_stage_info stage_commit_implicit= { 0, "Commit_implicit", 0};
 PSI_stage_info stage_queueing_master_event_to_the_relay_log= { 0, "Queueing master event to the relay log", 0};
 PSI_stage_info stage_reading_event_from_the_relay_log= { 0, "Reading event from the relay log", 0};
-PSI_stage_info stage_recreating_table= { 0, "recreating table", 0};
+PSI_stage_info stage_recreating_table= { 0, "Recreating table", 0};
 PSI_stage_info stage_registering_slave_on_master= { 0, "Registering slave on master", 0};
 PSI_stage_info stage_removing_duplicates= { 0, "Removing duplicates", 0};
-PSI_stage_info stage_removing_tmp_table= { 0, "removing tmp table", 0};
-PSI_stage_info stage_rename= { 0, "rename", 0};
-PSI_stage_info stage_rename_result_table= { 0, "rename result table", 0};
+PSI_stage_info stage_removing_tmp_table= { 0, "Removing tmp table", 0};
+PSI_stage_info stage_rename= { 0, "Rename", 0};
+PSI_stage_info stage_rename_result_table= { 0, "Rename result table", 0};
 PSI_stage_info stage_requesting_binlog_dump= { 0, "Requesting binlog dump", 0};
-PSI_stage_info stage_reschedule= { 0, "reschedule", 0};
+PSI_stage_info stage_reschedule= { 0, "Reschedule", 0};
 PSI_stage_info stage_searching_rows_for_update= { 0, "Searching rows for update", 0};
 PSI_stage_info stage_sending_binlog_event_to_slave= { 0, "Sending binlog event to slave", 0};
-PSI_stage_info stage_sending_cached_result_to_client= { 0, "sending cached result to client", 0};
+PSI_stage_info stage_sending_cached_result_to_client= { 0, "Sending cached result to client", 0};
 PSI_stage_info stage_sending_data= { 0, "Sending data", 0};
-PSI_stage_info stage_setup= { 0, "setup", 0};
-PSI_stage_info stage_show_explain= { 0, "show explain", 0};
+PSI_stage_info stage_setup= { 0, "Setup", 0};
+PSI_stage_info stage_show_explain= { 0, "Show explain", 0};
 PSI_stage_info stage_slave_has_read_all_relay_log= { 0, "Slave has read all relay log; waiting for the slave I/O thread to update it", 0};
 PSI_stage_info stage_sorting= { 0, "Sorting", 0};
 PSI_stage_info stage_sorting_for_group= { 0, "Sorting for group", 0};
 PSI_stage_info stage_sorting_for_order= { 0, "Sorting for order", 0};
 PSI_stage_info stage_sorting_result= { 0, "Sorting result", 0};
-PSI_stage_info stage_statistics= { 0, "statistics", 0};
+PSI_stage_info stage_statistics= { 0, "Statistics", 0};
 PSI_stage_info stage_sql_thd_waiting_until_delay= { 0, "Waiting until MASTER_DELAY seconds after master executed event", 0 };
-PSI_stage_info stage_storing_result_in_query_cache= { 0, "storing result in query cache", 0};
-PSI_stage_info stage_storing_row_into_queue= { 0, "storing row into queue", 0};
+PSI_stage_info stage_storing_result_in_query_cache= { 0, "Storing result in query cache", 0};
+PSI_stage_info stage_storing_row_into_queue= { 0, "Storing row into queue", 0};
 PSI_stage_info stage_system_lock= { 0, "System lock", 0};
 PSI_stage_info stage_unlocking_tables= { 0, "Unlocking tables", 0};
 PSI_stage_info stage_table_lock= { 0, "Table lock", 0};
 PSI_stage_info stage_filling_schema_table= { 0, "Filling schema table", 0};
-PSI_stage_info stage_update= { 0, "update", 0};
-PSI_stage_info stage_updating= { 0, "updating", 0};
-PSI_stage_info stage_updating_main_table= { 0, "updating main table", 0};
-PSI_stage_info stage_updating_reference_tables= { 0, "updating reference tables", 0};
-PSI_stage_info stage_upgrading_lock= { 0, "upgrading lock", 0};
+PSI_stage_info stage_update= { 0, "Update", 0};
+PSI_stage_info stage_updating= { 0, "Updating", 0};
+PSI_stage_info stage_updating_main_table= { 0, "Updating main table", 0};
+PSI_stage_info stage_updating_reference_tables= { 0, "Updating reference tables", 0};
+PSI_stage_info stage_upgrading_lock= { 0, "Upgrading lock", 0};
 PSI_stage_info stage_user_lock= { 0, "User lock", 0};
 PSI_stage_info stage_user_sleep= { 0, "User sleep", 0};
-PSI_stage_info stage_verifying_table= { 0, "verifying table", 0};
-PSI_stage_info stage_waiting_for_delay_list= { 0, "waiting for delay_list", 0};
-PSI_stage_info stage_waiting_for_gtid_to_be_written_to_binary_log= { 0, "waiting for GTID to be written to binary log", 0};
-PSI_stage_info stage_waiting_for_handler_insert= { 0, "waiting for handler insert", 0};
-PSI_stage_info stage_waiting_for_handler_lock= { 0, "waiting for handler lock", 0};
-PSI_stage_info stage_waiting_for_handler_open= { 0, "waiting for handler open", 0};
+PSI_stage_info stage_verifying_table= { 0, "Verifying table", 0};
+PSI_stage_info stage_waiting_for_delay_list= { 0, "Waiting for delay_list", 0};
+PSI_stage_info stage_waiting_for_gtid_to_be_written_to_binary_log= { 0, "Waiting for GTID to be written to binary log", 0};
+PSI_stage_info stage_waiting_for_handler_insert= { 0, "Waiting for handler insert", 0};
+PSI_stage_info stage_waiting_for_handler_lock= { 0, "Waiting for handler lock", 0};
+PSI_stage_info stage_waiting_for_handler_open= { 0, "Waiting for handler open", 0};
 PSI_stage_info stage_waiting_for_insert= { 0, "Waiting for INSERT", 0};
 PSI_stage_info stage_waiting_for_master_to_send_event= { 0, "Waiting for master to send event", 0};
 PSI_stage_info stage_waiting_for_master_update= { 0, "Waiting for master update", 0};
@@ -10283,6 +10346,7 @@ PSI_stage_info stage_waiting_for_the_slave_thread_to_advance_position= { 0, "Wai
 PSI_stage_info stage_waiting_to_finalize_termination= { 0, "Waiting to finalize termination", 0};
 PSI_stage_info stage_waiting_to_get_readlock= { 0, "Waiting to get readlock", 0};
 PSI_stage_info stage_binlog_waiting_background_tasks= { 0, "Waiting for background binlog tasks", 0};
+PSI_stage_info stage_binlog_write= { 0, "Writing to binlog", 0};
 PSI_stage_info stage_binlog_processing_checkpoint_notify= { 0, "Processing binlog checkpoint notification", 0};
 PSI_stage_info stage_binlog_stopping_background_thread= { 0, "Stopping binlog background thread", 0};
 PSI_stage_info stage_waiting_for_work_from_sql_thread= { 0, "Waiting for work from SQL thread", 0};
@@ -10313,6 +10377,7 @@ PSI_stage_info *all_server_stages[]=
   & stage_alter_inplace_commit,
   & stage_alter_inplace_prepare,
   & stage_apply_event,
+  & stage_binlog_write,
   & stage_binlog_processing_checkpoint_notify,
   & stage_binlog_stopping_background_thread,
   & stage_binlog_waiting_background_tasks,
@@ -10323,6 +10388,8 @@ PSI_stage_info *all_server_stages[]=
   & stage_checking_query_cache_for_query,
   & stage_cleaning_up,
   & stage_closing_tables,
+  & stage_commit,
+  & stage_commit_implicit,
   & stage_connecting_to_master,
   & stage_converting_heap_to_myisam,
   & stage_copy_to_tmp_table,
@@ -10349,6 +10416,7 @@ PSI_stage_info *all_server_stages[]=
   & stage_got_handler_lock,
   & stage_got_old_table,
   & stage_init,
+  & stage_init_update,
   & stage_insert,
   & stage_invalidating_query_cache_entries_table,
   & stage_invalidating_query_cache_entries_table_list,
@@ -10362,6 +10430,7 @@ PSI_stage_info *all_server_stages[]=
   & stage_optimizing,
   & stage_preparing,
   & stage_purging_old_relay_logs,
+  & stage_starting_cleanup,
   & stage_query_end,
   & stage_queueing_master_event_to_the_relay_log,
   & stage_reading_event_from_the_relay_log,
@@ -10373,6 +10442,8 @@ PSI_stage_info *all_server_stages[]=
   & stage_rename_result_table,
   & stage_requesting_binlog_dump,
   & stage_reschedule,
+  & stage_rollback,
+  & stage_rollback_implicit,
   & stage_searching_rows_for_update,
   & stage_sending_binlog_event_to_slave,
   & stage_sending_cached_result_to_client,
