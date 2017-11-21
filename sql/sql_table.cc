@@ -62,7 +62,7 @@
 
 const char *primary_key_name="PRIMARY";
 
-static bool check_if_keyname_exists(const char *name,KEY *start, KEY *end);
+static int check_if_keyname_exists(const char *name,KEY *start, KEY *end);
 static char *make_unique_key_name(THD *thd, const char *field_name, KEY *start,
                                   KEY *end);
 static void make_unique_constraint_name(THD *thd, LEX_CSTRING *name,
@@ -3318,6 +3318,19 @@ int mysql_add_invisible_field(THD *thd, List<Create_field> * field_list,
   field_list->push_front(fld, thd->mem_root);
   return 0;
 }
+
+Key *
+mysql_add_invisible_index(THD *thd, List<Key> *key_list,
+        LEX_CSTRING* field_name, enum Key::Keytype type)
+{
+  Key *key= NULL;
+  key= new (thd->mem_root) Key(type, &null_clex_str, HA_KEY_ALG_UNDEF,
+         false, DDL_options(DDL_options::OPT_NONE));
+  key->columns.push_back(new(thd->mem_root) Key_part_spec(field_name, 0),
+          thd->mem_root);
+  key_list->push_back(key, thd->mem_root);
+  return key;
+}
 /*
   Preparation for table creation
 
@@ -3379,10 +3392,8 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
           LEX_CSTRING temp;
           temp.str= "invisible";
           temp.length= strlen("invisible");
-          //TODO sometime alter_list != thd->lex->alter_list ,
-          //I forgot when , but I remember that is why I send create_list
-          //as a parameter in mysql_add_invisible_field
-          thd->lex->add_key_to_list(&temp, Key::UNIQUE, false);
+          mysql_add_invisible_index(thd, &alter_info->key_list
+                  , &temp, Key::MULTIPLE);
           });
   LEX_CSTRING* connect_string = &create_info->connect_string;
   if (connect_string->length != 0 &&
@@ -5139,7 +5150,7 @@ err:
     [1..)    index + 1 of duplicate key name
 **/
 
-static bool
+static int
 check_if_keyname_exists(const char *name, KEY *start, KEY *end)
 {
   uint i= 1;
