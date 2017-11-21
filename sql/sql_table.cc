@@ -3379,6 +3379,9 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
           LEX_CSTRING temp;
           temp.str= "invisible";
           temp.length= strlen("invisible");
+          //TODO sometime alter_list != thd->lex->alter_list ,
+          //I forgot when , but I remember that is why I send create_list
+          //as a parameter in mysql_add_invisible_field
           thd->lex->add_key_to_list(&temp, Key::UNIQUE, false);
           });
   LEX_CSTRING* connect_string = &create_info->connect_string;
@@ -7671,8 +7674,11 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
   bitmap_clear_all(&table->tmp_set);
   for (f_ptr=table->field ; (field= *f_ptr) ; f_ptr++)
   {
-    if (field->field_visibility == COMPLETELY_INVISIBLE)
-        continue;
+    /*TODO
+      We should not delete COMPLETELY_INVISIBLE on every Alter
+      but only when there is some change related to this column*/
+//    if (field->field_visibility == COMPLETELY_INVISIBLE)
+  //      continue;
     Alter_drop *drop;
     if (field->type() == MYSQL_TYPE_VARCHAR)
       create_info->varchar= TRUE;
@@ -7764,12 +7770,12 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
   def_it.rewind();
   while ((def=def_it++))			// Add new columns
   {
+    Create_field *find;
     if (def->change.str && ! def->field)
     {
       /*
         Check if there is modify for newly added field.
       */
-      Create_field *find;
       find_it.rewind();
       while((find=find_it++))
       {
@@ -7809,7 +7815,6 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
       new_create_list.push_back(def, thd->mem_root);
     else
     {
-      Create_field *find;
       if (def->change.str)
       {
         find_it.rewind();
@@ -7852,6 +7857,18 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
         }
         find_it.after(def);			// Put column after this
       }
+    }
+    /*
+     If newely added column name is same as any of COMPLETELY_INVISIBLE column
+     then we have to delete that corresponding COMPLETELY_INVISIBLE Field.
+    */
+    find_it.rewind();
+    while ((find= find_it++))
+    {
+      if (!my_strcasecmp(system_charset_info, find->field_name.str,
+                  def->field_name.str) &&
+                 find->field_visibility == COMPLETELY_INVISIBLE)
+        find_it.remove();
     }
     /*
       Check if there is alter for newly added field.
@@ -7908,7 +7925,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
 	  !my_strcasecmp(system_charset_info,key_name, drop->name))
 	break;
     }
-    if (drop && key_info->flags & HA_INVISIBLE_KEY)
+    if (drop && !(key_info->flags & HA_INVISIBLE_KEY))
     {
       if (table->s->tmp_table == NO_TMP_TABLE)
       {
@@ -8078,8 +8095,8 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
         goto err;
       }
       uint dup_index= 0;
-      if ((dup_index= check_if_keyname_exists(key->name.str, table->key_info,
-                    table->key_info + table->s->keys)))
+      if (key->name.str && (dup_index= check_if_keyname_exists(key->name.str,
+                      table->key_info, table->key_info + table->s->keys)))
       {
         if (table->s->key_info[dup_index - 1].flags & HA_INVISIBLE_KEY)
         {
