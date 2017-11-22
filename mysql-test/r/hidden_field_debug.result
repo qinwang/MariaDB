@@ -275,9 +275,11 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 create index invisible on t1(c);
 explain select * from t1 where invisible =9;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	ref	invisible	invisible	5	const	3	
+1	SIMPLE	t1	ref	invisible_2	invisible_2	5	const	3	
 show indexes in t1;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment
 t1	1	b	1	b	A	NULL	NULL	NULL	YES	BTREE		
-t1	1	invisible	1	invisible	A	NULL	NULL	NULL	YES	BTREE		
+t1	1	invisible	1	c	A	NULL	NULL	NULL	YES	BTREE		
+t1	1	invisible_2	1	invisible	A	NULL	NULL	NULL	YES	BTREE		
 drop table t1;
+set @old_debug= @@debug_dbug;

@@ -199,3 +199,4 @@ create index invisible on t1(c);
 explain select * from t1 where invisible =9;
 show indexes in t1;
 drop table t1;
+set @old_debug= @@debug_dbug;

@@ -8125,6 +8125,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
               if (table->s->tmp_table == NO_TMP_TABLE)
                 (void) delete_statistics_for_index(thd, table,
                          &table->key_info[dup_index - 1], FALSE);
+              break;
             }
           }
         }
