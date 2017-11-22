@@ -347,6 +347,10 @@ public:
   execute_function(THD *thd, Item **args, uint argcount, Field *return_fld);
 
   bool
+  execute_aggregate_function(THD *thd, Item **args, uint argcount,
+                             Field *return_fld, sp_rcontext **nctx,
+                             MEM_ROOT *caller_mem_root);
+  bool
   execute_procedure(THD *thd, List<Item> *args);
 
   static void
@@ -871,6 +875,9 @@ private:
 
   bool
   execute(THD *thd, bool merge_da_on_success);
+
+  bool
+  execute_agg(THD *thd, bool merge_da_on_success);
 
   /**
     Perform a forward flow analysis in the generated code.
@@ -1820,6 +1827,32 @@ private:
   List<sp_variable> m_varlist;
 
 }; // class sp_instr_cfetch : public sp_instr
+
+/*
+This class is created for the special fetch instruction
+FETCH GROUP NEXT ROW, used in the user-defined aggregate
+functions
+*/
+
+class sp_instr_agg_cfetch : public sp_instr
+{
+  sp_instr_agg_cfetch(const sp_instr_cfetch &); /**< Prevent use of these */
+  void operator=(sp_instr_cfetch &);
+
+public:
+
+  sp_instr_agg_cfetch(uint ip, sp_pcontext *ctx)
+    : sp_instr(ip, ctx){}
+
+  virtual ~sp_instr_agg_cfetch()
+  {}
+
+  virtual int execute(THD *thd, uint *nextp);
+
+  virtual void print(String *str){};
+}; // class sp_instr_agg_cfetch : public sp_instr
+
+
 
 
 class sp_instr_error : public sp_instr

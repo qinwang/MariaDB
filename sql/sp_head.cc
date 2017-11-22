@@ -4216,6 +4216,35 @@ sp_instr_cfetch::print(String *str)
   }
 }
 
+int
+sp_instr_agg_cfetch::execute(THD *thd, uint *nextp)
+{
+  DBUG_ENTER("sp_instr_cfetch::execute");
+  int res= 0;
+  if (!thd->spcont->instr_ptr)
+  {
+    *nextp= m_ip+1;
+    thd->spcont->instr_ptr= m_ip+1;
+  }
+  else if (!thd->spcont->pause_state)
+    thd->spcont->pause_state= TRUE;
+  else
+  {
+    thd->spcont->pause_state= FALSE;
+    if (thd->server_status == SERVER_STATUS_LAST_ROW_SENT)
+    {
+      my_message(ER_SP_FETCH_NO_DATA,
+        ER_THD(thd, ER_SP_FETCH_NO_DATA), MYF(0));
+      res=-1;
+      thd->spcont->quit_func= TRUE;
+    }
+    else
+      *nextp = m_ip+1;
+  }
+  DBUG_RETURN(res);
+}
+
+
 
 /*
   sp_instr_cursor_copy_struct class functions
