@@ -197,6 +197,7 @@ public:
   enum_sp_suid_behaviour suid() const { return m_chistics.suid; }
   bool detistic() const { return m_chistics.detistic; }
   enum_sp_data_access daccess() const { return m_chistics.daccess; }
+  enum_sp_aggregate_behaviour agg_type() const { return m_chistics.agg_type;}
   /**
     Is this routine being executed?
   */

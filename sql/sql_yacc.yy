@@ -2629,11 +2629,22 @@ create:
         | create_or_replace definer FUNCTION_SYM
           { Lex->create_info.set($1); }
           sf_tail
-          { }
+          { 
+            if (Lex->sp_chistics.agg_type == GROUP_AGGREGATE)
+            {
+              my_yyabort_error((ER_NOT_AGGREGATE_FUNCTION, MYF(0), ""));
+            }
+            Lex->sp_chistics.agg_type = NOT_AGGREGATE;
+          }
         | create_or_replace definer AGGREGATE_SYM FUNCTION_SYM
           { Lex->create_info.set($1); }
           sf_tail
-          { }
+          {
+            if (Lex->sp_chistics.agg_type != GROUP_AGGREGATE)
+            {
+              my_yyabort_error((ER_INVALID_AGGREGATE_FUNCTION, MYF(0), ""));
+            }
+          }
         | create_or_replace no_definer FUNCTION_SYM
           { Lex->create_info.set($1); }
           create_function_tail
@@ -2670,12 +2681,24 @@ create:
         ;
 
 create_function_tail:
-          sf_tail { }
+          sf_tail 
+          {
+            if (Lex->sp_chistics.agg_type == GROUP_AGGREGATE)
+            {
+              my_yyabort_error((ER_NOT_AGGREGATE_FUNCTION, MYF(0), ""));
+            }
+          }
         | udf_tail { Lex->udf.type= UDFTYPE_FUNCTION; }
         ;
 
 create_function_tail2:
-          sf_tail { }
+          sf_tail 
+         {
+            if (Lex->sp_chistics.agg_type != GROUP_AGGREGATE)
+            {
+              my_yyabort_error((ER_INVALID_AGGREGATE_FUNCTION, MYF(0), ""));
+            }
+         }
         | udf_tail { Lex->udf.type= UDFTYPE_AGGREGATE; }
         ;
 opt_sequence:
@@ -3994,6 +4017,7 @@ sp_proc_stmt_fetch:
          sp_proc_stmt_fetch_head sp_fetch_list { }
        | FETCH_SYM GROUP_SYM NEXT_SYM ROW_SYM
          {
+           Lex->sp_chistics.agg_type= GROUP_AGGREGATE;
          }
         ;
 
@@ -16839,12 +16863,14 @@ sf_tail:
           {
             LEX *lex= thd->lex;
             Lex_input_stream *lip= YYLIP;
-
+            lex->sp_chistics.agg_type= NOT_AGGREGATE;
             lex->sphead->set_chistics(lex->sp_chistics);
             lex->sphead->set_body_start(thd, lip->get_cpp_tok_start());
           }
           sp_proc_stmt_in_returns_clause
           {
+            LEX *lex= thd->lex;
+            lex->sphead->set_chistics(lex->sp_chistics);
             if (Lex->sp_body_finalize_function(thd))
               MYSQL_YYABORT;
           }
