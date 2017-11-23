@@ -6142,6 +6142,7 @@ end_with_restore_list:
       const Sp_handler *sph= Sp_handler::handler(lex->sql_command);
       if (sph->sp_show_create_routine(thd, lex->spname))
         goto error;
+      break;
     }
   case SQLCOM_SHOW_PROC_CODE:
   case SQLCOM_SHOW_FUNC_CODE:

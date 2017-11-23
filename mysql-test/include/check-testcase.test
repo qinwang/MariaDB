@@ -120,6 +120,7 @@ EOF
 --remove_file $_INC_FILE
 # Now $before is set to 1 if we are executing before the test and 0 if after the test.
 
+call mtr.check_testcase();
 #
 # Check that SHOW ENGINE INNODB STATUS does not show any active transactions
 # We do this only if wsrep provider is loaded, to avoid disturbing any non-Galera MTR tests
