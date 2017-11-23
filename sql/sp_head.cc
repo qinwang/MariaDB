@@ -999,6 +999,8 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
   bool err_status= FALSE;
   uint ip= 0;
   sql_mode_t save_sql_mode;
+  if (m_chistics.agg_type == GROUP_AGGREGATE)
+    ip= thd->spcont->instr_ptr;
   bool save_abort_on_warning;
   Query_arena *old_arena;
   /* per-instruction arena */
@@ -1163,6 +1165,7 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
 #if defined(ENABLED_PROFILING)
       thd->profiling.discard_current_query();
 #endif
+      thd->spcont->quit_func= TRUE;
       break;
     }
 
@@ -1232,7 +1235,8 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
     /* Reset sp_rcontext::end_partial_result_set flag. */
     ctx->end_partial_result_set= FALSE;
 
-  } while (!err_status && !thd->killed && !thd->is_fatal_error);
+  } while (!err_status && !thd->killed && !thd->is_fatal_error
+           && !thd->spcont->pause_state);
 
 #if defined(ENABLED_PROFILING)
   thd->profiling.finish_current_query();
@@ -1248,9 +1252,13 @@ sp_head::execute(THD *thd, bool merge_da_on_success)
 
   thd->restore_active_arena(&execute_arena, &backup_arena);
 
-  thd->spcont->pop_all_cursors(); // To avoid memory leaks after an error
+  if (m_chistics.agg_type != GROUP_AGGREGATE ||
+      (m_chistics.agg_type == GROUP_AGGREGATE && thd->spcont->quit_func))
+    thd->spcont->pop_all_cursors(); // To avoid memory leaks after an error
 
   /* Restore all saved */
+  if (m_chistics.agg_type == GROUP_AGGREGATE)
+    thd->spcont->instr_ptr= ip;
   thd->server_status= (thd->server_status & ~status_backup_mask) | old_server_status;
   old_packet.swap(thd->packet);
   DBUG_ASSERT(thd->change_list.is_empty());
@@ -1862,6 +1870,239 @@ err_with_cleanup:
       thd->spcont == NULL && !thd->binlog_evt_union.do_union)
     thd->issue_unsafe_warnings();
 
+  DBUG_RETURN(err_status);
+}
+
+/**
+  Execute an aggregate function.
+   - changes security context for SUID routines
+   - switch to new memroot
+   - call sp_head::execute
+   - evaluate parameters
+   - restore old memroot
+   - evaluate the return value
+   - restores security context
+  @param thd               Thread handle
+  @param argp              Passed arguments
+  @param argcount          Number of passed arguments. We need to check if
+                           this is correct.
+  @param return_value_fld  Save result here.
+  @param func_ctx          Pointer to the runtime context
+  @param call_mem_root     Memroot for the current aggregate function
+  @todo
+    In future we should associate call arena/mem_root with
+    sp_rcontext and allocate all these objects (and sp_rcontext
+    itself) on it directly rather than juggle with arenas.
+  @retval
+    FALSE  on success
+  @retval
+    TRUE   on error
+*/
+
+bool
+sp_head::execute_aggregate_function(THD *thd, Item **argp, uint argcount,
+                                    Field *return_value_fld, sp_rcontext **func_ctx,
+                                    MEM_ROOT *call_mem_root)
+{
+  ulonglong UNINIT_VAR(binlog_save_options);
+  sp_rcontext *octx= thd->spcont;
+  bool need_binlog_call= FALSE;
+  uint arg_no;
+  char buf[STRING_BUFFER_USUAL_SIZE];
+  String binlog_buf(buf, sizeof(buf), &my_charset_bin);
+  bool err_status= FALSE;
+  Query_arena call_arena(call_mem_root, Query_arena::STMT_INITIALIZED_FOR_SP);
+  Query_arena backup_arena;
+  DBUG_ENTER("sp_head::execute_aggregate_function");
+  DBUG_PRINT("info", ("function %s", m_name.str));
+
+  /*
+    Check that the function is called with all specified arguments.
+    If it is not, use my_error() to report an error, or it will not terminate
+    the invoking query properly.
+  */
+  if (argcount != m_pcont->context_var_count())
+  {
+    /*
+      Need to use my_error here, or it will not terminate the
+      invoking query properly.
+    */
+    my_error(ER_SP_WRONG_NO_OF_ARGS, MYF(0),
+             "FUNCTION", m_qname.str, m_pcont->context_var_count(), argcount);
+    DBUG_RETURN(TRUE);
+  }
+  /*
+    Prepare arena and memroot for objects which lifetime is whole
+    duration of function call (sp_rcontext, it's tables and items,
+    sp_cursor and Item_cache holders for case expressions).
+    We can't use caller's arena/memroot for those objects because
+    in this case some fixed amount of memory will be consumed for
+    each function/trigger invocation and so statements which involve
+    lot of them will hog memory. The arena only needs to be created if
+    the runtime context is not created.
+  */
+  if (!(*func_ctx))
+  {
+    thd->set_n_backup_active_arena(&call_arena, &backup_arena);
+
+    if (!(*func_ctx= rcontext_create(thd, return_value_fld, argp, argcount)))
+    {
+      thd->restore_active_arena(&call_arena, &backup_arena);
+      err_status= TRUE;
+      goto err_with_cleanup;
+    }
+    /*
+    We have to switch temporarily back to callers arena/memroot.
+    Function arguments belong to the caller and so the may reference
+    memory which they will allocate during calculation long after
+    this function call will be finished (e.g. in Item::cleanup()).
+    */
+    thd->restore_active_arena(&call_arena, &backup_arena);
+  }
+
+  for (arg_no= 0; arg_no < argcount; arg_no++)
+  {
+    // Arguments must be fixed in Item_sum_sp::fix_fields
+    DBUG_ASSERT(argp[arg_no]->fixed);
+    if ((err_status= (*func_ctx)->set_variable(thd, arg_no, &(argp[arg_no]))))
+      goto err_with_cleanup;
+  }
+
+  /*
+    If row-based binlogging, we don't need to binlog the function's call, let
+    each substatement be binlogged its way.
+  */
+  need_binlog_call= mysql_bin_log.is_open() &&
+                    (thd->variables.option_bits & OPTION_BIN_LOG) &&
+                    !thd->is_current_stmt_binlog_format_row();
+
+  /*
+    Remember the original arguments for unrolled replication of functions
+    before they are changed by execution.
+  */
+  if (need_binlog_call)
+  {
+    binlog_buf.length(0);
+    binlog_buf.append(STRING_WITH_LEN("SELECT "));
+    append_identifier(thd, &binlog_buf, m_db.str, m_db.length);
+    binlog_buf.append('.');
+    append_identifier(thd, &binlog_buf, m_name.str, m_name.length);
+    binlog_buf.append('(');
+    for (arg_no= 0; arg_no < argcount; arg_no++)
+    {
+      String str_value_holder;
+      String *str_value;
+
+      if (arg_no)
+        binlog_buf.append(',');
+
+      Item *item= (*func_ctx)->get_item(arg_no);
+      str_value= item->type_handler()->print_item_value(thd, item,
+                                                        &str_value_holder);
+
+      if (str_value)
+        binlog_buf.append(*str_value);
+      else
+        binlog_buf.append(STRING_WITH_LEN("NULL"));
+    }
+    binlog_buf.append(')');
+  }
+  thd->spcont= *func_ctx;
+
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  Security_context *save_security_ctx;
+  if (set_routine_security_ctx(thd, this, &save_security_ctx))
+  {
+    err_status= TRUE;
+    goto err_with_cleanup;
+  }
+#endif
+
+  if (need_binlog_call)
+  {
+    query_id_t q;
+    reset_dynamic(&thd->user_var_events);
+    /*
+      In case of artificially constructed events for function calls
+      we have separate union for each such event and hence can't use
+      query_id of real calling statement as the start of all these
+      unions (this will break logic of replication of user-defined
+      variables). So we use artifical value which is guaranteed to
+      be greater than all query_id's of all statements belonging
+      to previous events/unions.
+      Possible alternative to this is logging of all function invocations
+      as one select and not resetting THD::user_var_events before
+      each invocation.
+    */
+
+    q= get_query_id();
+    mysql_bin_log.start_union_events(thd, q + 1);
+    binlog_save_options= thd->variables.option_bits;
+    thd->variables.option_bits&= ~OPTION_BIN_LOG;
+  }
+
+  /*
+    Switch to call arena/mem_root so objects like sp_cursor or
+    Item_cache holders for case expressions can be allocated on it.
+    TODO: In future we should associate call arena/mem_root with
+          sp_rcontext and allocate all these objects (and sp_rcontext
+          itself) on it directly rather than juggle with arenas.
+  */
+  thd->set_n_backup_active_arena(&call_arena, &backup_arena);
+  err_status= execute(thd, TRUE);
+
+  thd->restore_active_arena(&call_arena, &backup_arena);
+
+  if (need_binlog_call)
+  {
+    mysql_bin_log.stop_union_events(thd);
+    thd->variables.option_bits= binlog_save_options;
+    if (thd->binlog_evt_union.unioned_events)
+    {
+      int errcode = query_error_code(thd, thd->killed == NOT_KILLED);
+      Query_log_event qinfo(thd, binlog_buf.ptr(), binlog_buf.length(),
+                            thd->binlog_evt_union.unioned_events_trans, FALSE, FALSE, errcode);
+      if (mysql_bin_log.write(&qinfo) &&
+          thd->binlog_evt_union.unioned_events_trans)
+      {
+        push_warning(thd, Sql_condition::WARN_LEVEL_WARN, ER_UNKNOWN_ERROR,
+                     "Invoked ROUTINE modified a transactional table but MySQL "
+                     "failed to reflect this change in the binary log");
+        err_status= TRUE;
+      }
+      reset_dynamic(&thd->user_var_events);
+      /* Forget those values, in case more function calls are binlogged: */
+      thd->stmt_depends_on_first_successful_insert_id_in_prev_stmt= 0;
+      thd->auto_inc_intervals_in_cur_stmt_for_binlog.empty();
+    }
+  }
+
+  if (!err_status && thd->spcont->quit_func)
+  {
+    // We need result only in function but not in trigger
+
+    if (!thd->spcont->is_return_value_set())
+    {
+      my_error(ER_SP_NORETURNEND, MYF(0), m_name.str);
+      err_status= TRUE;
+    }
+  }
+
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  m_security_ctx.restore_security_context(thd, save_security_ctx);
+#endif
+
+
+err_with_cleanup:
+  thd->spcont= octx;
+
+  /*
+    If not insided a procedure and a function printing warning
+    messsages.
+  */
+  if (need_binlog_call &&
+      thd->spcont == NULL && !thd->binlog_evt_union.do_union)
+    thd->issue_unsafe_warnings();
   DBUG_RETURN(err_status);
 }
 
