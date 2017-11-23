@@ -2840,9 +2840,9 @@ Item_sp::execute_impl(THD *thd, Item **args, uint arg_count)
     function call into binlog.
   */
   thd->reset_sub_statement_state(&statement_state, SUB_STMT_FUNCTION);
-  err_status= m_sp->execute_aggregate_function(thd, args, arg_count,
-                                               sp_result_field, &func_ctx,
-                                               &caller_mem_root);
+  err_status= m_sp->execute_function(thd, args, arg_count,
+                                     sp_result_field, &func_ctx,
+                                     &caller_mem_root);
   thd->restore_sub_statement_state(&statement_state);
 
 error:

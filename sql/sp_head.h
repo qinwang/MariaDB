@@ -344,12 +344,9 @@ public:
                   GRANT_INFO *grant_info);
 
   bool
-  execute_function(THD *thd, Item **args, uint argcount, Field *return_fld);
-
-  bool
-  execute_aggregate_function(THD *thd, Item **args, uint argcount,
-                             Field *return_fld, sp_rcontext **nctx,
-                             MEM_ROOT *caller_mem_root);
+  execute_function(THD *thd, Item **args, uint argcount,
+                   Field *return_fld, sp_rcontext **nctx,
+                   MEM_ROOT *caller_mem_root);
   bool
   execute_procedure(THD *thd, List<Item> *args);
 
