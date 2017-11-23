@@ -355,7 +355,7 @@ public:
     ROW_NUMBER_FUNC, RANK_FUNC, DENSE_RANK_FUNC, PERCENT_RANK_FUNC,
     CUME_DIST_FUNC, NTILE_FUNC, FIRST_VALUE_FUNC, LAST_VALUE_FUNC,
     NTH_VALUE_FUNC, LEAD_FUNC, LAG_FUNC, PERCENTILE_CONT_FUNC,
-    PERCENTILE_DISC_FUNC
+    PERCENTILE_DISC_FUNC, SP_AGGREGATE_FUNC
   };
 
   Item **ref_by; /* pointer to a ref to the object used to register it */
@@ -1204,6 +1204,118 @@ private:
   void set_bits_from_counters();
 };
 
+class sp_head;
+class sp_name;
+class Query_arena;
+struct st_sp_security_context;
+
+/*
+STORED AGGREGATE FUNCTIONS
+
+This class mainly deals with the concept of making an interface
+which allows user to execute aggregate functions.For executing the
+aggregate functions we have taken a special cursor approach.
+
+@note: The cursor approach
+For the cursor approach, a new instruction FETCH GROUP NEXT ROW is created.
+If the instruction pointer points to the FETCH GROUP NEXT ROW instruction,
+there are 2 states:
+
+a) FUNCTION NOT in PAUSE STATE: In this case, the function enters the pause state and we save the
+   state of the function. The instruction pointer continues to point to the FETCH GROUP NEXT ROW
+   instruction, and the function makes a temporary pause in its execution and that the state of the
+   function is saved. The function is paused so that next row values can be set for the function's
+   arguments. After the values are passed to the arguments the function resumes execution.
+
+b) FUNCTION in PAUSE STATE: In this case, the function exits from the pause state and resumes
+   execution. The instrunction pointer is then incremented and now it points to the next
+   instruction to be executed.
+
+In the end to get the return value of the function, a signal is sent, the signal states the
+all the rows have been fetched and an error should be thrown which is defined in the handler.
+The error is handled by the handler and then the value of the function is returned.
+
+Example:
+DECLARE CONTINUE HANDLER FOR NOT FOUND RETURN ret_val;
+
+*/
+
+class Item_sum_sp :public Item_sum,
+                   public Item_sp
+{
+ private:
+  bool execute();
+  bool execute_impl(THD *thd);
+  bool init_result_field(THD *thd, sp_head *sp);
+
+public:
+  Item_sum_sp(THD *thd, Name_resolution_context *context_arg, sp_name *name);
+
+  Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
+               sp_name *name, List<Item> &list);
+
+  enum Sumfunctype sum_func () const
+  {
+    return SP_AGGREGATE_FUNC;
+  }
+  void fix_length_and_dec();
+  bool fix_fields(THD *thd, Item **ref);
+  const char *func_name() const;
+  const Type_handler *type_handler() const;
+  bool add();
+  bool sp_check_access(THD *thd);
+
+  /* val_xx functions */
+  longlong val_int()
+  {
+    if(!func_ctx || execute())
+      return 0;
+    return sp_result_field->val_int();
+  }
+
+  double val_real()
+  {
+    if(!func_ctx || execute())
+      return 0.0;
+    return sp_result_field->val_real();
+  }
+
+  my_decimal *val_decimal(my_decimal *dec_buf)
+  {
+    if(!func_ctx || execute())
+      return NULL;
+    return sp_result_field->val_decimal(dec_buf);
+  }
+
+  String *val_str(String *str)
+  {
+    String buf;
+    char buff[20];
+    buf.set(buff, 20, str->charset());
+    buf.length(0);
+    if (!func_ctx || execute())
+      return NULL;
+    /*
+      result_field will set buf pointing to internal buffer
+      of the resul_field. Due to this it will change any time
+      when SP is executed. In order to prevent occasional
+      corruption of returned value, we make here a copy.
+    */
+    sp_result_field->val_str(&buf);
+    str->copy(buf);
+    return str;
+  }
+  void reset_field(){DBUG_ASSERT(0);}
+  void update_field(){DBUG_ASSERT(0);}
+  void clear();
+  void cleanup();
+  inline Field *get_sp_result_field()
+  {
+    return sp_result_field;
+  }
+  Item *get_copy(THD *thd, MEM_ROOT *mem_root)
+  { return get_item_copy<Item_sum_sp>(thd, mem_root, this); }
+};
 
 /* Items to get the value of a stored sum function */
 

@@ -30,6 +30,10 @@
 #include "sql_priv.h"
 #include "sql_select.h"
 #include "uniques.h"
+#include "sp_rcontext.h"
+#include "sp.h"
+#include "sql_parse.h"
+#include "sp_head.h"
 
 /**
   Calculate the affordable RAM limit for structures like TREE or Unique
@@ -1233,6 +1237,234 @@ Field *Item_sum_hybrid::create_tmp_field(bool group, TABLE *table)
   return tmp_table_field_from_field_type(table);
 }
 
+/***********************************************************************
+** Item_sum_sp class
+***********************************************************************/
+
+Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
+                           sp_name *name_arg, List<Item> &list)
+  :Item_sum(thd, list), Item_sp(thd, context_arg, name_arg)
+{
+  maybe_null= 1;
+  quick_group= 0;
+}
+
+Item_sum_sp::Item_sum_sp(THD *thd, Name_resolution_context *context_arg,
+                           sp_name *name_arg)
+  :Item_sum(thd), Item_sp(thd, context_arg, name_arg)
+{
+  maybe_null= 1;
+  quick_group= 0;
+}
+
+/**
+  Initialize the result field by creating a temporary dummy table
+  and assign it to a newly created field object. Meta data used to
+  create the field is fetched from the sp_head belonging to the stored
+  procedure found in the stored procedure functon cache.
+  @note This function should be called from fix_fields to init the result
+  field. It is some what related to Item_field.
+  @see Item_field
+  @param thd A pointer to the session and thread context.
+  @return Function return error status.
+  @retval TRUE is returned on an error
+  @retval FALSE is returned on success.
+*/
+
+bool
+Item_sum_sp::init_result_field(THD *thd, sp_head *sp)
+{
+  bool res;
+  DBUG_ENTER("Item_sum_sp::init_result_field");
+  DBUG_ASSERT(m_sp == NULL);
+  DBUG_ASSERT(sp_result_field == NULL);
+
+  if (!(m_sp= sp))
+  {
+    my_missing_function_error (m_name->m_name, ErrConvDQName(m_name).ptr());
+    context->process_error(thd);
+    DBUG_RETURN(TRUE);
+  }
+  /*
+     A Field need to be attached to a Table.
+     Below we "create" a dummy table by initializing 
+     the needed pointers.
+   */
+
+  dummy_table->maybe_null = maybe_null;
+  Item_sp::init_dummy_table(thd);
+
+  res= Item_sp::init_result_field(thd, max_length, &name);
+  if (res)
+    DBUG_RETURN(res);
+  sp_result_field->null_ptr= (uchar *) &null_value;
+  sp_result_field->null_bit= 1;
+  DBUG_RETURN(res);
+}
+
+bool
+Item_sum_sp::fix_fields(THD *thd, Item **ref)
+{
+  bool res;
+  DBUG_ASSERT(fixed == 0);
+  sp_head *sp= sp_handler_function.sp_find_routine(thd, m_name, true);
+  if (init_sum_func_check(thd))
+    return TRUE;
+  decimals= 0;
+
+  res= init_result_field(thd, sp);
+
+  if (res)
+    return res;
+
+  for (uint i=0 ; i < arg_count ; i++)
+  {
+    if (args[i]->fix_fields(thd, args + i) || args[i]->check_cols(1))
+      return TRUE;
+    set_if_bigger(decimals, args[i]->decimals);
+    with_subselect|= args[i]->with_subselect;
+  }
+  result_field= NULL;
+  max_length=float_length(decimals);
+  null_value= 1;
+  fix_length_and_dec();
+
+  if (check_sum_func(thd, ref))
+    return TRUE;
+
+  memcpy (orig_args, args, sizeof (Item *) * arg_count);
+  fixed= 1;
+  return FALSE;
+}
+
+/**
+  Checks if requested access to function can be granted to user.
+  If function isn't found yet, it searches function first.
+  If function can't be found or user don't have requested access
+  error is raised.
+  @param thd thread handler
+  @return Indication if the access was granted or not.
+  @retval FALSE Access is granted.
+  @retval TRUE Requested access can't be granted or function doesn't exists.
+*/
+
+bool
+Item_sum_sp::sp_check_access(THD *thd)
+{
+  DBUG_ENTER("Item_sum_sp::sp_check_access");
+  DBUG_RETURN(Item_sp::sp_check_access(thd));
+}
+
+/**
+  Execute function to store value in result field.
+  This is called when we need the value to be returned for the function.
+  Here we send a signal in form of the server status that all rows have been
+  fetched and now we have to exit from the function with the return value.
+  @return Function returns error status.
+  @retval FALSE on success.
+  @retval TRUE if an error occurred.
+*/
+
+bool
+Item_sum_sp::execute()
+{
+  THD *thd= current_thd;
+  bool res;
+  uint old_server_status= thd->server_status;
+
+  /* Server Status is set, so we can send a signal to exit from the
+     function with the return value. */
+
+  thd->server_status= SERVER_STATUS_LAST_ROW_SENT;
+  res= Item_sp::execute(thd, &null_value, args, arg_count);
+  thd->server_status= old_server_status;
+  return res;
+}
+
+/**
+  Execute function and store the return value in the field.
+  This is called from the add() function to aggregate the values and from
+  execute() to return the value in the field.
+  @return The error state.
+  @retval FALSE on success
+  @retval TRUE if an error occurred.
+*/
+
+bool
+Item_sum_sp::execute_impl(THD *thd)
+{
+  DBUG_ENTER("Item_sum_sp::execute_impl");
+  DBUG_RETURN(Item_sp::execute_impl(thd, args, arg_count));
+}
+
+/**
+  Handles the aggregation of the values.
+  @note: See class description for more details on how and why this is done.
+  @return The error state.
+  @retval FALSE on success.
+  @retval TRUE if an error occurred.
+*/
+
+bool
+Item_sum_sp::add()
+{
+  THD *thd= current_thd;
+
+  if (execute_impl(thd))
+  {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+
+void
+Item_sum_sp::clear()
+{
+  if (func_ctx)
+     delete func_ctx;
+  func_ctx= NULL;
+  free_root(&caller_mem_root, MYF(0));
+}
+
+const Type_handler *Item_sum_sp::type_handler() const
+{
+  DBUG_ENTER("Item_sum_sp::type_handler");
+  DBUG_PRINT("info", ("m_sp = %p", (void *) m_sp));
+  DBUG_ASSERT(sp_result_field);
+  // This converts ENUM/SET to STRING
+  const Type_handler *handler= sp_result_field->type_handler();
+  DBUG_RETURN(handler->type_handler_for_item_field());
+}
+
+void
+Item_sum_sp::cleanup()
+{
+  Item_sp::cleanup();
+  Item_sum::cleanup();
+}
+
+/**
+  Initialize local members with values from the Field interface.
+  @note called from Item::fix_fields.
+*/
+
+void
+Item_sum_sp::fix_length_and_dec()
+{
+  DBUG_ENTER("Item_sum_sp::fix_length_and_dec");
+  DBUG_ASSERT(sp_result_field);
+  Type_std_attributes::set(sp_result_field);
+  Item_sum::fix_length_and_dec();
+  DBUG_VOID_RETURN;
+}
+
+const char *
+Item_sum_sp::func_name() const
+{
+  THD *thd= current_thd;
+  return Item_sp::func_name(thd);
+}
 
 /***********************************************************************
 ** reset and add of sum_func
