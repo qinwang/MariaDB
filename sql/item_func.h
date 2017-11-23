@@ -2732,22 +2732,10 @@ public:
  *
  */
 
-class sp_head;
-class sp_name;
-struct st_sp_security_context;
-
-class Item_func_sp :public Item_func
+class Item_func_sp :public Item_func,
+                    public Item_sp
 {
 private:
-  Name_resolution_context *context;
-  sp_name *m_name;
-  mutable sp_head *m_sp;
-  TABLE *dummy_table;
-  uchar result_buf[64];
-  /*
-     The result field of the concrete stored function.
-  */
-  Field *sp_result_field;
 
   bool execute();
   bool execute_impl(THD *thd);
