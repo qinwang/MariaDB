@@ -2723,8 +2723,6 @@ bool wsrep_grant_mdl_exception(MDL_context *requestor_ctx,
   const char* schema= key->db_name();
   int schema_len= key->db_name_length();
 
-  mysql_mutex_lock(&request_thd->LOCK_wsrep_thd);
-
   /*
     We consider granting MDL exceptions only for appliers (BF THD) and ones
     executing under TOI mode.
