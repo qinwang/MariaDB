@@ -6219,7 +6219,7 @@ int handler::ha_update_row(const uchar *old_data, const uchar *new_data)
     return error;
   }
 #endif /* WITH_WSREP */
-  return 0;
+  return error;
 }
 
 /*
