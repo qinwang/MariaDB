@@ -33,6 +33,7 @@ Created 2013-03-26 Sunny Bains.
 #include "ut0rnd.h"
 #include "os0event.h"
 #include "sync0arr.h"
+#include "my_cpu.h"
 
 /** OS mutex for tracking lock/unlock for debugging */
 template <template <typename> class Policy = NoPolicy>
@@ -490,34 +491,42 @@ struct TTASEventMutex {
 		const uint32_t	step = max_spins;
 
 		while (!try_lock()) {
-			if (n_spins++ == max_spins) {
-				max_spins += step;
-				n_waits++;
-				os_thread_yield();
+			uint32_t delay = 0;
 
-				sync_cell_t*	cell;
-				sync_array_t *sync_arr = sync_array_get_and_reserve_cell(
-					this,
-					(m_policy.get_id() == LATCH_ID_BUF_BLOCK_MUTEX
-					 || m_policy.get_id() == LATCH_ID_BUF_POOL_ZIP)
-					? SYNC_BUF_BLOCK
-					: SYNC_MUTEX,
-					filename, line, &cell);
+			HMT_low();
+			while (my_atomic_load32_explicit(&m_lock_word, MY_MEMORY_ORDER_RELAXED) != MUTEX_STATE_UNLOCKED) {
+				UT_RELAX_CPU();
+				if (delay++ == max_delay * 500) {
+					delay = 0;
+					if (n_spins++ == max_spins) {
+						max_spins += step;
+						n_waits++;
+						os_thread_yield();
 
-				int32 oldval = MUTEX_STATE_LOCKED;
-				my_atomic_cas32_strong_explicit(&m_lock_word, &oldval,
-								MUTEX_STATE_WAITERS,
-								MY_MEMORY_ORDER_RELAXED,
-								MY_MEMORY_ORDER_RELAXED);
+						sync_cell_t*	cell;
+						sync_array_t *sync_arr = sync_array_get_and_reserve_cell(
+							this,
+							(m_policy.get_id() == LATCH_ID_BUF_BLOCK_MUTEX
+							 || m_policy.get_id() == LATCH_ID_BUF_POOL_ZIP)
+							? SYNC_BUF_BLOCK
+							: SYNC_MUTEX,
+							filename, line, &cell);
 
-				if (oldval == MUTEX_STATE_UNLOCKED) {
-					sync_array_free_cell(sync_arr, cell);
-				} else {
-					sync_array_wait_event(sync_arr, cell);
+						int32 oldval = MUTEX_STATE_LOCKED;
+						my_atomic_cas32_strong_explicit(&m_lock_word, &oldval,
+										MUTEX_STATE_WAITERS,
+										MY_MEMORY_ORDER_RELAXED,
+										MY_MEMORY_ORDER_RELAXED);
+
+						if (oldval == MUTEX_STATE_UNLOCKED) {
+							sync_array_free_cell(sync_arr, cell);
+						} else {
+							sync_array_wait_event(sync_arr, cell);
+						}
+					}
 				}
-			} else {
-				ut_delay(ut_rnd_interval(0, max_delay));
 			}
+			HMT_medium();
 		}
 
 		m_policy.add(n_spins, n_waits);
