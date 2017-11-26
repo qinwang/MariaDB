@@ -5707,7 +5707,7 @@ static int get_schema_column_record(THD *thd, TABLE_LIST *tables,
     }
     else
       table->field[20]->store(STRING_WITH_LEN("NEVER"), cs);
-    /*hidden can coexist with auto_increment and virtual */
+    /*Invisible can coexist with auto_increment and virtual */
     if (field->field_visibility == USER_DEFINED_INVISIBLE)
     {
       if (buf.length())

@@ -8194,18 +8194,15 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
   List<TABLE> tbl_list;
   bool all_fields_have_values= true;
   Item *value;
-  Field *field, **f;
+  Field *field;
   bool abort_on_warning_saved= thd->abort_on_warning;
   uint autoinc_index= table->next_number_field
                         ? table->next_number_field->field_index
                         : ~0U;
-  uint field_count= 0;
   bool need_default_value= false;
   DBUG_ENTER("fill_record");
-  //TODO will fields count be alwats equal to table->fields ?
-  for (f= ptr; f && (field= *f); f++)
-    field_count++;
-  if (field_count != values.elements)
+  if (table->s->tmp_table < INTERNAL_TMP_TABLE &&
+        values.elements != table->s->fields)
     need_default_value= true;
   if (!*ptr)
   {
@@ -8231,7 +8228,12 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
     DBUG_ASSERT(field->table == table);
 
     if (need_default_value && field->field_visibility != NOT_INVISIBLE)
-      value = new (thd->mem_root) Item_default_value(thd,context);
+    {
+      if (field->field_index == autoinc_index)
+        value = new (thd->mem_root) Item_default_value(thd,context);
+      else
+        continue;
+    }
     else
       value=v++;
     if (field->field_index == autoinc_index)

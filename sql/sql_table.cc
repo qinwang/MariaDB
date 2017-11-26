@@ -3268,12 +3268,12 @@ bool Column_definition::prepare_stage1_check_typelib_default()
   return false;
 }
 /*
-   This function adds a hidden field to field_list
+   This function adds a invisible field to field_list
    SYNOPSIS
-    mysql_add_hidden_field()
+    mysql_add_invisible_field()
       thd                      Thread Object
       field_list               list of all table fields
-      field_name               name/prefix of hidden field
+      field_name               name/prefix of invisible field
                                ( Prefix in the case when it is
                                 *COMPLETELY_INVISIBLE*
                                and given name is duplicate)
@@ -3299,7 +3299,7 @@ int mysql_add_invisible_field(THD *thd, List<Create_field> * field_list,
       fld->field_name.length= strlen(new_name);
     }
     else
-      return 1;  //Should not never happen
+      return 1;  //Should not happen
   }
   else
   {
@@ -3551,8 +3551,8 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
     }
   }
   /* Update virtual fields' offset and give error if
-     All fields are hidden */
-  bool is_all_hidden= true;
+     All fields are invisible */
+  bool is_all_invisible= true;
   it.rewind();
   while ((sql_field=it++))
   {
@@ -3562,9 +3562,9 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
       record_offset+= sql_field->pack_length;
     }
     if (sql_field->field_visibility == NOT_INVISIBLE)
-      is_all_hidden= false;
+      is_all_invisible= false;
   }
-  if (is_all_hidden)
+  if (is_all_invisible)
   { //STODO correct add error
     my_error(ER_TABLE_MUST_HAVE_COLUMNS, MYF(0));
     DBUG_RETURN(TRUE);
@@ -5161,7 +5161,7 @@ check_if_keyname_exists(const char *name, KEY *start, KEY *end)
 }
 
 /**
- Returns 1 if field name exists other wise 0
+ Returns 1 if field name exists otherwise 0
 */
 static bool
 check_if_field_name_exists(const char *name, List<Create_field> * fields)
@@ -5246,9 +5246,11 @@ char * make_unique_invisible_field_name(THD *thd, const char *field_name,
   if (!check_if_field_name_exists(field_name, fields))
     return field_name;
   char buff[MAX_FIELD_NAME], *buff_end;
-  buff_end= strmov(buff, field_name);
+  buff_end= strmake(buff, field_name, MAX_FIELD_NAME);
+  if (buff_end - buff < 5)
+    return NULL; // Should not happen
 
-  for (uint i=1 ; i < 1000; i++)
+  for (uint i=1 ; i < 10000; i++)
   {
     char *real_end= int10_to_str(i, buff_end, 10);
     if (check_if_field_name_exists(buff, fields))
