@@ -243,7 +243,7 @@ insert into t1 values(1,1,1);
 insert into t1 values(2,2,2);
 insert into t1 values(3,3,3);
 insert into t1 values(4,4,4);
-set debug_dbug= "+d,test_completely_invisible";
+set debug_dbug= "+d,test_completely_invisible,test_invisible_index";
 select invisible, a ,b from t1 order by b;
 invisible	a	b
 9	1	1

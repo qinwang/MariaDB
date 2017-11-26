@@ -7687,11 +7687,8 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
   bitmap_clear_all(&table->tmp_set);
   for (f_ptr=table->field ; (field= *f_ptr) ; f_ptr++)
   {
-    /*TODO
-      We should not delete COMPLETELY_INVISIBLE on every Alter
-      but only when there is some change related to this column*/
-//    if (field->field_visibility == COMPLETELY_INVISIBLE)
-  //      continue;
+    if (field->field_visibility == COMPLETELY_INVISIBLE)
+        continue;
     Alter_drop *drop;
     if (field->type() == MYSQL_TYPE_VARCHAR)
       create_info->varchar= TRUE;
@@ -7874,7 +7871,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
     /*
      If newely added column name is same as any of COMPLETELY_INVISIBLE column
      then we have to delete that corresponding COMPLETELY_INVISIBLE Field.
-    */
+    
     find_it.rewind();
     while ((find= find_it++))
     {
@@ -7882,7 +7879,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
                   def->field_name.str) &&
                  find->field_visibility == COMPLETELY_INVISIBLE)
         find_it.remove();
-    }
+    }*/
     /*
       Check if there is alter for newly added field.
     */
@@ -7929,6 +7926,8 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
 
   for (uint i=0 ; i < table->s->keys ; i++,key_info++)
   {
+    if (key_info->flags & HA_INVISIBLE_KEY)
+      continue;
     const char *key_name= key_info->name.str;
     Alter_drop *drop;
     drop_it.rewind();
@@ -7938,7 +7937,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
 	  !my_strcasecmp(system_charset_info,key_name, drop->name))
 	break;
     }
-    if (drop && !(key_info->flags & HA_INVISIBLE_KEY))
+    if (drop)
     {
       if (table->s->tmp_table == NO_TMP_TABLE)
       {
@@ -8088,8 +8087,6 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
       key= new Key(key_type, &tmp_name, &key_create_info,
                    MY_TEST(key_info->flags & HA_GENERATED_KEY),
                    &key_parts, key_info->option_list, DDL_options());
-      if (key_info->flags & HA_INVISIBLE_KEY)
-        key->invisible= true;
       new_key_list.push_back(key, thd->mem_root);
     }
   }
@@ -8107,16 +8104,15 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
 	my_error(ER_WRONG_NAME_FOR_INDEX, MYF(0), key->name.str);
         goto err;
       }
-      uint dup_index= 0;
+      /*  uint dup_index= 0;
       if (key->name.str && (dup_index= check_if_keyname_exists(key->name.str,
                       table->key_info, table->key_info + table->s->keys)))
       {
         if (table->s->key_info[dup_index - 1].flags & HA_INVISIBLE_KEY)
         {
-          /* Drop Index from new_key_list
+           Drop Index from new_key_list
              Why only drop HA_INVISIBLE_INDEX because we want them to be renamed
                automatically.
-          */
           List_iterator<Key> it(new_key_list);
           Key *tmp;
           while((tmp= it++))
@@ -8131,7 +8127,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
             }
           }
         }
-      }
+      }*/
     }
   }
 
