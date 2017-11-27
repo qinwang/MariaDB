@@ -2077,14 +2077,12 @@ extern "C" sig_handler print_signal_warning(int sig)
 
 static void init_error_log_mutex()
 {
-  fprintf(stderr, "LOCK_error_log init\n");
   mysql_mutex_init(key_LOCK_error_log, &LOCK_error_log, MY_MUTEX_INIT_FAST);
 }
 
 
 static void clean_up_error_log_mutex()
 {
-  fprintf(stderr, "LOCK_error_log destroy\n");
   mysql_mutex_destroy(&LOCK_error_log);
 }
 
