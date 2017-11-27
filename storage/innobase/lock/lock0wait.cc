@@ -183,14 +183,27 @@ lock_wait_table_reserve_slot(
 /*********************************************************************//**
 check if lock timeout was for priority thread,
 as a side effect trigger lock monitor
+@param[in]    trx    transaction owning the lock
+@param[in]    locked true if trx and lock_sys_mutex is ownd
 @return	false for regular lock timeout */
 static ibool
 wsrep_is_BF_lock_timeout(
-/*====================*/
-    trx_t* trx) /* in: trx to check for lock priority */
+	trx_t*	trx,
+	bool	locked = true)
 {
-	if (wsrep_on_trx(trx) && wsrep_thd_is_BF(trx->mysql_thd, FALSE)) {
-		fprintf(stderr, "WSREP: BF lock wait long\n");
+	if (wsrep_on_trx(trx)
+	    && wsrep_thd_is_BF(trx->mysql_thd, FALSE)
+	    && trx->error_state != DB_DEADLOCK) {
+		ib::info() << "WSREP: BF lock wait long for trx:" << trx->id
+			   << " query: " << wsrep_thd_query(trx->mysql_thd);
+		if (!locked) {
+			lock_mutex_enter();
+		}
+		wsrep_trx_print_locking(stderr, trx, 3000);
+		if (!locked) {
+			lock_mutex_exit();
+		}
+		ut_ad(innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS);
 		srv_print_innodb_monitor 	= TRUE;
 		srv_print_innodb_lock_monitor 	= TRUE;
 		os_event_set(srv_monitor_event);
@@ -399,7 +412,7 @@ lock_wait_suspend_thread(
 	    && wait_time > (double) lock_wait_timeout
 #ifdef WITH_WSREP
 	    && (!wsrep_on_trx(trx) ||
-	       (!wsrep_is_BF_lock_timeout(trx) && trx->error_state != DB_DEADLOCK))
+	       (!wsrep_is_BF_lock_timeout(trx, false) && trx->error_state != DB_DEADLOCK))
 #endif /* WITH_WSREP */
 	    && !trx_is_high_priority(trx)) {
 

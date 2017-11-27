@@ -2252,7 +2252,8 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 	bool	high_priority = trx_is_high_priority(m_trx);
 
 	/* Don't queue the lock to hash table, if high priority transaction. */
-	lock_t*	lock = create(m_trx, true, !high_priority, prdt);
+	lock_t*	lock = create(const_cast<lock_t*>(wait_for),
+		m_trx, true, !high_priority, prdt);
 
 	/* Attempt to jump over the low priority waiting locks. */
 	if (high_priority && jump_queue(lock, wait_for)) {
@@ -2261,10 +2262,22 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 		return(DB_SUCCESS);
 	}
 
+	dberr_t err= DB_LOCK_WAIT;
+#ifdef WITH_WSREP
+	if (wsrep_thd_is_BF(m_trx->mysql_thd, FALSE) && !lock_get_wait(lock)) {
+		if (wsrep_debug) {
+			ib::info() << "WSREP: BF thread got lock granted early, ID " << lock->trx->id
+				   << " query: " << wsrep_thd_query(m_trx->mysql_thd);
+		}
+		err = DB_SUCCESS;
+        } else {
+#endif /* WITH_WSREP */
 	ut_ad(lock_get_wait(lock));
 
-	dberr_t	err = deadlock_check(lock);
-
+	err = deadlock_check(lock);
+#ifdef WITH_WSREP
+	}
+#endif /* WITH_WSREP */
 	ut_ad(trx_mutex_own(m_trx));
 
 	// Move it only when it does not cause a deadlock.
@@ -2677,6 +2690,14 @@ lock_rec_has_to_wait_in_queue(
 #ifdef WITH_WSREP
 			if (wsrep_thd_is_BF(wait_lock->trx->mysql_thd, FALSE) &&
 			    wsrep_thd_is_BF(lock->trx->mysql_thd, TRUE)) {
+				if (wsrep_debug) {
+					ib::info() << "WSREP: waiting BF trx: " << wait_lock->trx->id
+						   << " query: " << wsrep_thd_query(wait_lock->trx->mysql_thd);
+					lock_rec_print(stderr, wait_lock);
+					ib::info() << "WSREP: do not wait another BF trx: " << lock->trx->id
+						   << " query: " << wsrep_thd_query(lock->trx->mysql_thd);
+					lock_rec_print(stderr, lock);
+				}
 				/* don't wait for another BF lock */
 				continue;
 			}
@@ -3043,22 +3064,21 @@ lock_grant_and_move_on_page(
 			&& lock_get_wait(lock)
 			&& !lock_rec_has_to_wait_in_queue(lock)) {
 
-			
 			bool exit_trx_mutex = false;
-			
+
 			if (lock->trx->abort_type != TRX_SERVER_ABORT) {
 				ut_ad(trx_mutex_own(lock->trx));
 				trx_mutex_exit(lock->trx);
 				exit_trx_mutex = true;
 			}
-			
+
 			lock_grant(lock, false);
-			
+
 			if (exit_trx_mutex) {
 				ut_ad(!trx_mutex_own(lock->trx));
 				trx_mutex_enter(lock->trx);
 			}
-			
+
 			if (previous != NULL) {
 				/* Move the lock to the head of the list. */
 				HASH_GET_NEXT(hash, previous) = HASH_GET_NEXT(hash, lock);
@@ -3154,9 +3174,9 @@ lock_rec_dequeue_from_page(
 				}
 			}
 		}
-		} else {
-			lock_grant_and_move_on_page(lock_hash, space, page_no);
-		}
+	} else {
+		lock_grant_and_move_on_page(lock_hash, space, page_no);
+	}
 }
 
 /*************************************************************//**
@@ -4798,7 +4818,7 @@ lock_table(
 	if (wait_for != NULL) {
 		err = lock_table_enqueue_waiting((lock_t*)wait_for, mode | flags, table, thr);
 	} else {
-		lock_table_create(table, mode | flags, trx);
+		lock_table_create((lock_t*)wait_for, table, mode | flags, trx);
 
 		ut_a(!flags || mode == LOCK_S || mode == LOCK_X);
 
@@ -8473,16 +8493,7 @@ DeadlockChecker::check_and_resolve(const lock_t* lock, trx_t* trx)
 			ut_ad(trx == checker.m_start);
 			ut_ad(trx == victim_trx);
 
-#ifdef WITH_WSREP
-			if (!wsrep_thd_is_BF(victim_trx->mysql_thd, TRUE))
-			{
-#endif /* WITH_WSREP */
-				rollback_print(victim_trx, lock);
-#ifdef WITH_WSREP
-			} else {
-			  /* BF processor */;
-			}
-#endif /* WITH_WSREP */
+			rollback_print(victim_trx, lock);
 
 			MONITOR_INC(MONITOR_DEADLOCK);
 
