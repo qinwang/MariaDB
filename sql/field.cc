@@ -10734,6 +10734,7 @@ Column_definition::redefine_stage1_common(const Column_definition *dup_field,
   flags=        dup_field->flags;
   interval=     dup_field->interval;
   vcol_info=    dup_field->vcol_info;
+  field_visibility= dup_field->field_visibility;
 }
 
 

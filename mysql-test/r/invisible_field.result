@@ -85,6 +85,34 @@ a	b	c	d	e	f
 1	NULL	4	d blob	3	1
 1	NULL	5	d blob	41	1
 drop table t1;
+#more complex case of invisible with sql_mode=NO_AUTO_VALUE_ON_ZERO
+set sql_mode='NO_AUTO_VALUE_ON_ZERO';
+create table t1(a int , b int invisible , c int invisible auto_increment unique, d blob , e int unique, f int);
+desc t1;
+Field	Type	Null	Key	Default	Extra
+a	int(11)	YES		NULL	
+b	int(11)	YES		NULL	INVISIBLE
+c	int(11)	NO	PRI	NULL	auto_increment, INVISIBLE
+d	blob	YES		NULL	
+e	int(11)	YES	UNI	NULL	
+f	int(11)	YES		NULL	
+insert into t1 values(1,'d blob',1,1),(1,'d blob',11,1),(1,'d blob',2,1),(1,'d blob',3,1),(1,'d blob',41,1);
+select * from t1;
+a	d	e	f
+1	d blob	1	1
+1	d blob	11	1
+1	d blob	2	1
+1	d blob	3	1
+1	d blob	41	1
+select a,b,c,d,e,f from t1;
+a	b	c	d	e	f
+1	NULL	1	d blob	1	1
+1	NULL	2	d blob	11	1
+1	NULL	3	d blob	2	1
+1	NULL	4	d blob	3	1
+1	NULL	5	d blob	41	1
+drop table t1;
+set sql_mode='';
 create table sdsdsd(a int , b int, invisible(a,b));
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '(a,b))' at line 1
 create table t1(a int,abc int as (a mod 3) virtual invisible);
@@ -411,7 +439,7 @@ d	int(11)	YES	UNI	NULL
 drop table t1;
 SHOW STATUS LIKE 'Feature_invisible_columns';
 Variable_name	Value
-Feature_invisible_columns	46
+Feature_invisible_columns	50
 #invisible is non reserved
 create table t1(a int unique , invisible int invisible, c int );
 desc t1;
@@ -463,36 +491,10 @@ NULL	3
 NULL	4
 NULL	5
 CREATE TABLE t4 (b int invisible) SELECT * FROM t1;
-select * from t4 order by b;
-b
-1
-2
-3
-4
-5
-select b from t4 order by b;
-b
-1
-2
-3
-4
-5
+ERROR 42000: A table must have at least 1 column
 CREATE TABLE t5 (a int invisible) SELECT b as a FROM t1;
-select * from t5 order by a;
-a
-1
-2
-3
-4
-5
-select a from t5 order by a;
-a
-1
-2
-3
-4
-5
-drop table t1,t2,t3,t4,t5;
+ERROR 42000: A table must have at least 1 column
+drop table t1,t2,t3;
 create table t1 (a int , b int invisible default 3, c int , d int invisible default 6);
 CREATE PROCEDURE
 insert_t1(a int, b int)

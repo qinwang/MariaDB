@@ -26,6 +26,7 @@ insert into t1 values(1),(2),(3),(4);
 select * from t1;
 select a from t1;
 drop table t1;
+
 --echo #more complex case of invisible
 create table t1(a int , b int invisible , c int invisible auto_increment unique, d blob , e int unique, f int);
 desc t1;
@@ -33,6 +34,17 @@ insert into t1 values(1,'d blob',1,1),(1,'d blob',11,1),(1,'d blob',2,1),(1,'d b
 select * from t1;
 select a,b,c,d,e,f from t1;
 drop table t1;
+
+--echo #more complex case of invisible with sql_mode=NO_AUTO_VALUE_ON_ZERO
+set sql_mode='NO_AUTO_VALUE_ON_ZERO';
+create table t1(a int , b int invisible , c int invisible auto_increment unique, d blob , e int unique, f int);
+desc t1;
+insert into t1 values(1,'d blob',1,1),(1,'d blob',11,1),(1,'d blob',2,1),(1,'d blob',3,1),(1,'d blob',41,1);
+select * from t1;
+select a,b,c,d,e,f from t1;
+drop table t1;
+set sql_mode='';
+
 --error ER_PARSE_ERROR
 create table sdsdsd(a int , b int, invisible(a,b));
 create table t1(a int,abc int as (a mod 3) virtual invisible);
@@ -174,13 +186,11 @@ select a,b from t2 order by b;
 CREATE TABLE t3 (b int, a int invisible) SELECT * FROM t1;
 select * from t3 order by b;
 select a,b from t3 order by b;
+--error ER_TABLE_MUST_HAVE_COLUMNS
 CREATE TABLE t4 (b int invisible) SELECT * FROM t1;
-select * from t4 order by b;
-select b from t4 order by b;
+--error ER_TABLE_MUST_HAVE_COLUMNS
 CREATE TABLE t5 (a int invisible) SELECT b as a FROM t1;
-select * from t5 order by a;
-select a from t5 order by a;
-drop table t1,t2,t3,t4,t5;
+drop table t1,t2,t3;
 
 create table t1 (a int , b int invisible default 3, c int , d int invisible default 6);
 DELIMITER //;

@@ -8221,7 +8221,6 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
     only one row.
   */
   table->auto_increment_field_not_null= FALSE;
-  Name_resolution_context *context= & thd->lex->select_lex.context;
   while ((field = *ptr++) && ! thd->is_error())
   {
     /* Ensure that all fields are from the same table */
@@ -8230,7 +8229,7 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
     if (need_default_value && field->field_visibility != NOT_INVISIBLE)
     {
       if (field->field_index == autoinc_index)
-        value = new (thd->mem_root) Item_default_value(thd,context);
+        value = new (thd->mem_root) Item_null(thd);
       else
         continue;
     }
