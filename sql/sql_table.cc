@@ -7869,18 +7869,6 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
       }
     }
     /*
-     If newely added column name is same as any of COMPLETELY_INVISIBLE column
-     then we have to delete that corresponding COMPLETELY_INVISIBLE Field.
-    
-    find_it.rewind();
-    while ((find= find_it++))
-    {
-      if (!my_strcasecmp(system_charset_info, find->field_name.str,
-                  def->field_name.str) &&
-                 find->field_visibility == COMPLETELY_INVISIBLE)
-        find_it.remove();
-    }*/
-    /*
       Check if there is alter for newly added field.
     */
     alter_it.rewind();
@@ -8104,30 +8092,6 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
 	my_error(ER_WRONG_NAME_FOR_INDEX, MYF(0), key->name.str);
         goto err;
       }
-      /*  uint dup_index= 0;
-      if (key->name.str && (dup_index= check_if_keyname_exists(key->name.str,
-                      table->key_info, table->key_info + table->s->keys)))
-      {
-        if (table->s->key_info[dup_index - 1].flags & HA_INVISIBLE_KEY)
-        {
-           Drop Index from new_key_list
-             Why only drop HA_INVISIBLE_INDEX because we want them to be renamed
-               automatically.
-          List_iterator<Key> it(new_key_list);
-          Key *tmp;
-          while((tmp= it++))
-          {
-            if(!my_strcasecmp(system_charset_info, tmp->name.str, key->name.str))
-            {
-              it.remove();
-              if (table->s->tmp_table == NO_TMP_TABLE)
-                (void) delete_statistics_for_index(thd, table,
-                         &table->key_info[dup_index - 1], FALSE);
-              break;
-            }
-          }
-        }
-      }*/
     }
   }
 
