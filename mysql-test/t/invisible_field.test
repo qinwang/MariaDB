@@ -181,3 +181,26 @@ CREATE TABLE t5 (a int invisible) SELECT b as a FROM t1;
 select * from t5 order by a;
 select a from t5 order by a;
 drop table t1,t2,t3,t4,t5;
+
+create table t1 (a int , b int invisible default 3, c int , d int invisible default 6);
+DELIMITER //;
+CREATE PROCEDURE
+insert_t1(a int, b int)
+MODIFIES SQL DATA
+insert into t1 values(a,b);
+//
+DELIMITER ;//
+call insert_t1(1,1);
+call insert_t1(2,2);
+select * from t1 order by a;
+select a,b,c,d from t1 order by a;
+DROP PROCEDURE insert_t1;
+delete from t1;
+prepare insert_1 from "insert into t1 values(@a,@c)";
+prepare insert_2 from "insert into t1(a,b,c) values(@a,@b,@c)";
+set @a=1, @c=1;
+execute insert_1;
+set @a=2,@b=2, @c=2;
+execute insert_2;
+select a,b,c,d from t1 order by a;
+drop table t1;
