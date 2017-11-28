@@ -2262,22 +2262,18 @@ RecLock::add_to_waitq(const lock_t* wait_for, const lock_prdt_t* prdt)
 		return(DB_SUCCESS);
 	}
 
-	dberr_t err= DB_LOCK_WAIT;
 #ifdef WITH_WSREP
 	if (wsrep_thd_is_BF(m_trx->mysql_thd, FALSE) && !lock_get_wait(lock)) {
 		if (wsrep_debug) {
 			ib::info() << "WSREP: BF thread got lock granted early, ID " << lock->trx->id
 				   << " query: " << wsrep_thd_query(m_trx->mysql_thd);
 		}
-		err = DB_SUCCESS;
-        } else {
+		return(DB_SUCCESS);
+        }
 #endif /* WITH_WSREP */
 	ut_ad(lock_get_wait(lock));
 
-	err = deadlock_check(lock);
-#ifdef WITH_WSREP
-	}
-#endif /* WITH_WSREP */
+	dberr_t err = deadlock_check(lock);
 	ut_ad(trx_mutex_own(m_trx));
 
 	// Move it only when it does not cause a deadlock.
@@ -2559,6 +2555,11 @@ lock_rec_lock_slow(
 		err = DB_SUCCESS;
 
 	} else {
+
+		if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
+			&& wsrep_on_trx(trx)) {
+			innodb_lock_schedule_algorithm = INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS;
+		}
 
 		const lock_t* wait_for = lock_rec_other_has_conflicting(
 			mode, block, heap_no, trx);
@@ -4806,6 +4807,11 @@ lock_table(
 
 	/* We have to check if the new lock is compatible with any locks
 	other transactions have in the table lock queue. */
+
+	if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
+	    && wsrep_on_trx(trx)) {
+		innodb_lock_schedule_algorithm = INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS;
+	}
 
 	wait_for = lock_table_other_has_incompatible(
 		trx, LOCK_WAIT, table, mode);
