@@ -19699,6 +19699,7 @@ wsrep_innobase_kill_one_trx(
                 }
 		wsrep_thd_UNLOCK(thd);
 		wsrep_thd_awake(thd, signal);
+		wsrep_thd_LOCK(thd);
 		break;
 	case QUERY_EXEC:
 		/* it is possible that victim trx is itself waiting for some
@@ -19720,7 +19721,6 @@ wsrep_innobase_kill_one_trx(
 				lock_cancel_waiting_and_release(wait_lock);
 			}
 
-			wsrep_thd_UNLOCK(thd);
 			wsrep_thd_awake(thd, signal);
 		} else {
 			/* abort currently executing query */
@@ -19732,6 +19732,7 @@ wsrep_innobase_kill_one_trx(
 			and trx_mutex */
 			wsrep_thd_UNLOCK(thd);
 			wsrep_thd_awake(thd, signal);
+			wsrep_thd_LOCK(thd);
 
 			/* for BF thd, we need to prevent him from committing */
 			if (wsrep_thd_exec_mode(thd) == REPL_RECV) {

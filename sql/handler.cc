@@ -6283,7 +6283,7 @@ int handler::ha_delete_row(const uchar *buf)
     return error;
   }
 #endif /* WITH_WSREP */
-  return 0;
+  return error;
 }
 
 
