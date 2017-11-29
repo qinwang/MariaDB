@@ -7,15 +7,18 @@
 
 [mysqld]
 binlog-format=row
+innodb-lock-schedule-algorithm=fcfs
 
 [mysqld.1]
 log-bin
 server-id=1
+innodb-lock-schedule-algorithm=fcfs
 
 [mysqld.2]
 #galera_port=@OPT.port
 #ist_port=@OPT.port
 #sst_port=@OPT.port
+innodb-lock-schedule-algorithm=fcfs
 
 wsrep-on=1
 
@@ -40,6 +43,7 @@ server-id=2
 #galera_port=@OPT.port
 #ist_port=@OPT.port
 #sst_port=@OPT.port
+innodb-lock-schedule-algorithm=fcfs
 
 wsrep-on=1
 

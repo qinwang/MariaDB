@@ -11,11 +11,13 @@ log-bin=mysqld-bin
 binlog-format=row
 innodb-autoinc-lock-mode=2
 default-storage-engine=innodb
+innodb-lock-schedule-algorithm=fcfs
 
 [mysqld.1]
 #galera_port=@OPT.port
 #ist_port=@OPT.port
 #sst_port=@OPT.port
+innodb-lock-schedule-algorithm=fcfs
 
 server-id=1
 log_slave_updates
@@ -35,6 +37,7 @@ wsrep-sync-wait=15
 #galera_port=@OPT.port
 #ist_port=@OPT.port
 #sst_port=@OPT.port
+innodb-lock-schedule-algorithm=fcfs
 
 server-id=2
 log_slave_updates
