@@ -2556,11 +2556,12 @@ lock_rec_lock_slow(
 
 	} else {
 
+#ifdef WITH_WSREP
 		if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
 			&& wsrep_on_trx(trx)) {
 			innodb_lock_schedule_algorithm = INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS;
 		}
-
+#endif
 		const lock_t* wait_for = lock_rec_other_has_conflicting(
 			mode, block, heap_no, trx);
 
@@ -4808,10 +4809,12 @@ lock_table(
 	/* We have to check if the new lock is compatible with any locks
 	other transactions have in the table lock queue. */
 
+#ifdef WITH_WSREP
 	if (innodb_lock_schedule_algorithm == INNODB_LOCK_SCHEDULE_ALGORITHM_VATS
 	    && wsrep_on_trx(trx)) {
 		innodb_lock_schedule_algorithm = INNODB_LOCK_SCHEDULE_ALGORITHM_FCFS;
 	}
+#endif
 
 	wait_for = lock_table_other_has_incompatible(
 		trx, LOCK_WAIT, table, mode);
