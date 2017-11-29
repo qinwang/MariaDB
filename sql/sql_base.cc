@@ -8227,12 +8227,7 @@ fill_record(THD *thd, TABLE *table, Field **ptr, List<Item> &values,
     DBUG_ASSERT(field->table == table);
 
     if (need_default_value && field->field_visibility != NOT_INVISIBLE)
-    {
-      if (field->field_index == autoinc_index)
-        value = new (thd->mem_root) Item_null(thd);
-      else
-        continue;
-    }
+      continue;
     else
       value=v++;
     if (field->field_index == autoinc_index)
