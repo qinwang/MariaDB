@@ -3546,7 +3546,8 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
         sql_field->flags & NOT_NULL_FLAG &&
         sql_field->flags & NO_DEFAULT_VALUE_FLAG)
     {
-      my_error(ER_INVISIBLE_NOT_NULL_WITHOUT_DEFAULT, MYF(0), sql_field->field_name);
+      my_error(ER_INVISIBLE_NOT_NULL_WITHOUT_DEFAULT, MYF(0),
+                          sql_field->field_name.str);
       DBUG_RETURN(TRUE);
     }
   }
