@@ -3827,15 +3827,15 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 	my_error(ER_KEY_COLUMN_DOES_NOT_EXITS, MYF(0), column->field_name.str);
 	DBUG_RETURN(TRUE);
       }
-      DBUG_EVALUATE_IF("test_invisible_index",{},
+      if ( DBUG_EVALUATE_IF("test_invisible_index", 0, 1))
+      {
+        if (sql_field->field_visibility > USER_DEFINED_INVISIBLE
+                  && !key->invisible)
         {
-          if (sql_field->field_visibility > USER_DEFINED_INVISIBLE
-                    && !key->invisible)
-          {
-	        my_error(ER_KEY_COLUMN_DOES_NOT_EXITS, MYF(0), column->field_name.str);
-	        DBUG_RETURN(TRUE);
-          }
-        });
+	      my_error(ER_KEY_COLUMN_DOES_NOT_EXITS, MYF(0), column->field_name.str);
+	      DBUG_RETURN(TRUE);
+        }
+      }
       while ((dup_column= cols2++) != column)
       {
         if (!lex_string_cmp(system_charset_info,
