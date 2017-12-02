@@ -1589,7 +1589,8 @@ String *Field::val_int_as_str(String *val_buffer, bool unsigned_val)
 Field::Field(uchar *ptr_arg,uint32 length_arg,uchar *null_ptr_arg,
 	     uchar null_bit_arg,
 	     utype unireg_check_arg, const LEX_CSTRING *field_name_arg)
-  :ptr(ptr_arg), null_ptr(null_ptr_arg), table(0), orig_table(0),
+  :ptr(ptr_arg), field_visibility(NOT_INVISIBLE),
+  null_ptr(null_ptr_arg), table(0), orig_table(0),
   table_name(0), field_name(*field_name_arg), option_list(0),
   option_struct(0), key_start(0), part_of_key(0),
   part_of_key_not_clustered(0), part_of_sortkey(0),
@@ -2181,6 +2182,7 @@ Field *Field::make_new_field(MEM_ROOT *root, TABLE *new_table,
   tmp->flags&= (NOT_NULL_FLAG | BLOB_FLAG | UNSIGNED_FLAG |
                 ZEROFILL_FLAG | BINARY_FLAG | ENUM_FLAG | SET_FLAG);
   tmp->reset_fields();
+  tmp->field_visibility= NOT_INVISIBLE;
   return tmp;
 }
 
@@ -10594,6 +10596,7 @@ Column_definition::Column_definition(THD *thd, Field *old_field,
   option_list= old_field->option_list;
   pack_flag= 0;
   compression_method_ptr= 0;
+  field_visibility= old_field->field_visibility;
 
   if (orig_field)
   {
@@ -10731,6 +10734,7 @@ Column_definition::redefine_stage1_common(const Column_definition *dup_field,
   flags=        dup_field->flags;
   interval=     dup_field->interval;
   vcol_info=    dup_field->vcol_info;
+  field_visibility= dup_field->field_visibility;
 }
 
 
