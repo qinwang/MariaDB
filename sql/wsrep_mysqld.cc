@@ -3896,7 +3896,7 @@ wsrep_status_t wsrep_tc_log_commit(THD* thd)
     return WSREP_TRX_FAIL;
   }
 
-  if(tc_log->log_and_order(thd, thd->transaction.xid_state.xid.get_my_xid(),
+  if(!tc_log->log_and_order(thd, thd->transaction.xid_state.xid.get_my_xid(),
                            true, false, false))
   {
     return WSREP_TRX_FAIL;
