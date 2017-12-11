@@ -11,10 +11,7 @@ let $counter= 5000;
 let $mysql_errno= 9999;
 while ($mysql_errno)
 {
-  # Strangely enough, the server might return "Too many connections"
-  # while being shutdown, thus 1040 is an "allowed" error
-  # See BUG#36228
-  --error 0,1040,1053,2002,2003,2005,2006,2013,1927
+  --error 0,ER_SERVER_SHUTDOWN,ER_CONNECTION_KILLED,2002,2003,2006,2013
   show status;
 
   dec $counter;
@@ -26,3 +23,9 @@ while ($mysql_errno)
 }
 --enable_query_log
 --enable_result_log
+
+# WSREP: SHOW STATUS queries are allowed even if wsrep
+#        is not ready. Make sure wsrep is ready before
+#        returning from this script
+
+--source include/wait_wsrep_ready.inc

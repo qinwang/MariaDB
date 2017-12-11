@@ -463,6 +463,14 @@ void wsrep_ready_set (my_bool x)
   mysql_mutex_unlock (&LOCK_wsrep_ready);
 }
 
+my_bool wsrep_ready_get (void)
+{
+  if (mysql_mutex_lock (&LOCK_wsrep_ready)) abort();
+  my_bool ret= wsrep_ready;
+  mysql_mutex_unlock (&LOCK_wsrep_ready);
+  return ret;
+}
+
 // Wait until wsrep has reached ready state
 void wsrep_ready_wait ()
 {

@@ -18,4 +18,3 @@
         exit(0);
 EOF
 
---source include/wait_until_disconnected.inc
