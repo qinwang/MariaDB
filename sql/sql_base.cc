@@ -5627,7 +5627,9 @@ find_field_in_table(THD *thd, TABLE *table, const char *name, uint length,
     if ((*field_ptr)->field_visibility == COMPLETELY_INVISIBLE &&
         DBUG_EVALUATE_IF("test_completely_invisible", 0, 1))
       DBUG_RETURN((Field*)0);
-
+    if ((*field_ptr)->field_visibility == SYSTEM_INVISIBLE &&
+            thd->lex->sql_command != SQLCOM_SELECT)
+      DBUG_RETURN((Field*)0);
     *cached_field_index_ptr= field_ptr - table->field;
     field= *field_ptr;
   }

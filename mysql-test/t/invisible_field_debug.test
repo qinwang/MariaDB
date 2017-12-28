@@ -8,6 +8,15 @@ set debug_dbug=@old_debug;
 desc t1;
 show create table t1;
 insert into t1 values(1);
+##field should not be resolved in Item_field::set_field
+--error ER_BAD_FIELD_ERROR
+insert into t1(a, invisible) values(99,99);
+--error ER_BAD_FIELD_ERROR
+alter table t1 add constraint a check (invisble > 2);
+set debug_dbug= "+d,test_pseudo_invisible";
+--error ER_BAD_FIELD_ERROR
+create table t2(a int, b int as (invisible +2) virtual);
+set debug_dbug=@old_debug;
 select * from t1;
 select invisible ,a from t1;
 drop table t1;

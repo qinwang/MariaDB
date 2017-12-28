@@ -11,6 +11,14 @@ t1	CREATE TABLE `t1` (
   `a` int(11) DEFAULT NULL
 ) ENGINE=MyISAM DEFAULT CHARSET=latin1
 insert into t1 values(1);
+insert into t1(a, invisible) values(99,99);
+ERROR 42S22: Unknown column 'invisible' in 'field list'
+alter table t1 add constraint a check (invisble > 2);
+ERROR 42S22: Unknown column 'invisble' in 'CHECK'
+set debug_dbug= "+d,test_pseudo_invisible";
+create table t2(a int, b int as (invisible +2) virtual);
+ERROR 42S22: Unknown column 'invisible' in 'GENERATED ALWAYS AS'
+set debug_dbug=@old_debug;
 select * from t1;
 a
 1
