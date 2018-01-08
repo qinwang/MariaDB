@@ -1,0 +1,17 @@
+call mtr.add_suppression("\\[Warning\\] InnoDB: Difficult to find free blocks in the buffer pool.*");
+SET GLOBAL innodb_compression_level=0;
+SELECT @@innodb_compression_level;
+@@innodb_compression_level
+0
+SET SESSION debug_dbug="+d,ib_lru_force_no_free_page";
+CREATE TABLE t1 (j LONGBLOB) ENGINE = InnoDB ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=1;
+BEGIN;
+INSERT INTO t1 VALUES (repeat('abcdefghijklmnopqrstuvwxyz',200));
+INSERT INTO t1 SELECT * from t1;
+INSERT INTO t1 SELECT * from t1;
+INSERT INTO t1 SELECT * from t1;
+COMMIT;
+SET SESSION debug_dbug="";
+DROP TABLE t1;
+FOUND /InnoDB: Difficult to find free blocks / in mysqld.1.err
+set GLOBAL innodb_compression_level=6;

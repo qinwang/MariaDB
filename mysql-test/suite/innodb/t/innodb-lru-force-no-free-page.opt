@@ -1,0 +1,5 @@
+--skip-innodb-doublewrite
+--innodb-file-per-table
+--innodb-file-format=Barracuda
+--innodb-change-buffering=none
+--innodb_buffer_pool_size=8M
