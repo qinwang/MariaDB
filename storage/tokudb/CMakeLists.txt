@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 SET(TOKUDB_VERSION 5.6.37-82.2)
 # PerconaFT only supports x86-64 and cmake-2.8.9+
 IF(CMAKE_VERSION VERSION_LESS "2.8.9")
@@ -6,6 +7,11 @@ ELSEIF(NOT HAVE_DLOPEN)
   MESSAGE(STATUS "dlopen is required by TokuDB")
 ELSEIF(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR
        CMAKE_SYSTEM_PROCESSOR STREQUAL "amd64")
+=======
+# ft-index only supports x86-64 and cmake-2.8.9+
+IF(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" AND
+    NOT CMAKE_VERSION VERSION_LESS "2.8.9" AND HAVE_DLOPEN)
+>>>>>>> origin/5.5
 CHECK_CXX_SOURCE_COMPILES(
 "
 struct a {int b; int c; };

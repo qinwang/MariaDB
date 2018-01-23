@@ -1445,6 +1445,7 @@ bool Item_in_optimizer::is_top_level_item()
 void Item_in_optimizer::fix_after_pullout(st_select_lex *new_parent,
                                           Item **ref, bool merge)
 {
+  DBUG_ASSERT(fixed);
   /* This will re-calculate attributes of our Item_in_subselect: */
   Item_bool_func::fix_after_pullout(new_parent, ref, merge);
 
@@ -1468,7 +1469,38 @@ bool Item_in_optimizer::eval_not_null_tables(uchar *opt_arg)
 }
 
 
+<<<<<<< HEAD
 bool Item_in_optimizer::fix_left(THD *thd)
+=======
+void Item_in_optimizer::print(String *str, enum_query_type query_type)
+{
+   restore_first_argumet();
+   Item_func::print(str, query_type);
+}
+
+
+/**
+  "Restore" first argument before fix_fields() call (after it is harmless).
+
+  @Note: Main pointer to left part of IN/ALL/ANY subselect is subselect's
+  lest_expr (see Item_in_optimizer::fix_left) so changes made during
+  fix_fields will be rolled back there which can make
+  Item_in_optimizer::args[0] unusable on second execution before fix_left()
+  call. This call fix the pointer.
+*/
+
+void Item_in_optimizer::restore_first_argumet()
+{
+  if (args[1]->type() == Item::SUBSELECT_ITEM &&
+      ((Item_subselect *)args[1])->is_in_predicate())
+  {
+    args[0]= ((Item_in_subselect *)args[1])->left_expr;
+  }
+}
+
+
+bool Item_in_optimizer::fix_left(THD *thd, Item **ref)
+>>>>>>> origin/5.5
 {
   DBUG_ENTER("Item_in_optimizer::fix_left");
   /*
@@ -1645,9 +1677,16 @@ Item *Item_in_optimizer::expr_cache_insert_transformer(uchar *thd_arg)
 {
   THD *thd= (THD*) thd_arg;
   DBUG_ENTER("Item_in_optimizer::expr_cache_insert_transformer");
+<<<<<<< HEAD
 
   if (invisible_mode())
     DBUG_RETURN(this);
+=======
+  DBUG_ASSERT(fixed);
+
+  if (args[1]->type() != Item::SUBSELECT_ITEM)
+    DBUG_RETURN(this); // MAX/MIN transformed => do nothing
+>>>>>>> origin/5.5
 
   if (expr_cache)
     DBUG_RETURN(expr_cache);
@@ -1669,6 +1708,7 @@ Item *Item_in_optimizer::expr_cache_insert_transformer(uchar *thd_arg)
 
 void Item_in_optimizer::get_cache_parameters(List<Item> &parameters)
 {
+  DBUG_ASSERT(fixed);
   /* Add left expression to the list of the parameters of the subquery */
   if (!invisible_mode())
   {
@@ -1906,6 +1946,7 @@ Item *Item_in_optimizer::transform(Item_transformer transformer,
 {
   Item *new_item;
 
+  DBUG_ASSERT(fixed);
   DBUG_ASSERT(!current_thd->stmt_arena->is_stmt_prepare());
   DBUG_ASSERT(arg_count == 2);
 
@@ -1957,6 +1998,7 @@ Item *Item_in_optimizer::transform(Item_transformer transformer,
 
 bool Item_in_optimizer::is_expensive_processor(uchar *arg)
 {
+  DBUG_ASSERT(fixed);
   return args[0]->is_expensive_processor(arg) ||
          args[1]->is_expensive_processor(arg);
 }
@@ -1964,6 +2006,7 @@ bool Item_in_optimizer::is_expensive_processor(uchar *arg)
 
 bool Item_in_optimizer::is_expensive()
 {
+  DBUG_ASSERT(fixed);
   return args[0]->is_expensive() || args[1]->is_expensive();
 }
 
