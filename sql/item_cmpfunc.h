@@ -1388,7 +1388,7 @@ public:
   bool arg_is_datetime_notnull_field()
   {
     Item **args= arguments();
-    if (args[0]->type() == Item::FIELD_ITEM)
+    if (args[0]->real_item()->type() == Item::FIELD_ITEM)
     {
       Field *field=((Item_field*) args[0]->real_item())->field;
 

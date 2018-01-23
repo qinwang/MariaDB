@@ -2705,6 +2705,7 @@ DELETE FROM t1 WHERE c < 'bar';
 ALTER TABLE t1 DISABLE KEYS;
 INSERT INTO t1 (b) VALUES ('');
 ALTER TABLE t1 ENABLE KEYS;
+DROP TABLE t1;
 #
 # BUG#47444 - --myisam_repair_threads > 1 can result in all index
 #             cardinalities=1
