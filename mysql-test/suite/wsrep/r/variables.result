@@ -19,7 +19,6 @@ SET GLOBAL wsrep_provider=none;
 # variables when using "_"
 #
 CALL mtr.add_suppression("WSREP: Could not open saved state file for reading.*");
-SHOW GLOBAL STATUS LIKE 'wsrep%';
 Variable_name	Value
 wsrep_apply_oooe	#
 wsrep_apply_oool	#
@@ -36,6 +35,7 @@ wsrep_commit_oooe	#
 wsrep_commit_oool	#
 wsrep_commit_window	#
 wsrep_connected	#
+wsrep_debug_sync_waiters	#
 wsrep_flow_control_paused	#
 wsrep_flow_control_paused_ns	#
 wsrep_flow_control_recv	#
@@ -74,7 +74,6 @@ wsrep_replicated	#
 wsrep_replicated_bytes	#
 wsrep_thread_count	#
 
-SHOW GLOBAL STATUS LIKE 'wsrep_%';
 Variable_name	Value
 wsrep_apply_oooe	#
 wsrep_apply_oool	#
@@ -91,6 +90,7 @@ wsrep_commit_oooe	#
 wsrep_commit_oool	#
 wsrep_commit_window	#
 wsrep_connected	#
+wsrep_debug_sync_waiters	#
 wsrep_flow_control_paused	#
 wsrep_flow_control_paused_ns	#
 wsrep_flow_control_recv	#
@@ -128,13 +128,10 @@ wsrep_repl_other_bytes	#
 wsrep_replicated	#
 wsrep_replicated_bytes	#
 wsrep_thread_count	#
-SHOW GLOBAL STATUS LIKE 'wsrep_local_state_comment';
 Variable_name	Value
 wsrep_local_state_comment	#
 # Should show nothing.
-SHOW STATUS LIKE 'x';
 Variable_name	Value
-SET GLOBAL wsrep_provider=none;
 #
 # MDEV#6079: xtrabackup SST failing with maria-10.0-galera
 #
