@@ -3477,6 +3477,13 @@ buf_flush_set_page_cleaner_thread_cnt(ulong new_cnt)
 	mutex_enter(&page_cleaner.mutex);
 
 	srv_n_page_cleaners = new_cnt;
+
+	/* Startup is same as increasing number of page cleaner
+	threads i.e. we create requested number of threads and start
+	waiting is_started events until requested number of threads is
+	reached. When page cleaner thread starts it increases number of
+	running threads and sends a is_started event and starts to wait
+	for work in is_requested event. */
 	if (new_cnt > page_cleaner.n_workers) {
 		/* User has increased the number of page
 		cleaner threads. */
@@ -3489,12 +3496,21 @@ buf_flush_set_page_cleaner_thread_cnt(ulong new_cnt)
 
 	mutex_exit(&page_cleaner.mutex);
 
-	/* Wait until defined number of workers has started. */
+	/* Wait until defined number of workers has reached. */
 	while (page_cleaner.is_running &&
 	       page_cleaner.n_workers != (srv_n_page_cleaners - 1)) {
-		os_event_set(page_cleaner.is_requested);
+		/* When number of page cleaner threads decrease we send
+		is_requested event i.e. this is similar as in shutdown
+		there is "work" to be done. Again we wait these threads
+		to exit on is_started event. Page cleaner threads that
+		id is less than n_workers will send is_started event
+		before decreasing number of running threads and exists. */
+		if (page_cleaner.n_workers > (srv_n_page_cleaners -1 )) {
+			os_event_set(page_cleaner.is_requested);
+		}
+
 		os_event_reset(page_cleaner.is_started);
-		os_event_wait_time(page_cleaner.is_started, 1000000);
+		os_event_wait_time(page_cleaner.is_started, 10000);
 	}
 }
 
