@@ -173,7 +173,7 @@ base_cxxflags="-felide-constructors -fexceptions -fno-rtti"
 #
 # Flags for optimizing builds.
 # Be as fast as we can be without losing our ability to backtrace.
-fast_cflags="-O3 -fno-omit-frame-pointer"
+fast_cflags="-O3 -fno-omit-frame-pointer -DTRASH_FREE_MEMORY"
 
 debug_configs="--with-debug"
 if [ -z "$full_debug" ]
