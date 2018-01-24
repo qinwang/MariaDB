@@ -28,7 +28,7 @@ call mtr.add_suppression("WSREP: Failed to get provider options");
 --disable_query_log
 eval SET GLOBAL wsrep_provider= '$WSREP_PROVIDER';
 --enable_query_log
-
+--sleep 4
 --replace_regex /.*libgalera_smm.*/libgalera_smm.so/
 SELECT @@global.wsrep_provider;
 SELECT @@global.wsrep_slave_threads;

@@ -36,6 +36,8 @@ const  char* wsrep_node_incoming_address = 0;
 const  char* wsrep_start_position   = 0;
 ulong  wsrep_OSU_method_options;
 
+extern ulong wsrep_running_threads;
+
 int wsrep_init_vars()
 {
   wsrep_provider        = my_strdup(WSREP_NONE, MYF(MY_WME));
@@ -479,6 +481,7 @@ bool wsrep_slave_threads_check (sys_var *self, THD* thd, set_var* var)
 
 bool wsrep_slave_threads_update (sys_var *self, THD* thd, enum_var_type type)
 {
+  wsrep_slave_count_change= wsrep_slave_threads - wsrep_running_threads + 1;
   if (wsrep_slave_count_change > 0)
   {
     wsrep_create_appliers(wsrep_slave_count_change);
