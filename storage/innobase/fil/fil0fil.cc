@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1995, 2017, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2014, 2017, MariaDB Corporation.
+Copyright (c) 2014, 2018, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -4585,16 +4585,17 @@ check_first_page:
 }
 
 
-/********************************************************************//**
-Opens an .ibd file and adds the associated single-table tablespace to the
-InnoDB fil0fil.cc data structures. */
+/** Opens an .ibd file and adds the associated single-table tablespace to the
+InnoDB fil0fil.cc data structures.
+@param[in]	dbname		database name
+@param[in]	filename	file name (not a path), including the
+				.ibd or .isl extension
+@return true when success, false at failure. */
 static
-void
+bool
 fil_load_single_table_tablespace(
-/*=============================*/
-	const char*	dbname,		/*!< in: database name */
-	const char*	filename)	/*!< in: file name (not a path),
-					including the .ibd or .isl extension */
+	const char*	dbname,
+	const char*	filename)
 {
 	char*		tablename;
 	ulint		tablename_len;
@@ -4640,7 +4641,7 @@ fil_load_single_table_tablespace(
 	if (space) {
 		mem_free(tablename);
 		mutex_exit(&fil_system->mutex);
-		return;
+		return true;
 	}
 	mutex_exit(&fil_system->mutex);
 
@@ -4693,7 +4694,7 @@ fil_load_single_table_tablespace(
 			fprintf(stderr,
 				"InnoDB: Error: could not open single-table"
 				" tablespace file %s. Encryption error!\n", def.filepath);
-			return;
+			return false;
 		}
 
 		/* The following call prints an error message */
@@ -4712,7 +4713,7 @@ fil_load_single_table_tablespace(
 			if (def.filepath) {
 				mem_free(def.filepath);
 			}
-			return;
+			return true;
 		}
 no_good_file:
 		fprintf(stderr,
@@ -4751,10 +4752,10 @@ will_not_choose:
 				"Continuing crash recovery even though we "
 				"cannot access the .ibd file of this table.",
 				srv_force_recovery);
-			return;
+			return true;
 		}
 
-		abort();
+		return false;
 	}
 
 	if (def.success && remote.success) {
@@ -4928,6 +4929,8 @@ func_exit_after_close:
 		mem_free(remote.filepath);
 	}
 	mem_free(def.filepath);
+
+	return true;
 }
 
 /***********************************************************************//**
@@ -5058,8 +5061,12 @@ fil_load_single_table_tablespaces(void)
 						   ".isl"))) {
 					/* The name ends in .ibd or .isl;
 					try opening the file */
-					fil_load_single_table_tablespace(
+					bool success = fil_load_single_table_tablespace(
 						dbinfo.name, fileinfo.name);
+
+					if (!success) {
+						err = DB_ERROR;
+					}
 				}
 next_file_item:
 				ret = fil_file_readdir_next_file(&err,

@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1995, 2017, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2014, 2017, MariaDB Corporation.
+Copyright (c) 2014, 2018, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -4777,16 +4777,17 @@ check_first_page:
 }
 
 
-/********************************************************************//**
-Opens an .ibd file and adds the associated single-table tablespace to the
-InnoDB fil0fil.cc data structures. */
+/** Opens an .ibd file and adds the associated single-table tablespace to the
+InnoDB fil0fil.cc data structures.
+@param[in]	dbname		database name
+@param[in]	filename	file name (not a path), including the
+				.ibd or .isl extension
+@return true when success, false at failure. */
 static
-void
+bool
 fil_load_single_table_tablespace(
-/*=============================*/
-	const char*	dbname,		/*!< in: database name */
-	const char*	filename)	/*!< in: file name (not a path),
-					including the .ibd or .isl extension */
+	const char*	dbname,
+	const char*	filename)
 {
 	char*		tablename;
 	ulint		tablename_len;
@@ -4836,7 +4837,7 @@ fil_load_single_table_tablespace(
 	if (space) {
 		mem_free(tablename);
 		mutex_exit(&fil_system->mutex);
-		return;
+		return true;
 	}
 	mutex_exit(&fil_system->mutex);
 
@@ -4925,7 +4926,7 @@ fil_load_single_table_tablespace(
 			if (def.filepath) {
 				mem_free(def.filepath);
 			}
-			return;
+			return true;
 		}
 no_good_file:
 		fprintf(stderr,
@@ -4964,10 +4965,10 @@ will_not_choose:
 				"Continuing crash recovery even though we "
 				"cannot access the .ibd file of this table.",
 				srv_force_recovery);
-			return;
+			return true;
 		}
 
-		abort();
+		return false;
 	}
 
 	if (def.success && remote.success) {
@@ -5180,6 +5181,8 @@ func_exit_after_close:
 		mem_free(remote.filepath);
 	}
 	mem_free(def.filepath);
+
+	return true;
 }
 
 /***********************************************************************//**
@@ -5327,7 +5330,7 @@ fil_load_single_table_tablespaces(ibool (*pred)(const char*, const char*))
 				    && (0 == strcmp(fileinfo.name
 						   + strlen(fileinfo.name) - 4,
 						   ".ibd")
-					|| ((!IS_XTRABACKUP() || srv_backup_mode) 
+					|| ((!IS_XTRABACKUP() || srv_backup_mode)
 							&& 0 == strcmp(fileinfo.name
 							 + strlen(fileinfo.name) - 4,
 							".isl")))
@@ -5335,17 +5338,22 @@ fil_load_single_table_tablespaces(ibool (*pred)(const char*, const char*))
 						pred(dbinfo.name, fileinfo.name))) {
 					/* The name ends in .ibd or .isl;
 					try opening the file */
-					fil_load_single_table_tablespace(
+					bool success = fil_load_single_table_tablespace(
 						dbinfo.name, fileinfo.name);
+
+					if (!success) {
+						err = DB_ERROR;
+					}
+
 					files_read++;
 					if (files_read - files_read_at_last_check >
 					    CHECK_TIME_EVERY_N_FILES) {
 						ib_time_t cur_time= ut_time();
 						files_read_at_last_check= files_read;
-						double time_elapsed= ut_difftime(cur_time, 
+						double time_elapsed= ut_difftime(cur_time,
 						                                 prev_report_time);
 						if (time_elapsed > 15) {
-							ib_logf(IB_LOG_LEVEL_INFO, 
+							ib_logf(IB_LOG_LEVEL_INFO,
 								"Processed %ld .ibd/.isl files",
 								files_read);
 							prev_report_time= cur_time;

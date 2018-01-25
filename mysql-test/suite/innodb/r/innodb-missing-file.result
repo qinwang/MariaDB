@@ -1,0 +1,12 @@
+call mtr.add_suppression("A link file was found named './test/t1.isl' but the linked tablespace .* could not be opened.");
+call mtr.add_suppression("InnoDB: Error: could not open single-table tablespace file ./test/t1.ibd");
+call mtr.add_suppression("InnoDB: Table test/t1 in the InnoDB data dictionary has tablespace id [0-9]+, but tablespace with that id or name does not exist. Have you deleted or moved .ibd files\\? This may also be a table created with CREATE TEMPORARY TABLE whose .ibd and .frm files MySQL automatically removed, but the table still exists in the InnoDB internal data dictionary.");
+Warnings:
+Warning	1265	Data truncated for column 'pattern' at row 1
+set global innodb_file_format='Barracuda';
+CREATE TABLE t1(c1 INT) ENGINE=InnoDB DATA DIRECTORY='MYSQL_TMP_DIR';
+INSERT INTO t1 VALUES(1);
+# Kill the server
+select * from t1;
+ERROR 42S02: Table 'test.t1' doesn't exist in engine
+drop table t1;

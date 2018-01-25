@@ -1,0 +1,26 @@
+--source include/have_innodb.inc
+
+create table t1(c1 int) engine=InnoDB;
+INSERT INTO t1 VALUES(1);
+let MYSQLD_DATADIR=`select @@datadir`;
+
+--source include/shutdown_mysqld.inc
+
+--copy_file $MYSQLD_DATADIR/test/t1.ibd $MYSQL_TMP_DIR/t1.ibd
+--remove_file $MYSQLD_DATADIR/test/t1.ibd
+
+--source include/start_mysqld.inc
+
+echo # xtrabackup backup;
+let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
+--disable_result_log
+exec  $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf --backup --target-dir=$targetdir;
+--enable_result_log
+
+rmdir $targetdir;
+
+--error ER_NO_SUCH_TABLE_IN_ENGINE
+select * from t1;
+drop table t1;
+
+--remove_file $MYSQL_TMP_DIR/t1.ibd
