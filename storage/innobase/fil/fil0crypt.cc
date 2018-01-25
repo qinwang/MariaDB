@@ -1,6 +1,6 @@
 /*****************************************************************************
 Copyright (C) 2013, 2015, Google Inc. All Rights Reserved.
-Copyright (c) 2014, 2017, MariaDB Corporation.
+Copyright (c) 2014, 2018, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -2553,13 +2553,6 @@ fil_space_verify_crypt_checksum(
 	    && *reinterpret_cast<const ib_uint64_t*>(page + FIL_PAGE_LSN) == 0
 	    && buf_page_is_zeroes(page, page_size)) {
 		return(true);
-	}
-
-	/* Compressed and encrypted pages do not have checksum. Assume not
-	corrupted. Page verification happens after decompression in
-	buf_page_io_complete() using buf_page_is_corrupted(). */
-	if (mach_read_from_2(page+FIL_PAGE_TYPE) == FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED) {
-		return (true);
 	}
 
 	uint32 cchecksum1, cchecksum2;

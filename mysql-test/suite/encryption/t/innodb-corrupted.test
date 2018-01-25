@@ -1,0 +1,25 @@
+# Don't test under embedded as we restart server
+-- source include/not_embedded.inc
+# Require InnoDB
+-- source include/have_innodb.inc
+-- source include/have_file_key_management_plugin.inc
+
+let $encrypt=`SELECT @@innodb_compression_algorithm`;
+let $encrypt=`SELECT @@innodb_default_encryption_key_id`;
+
+set global innodb_encrypt_tables='FORCE';
+select @@innodb_encrypt_tables;
+set global innodb_default_encryption_key_id=4;
+select @@innodb_default_encryption_key_id;
+set global innodb_compression_algorithm=zlib;
+select @@innodb_compression_algorithm;
+
+--source include/innodb-page-compression.inc
+
+--disable_query_log
+set global innodb_encrypt_tables=default;
+set global innodb_default_encryption_key_id=default;
+set global innodb_compression_algorithm=default;
+--enable_query_log
+
+

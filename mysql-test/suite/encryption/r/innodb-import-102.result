@@ -1,0 +1,74 @@
+create table t0_be (c1 int not null auto_increment primary key, b char(200)) engine=innodb;
+create table t1_be (c1 int not null auto_increment primary key, b char(200)) engine=innodb encrypted=yes;
+create table t2_be (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=yes;
+create table t3_be (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=yes encrypted=yes;
+create table t4_be (c1 int not null auto_increment primary key, b char(200)) engine=innodb row_format=compressed;
+create table t5_be (c1 int not null auto_increment primary key, b char(200)) engine=innodb row_format=compressed encrypted=yes;
+create table t0_le (c1 int not null auto_increment primary key, b char(200)) engine=innodb;
+create table t1_le (c1 int not null auto_increment primary key, b char(200)) engine=innodb encrypted=yes;
+create table t2_le (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=yes;
+create table t3_le (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=yes encrypted=yes;
+create table t4_le (c1 int not null auto_increment primary key, b char(200)) engine=innodb row_format=compressed;
+create table t5_le (c1 int not null auto_increment primary key, b char(200)) engine=innodb row_format=compressed encrypted=yes;
+alter table t0_be discard tablespace;
+alter table t1_be discard tablespace;
+alter table t2_be discard tablespace;
+alter table t3_be discard tablespace;
+alter table t4_be discard tablespace;
+alter table t5_be discard tablespace;
+alter table t0_le discard tablespace;
+alter table t1_le discard tablespace;
+alter table t2_le discard tablespace;
+alter table t3_le discard tablespace;
+alter table t4_le discard tablespace;
+alter table t5_le discard tablespace;
+alter table t0_be import tablespace;
+alter table t1_be import tablespace;
+alter table t2_be import tablespace;
+alter table t3_be import tablespace;
+alter table t4_be import tablespace;
+alter table t5_be import tablespace;
+alter table t0_le import tablespace;
+alter table t1_le import tablespace;
+alter table t2_le import tablespace;
+alter table t3_le import tablespace;
+alter table t4_le import tablespace;
+alter table t5_le import tablespace;
+select * from t0_be;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+select * from t1_be;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+select * from t2_be;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+select * from t3_be;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+select * from t4_be;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+select * from t5_be;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+select * from t0_le;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+select * from t1_le;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+select * from t2_le;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+select * from t3_le;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+select * from t4_le;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+select * from t5_le;
+c1	b
+1	AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa
+drop table t0_be, t1_be, t2_be, t3_be, t4_be, t5_be;
+drop table t0_le, t1_le, t2_le, t3_le, t4_le, t5_le;

@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1995, 2017, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2013, 2017, MariaDB Corporation.
+Copyright (c) 2013, 2018, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -522,6 +522,45 @@ buf_dblwr_init_or_load_pages(
 	return(DB_SUCCESS);
 }
 
+/** Verify post compression checksum and if it matches
+decompress page.
+@param[in,out] 	read_buf	Page compressed buffer. Result of
+				decompression is copied here.
+@param[in]	space_id	Tablespace identifier
+@param[in]	page_no		Page offset
+@param[in]	page_size	Actual page size
+@return true if both stored post compression checksum matches calculated one
+or it is BUF_NO_CHECKSUM_MAGIC and page decompression is succeeds.*/
+static
+bool
+buf_dblwr_decompress(
+	byte *		read_buf,
+	ulint		space_id,
+	ulint		page_no,
+	ulint		page_size)
+{
+	bool success = true;
+
+	/* Page is always fist compressed and then encrypted. Here we can
+	only decompress pages if they are not encrypted.
+
+	For compressed pages verify post compression checksum and if it
+	matches decompress the page.
+
+	Note that old datafiles have checksum BUF_NO_CHECKSUM_MAGIC and
+	that value is accepted as correct post compression checksum see
+	fil_verify_compression_checksum().
+
+	In that case we hope that compression algorithm can recover from
+	corrupted input and return a error that is then handled.*/
+	if(!fil_verify_compression_checksum(read_buf, space_id, page_no)
+	   || !fil_decompress_page(NULL, read_buf, page_size, NULL)) {
+		return success = false;
+	}
+
+	return success;
+}
+
 /** Process and remove the double write buffer pages for all tablespaces. */
 void
 buf_dblwr_process()
@@ -601,25 +640,24 @@ buf_dblwr_process()
 		const bool is_all_zero = buf_page_is_zeroes(
 			read_buf, page_size);
 
+		bool success = true;
+
 		if (is_all_zero) {
 			/* We will check if the copy in the
 			doublewrite buffer is valid. If not, we will
 			ignore this page (there should be redo log
 			records to initialize it). */
 		} else {
-			if (fil_page_is_compressed_encrypted(read_buf) ||
-			    fil_page_is_compressed(read_buf)) {
-				/* Decompress the page before
-				validating the checksum. */
-				fil_decompress_page(
-					NULL, read_buf, srv_page_size,
-					NULL, true);
+			if (fil_page_is_compressed(read_buf)) {
+				success = buf_dblwr_decompress(read_buf,
+					space_id, page_no, srv_page_size);
 			}
 
-			if (fil_space_verify_crypt_checksum(
-				    read_buf, page_size, space_id, page_no)
-			   || !buf_page_is_corrupted(
-				   true, read_buf, page_size, space)) {
+			if (success
+			    && (fil_space_verify_crypt_checksum(
+					read_buf, page_size, space_id, page_no)
+			        || !buf_page_is_corrupted(
+					true, read_buf, page_size, space))) {
 				/* The page is good; there is no need
 				to consult the doublewrite buffer. */
 				continue;
@@ -633,17 +671,15 @@ buf_dblwr_process()
 		}
 
 		/* Next, validate the doublewrite page. */
-		if (fil_page_is_compressed_encrypted(page) ||
-		    fil_page_is_compressed(page)) {
-			/* Decompress the page before
-			validating the checksum. */
-			fil_decompress_page(
-				NULL, page, srv_page_size, NULL, true);
+		if (fil_page_is_compressed(page)) {
+			success = buf_dblwr_decompress(page,
+					space_id, page_no, srv_page_size);
 		}
 
-		if (!fil_space_verify_crypt_checksum(page, page_size,
+		if (!success
+		    || (!fil_space_verify_crypt_checksum(page, page_size,
 						     space_id, page_no)
-		    && buf_page_is_corrupted(true, page, page_size, space)) {
+			&& buf_page_is_corrupted(true, page, page_size, space))) {
 			if (!is_all_zero) {
 				ib::warn() << "A doublewrite copy of page "
 					<< page_id << " is corrupted.";

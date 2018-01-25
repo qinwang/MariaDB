@@ -5997,6 +5997,12 @@ dict_set_corrupted_by_space(
 	table = dict_find_single_table_by_space(space_id);
 
 	if (!table) {
+#ifdef UNIV_DEBUG
+		ib::info()
+			<< "Can't set space " << space_id
+			<< " corrupted as table is not found dict_sys->table_LRU.";
+
+#endif
 		return(FALSE);
 	}
 

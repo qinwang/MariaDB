@@ -1,98 +1,133 @@
 call mtr.add_suppression("InnoDB: Compression failed for space [0-9]+ name test/innodb_page_compressed[0-9] len [0-9]+ err 2 write_size [0-9]+.");
 set global innodb_file_format = `Barracuda`;
 set global innodb_file_per_table = on;
-create table innodb_normal (c1 int not null auto_increment primary key, b char(200)) engine=innodb;
-create table innodb_page_compressed1 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=1;
-create table innodb_page_compressed2 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=2;
-create table innodb_page_compressed3 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=3;
-create table innodb_page_compressed4 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=4;
-create table innodb_page_compressed5 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=5;
-create table innodb_page_compressed6 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=6;
-create table innodb_page_compressed7 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=7;
-create table innodb_page_compressed8 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=8;
-create table innodb_page_compressed9 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=9;
-select count(*) from innodb_page_compressed1;
+call mtr.add_suppression("InnoDB: Database page corruption on disk or a failed file read of tablespace test/t[0-9]+ page \\[page id: space=[0-9]+, page number=[0-9]+\\]. You may have to recover from a backup.");
+call mtr.add_suppression("InnoDB: Page \\[page id: space=[0-9]+, page number= [0-9]+\\] in file ./test/t[0-9]+.ibd may be corrupted. Post compression checksum [0-9]+ stored [0-9]+ compression_method [ZLIB|SNAPPY|LZ4|LZO|LZMA|BZIP2]");
+call mtr.add_suppression("InnoDB: Background Page read failed to read or decrypt \\[page id: space=[0-9]+, page number=[0-9]+\\]");
+call mtr.add_suppression("mysqld: Index for table 't[0-9]+' is corrupt; try to repair it");
+create table t0 (c1 int not null auto_increment primary key, b char(200)) engine=innodb;
+create table t1 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=1;
+create table t2 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=2;
+create table t3 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=3;
+create table t4 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=4;
+create table t5 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=5;
+create table t6 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=6;
+create table t7 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=7;
+create table t8 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=8;
+create table t9 (c1 int not null auto_increment primary key, b char(200)) engine=innodb page_compressed=1 page_compression_level=9;
+select count(*) from t1;
 count(*)
-10000
-select count(*) from innodb_page_compressed3;
+500
+select count(*) from t3;
 count(*)
-10000
-select count(*) from innodb_page_compressed4;
+500
+select count(*) from t4;
 count(*)
-10000
-select count(*) from innodb_page_compressed5;
+500
+select count(*) from t5;
 count(*)
-10000
-select count(*) from innodb_page_compressed6;
+500
+select count(*) from t6;
 count(*)
-10000
-select count(*) from innodb_page_compressed6;
+500
+select count(*) from t6;
 count(*)
-10000
-select count(*) from innodb_page_compressed7;
+500
+select count(*) from t7;
 count(*)
-10000
-select count(*) from innodb_page_compressed8;
+500
+select count(*) from t8;
 count(*)
-10000
-select count(*) from innodb_page_compressed9;
+500
+select count(*) from t9;
 count(*)
-10000
-# innodb_normal expected FOUND
-FOUND 24084 /AaAaAaAa/ in innodb_normal.ibd
-# innodb_page_compressed1 page compressed expected NOT FOUND
-NOT FOUND /AaAaAaAa/ in innodb_page_compressed1.ibd
-# innodb_page_compressed2 page compressed expected NOT FOUND
-NOT FOUND /AaAaAaAa/ in innodb_page_compressed2.ibd
-# innodb_page_compressed3 page compressed expected NOT FOUND
-NOT FOUND /AaAaAaAa/ in innodb_page_compressed3.ibd
-# innodb_page_compressed4 page compressed expected NOT FOUND
-NOT FOUND /AaAaAaAa/ in innodb_page_compressed4.ibd
-# innodb_page_compressed5 page compressed expected NOT FOUND
-NOT FOUND /AaAaAaAa/ in innodb_page_compressed5.ibd
-# innodb_page_compressed6 page compressed expected NOT FOUND
-NOT FOUND /AaAaAaAa/ in innodb_page_compressed6.ibd
-# innodb_page_compressed7 page compressed expected NOT FOUND
-NOT FOUND /AaAaAaAa/ in innodb_page_compressed7.ibd
-# innodb_page_compressed8 page compressed expected NOT FOUND
-NOT FOUND /AaAaAaAa/ in innodb_page_compressed8.ibd
-# innodb_page_compressed9 page compressed expected NOT FOUND
-NOT FOUND /AaAaAaAa/ in innodb_page_compressed9.ibd
-select count(*) from innodb_page_compressed1;
+500
+# t0 expected FOUND
+FOUND 1284 /AaAaAaAa/ in t0.ibd
+# t1 page compressed expected NOT FOUND
+NOT FOUND /AaAaAaAa/ in t1.ibd
+# t2 page compressed expected NOT FOUND
+NOT FOUND /AaAaAaAa/ in t2.ibd
+# t3 page compressed expected NOT FOUND
+NOT FOUND /AaAaAaAa/ in t3.ibd
+# t4 page compressed expected NOT FOUND
+NOT FOUND /AaAaAaAa/ in t4.ibd
+# t5 page compressed expected NOT FOUND
+NOT FOUND /AaAaAaAa/ in t5.ibd
+# t6 page compressed expected NOT FOUND
+NOT FOUND /AaAaAaAa/ in t6.ibd
+# t7 page compressed expected NOT FOUND
+NOT FOUND /AaAaAaAa/ in t7.ibd
+# t8 page compressed expected NOT FOUND
+NOT FOUND /AaAaAaAa/ in t8.ibd
+# t9 page compressed expected NOT FOUND
+NOT FOUND /AaAaAaAa/ in t9.ibd
+# Run innochecksum on t9
+# Run innochecksum on t8
+# Run innochecksum on t7
+# Run innochecksum on t6
+# Run innochecksum on t5
+# Run innochecksum on t4
+# Run innochecksum on t3
+# Run innochecksum on t2
+# Run innochecksum on t1
+select count(*) from t0;
 count(*)
-10000
-select count(*) from innodb_page_compressed3;
+500
+select count(*) from t1;
 count(*)
-10000
-select count(*) from innodb_page_compressed4;
+500
+select count(*) from t3;
 count(*)
-10000
-select count(*) from innodb_page_compressed5;
+500
+select count(*) from t4;
 count(*)
-10000
-select count(*) from innodb_page_compressed6;
+500
+select count(*) from t5;
 count(*)
-10000
-select count(*) from innodb_page_compressed6;
+500
+select count(*) from t6;
 count(*)
-10000
-select count(*) from innodb_page_compressed7;
+500
+select count(*) from t7;
 count(*)
-10000
-select count(*) from innodb_page_compressed8;
+500
+select count(*) from t8;
 count(*)
-10000
-select count(*) from innodb_page_compressed9;
+500
+select count(*) from t9;
 count(*)
-10000
-drop table innodb_normal;
-drop table innodb_page_compressed1;
-drop table innodb_page_compressed2;
-drop table innodb_page_compressed3;
-drop table innodb_page_compressed4;
-drop table innodb_page_compressed5;
-drop table innodb_page_compressed6;
-drop table innodb_page_compressed7;
-drop table innodb_page_compressed8;
-drop table innodb_page_compressed9;
+500
+# Restart server
+# Corrupting tablespaces...
+# Corruption done
+# Run innochecksum on t4
+# Run innochecksum on t3
+# Run innochecksum on t2
+# Run innochecksum on t1
+# Start server again
+select * from t1;
+ERROR HY000: Index for table 't1' is corrupt; try to repair it
+select * from t2;
+ERROR HY000: Index for table 't2' is corrupt; try to repair it
+select * from t3;
+ERROR HY000: Index for table 't3' is corrupt; try to repair it
+select * from t4;
+ERROR HY000: Index for table 't4' is corrupt; try to repair it
+select count(*) from t5;
+count(*)
+500
+select count(*) from t6;
+count(*)
+500
+select count(*) from t7;
+count(*)
+500
+select count(*) from t8;
+count(*)
+500
+select count(*) from t9;
+count(*)
+500
+drop table t0, t1, t2, t3, t4, t5, t6, t7, t8, t9;
 #done

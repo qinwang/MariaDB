@@ -2,7 +2,7 @@
 
 Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2008, Google Inc.
-Copyright (c) 2013, 2017, MariaDB Corporation.
+Copyright (c) 2013, 2018, MariaDB Corporation.
 
 Portions of this file contain modifications contributed and copyrighted by
 Google, Inc. Those modifications are gratefully acknowledged and are described
@@ -826,25 +826,34 @@ buf_page_is_corrupted(
 #ifndef UNIV_INNOCHECKSUM
 	DBUG_EXECUTE_IF("buf_page_import_corrupt_failure", return(true); );
 #endif
-	ulint page_type = mach_read_from_2(read_buf + FIL_PAGE_TYPE);
-
 	/* We can trust page type if page compression is set on tablespace
 	flags because page compression flag means file must have been
 	created with 10.1 (later than 5.5 code base). In 10.1 page
 	compressed tables do not contain post compression checksum and
-	FIL_PAGE_END_LSN_OLD_CHKSUM field stored.  Note that space can
-	be null if we are in fil_check_first_page() and first page
-	is not compressed or encrypted. Page checksum is verified
-	after decompression (i.e. normally pages are already
-	decompressed at this stage). */
+	FIL_PAGE_END_LSN_OLD_CHKSUM field stored.
+
+	Note that space can be null if we are in fil_check_first_page() but
+	first page (page 0) is not compressed or encrypted.
+
+	Note that space can be null if we are in Datafile::find_space_id()
+	and that point pages are not yet decompressed/decrypted.
+
+	Note that for innochecksum.cc we want to know if page is corrupted
+	using traditional checksum methods even when page type is
+	compressed or compressed and encrypted.
+
+	Page checksum is verified after decompression (i.e. normally pages
+	are already decompressed at this stage). */
+#ifndef UNIV_INNOCHECKSUM
+	ulint page_type = mach_read_from_2(read_buf + FIL_PAGE_TYPE);
 	if ((page_type == FIL_PAGE_PAGE_COMPRESSED ||
 	     page_type == FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED)
-#ifndef UNIV_INNOCHECKSUM
-	    && space && FSP_FLAGS_HAS_PAGE_COMPRESSION(space->flags)
-#endif
-	) {
+	    && (!space
+		|| (space && FSP_FLAGS_HAS_PAGE_COMPRESSION(space->flags))))
+	{
 		return(false);
 	}
+#endif /* !UNIV_INNOCHECKSUM */
 
 	if (!page_size.is_compressed()
 	    && memcmp(read_buf + FIL_PAGE_LSN + 4,
@@ -1188,8 +1197,10 @@ buf_page_print(const byte* read_buf, const page_size_t& page_size)
 	ib::info() << "Page dump in ascii and hex ("
 		<< page_size.physical() << " bytes):";
 
+#ifdef UNIV_BUF_DEBUG
 	ut_print_buf(stderr, read_buf, page_size.physical());
 	fputs("\nInnoDB: End of page dump\n", stderr);
+#endif
 
 	if (page_size.is_compressed()) {
 		/* Print compressed page. */
@@ -4349,8 +4360,8 @@ loop:
 
 			/* Try to set table as corrupted instead of
 			asserting. */
-			if (page_id.space() != TRX_SYS_SPACE &&
-			    dict_set_corrupted_by_space(page_id.space())) {
+			if (page_id.space() != TRX_SYS_SPACE) {
+				dict_set_corrupted_by_space(page_id.space());
 				return (NULL);
 			}
 
@@ -5818,7 +5829,6 @@ buf_page_check_corrupt(buf_page_t* bpage, fil_space_t* space)
 	still be corrupted if used key does not match. */
 	still_encrypted = crypt_data
 		&& crypt_data->type != CRYPT_SCHEME_UNENCRYPTED
-		&& !bpage->encrypted
 		&& fil_space_verify_crypt_checksum(
 			dst_frame, bpage->size,
 			bpage->id.space(), bpage->id.page_no());
@@ -5913,12 +5923,19 @@ buf_page_io_complete(buf_page_t* bpage, bool evict)
 			return DB_TABLESPACE_DELETED;
 		}
 
-		buf_page_decrypt_after_read(bpage, space);
+		dberr_t err = DB_SUCCESS;
+
+		if (!buf_page_decrypt_after_read(bpage, space)) {
+			err = DB_PAGE_CORRUPTED;
+		}
 
 		byte*	frame = bpage->zip.data
 			? bpage->zip.data
 			: reinterpret_cast<buf_block_t*>(bpage)->frame;
-		dberr_t	err;
+
+		if (err != DB_SUCCESS) {
+			goto database_corrupted;
+		}
 
 		if (bpage->zip.data && uncompressed) {
 			my_atomic_addlint(&buf_pool->n_pend_unzip, 1);
@@ -7460,10 +7477,14 @@ buf_page_decrypt_after_read(buf_page_t* bpage, fil_space_t* space)
 		ut_d(fil_page_type_validate(dst_frame));
 
 		/* decompress using comp_buf to dst_frame */
-		fil_decompress_page(slot->comp_buf,
-				    dst_frame,
-				    ulong(size.logical()),
-				    &bpage->write_size);
+		if (!fil_verify_compression_checksum(dst_frame,
+				bpage->id.space(), bpage->id.page_no())
+		    || !fil_decompress_page(slot->comp_buf,
+				dst_frame,
+				ulong(size.logical()),
+				&bpage->write_size)) {
+			success = false;
+		}
 
 		/* Mark this slot as free */
 		slot->reserved = false;
@@ -7507,10 +7528,14 @@ buf_page_decrypt_after_read(buf_page_t* bpage, fil_space_t* space)
 
 			ut_d(fil_page_type_validate(dst_frame));
 			/* decompress using comp_buf to dst_frame */
-			fil_decompress_page(slot->comp_buf,
+			if (!fil_verify_compression_checksum(dst_frame,
+					bpage->id.space(), bpage->id.page_no())
+			    || !fil_decompress_page(slot->comp_buf,
 					    dst_frame,
 					    ulong(size.logical()),
-					    &bpage->write_size);
+					    &bpage->write_size)) {
+				success = false;
+			}
 			ut_d(fil_page_type_validate(dst_frame));
 		}
 
