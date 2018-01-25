@@ -6818,7 +6818,7 @@ fil_iterate(
 							dst, //dst
 							iter.page_size,
 							src, // src
-							&err); // src
+							&err);
 
 				if (err != DB_SUCCESS) {
 					return(err);
@@ -6839,8 +6839,10 @@ fil_iterate(
 			/* If the original page is page_compressed, we need
 			to decompress page before we can update it. */
 			if (page_compressed) {
-				fil_decompress_page(NULL, dst, ulong(size),
-						    NULL);
+				if (!fil_decompress_page(NULL, dst, ulong(size),
+						NULL)) {
+					return (DB_PAGE_CORRUPTED);
+				}
 				updated = true;
 			}
 

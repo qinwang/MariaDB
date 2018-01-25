@@ -2,10 +2,13 @@
 -- source include/have_innodb_lzo.inc
 -- source include/not_embedded.inc
 
-# lzo
 set global innodb_compression_algorithm = lzo;
+select @@innodb_compression_algorithm;
 
-# All page compression test use the same
+# All page compression tests use the same
 --source include/innodb-page-compression.inc
 
--- echo #done
+# reset system
+--disable_query_log
+set global innodb_compression_algorithm=default;
+--enable_query_log

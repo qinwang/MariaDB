@@ -7,9 +7,9 @@
 # MDEV-11004: Unable to start (Segfault or os error 2) when encryption key missing
 #
 
-call mtr.add_suppression("InnoDB: The page \[page id: space=[0-9]+, page number=[0-9]+\] in file test/t1 cannot be decrypted.");
-call mtr.add_suppression("InnoDB: The page \[page id: space=[0-9]+, page number=[0-9]+\] in file test/t2 cannot be decrypted.");
-call mtr.add_suppression("InnoDB: The page \[page id: space=[0-9]+, page number=[0-9]+\] in file test/t3 cannot be decrypted.");
+call mtr.add_suppression("InnoDB: Database page corruption on disk or a failed file read of tablespace test/t1 page \\[page id: space=[0-9]+, page number=[0-9]+\\]. You may have to recover from a backup.");
+call mtr.add_suppression("InnoDB: Table \"test\".\"t1\" is corrupted. Please drop the table and recreate.");
+call mtr.add_suppression("InnoDB: Cannot open table test/t1 from the internal data dictionary of InnoDB though the .frm file for the table exists. See http://dev.mysql.com/doc/refman/5.6/en/innodb-troubleshooting.html for how you can resolve the problem.");
 
 --echo
 --echo # Start server with keys2.txt
@@ -45,11 +45,11 @@ CREATE TABLE t4(a int not null primary key auto_increment, b varchar(128)) engin
 SELECT SLEEP(5);
 SELECT COUNT(1) FROM t3;
 SELECT COUNT(1) FROM t2;
---error 1296
+--error ER_GET_ERRMSG
 SELECT COUNT(1) FROM t2,t1 where t2.a = t1.a;
---error 1296
+--error ER_GET_ERRMSG,ER_NO_SUCH_TABLE_IN_ENGINE
 SELECT COUNT(1) FROM t1 where b = 'ab';
---error 1296
+--error ER_GET_ERRMSG,ER_NO_SUCH_TABLE_IN_ENGINE
 SELECT COUNT(1) FROM t1;
 
 --echo

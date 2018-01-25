@@ -2281,6 +2281,7 @@ convert_error_code_to_mysql(
 						code should be introduced */
 
 	case DB_CORRUPTION:
+	case DB_PAGE_CORRUPTED:
 		return(HA_ERR_CRASHED);
 
 	case DB_OUT_OF_FILE_SPACE:
@@ -6552,6 +6553,8 @@ table_opened:
 					buf, space()->chain.start->name);
 				ret_err = HA_ERR_DECRYPTION_FAILED;
 			}
+		} else if (ib_table->corrupted) {
+			ret_err = HA_ERR_CRASHED;
 		}
 
 		dict_table_close(ib_table, FALSE, FALSE);

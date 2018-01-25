@@ -2,7 +2,7 @@
 
 Copyright (c) 1995, 2016, Oracle and/or its affiliates. All Rights Reserved.
 Copyright (c) 2008, Google Inc.
-Copyright (c) 2013, 2017, MariaDB Corporation.
+Copyright (c) 2013, 2018, MariaDB Corporation.
 
 Portions of this file contain modifications contributed and copyrighted by
 Google, Inc. Those modifications are gratefully acknowledged and are described
@@ -739,22 +739,25 @@ buf_page_is_corrupted(
 	ulint		checksum_field2;
 	ulint 		space_id = mach_read_from_4(
 		read_buf + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);
-	ulint page_type = mach_read_from_2(
-		read_buf + FIL_PAGE_TYPE);
 
 	/* We can trust page type if page compression is set on tablespace
 	flags because page compression flag means file must have been
 	created with 10.1 (later than 5.5 code base). In 10.1 page
 	compressed tables do not contain post compression checksum and
-	FIL_PAGE_END_LSN_OLD_CHKSUM field stored. Note that space can
-	be null if we are in fil_check_first_page() and first page
-	is not compressed or encrypted. Page checksum is verified
-	after decompression (i.e. normally pages are already
-	decompressed at this stage). */
+	FIL_PAGE_END_LSN_OLD_CHKSUM field stored.
+
+	Note that space can be null if we are in fil_check_first_page() but
+	first page (page 0) is not compressed or encrypted.
+
+	Page checksum is verified after decompression (i.e. normally pages
+	are already decompressed at this stage). */
+	ulint page_type = mach_read_from_2(read_buf + FIL_PAGE_TYPE);
 	if ((page_type == FIL_PAGE_PAGE_COMPRESSED ||
 	     page_type == FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED)
-	    && space && FSP_FLAGS_HAS_PAGE_COMPRESSION(space->flags)) {
-		return (false);
+	    && (!space
+		|| (space && FSP_FLAGS_HAS_PAGE_COMPRESSION(space->flags))))
+	{
+		return(false);
 	}
 
 	if (!zip_size
@@ -975,12 +978,14 @@ buf_page_print(const byte* read_buf, ulint zip_size)
 		size = UNIV_PAGE_SIZE;
 	}
 
+#ifdef UNIV_BUG_DEBUG
 	ut_print_timestamp(stderr);
 	fprintf(stderr,
 		" InnoDB: Page dump in ascii and hex (%lu bytes):\n",
 		size);
 	ut_print_buf(stderr, read_buf, size);
 	fputs("\nInnoDB: End of page dump\n", stderr);
+#endif
 
 	if (zip_size) {
 		/* Print compressed page. */
@@ -3113,8 +3118,8 @@ loop:
 
 			/* Try to set table as corrupted instead of
 			asserting. */
-			if (space > TRX_SYS_SPACE &&
-			    dict_set_corrupted_by_space(space)) {
+			if (space > TRX_SYS_SPACE) {
+				dict_set_corrupted_by_space(space);
 				return (NULL);
 			}
 
@@ -4655,21 +4660,19 @@ buf_page_check_corrupt(buf_page_t* bpage, fil_space_t* space)
 	still be corrupted if used key does not match. */
 	still_encrypted = (crypt_data &&
 		crypt_data->type != CRYPT_SCHEME_UNENCRYPTED &&
-		!bpage->encrypted &&
 		fil_space_verify_crypt_checksum(dst_frame, zip_size,
 			space, bpage->offset));
 
-	if (!still_encrypted) {
-		/* If traditional checksums match, we assume that page is
-		not anymore encrypted. */
-		corrupted = buf_page_is_corrupted(true, dst_frame, zip_size,
+	/* If traditional checksums match, we assume that page is
+	not anymore encrypted. */
+	corrupted = buf_page_is_corrupted(true, dst_frame, zip_size,
 						  space);
 
-		if (!corrupted) {
-			bpage->encrypted = false;
-		} else {
-			err = DB_PAGE_CORRUPTED;
-		}
+	if (!corrupted) {
+		bpage->encrypted = false;
+		still_encrypted = false;
+	} else if (!still_encrypted) {
+		err = DB_PAGE_CORRUPTED;
 	}
 
 	/* Pages that we think are unencrypted but do not match the checksum
@@ -4686,7 +4689,7 @@ buf_page_check_corrupt(buf_page_t* bpage, fil_space_t* space)
 			", page number=%u]"
 			" in file %s cannot be decrypted.",
 			bpage->space, bpage->offset,
-			space->name);
+			space->chain.start->name);
 
 		ib_logf(IB_LOG_LEVEL_INFO,
 			"However key management plugin or used key_version " ULINTPF
@@ -4746,12 +4749,20 @@ buf_page_io_complete(buf_page_t* bpage)
 			return(DB_TABLESPACE_DELETED);
 		}
 
-		buf_page_decrypt_after_read(bpage, space);
+		dberr_t err = DB_SUCCESS;
+
+		if (!buf_page_decrypt_after_read(bpage, space)) {
+			err = DB_PAGE_CORRUPTED;
+		}
 
 		if (buf_page_get_zip_size(bpage)) {
 			frame = bpage->zip.data;
 		} else {
 			frame = ((buf_block_t*) bpage)->frame;
+		}
+
+		if (err != DB_SUCCESS) {
+			goto database_corrupted;
 		}
 
 		if (buf_page_get_zip_size(bpage)) {
@@ -4844,7 +4855,7 @@ database_corrupted:
 				ib_logf(IB_LOG_LEVEL_ERROR,
 					"Database page corruption on disk"
 					" or a failed file read of tablespace %s"
-					" page  [page id: space=%u"
+					" page [page id: space=%u"
 					", page number=%u]"
 					". You may have to recover from "
 					"a backup.",
@@ -6447,10 +6458,14 @@ buf_page_decrypt_after_read(buf_page_t* bpage, fil_space_t* space)
 #endif
 
 		/* decompress using comp_buf to dst_frame */
-		fil_decompress_page(slot->comp_buf,
-				    dst_frame,
-				    ulong(size),
-				    &bpage->write_size);
+		if (!fil_verify_compression_checksum(dst_frame,
+				bpage->space, bpage->offset)
+		    || !fil_decompress_page(slot->comp_buf,
+				dst_frame,
+				ulong(size),
+				&bpage->write_size)) {
+			success = false;
+		}
 
 		/* Mark this slot as free */
 		slot->reserved = false;
@@ -6505,10 +6520,14 @@ buf_page_decrypt_after_read(buf_page_t* bpage, fil_space_t* space)
 			fil_page_type_validate(dst_frame);
 #endif
 			/* decompress using comp_buf to dst_frame */
-			fil_decompress_page(slot->comp_buf,
+			if (!fil_verify_compression_checksum(dst_frame,
+					bpage->space, bpage->offset)
+			    || !fil_decompress_page(slot->comp_buf,
 					    dst_frame,
 					    ulong(size),
-					    &bpage->write_size);
+					    &bpage->write_size)) {
+				success = false;
+			}
 			ut_d(fil_page_type_validate(dst_frame));
 		}
 
