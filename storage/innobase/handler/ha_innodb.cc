@@ -16178,11 +16178,8 @@ ha_innobase::external_lock(
 				innobase_commit(ht, thd, TRUE);
 			}
 
-		} else if (trx->isolation_level <= TRX_ISO_READ_COMMITTED
-			   && trx->read_view.is_open()) {
-			mutex_enter(&trx_sys.mutex);
+		} else if (trx->isolation_level <= TRX_ISO_READ_COMMITTED) {
 			trx_sys.mvcc.view_close(trx->read_view);
-			mutex_exit(&trx_sys.mutex);
 		}
 	}
 
@@ -16843,14 +16840,11 @@ ha_innobase::store_lock(
 		trx->isolation_level = innobase_map_isolation_level(
 			(enum_tx_isolation) thd_tx_isolation(thd));
 
-		if (trx->isolation_level <= TRX_ISO_READ_COMMITTED
-		    && trx->read_view.is_open()) {
+		if (trx->isolation_level <= TRX_ISO_READ_COMMITTED) {
 
 			/* At low transaction isolation levels we let
 			each consistent read set its own snapshot */
-			mutex_enter(&trx_sys.mutex);
 			trx_sys.mvcc.view_close(trx->read_view);
-			mutex_enter(&trx_sys.mutex);
 		}
 	}
 
