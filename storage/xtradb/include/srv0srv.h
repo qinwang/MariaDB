@@ -203,6 +203,9 @@ struct srv_stats_t {
 
 	/** Number of spaces in keyrotation list */
 	ulint_ctr_64_t		key_rotation_list_length;
+
+	/** Number of buffered aio requests submitted */
+	ulint_ctr_64_t		n_aio_submitted;
 };
 
 extern const char*	srv_main_thread_op_info;
@@ -719,6 +722,9 @@ extern ulong srv_sync_array_size;
 
 /* print all user-level transactions deadlocks to mysqld stderr */
 extern my_bool srv_print_all_deadlocks;
+
+/* print lock wait timeout info to mysqld stderr */
+extern my_bool srv_print_lock_wait_timeout_info;
 
 extern my_bool	srv_cmp_per_index_enabled;
 
@@ -1310,6 +1316,8 @@ struct export_var_t{
 	ulint innodb_scrub_page_split_failures_out_of_filespace;
 	ulint innodb_scrub_page_split_failures_missing_index;
 	ulint innodb_scrub_page_split_failures_unknown;
+
+	ulint innodb_buffered_aio_submitted;
 };
 
 /** Thread slot in the thread table.  */
