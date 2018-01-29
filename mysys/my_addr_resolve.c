@@ -135,13 +135,6 @@ err:
 
 #include <sys/wait.h>
 
-#if defined(HAVE_LINK_H) && defined(HAVE_DLOPEN)
-#include <link.h>
-static ptrdiff_t offset= 0;
-#else
-#define offset 0
-#endif
-
 static int in[2], out[2];
 static pid_t pid;
 static char addr2line_binary[1024];
@@ -203,9 +196,6 @@ int my_addr_resolve(void *ptr, my_addr_loc *loc)
   Dl_info info;
   void *offset;
 
-  FD_ZERO(&set);
-  FD_SET(out[0], &set);
-
   if (!dladdr(ptr, &info))
     return 1;
 
@@ -223,6 +213,10 @@ int my_addr_resolve(void *ptr, my_addr_loc *loc)
     strnmov(addr2line_binary, info.dli_fname, sizeof(addr2line_binary));
   }
   offset = info.dli_fbase;
+  len= my_snprintf(input, sizeof(input), "%p\n", ptr - offset);
+
+  FD_ZERO(&set);
+  FD_SET(out[0], &set);
 
   if (write(in[1], input, len) <= 0)
     return 1;
