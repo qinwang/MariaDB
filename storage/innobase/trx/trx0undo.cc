@@ -893,34 +893,6 @@ trx_undo_free_last_page(trx_undo_t* undo, mtr_t* mtr)
 	undo->size--;
 }
 
-/** Empties an undo log header page of undo records for that undo log.
-Other undo logs may still have records on that page, if it is an update
-undo log.
-@param[in]	space		space
-@param[in]	hdr_page_no	header page number
-@param[in]	hdr_offset	header offset
-@param[in,out]	mtr		mini-transaction */
-static
-void
-trx_undo_empty_header_page(
-	ulint			space,
-	ulint			hdr_page_no,
-	ulint			hdr_offset,
-	mtr_t*			mtr)
-{
-	page_t*		header_page;
-	trx_ulogf_t*	log_hdr;
-	ulint		end;
-
-	header_page = trx_undo_page_get(page_id_t(space, hdr_page_no), mtr);
-
-	log_hdr = header_page + hdr_offset;
-
-	end = trx_undo_page_get_end(header_page, hdr_page_no, hdr_offset);
-
-	mlog_write_ulint(log_hdr + TRX_UNDO_LOG_START, end, MLOG_2BYTES, mtr);
-}
-
 /** Truncate the tail of an undo log during rollback.
 @param[in,out]	undo	undo log
 @param[in]	limit	all undo logs after this limit will be discarded
@@ -1032,9 +1004,34 @@ loop:
 	page_no = page_get_page_no(undo_page);
 
 	if (page_no == hdr_page_no) {
-		trx_undo_empty_header_page(rseg->space,
-					   hdr_page_no, hdr_offset,
-					   &mtr);
+		uint16_t end = mach_read_from_2(hdr_offset + TRX_UNDO_NEXT_LOG
+						+ undo_page);
+		if (end == 0) {
+			end = mach_read_from_2(TRX_UNDO_PAGE_HDR
+					       + TRX_UNDO_PAGE_FREE
+					       + undo_page);
+		}
+
+		mlog_write_ulint(undo_page + hdr_offset + TRX_UNDO_LOG_START,
+				 end, MLOG_2BYTES, &mtr);
+
+		if (rseg->is_persistent()) {
+			/* By emptying undo logs, we may discard some
+			of the latest transaction identifiers. In the
+			extreme case, all undo logs are emptied, and
+			trx_rseg_array_init() on a subsequent startup
+			will solely rely on the maximum transaction ID
+			that we store in the TRX_SYS page. */
+			trx_id_t max_trx_id = trx_sys.get_max_trx_id();
+			byte* trx_sys_id = TRX_SYS + TRX_SYS_TRX_ID_STORE
+				+ trx_sysf_get(&mtr)->frame;
+			/* If this causes too frequent writes, we could
+			restore TRX_SYS_TRX_ID_WRITE_MARGIN and add some
+			rounding here. */
+			if (mach_read_from_8(trx_sys_id) < max_trx_id) {
+				mlog_write_ull(trx_sys_id, max_trx_id, &mtr);
+			}
+		}
 	} else {
 		trx_undo_free_page(rseg, TRUE, rseg->space, hdr_page_no,
 				   page_no, &mtr);
@@ -1100,12 +1097,14 @@ trx_undo_seg_free(
 /*========== UNDO LOG MEMORY COPY INITIALIZATION =====================*/
 
 /** Read an undo log when starting up the database.
-@param[in,out]	rseg	rollback segment
-@param[in]	id	rollback segment slot
-@param[in]	page_no	undo log segment page number
+@param[in,out]	rseg		rollback segment
+@param[in]	id		rollback segment slot
+@param[in]	page_no		undo log segment page number
+@param[in,out]	max_trx_id	the largest observed transaction ID
 @return	size of the undo log in pages */
 ulint
-trx_undo_mem_create_at_db_start(trx_rseg_t* rseg, ulint id, ulint page_no)
+trx_undo_mem_create_at_db_start(trx_rseg_t* rseg, ulint id, ulint page_no,
+				trx_id_t& max_trx_id)
 {
 	mtr_t		mtr;
 	XID		xid;
@@ -1135,10 +1134,14 @@ trx_undo_mem_create_at_db_start(trx_rseg_t* rseg, ulint id, ulint page_no)
 		xid.null();
 	}
 
+	trx_id_t trx_id = mach_read_from_8(undo_header + TRX_UNDO_TRX_ID);
+	if (trx_id > max_trx_id) {
+		max_trx_id = trx_id;
+	}
+
 	mutex_enter(&rseg->mutex);
 	trx_undo_t* undo = trx_undo_mem_create(
-		rseg, id, mach_read_from_8(undo_header + TRX_UNDO_TRX_ID),
-		&xid, page_no, offset);
+		rseg, id, trx_id, &xid, page_no, offset);
 	mutex_exit(&rseg->mutex);
 
 	undo->dict_operation = undo_header[TRX_UNDO_DICT_TRANS];

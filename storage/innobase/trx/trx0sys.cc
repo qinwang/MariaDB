@@ -90,24 +90,6 @@ uint	trx_rseg_n_slots_debug = 0;
 #endif
 
 
-/**
-  Writes the value of m_max_trx_id to the file based trx system header.
-*/
-
-void trx_sys_t::flush_max_trx_id()
-{
-  ut_ad(trx_sys.mutex.is_owned());
-  if (!srv_read_only_mode)
-  {
-    mtr_t mtr;
-    mtr.start();
-    mlog_write_ull(TRX_SYS + TRX_SYS_TRX_ID_STORE + trx_sysf_get(&mtr)->frame,
-                   trx_sys.get_max_trx_id(), &mtr);
-    mtr.commit();
-  }
-}
-
-
 /*****************************************************************//**
 Updates the offset information about the end of the MySQL binlog entry
 which corresponds to the transaction just being committed. In a MySQL
