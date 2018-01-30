@@ -175,18 +175,13 @@ trx_sys_create_rsegs();
 
 /** Transaction system header */
 /*------------------------------------------------------------- @{ */
-#define	TRX_SYS_TRX_ID_STORE	0	/*!< the maximum trx id or trx
-					number modulo
-					TRX_SYS_TRX_ID_UPDATE_MARGIN
-					written to a file page by any
-					transaction; the assignment of
-					transaction ids continues from
-					this number rounded up by
-					TRX_SYS_TRX_ID_UPDATE_MARGIN
-					plus
-					TRX_SYS_TRX_ID_UPDATE_MARGIN
-					when the database is
-					started */
+/** In old versions of InnoDB, this persisted the value of
+trx_sys.get_max_trx_id(). Starting with MariaDB 10.3.5,
+the field TRX_RSEG_MAX_TRX_ID in rollback segment header pages
+and the fields TRX_UNDO_TRX_ID, TRX_UNDO_TRX_NO in undo log pages
+are used instead. The field only exists for the purpose of upgrading
+from older MySQL or MariaDB versions. */
+#define	TRX_SYS_TRX_ID_STORE	0
 #define TRX_SYS_FSEG_HEADER	8	/*!< segment header for the
 					tablespace segment the trx
 					system is created into */

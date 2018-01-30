@@ -370,9 +370,6 @@ trx_sysf_create(
 	mlog_write_ulint(page + TRX_SYS_DOUBLEWRITE
 			 + TRX_SYS_DOUBLEWRITE_MAGIC, 0, MLOG_4BYTES, mtr);
 
-	/* Start counting transaction ids from number 1 up */
-	mach_write_to_8(TRX_SYS + TRX_SYS_TRX_ID_STORE + page, 1);
-
 	/* Reset the rollback segment slots.  Old versions of InnoDB
 	(before MySQL 5.5) define TRX_SYS_N_RSEGS as 256 and expect
 	that the whole array is initialized. */
