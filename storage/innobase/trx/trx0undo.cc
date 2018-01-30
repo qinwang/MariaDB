@@ -780,9 +780,6 @@ trx_undo_add_page(trx_t* trx, trx_undo_t* undo, mtr_t* mtr)
 	counterpart of the tree latch, which is the rseg mutex. */
 
 	mutex_enter(&rseg->mutex);
-	if (rseg->curr_size == rseg->max_size) {
-		goto func_exit;
-	}
 
 	header_page = trx_undo_page_get(
 		page_id_t(undo->space, undo->hdr_page_no), mtr);
@@ -1014,24 +1011,6 @@ loop:
 
 		mlog_write_ulint(undo_page + hdr_offset + TRX_UNDO_LOG_START,
 				 end, MLOG_2BYTES, &mtr);
-
-		if (rseg->is_persistent()) {
-			/* By emptying undo logs, we may discard some
-			of the latest transaction identifiers. In the
-			extreme case, all undo logs are emptied, and
-			trx_rseg_array_init() on a subsequent startup
-			will solely rely on the maximum transaction ID
-			that we store in the TRX_SYS page. */
-			trx_id_t max_trx_id = trx_sys.get_max_trx_id();
-			byte* trx_sys_id = TRX_SYS + TRX_SYS_TRX_ID_STORE
-				+ trx_sysf_get(&mtr)->frame;
-			/* If this causes too frequent writes, we could
-			restore TRX_SYS_TRX_ID_WRITE_MARGIN and add some
-			rounding here. */
-			if (mach_read_from_8(trx_sys_id) < max_trx_id) {
-				mlog_write_ull(trx_sys_id, max_trx_id, &mtr);
-			}
-		}
 	} else {
 		trx_undo_free_page(rseg, TRUE, rseg->space, hdr_page_no,
 				   page_no, &mtr);
@@ -1295,11 +1274,6 @@ trx_undo_create(trx_t* trx, trx_rseg_t* rseg, trx_undo_t** undo,
 	ulint		id;
 
 	ut_ad(mutex_own(&(rseg->mutex)));
-
-	if (rseg->curr_size == rseg->max_size) {
-		*err = DB_OUT_OF_FILE_SPACE;
-		return NULL;
-	}
 
 	buf_block_t*	block = trx_undo_seg_create(
 		trx_rsegf_get(rseg->space, rseg->page_no, mtr), &id, err, mtr);
@@ -1757,7 +1731,7 @@ trx_undo_truncate_tablespace(
 		trx_rseg_t*	rseg = undo_trunc->get_ith_rseg(i);
 
 		rseg->page_no = trx_rseg_header_create(
-			space_id, ULINT_MAX, rseg->id, sys_header, &mtr);
+			space_id, rseg->id, sys_header, &mtr);
 
 		rseg_header = trx_rsegf_get_new(space_id, rseg->page_no, &mtr);
 
@@ -1779,9 +1753,6 @@ trx_undo_truncate_tablespace(
 
 		UT_LIST_INIT(rseg->undo_list, &trx_undo_t::undo_list);
 		UT_LIST_INIT(rseg->undo_cached, &trx_undo_t::undo_list);
-
-		rseg->max_size = mtr_read_ulint(
-			rseg_header + TRX_RSEG_MAX_SIZE, MLOG_4BYTES, &mtr);
 
 		/* Initialize the undo log lists according to the rseg header */
 		rseg->curr_size = mtr_read_ulint(

@@ -1088,8 +1088,7 @@ srv_undo_tablespaces_init(bool create_new_db)
 				if (trx_sysf_rseg_get_space(sys_header, i)
 				    == *it) {
 					trx_rseg_header_create(
-						*it, ULINT_MAX, i,
-						sys_header, &mtr);
+						*it, i, sys_header, &mtr);
 				}
 			}
 
