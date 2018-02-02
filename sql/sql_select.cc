@@ -713,7 +713,10 @@ JOIN::prepare(Item ***rref_pointer_array,
   union_part= unit_arg->is_union();
 
   // simple check that we got usable conds
+#if 0 // Temporary disable even for debug builds.
+  // TODO(cvicentiu) remove this when sanja fixes the crash.
   dbug_print_item(conds);
+#endif
 
   if (select_lex->handle_derived(thd->lex, DT_PREPARE))
     DBUG_RETURN(1);
