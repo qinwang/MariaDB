@@ -817,18 +817,18 @@ typedef Bounds_checked_array<Item*> Ref_ptr_array;
 
 
 /*
-  Structure which consists of the field and the item which 
-  produces this field.
+  Structure which consists of the field and the item that
+  corresponds to this field.
 */
-
-class Grouping_tmp_field :public Sql_alloc
+class Field_pair :public Sql_alloc
 {
 public:
-  Field *tmp_field;
-  Item *producing_item;
-  Grouping_tmp_field(Field *fld, Item *item) 
-     :tmp_field(fld), producing_item(item) {}
+  Field *field;
+  Item *corresponding_item;
+  Field_pair(Field *fld, Item *item)
+    :field(fld), corresponding_item(item) {}
 };
+
 
 /*
   SELECT_LEX - store information of parsed SELECT statment
@@ -1036,7 +1036,8 @@ public:
   nesting_map name_visibility_map;
   
   table_map with_dep;
-  List<Grouping_tmp_field> grouping_tmp_fields;
+  /* the structure to store fields that are used in the GROUP BY of this select */
+  List<Field_pair> grouping_tmp_fields;
 
   /* it is for correct printing SELECT options */
   thr_lock_type lock_type;
@@ -1239,9 +1240,8 @@ public:
   With_element *find_table_def_in_with_clauses(TABLE_LIST *table);
   bool check_unrestricted_recursive(bool only_standard_compliant);
   bool check_subqueries_with_recursive_references();
-  void collect_grouping_fields(THD *thd, ORDER *grouping_list); 
-  void check_cond_extraction_for_grouping_fields(Item *cond,
-                                                 TABLE_LIST *derived);
+  void collect_grouping_fields(THD *thd, ORDER *grouping_list);
+  void check_cond_extraction_for_grouping_fields(Item *cond);
   Item *build_cond_for_grouping_fields(THD *thd, Item *cond,
 				       bool no_to_clones);
   
@@ -1267,6 +1267,11 @@ public:
   bool cond_pushdown_is_allowed() const
   { return !olap && !explicit_limit && !tvc; }
   
+  void pushdown_cond_into_where_clause(THD *thd, Item *extracted_cond,
+                                       Item **remaining_cond,
+                                       Item_transformer transformer,
+                                       uchar *arg);
+
 private:
   bool m_non_agg_field_used;
   bool m_agg_func_used;

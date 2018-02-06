@@ -531,6 +531,7 @@ typedef bool (Item::*Item_processor) (void *arg);
 typedef bool (Item::*Item_analyzer) (uchar **argp);
 typedef Item* (Item::*Item_transformer) (THD *thd, uchar *arg);
 typedef void (*Cond_traverser) (const Item *item, void *arg);
+typedef bool (Item::*Pushdown_checker) (uchar *arg);
 
 struct st_cond_statistic;
 
@@ -562,6 +563,7 @@ public:
                       uint32 src_length, uint32 nchars);
   String_copier_for_item(THD *thd): m_thd(thd) { }
 };
+
 
 class Item: public Value_source,
             public Type_all_attributes
@@ -1603,7 +1605,15 @@ public:
     or can be converted to such an exression using equalities.
     Not to be used for AND/OR formulas.
   */
-  virtual bool excl_dep_on_grouping_fields(st_select_lex *sel) { return false; }
+  virtual bool excl_dep_on_grouping_fields(st_select_lex *sel)
+  { return false; }
+  /*
+    TRUE if the expression depends only on fields from the left part of
+    IN subquery or can be converted to such an expression using equalities.
+    Not to be used for AND/OR formulas.
+  */
+  virtual bool excl_dep_on_in_subq_left_part(Item_in_subselect *subq_pred)
+  { return false; }
 
   virtual bool switch_to_nullable_fields_processor(void *arg) { return 0; }
   virtual bool find_function_processor (void *arg) { return 0; }
@@ -1776,8 +1786,12 @@ public:
   { return this; }
   virtual Item *derived_field_transformer_for_where(THD *thd, uchar *arg)
   { return this; }
-  virtual Item *derived_grouping_field_transformer_for_where(THD *thd,
-                                                             uchar *arg)
+  virtual Item *grouping_field_transformer_for_where(THD *thd, uchar *arg)
+  { return this; }
+  /* Now is not used. */
+  virtual Item *in_subq_field_transformer_for_where(THD *thd, uchar *arg)
+  { return this; }
+  virtual Item *in_subq_field_transformer_for_having(THD *thd, uchar *arg)
   { return this; }
   virtual Item *in_predicate_to_in_subs_transformer(THD *thd, uchar *arg)
   { return this; }
@@ -1960,6 +1974,33 @@ public:
   {
     marker &= ~EXTRACTION_MASK;
   }
+  void check_pushable_cond(Pushdown_checker excl_dep_func, uchar *arg);
+  bool pushable_cond_checker_for_derived(uchar *arg)
+  {
+    return excl_dep_on_table(*((table_map *)arg));
+  }
+  bool pushable_cond_checker_for_subquery(uchar *arg)
+  {
+    return excl_dep_on_in_subq_left_part((Item_in_subselect *)arg);
+  }
+  Item *get_corresponding_field_in_insubq(Item_in_subselect *subq_pred);
+  Item *build_pushable_cond(THD *thd,
+                            Pushdown_checker checker,
+                            uchar *arg);
+  /*
+    Checks if this item depends only on the arg table
+  */
+  bool pushable_equality_checker_for_derived(uchar *arg)
+  {
+    return (used_tables() == *((table_map *)arg));
+  }
+  /*
+    Checks if this item consists in the left part of arg IN subquery predicate
+  */
+  bool pushable_equality_checker_for_subquery(uchar *arg)
+  {
+    return get_corresponding_field_in_insubq((Item_in_subselect *)arg);
+  }
 };
 
 MEM_ROOT *get_thd_memroot(THD *thd);
@@ -2084,6 +2125,17 @@ protected:
       if (args[i]->const_item())
         continue;
       if (!args[i]->excl_dep_on_grouping_fields(sel))
+        return false;
+    }
+    return true;
+  }
+  bool excl_dep_on_in_subq_left_part(Item_in_subselect *subq_pred)
+  {
+    for (uint i= 0; i < arg_count; i++)
+    {
+      if (args[i]->const_item())
+        continue;
+      if (!args[i]->excl_dep_on_in_subq_left_part(subq_pred))
         return false;
     }
     return true;
@@ -2933,10 +2985,13 @@ public:
   virtual Item *update_value_transformer(THD *thd, uchar *select_arg);
   Item *derived_field_transformer_for_having(THD *thd, uchar *arg);
   Item *derived_field_transformer_for_where(THD *thd, uchar *arg);
-  Item *derived_grouping_field_transformer_for_where(THD *thd, uchar *arg);
+  Item *grouping_field_transformer_for_where(THD *thd, uchar *arg);
+  Item *in_subq_field_transformer_for_where(THD *thd, uchar *arg);
+  Item *in_subq_field_transformer_for_having(THD *thd, uchar *arg);
   virtual void print(String *str, enum_query_type query_type);
   bool excl_dep_on_table(table_map tab_map);
   bool excl_dep_on_grouping_fields(st_select_lex *sel);
+  bool excl_dep_on_in_subq_left_part(Item_in_subselect *subq_pred);
   bool cleanup_excluding_fields_processor(void *arg)
   { return field ? 0 : cleanup_processor(arg); }
   bool cleanup_excluding_const_fields_processor(void *arg)
@@ -4744,6 +4799,8 @@ public:
   }
   bool excl_dep_on_grouping_fields(st_select_lex *sel)
   { return (*ref)->excl_dep_on_grouping_fields(sel); }
+  bool excl_dep_on_in_subq_left_part(Item_in_subselect *subq_pred)
+  { return (*ref)->excl_dep_on_in_subq_left_part(subq_pred); }
   bool cleanup_excluding_fields_processor(void *arg)
   {
     Item *item= real_item();
@@ -5058,10 +5115,12 @@ public:
   }
   bool excl_dep_on_table(table_map tab_map);
   bool excl_dep_on_grouping_fields(st_select_lex *sel);
+  bool excl_dep_on_in_subq_left_part(Item_in_subselect *subq_pred);
   Item *derived_field_transformer_for_having(THD *thd, uchar *arg);
   Item *derived_field_transformer_for_where(THD *thd, uchar *arg);
-  Item *derived_grouping_field_transformer_for_where(THD *thd,
-                                                     uchar *arg);
+  Item *grouping_field_transformer_for_where(THD *thd, uchar *arg);
+  Item *in_subq_field_transformer_for_where(THD *thd, uchar *arg);
+  Item *in_subq_field_transformer_for_having(THD *thd, uchar *arg);
 
   void save_val(Field *to)
   {
@@ -5967,7 +6026,11 @@ public:
   { return convert_to_basic_const_item(thd); }
   Item *derived_field_transformer_for_where(THD *thd, uchar *arg)
   { return convert_to_basic_const_item(thd); }
-  Item *derived_grouping_field_transformer_for_where(THD *thd, uchar *arg)
+  Item *grouping_field_transformer_for_where(THD *thd, uchar *arg)
+  { return convert_to_basic_const_item(thd); }
+  Item *in_subq_field_transformer_for_where(THD *thd, uchar *arg)
+  { return convert_to_basic_const_item(thd); }
+  Item *in_subq_field_transformer_for_having(THD *thd, uchar *arg)
   { return convert_to_basic_const_item(thd); }
 };
 
