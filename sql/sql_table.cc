@@ -7938,7 +7938,10 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
   for (f_ptr=table->field ; (field= *f_ptr) ; f_ptr++)
   {
     if (field->invisible == INVISIBLE_FULL)
-        continue;
+    {
+      alter_info->flags|= Alter_info::ALTER_DROP_COLUMN;
+      continue;
+    }
     Alter_drop *drop;
     if (field->type() == MYSQL_TYPE_VARCHAR)
       create_info->varchar= TRUE;
