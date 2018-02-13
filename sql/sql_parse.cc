@@ -269,26 +269,27 @@ void init_update_queries(void)
   server_command_flags[COM_STATISTICS]= CF_SKIP_QUERY_ID | CF_SKIP_QUESTIONS | CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_PING]=       CF_SKIP_QUERY_ID | CF_SKIP_QUESTIONS | CF_SKIP_WSREP_CHECK;
 
-  server_command_flags[COM_QUIT]= CF_SKIP_WSREP_CHECK;
-  server_command_flags[COM_PROCESS_INFO]= CF_SKIP_WSREP_CHECK;
-  server_command_flags[COM_PROCESS_KILL]= CF_SKIP_WSREP_CHECK;
-  server_command_flags[COM_SHUTDOWN]= CF_SKIP_WSREP_CHECK;
-  server_command_flags[COM_SLEEP]= CF_SKIP_WSREP_CHECK;
-  server_command_flags[COM_TIME]= CF_SKIP_WSREP_CHECK;
-  server_command_flags[COM_END]= CF_SKIP_WSREP_CHECK;
-
-  /*
+    /*
     COM_QUERY, COM_SET_OPTION and COM_STMT_XXX are allowed to pass the early
     COM_xxx filter, they're checked later in mysql_execute_command().
   */
   server_command_flags[COM_QUERY]= CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_SET_OPTION]= CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_STMT_PREPARE]= CF_SKIP_QUESTIONS | CF_SKIP_WSREP_CHECK;
+  server_command_flags[COM_STMT_FETCH]=   CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_STMT_CLOSE]= CF_SKIP_QUESTIONS | CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_STMT_RESET]= CF_SKIP_QUESTIONS | CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_STMT_EXECUTE]= CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_STMT_SEND_LONG_DATA]= CF_SKIP_WSREP_CHECK;
   server_command_flags[COM_REGISTER_SLAVE]= CF_SKIP_WSREP_CHECK;
+  server_command_flags[COM_QUIT]|=         CF_SKIP_WSREP_CHECK;
+  server_command_flags[COM_PROCESS_INFO]= CF_SKIP_WSREP_CHECK;
+  server_command_flags[COM_PROCESS_KILL]= CF_SKIP_WSREP_CHECK;
+  server_command_flags[COM_SHUTDOWN]=     CF_SKIP_WSREP_CHECK;
+  server_command_flags[COM_SLEEP]=        CF_SKIP_WSREP_CHECK;
+  server_command_flags[COM_TIME]=         CF_SKIP_WSREP_CHECK;
+  server_command_flags[COM_INIT_DB]=      CF_SKIP_WSREP_CHECK;
+  server_command_flags[COM_END]=          CF_SKIP_WSREP_CHECK;
 
   /* Initialize the sql command flags array. */
   memset(sql_command_flags, 0, sizeof(sql_command_flags));
