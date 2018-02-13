@@ -4583,6 +4583,17 @@ uint prep_alter_part_table(THD *thd, TABLE *table, Alter_info *alter_info,
        Alter_info::ALTER_TABLE_REORG |
        Alter_info::ALTER_REBUILD_PARTITION))
   {
+    /*
+      You can't add column when we are doing alter related to partition
+    */
+    DBUG_EXECUTE_IF("test_pseudo_invisible", {
+         my_error(ER_INTERNAL_ERROR, MYF(0), "Don't to it with test_pseudo_invisible");
+         DBUG_RETURN(1);
+         });
+    DBUG_EXECUTE_IF("test_completely_invisible", {
+         my_error(ER_INTERNAL_ERROR, MYF(0), "Don't to it with test_pseudo_invisible");
+         DBUG_RETURN(1);
+         });
     partition_info *tab_part_info;
     uint flags= 0;
     bool is_last_partition_reorged= FALSE;
