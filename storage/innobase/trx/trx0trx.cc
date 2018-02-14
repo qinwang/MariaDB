@@ -1294,45 +1294,20 @@ trx_write_serialisation_history(
 		UT_LIST_REMOVE(rseg->old_insert_list, old_insert);
 		trx_purge_add_undo_to_history(trx, old_insert, mtr);
 	}
+
 	if (undo) {
 		UT_LIST_REMOVE(rseg->undo_list, undo);
 		trx_purge_add_undo_to_history(trx, undo, mtr);
 	}
 
+	if (trx->mysql_log_file_name
+	    && *trx->mysql_log_file_name) {
+		trx->mysql_log_file_name = NULL;
+	}
+
 	mutex_exit(&rseg->mutex);
 
 	MONITOR_INC(MONITOR_TRX_COMMIT_UNDO);
-
-#ifdef WITH_WSREP
-	const bool update_wsrep = wsrep_is_wsrep_xid(trx->xid);
-#endif
-	const bool update_binlog_pos = trx->mysql_log_file_name
-		&& *trx->mysql_log_file_name;
-	if (!update_binlog_pos
-#ifdef WITH_WSREP
-	    && !update_wsrep
-#endif
-	    ) return;
-
-	buf_block_t* block = trx_sysf_get(mtr);
-#ifdef WITH_WSREP
-	if (update_wsrep)
-		trx_sys_update_wsrep_checkpoint(trx->xid, block, mtr);
-#endif /* WITH_WSREP */
-
-	/* Update the latest MySQL binlog name and offset info
-	in trx sys header if MySQL binlogging is on or the database
-	server is a MySQL replication slave */
-
-	if (update_binlog_pos) {
-
-		trx_sys_update_mysql_binlog_offset(
-			trx->mysql_log_file_name,
-			trx->mysql_log_offset,
-			block, mtr);
-
-		trx->mysql_log_file_name = NULL;
-	}
 }
 
 /********************************************************************

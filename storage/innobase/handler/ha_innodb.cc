@@ -19699,12 +19699,8 @@ innobase_wsrep_set_checkpoint(
 	DBUG_ASSERT(hton == innodb_hton_ptr);
 
 	if (wsrep_is_wsrep_xid(xid)) {
-		mtr_t mtr;
-		mtr_start(&mtr);
-		if (buf_block_t* sys_header = trx_sysf_get(&mtr)) {
-			trx_sys_update_wsrep_checkpoint(xid, sys_header, &mtr);
-		}
-		mtr_commit(&mtr);
+
+		trx_sys_update_wsrep_checkpoint(xid);
 		innobase_flush_logs(hton, false);
 		return 0;
 	} else {

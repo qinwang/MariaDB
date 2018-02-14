@@ -137,29 +137,41 @@ trx_sys_update_mysql_binlog_offset(
 	int64_t		offset,	/*!< in: position in that log file */
 	buf_block_t*	sys_header, /*!< in,out: trx sys header */
 	mtr_t*		mtr);	/*!< in,out: mini-transaction */
+
+/** Read the mysql binlog information like offset & filename.
+@param[out]	offset		position of the log file
+@param[out]	filename	MySQL log file name */
+void
+trx_sys_read_mysql_binlog_info(
+	int64_t&	offset,
+	char*		filename);
+
 /** Display the MySQL binlog offset info if it is present in the trx
 system header. */
 void
 trx_sys_print_mysql_binlog_offset();
+
+/** Initialize binlog position in trx_sys latest info. */
+void
+trx_sys_init_binlog_pos();
+
 #ifdef WITH_WSREP
 
-/** Update WSREP XID info in the TRX_SYS page.
-@param[in]	xid		Transaction XID
-@param[in,out]	sys_header	TRX_SYS page
-@param[in,out]	mtr		mini-transaction */
+/** Update WSREP checkpoint XID in first rollback segment header.
+@param[in]	xid		WSREP XID */
 UNIV_INTERN
 void
 trx_sys_update_wsrep_checkpoint(
-	const XID*	xid,
-	buf_block_t*	sys_header,
-	mtr_t*		mtr);
+	const XID*	xid);
 
 /** Read WSREP checkpoint XID from sys header.
 @param[out]	xid	WSREP XID
 @return	whether the checkpoint was present */
 UNIV_INTERN
 bool
-trx_sys_read_wsrep_checkpoint(XID* xid);
+trx_sys_read_wsrep_checkpoint(
+	XID*	xid);
+
 #endif /* WITH_WSREP */
 
 /** Create the rollback segments.
@@ -235,6 +247,12 @@ trx_sysf_rseg_get_page_no(const buf_block_t* sys_header, ulint rseg_id)
 				+ sys_header->frame);
 }
 
+/** In old versions of InnoDB, this persisted the value of
+binlog commit information and WSEP XID field information.
+From mariaDB 10.3.5, the field TRX_RSEG_BINLOG_* and TRX_RSEG_WSREP_*
+in rollback segment header pages are used. The binlog commit
+information and WSEP XID field in TRX_SYS page only exists for
+the purpose of upgrading from Older MySQL or MariaDB versions. */
 /** Maximum length of MySQL binlog file name, in bytes. */
 #define TRX_SYS_MYSQL_LOG_NAME_LEN	512
 /** Contents of TRX_SYS_MYSQL_LOG_MAGIC_N_FLD */
@@ -856,6 +874,15 @@ public:
 					transactions), protected by
 					rseg->mutex */
 
+	/** Latest XID during startup. */
+#ifdef WITH_WSREP
+	XID		recovered_wsrep_xid;
+#endif
+	/** Latest binlog offest. */
+	int64_t		recovered_binlog_offset;
+
+	/** Latest binlog name. */
+	char		recovered_binlog_filename[TRX_SYS_MYSQL_LOG_NAME_LEN];
 
   /**
     Lock-free hash of in memory read-write transactions.
@@ -1015,7 +1042,6 @@ public:
 
   /** @return total number of active (non-prepared) transactions */
   ulint any_active_transactions();
-
 
   /**
     Registers read-write transaction.
@@ -1200,7 +1226,6 @@ private:
       reinterpret_cast<int64*>(&m_max_trx_id), 1, MY_MEMORY_ORDER_RELAXED));
   }
 };
-
 
 /** The transaction system */
 extern trx_sys_t trx_sys;

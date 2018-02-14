@@ -88,57 +88,13 @@ ReadView::check_trx_id_sanity(
 uint	trx_rseg_n_slots_debug = 0;
 #endif
 
-
-/*****************************************************************//**
-Updates the offset information about the end of the MySQL binlog entry
-which corresponds to the transaction just being committed. In a MySQL
-replication slave updates the latest master binlog position up to which
-replication has proceeded. */
+/** Read the mysql binlog information like offset & filename.
+@param[out]	offset		position of the log file
+@param[out]	filename	MySQL log file name */
 void
-trx_sys_update_mysql_binlog_offset(
-/*===============================*/
-	const char*	file_name,/*!< in: MySQL log file name */
-	int64_t		offset,	/*!< in: position in that log file */
-	buf_block_t*	sys_header, /*!< in,out: trx sys header */
-	mtr_t*		mtr)	/*!< in,out: mini-transaction */
-{
-	DBUG_PRINT("InnoDB",("trx_mysql_binlog_offset: %lld", (longlong) offset));
-
-	const size_t len = strlen(file_name) + 1;
-
-	if (len > TRX_SYS_MYSQL_LOG_NAME_LEN) {
-
-		/* We cannot fit the name to the 512 bytes we have reserved */
-
-		return;
-	}
-
-	byte* p = TRX_SYS + TRX_SYS_MYSQL_LOG_MAGIC_N_FLD
-		+ TRX_SYS_MYSQL_LOG_INFO + sys_header->frame;
-
-	if (mach_read_from_4(p) != TRX_SYS_MYSQL_LOG_MAGIC_N) {
-		mlog_write_ulint(p,
-				 TRX_SYS_MYSQL_LOG_MAGIC_N,
-				 MLOG_4BYTES, mtr);
-	}
-
-	p = TRX_SYS + TRX_SYS_MYSQL_LOG_NAME + TRX_SYS_MYSQL_LOG_INFO
-		+ sys_header->frame;
-
-	if (memcmp(file_name, p, len)) {
-		mlog_write_string(p,
-				  reinterpret_cast<const byte*>(file_name),
-				  len, mtr);
-	}
-
-	mlog_write_ull(TRX_SYS_MYSQL_LOG_INFO + TRX_SYS_MYSQL_LOG_OFFSET
-		       + TRX_SYS + sys_header->frame, offset, mtr);
-}
-
-/** Display the MySQL binlog offset info if it is present in the trx
-system header. */
-void
-trx_sys_print_mysql_binlog_offset()
+trx_sys_read_mysql_binlog_info(
+	int64_t&	offset,
+	char*		filename)
 {
 	mtr_t		mtr;
 
@@ -151,95 +107,132 @@ trx_sys_print_mysql_binlog_offset()
 				+ TRX_SYS_MYSQL_LOG_MAGIC_N_FLD
 				+ block->frame)
 	    == TRX_SYS_MYSQL_LOG_MAGIC_N) {
-		ib::info() << "Last binlog file '"
-			<< TRX_SYS_MYSQL_LOG_INFO + TRX_SYS_MYSQL_LOG_NAME
-			+ TRX_SYS + block->frame
-			<< "', position "
-			<< mach_read_from_8(TRX_SYS_MYSQL_LOG_INFO
-					    + TRX_SYS_MYSQL_LOG_OFFSET
-					    + TRX_SYS + block->frame);
+
+		byte*	p = TRX_SYS_MYSQL_LOG_INFO + TRX_SYS_MYSQL_LOG_NAME
+				    + TRX_SYS + block->frame;
+
+		memcpy(filename, p, TRX_SYS_MYSQL_LOG_NAME_LEN);
+
+		offset = mach_read_from_8(TRX_SYS_MYSQL_LOG_INFO
+					  + TRX_SYS_MYSQL_LOG_OFFSET
+					  + TRX_SYS + block->frame);
 	}
 
 	mtr.commit();
 }
 
+/** Display the MySQL binlog offset info if it is present in the trx
+system header. */
+void
+trx_sys_print_mysql_binlog_offset()
+{
+	if (trx_sys.recovered_binlog_offset == -1) {
+		return;
+	}
+
+	ib::info() << "Last binlog file '"
+		<< trx_sys.recovered_binlog_filename
+		<< "', position "
+		<< trx_sys.recovered_binlog_offset;
+}
+
+/** Initialize binlog position in trx_sys latest info. */
+void
+trx_sys_init_binlog_pos()
+{
+	mtr_t	mtr;
+	const	buf_block_t*		sys_header;
+	trx_rseg_log_commit_info	latest_commit;
+
+	latest_commit.init();
+
+	mtr.start();
+	sys_header = trx_sysf_get(&mtr, false);
+
+	for (ulint rseg_id = 0; rseg_id < TRX_SYS_N_RSEGS; rseg_id++) {
+		const uint32_t page_no = trx_sysf_rseg_get_page_no(
+				sys_header, rseg_id);
+		if (page_no != FIL_NULL) {
+			trx_rsegf_t*	rseg_header = trx_rsegf_get_new(
+				trx_sysf_rseg_get_space(sys_header, rseg_id),
+				page_no, &mtr);
+
+			if (mach_read_from_4(rseg_header + TRX_RSEG_FORMAT) != 0) {
+				continue;
+			}
+
+			int64_t commit_id = mach_read_from_8(
+						rseg_header
+						+ TRX_RSEG_COMMIT_INFO
+						+ TRX_RSEG_COMMIT_ID);
+
+			if (commit_id < latest_commit.id) {
+				continue;
+			}
+
+			latest_commit.id = commit_id;
+
+			trx_rseg_read_mysql_binlog_offset(
+				rseg_header, latest_commit.filename,
+				latest_commit.offset, &mtr);
+		}
+	}
+
+	mtr.commit();
+
+	if (latest_commit.id == 0) {
+		trx_sys_read_mysql_binlog_info(latest_commit.offset,
+					       latest_commit.filename);
+	}
+
+	trx_sys.recovered_binlog_offset = latest_commit.offset;
+	memcpy(trx_sys.recovered_binlog_filename, latest_commit.filename,
+	       strlen(latest_commit.filename));
+}
+
 #ifdef WITH_WSREP
 
-#ifdef UNIV_DEBUG
-static long long trx_sys_cur_xid_seqno = -1;
-static unsigned char trx_sys_cur_xid_uuid[16];
-
-/** Read WSREP XID seqno */
-static inline long long read_wsrep_xid_seqno(const XID* xid)
-{
-	long long seqno;
-	memcpy(&seqno, xid->data + 24, sizeof(long long));
-	return seqno;
-}
-
-/** Read WSREP XID UUID */
-static inline void read_wsrep_xid_uuid(const XID* xid, unsigned char* buf)
-{
-	memcpy(buf, xid->data + 8, 16);
-}
-
-#endif /* UNIV_DEBUG */
-
-/** Update WSREP XID info in the TRX_SYS page.
-@param[in]	xid		Transaction XID
-@param[in,out]	sys_header	TRX_SYS page
-@param[in,out]	mtr		mini-transaction */
+/** Update WSREP checkpoint XID in first rollback segment header.
+@param[in]	xid		WSREP XID */
 UNIV_INTERN
 void
 trx_sys_update_wsrep_checkpoint(
-	const XID*	xid,
-	buf_block_t*	sys_header,
-	mtr_t*		mtr)
+	const XID*	xid)
 {
-	ut_ad(xid->formatID == 1);
-	ut_ad(wsrep_is_wsrep_xid(xid));
+	mtr_t				mtr;
+	const buf_block_t*		sys_header;
+	uint32_t			page_no;
+	uint32_t			space;
+	int64_t				commit_id = 0;
 
-	byte* magic = TRX_SYS + TRX_SYS_WSREP_XID_INFO
-		+ TRX_SYS_WSREP_XID_MAGIC_N_FLD
-		+ sys_header->frame;
+	mtr.start();
+	sys_header = trx_sysf_get(&mtr, false);
 
-	if (mach_read_from_4(magic) != TRX_SYS_WSREP_XID_MAGIC_N) {
-		mlog_write_ulint(magic, TRX_SYS_WSREP_XID_MAGIC_N,
-				 MLOG_4BYTES, mtr);
-#ifdef UNIV_DEBUG
-	} else {
-		/* Check that seqno is monotonically increasing */
-		unsigned char xid_uuid[16];
-		long long xid_seqno = read_wsrep_xid_seqno(xid);
-		read_wsrep_xid_uuid(xid, xid_uuid);
+	for (ulint rseg_id = 0; rseg_id < TRX_SYS_N_RSEGS; rseg_id++) {
+		page_no = trx_sysf_rseg_get_page_no(sys_header, rseg_id);
 
-		if (!memcmp(xid_uuid, trx_sys_cur_xid_uuid, 8)) {
-			ut_ad(xid_seqno > trx_sys_cur_xid_seqno);
-			trx_sys_cur_xid_seqno = xid_seqno;
-		} else {
-			memcpy(trx_sys_cur_xid_uuid, xid_uuid, 16);
+		if (page_no == FIL_NULL) {
+			continue;
 		}
 
-		trx_sys_cur_xid_seqno = xid_seqno;
-#endif /* UNIV_DEBUG */
+		space = trx_sysf_rseg_get_space(sys_header, rseg_id);
+
+		/* Update WSREP checkpoint in the first slot of rollback
+		segment header page. */
+		trx_rsegf_t*	rseg_header = trx_rsegf_get_new(
+						space, page_no,	&mtr);
+
+		if (mach_read_from_4(rseg_header + TRX_RSEG_FORMAT) != 0) {
+			continue;
+		}
+
+		trx_rseg_update_wsrep_checkpoint(rseg_header, xid,
+						 commit_id, &mtr);
+		break;
 	}
 
-	mlog_write_ulint(TRX_SYS + TRX_SYS_WSREP_XID_INFO
-			 + TRX_SYS_WSREP_XID_FORMAT + sys_header->frame,
-			 uint32_t(xid->formatID),
-			 MLOG_4BYTES, mtr);
-	mlog_write_ulint(TRX_SYS + TRX_SYS_WSREP_XID_INFO
-			 + TRX_SYS_WSREP_XID_GTRID_LEN + sys_header->frame,
-			 uint32_t(xid->gtrid_length),
-			 MLOG_4BYTES, mtr);
-	mlog_write_ulint(TRX_SYS + TRX_SYS_WSREP_XID_INFO
-			 + TRX_SYS_WSREP_XID_BQUAL_LEN + sys_header->frame,
-			 uint32_t(xid->bqual_length),
-			 MLOG_4BYTES, mtr);
-	mlog_write_string(TRX_SYS + TRX_SYS_WSREP_XID_INFO
-			  + TRX_SYS_WSREP_XID_DATA + sys_header->frame,
-			  reinterpret_cast<const byte*>(xid->data),
-			  XIDDATASIZE, mtr);
+	ut_ad(commit_id > 0);
+	mtr.commit();
 }
 
 /** Read WSREP checkpoint XID from sys header.
@@ -247,44 +240,47 @@ trx_sys_update_wsrep_checkpoint(
 @return	whether the checkpoint was present */
 UNIV_INTERN
 bool
-trx_sys_read_wsrep_checkpoint(XID* xid)
+trx_sys_read_wsrep_checkpoint(
+	XID*			xid)
 {
-	mtr_t		mtr;
-
-	ut_ad(xid);
+	mtr_t	mtr;
+	const	buf_block_t*		sys_header;
+	int64_t	latest_commit_id = 0;
 
 	mtr.start();
+	sys_header = trx_sysf_get(&mtr, false);
 
-	const buf_block_t* block = trx_sysf_get(&mtr, false);
+	for (ulint rseg_id = 0; rseg_id < TRX_SYS_N_RSEGS; rseg_id++) {
+		const uint32_t page_no = trx_sysf_rseg_get_page_no(
+				sys_header, rseg_id);
 
-	if (!block ||
-	    mach_read_from_4(TRX_SYS + TRX_SYS_WSREP_XID_INFO
-			     + TRX_SYS_WSREP_XID_MAGIC_N_FLD + block->frame)
-	    != TRX_SYS_WSREP_XID_MAGIC_N) {
-		memset(xid, 0, sizeof(*xid));
-		long long seqno= -1;
-		memcpy(xid->data + 24, &seqno, sizeof(long long));
-		xid->formatID = -1;
-		mtr.commit();
-		return false;
+		if (page_no != FIL_NULL) {
+			trx_rsegf_t*	rseg_header = trx_rsegf_get_new(
+				trx_sysf_rseg_get_space(sys_header, rseg_id),
+				page_no, &mtr);
+
+			if (mach_read_from_4(rseg_header + TRX_RSEG_FORMAT) != 0) {
+					continue;
+			}
+
+			int64_t commit_id = mach_read_from_8(
+						rseg_header
+						+ TRX_RSEG_COMMIT_INFO
+						+ TRX_RSEG_COMMIT_ID);
+
+			if (commit_id < latest_commit_id) {
+				continue;
+			}
+
+			latest_commit_id = commit_id;
+
+			trx_rseg_read_wsrep_checkpoint(
+				rseg_header, *xid, &mtr);
+		}
 	}
 
-	xid->formatID = (int)mach_read_from_4(
-		TRX_SYS + TRX_SYS_WSREP_XID_INFO + TRX_SYS_WSREP_XID_FORMAT
-		+ block->frame);
-	xid->gtrid_length = (int)mach_read_from_4(
-		TRX_SYS + TRX_SYS_WSREP_XID_INFO + TRX_SYS_WSREP_XID_GTRID_LEN
-		+ block->frame);
-	xid->bqual_length = (int)mach_read_from_4(
-		TRX_SYS + TRX_SYS_WSREP_XID_INFO + TRX_SYS_WSREP_XID_BQUAL_LEN
-		+ block->frame);
-	memcpy(xid->data,
-	       TRX_SYS + TRX_SYS_WSREP_XID_INFO + TRX_SYS_WSREP_XID_DATA
-	       + block->frame,
-	       XIDDATASIZE);
-
 	mtr.commit();
-	return true;
+	return (latest_commit_id == 0);
 }
 
 #endif /* WITH_WSREP */

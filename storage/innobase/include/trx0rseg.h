@@ -31,6 +31,9 @@ Created 3/26/1996 Heikki Tuuri
 #include "trx0sys.h"
 #include "fut0lst.h"
 #include <vector>
+#ifdef WITH_WSREP
+#include "trx0xa.h"
+#endif /* WITH_WSREP */
 
 /** Gets a rollback segment header.
 @param[in]	space		space where placed
@@ -226,6 +229,45 @@ struct trx_rseg_t {
 /** Maximum transaction ID (valid only if TRX_RSEG_FORMAT is 0) */
 #define TRX_RSEG_MAX_TRX_ID	(TRX_RSEG_UNDO_SLOTS + TRX_RSEG_N_SLOTS	\
 				 * TRX_RSEG_SLOT_SIZE)
+
+/** Maximum length of MySQL binlog file name, in bytes. */
+#define TRX_RSEG_BINLOG_NAME_LEN	512
+/** Contents of TRX_RSEG_MYSQL_LOG_MAGIC_N_FLD */
+#define TRX_RSEG_BINLOG_MAGIC_N		873422344
+
+/* The offset of the MySQL commit info in the rollback segment header. */
+#define TRX_RSEG_COMMIT_INFO	TRX_RSEG_MAX_TRX_ID + 8
+
+/** Sequence to find latest binlog information IN RSEG HEADER. */
+#define TRX_RSEG_COMMIT_ID	0
+
+/** Magic number which is TRX_RSEG_BINLOG_MAGIC_N if we have valid data
+in the MYSQL binlog info. */
+#define TRX_RSEG_BINLOG_MAGIC_N_FLD	8
+
+/** 8 bytes offset within that file */
+#define TRX_RSEG_BINLOG_OFFSET		12
+
+/** MySQL log file name */
+#define TRX_RSEG_BINLOG_NAME		20
+
+#ifdef WITH_WSREP
+/** The offset to WSREP XID headers */
+#define	TRX_RSEG_WSREP_XID_INFO	(TRX_RSEG_COMMIT_INFO \
+				 + TRX_RSEG_BINLOG_NAME \
+				 + TRX_RSEG_BINLOG_NAME_LEN)
+
+#define TRX_RSEG_WSREP_XID_MAGIC_N_FLD	0
+#define TRX_RSEG_WSREP_XID_MAGIC_N	0x77737265
+
+/** XID field: formatID, gtrid_len, bqual_len, xid_data */
+#define TRX_RSEG_WSREP_XID_LEN		(4 + 4 + 4 + XIDDATASIZE)
+#define TRX_RSEG_WSREP_XID_FORMAT	4
+#define TRX_RSEG_WSREP_XID_GTRID_LEN	8
+#define TRX_RSEG_WSREP_XID_BQUAL_LEN	12
+#define TRX_RSEG_WSREP_XID_DATA		16
+#endif /* WITH_WSREP*/
+
 /*-------------------------------------------------------------*/
 
 /** Read the page number of an undo log slot.
@@ -239,6 +281,92 @@ trx_rsegf_get_nth_undo(const trx_rsegf_t* rsegf, ulint n)
 	return mach_read_from_4(rsegf + TRX_RSEG_UNDO_SLOTS
 				+ n * TRX_RSEG_SLOT_SIZE);
 }
+
+#ifdef WITH_WSREP
+
+/** Update the WSREP XID information in rollback segment header.
+@param[in]	rseg_header	rollback segment header
+@param[in]	xid		Transaction XID
+@param[out]	commit_id	commit_id to find the latest commit info
+@param[in,out]	mtr		mini-transaction. */
+bool
+trx_rseg_update_wsrep_checkpoint(
+	trx_rsegf_t*	rseg_header,
+	const XID*	xid,
+	int64_t&	commit_id,
+	mtr_t*		mtr);
+
+/** Read the WSREP XID information in rollback segment header.
+@param[in]	rseg_header	Rollback segment header
+@param[out]	xid		Transaction XID
+@param[in]	mtr		mini-transaction. */
+void
+trx_rseg_read_wsrep_checkpoint(
+	trx_rsegf_t*	rseg,
+	XID&		xid,
+	mtr_t*		mtr);
+
+#endif /* WITH_WSREP */
+
+/** Update the offset information about the end of the MySQL binlog entry
+which corresponds to the transaction just being committed. In a MySQL
+replication slave updates the master binlog position up to which
+replication has proceeded.
+@param[in]	trx		transaction
+@param[in,out]	commit_id	commit id to identify
+				the recent binlog information
+@param[in,out]	mtr		mini-transaction */
+void
+trx_rseg_update_mysql_binlog_offset(
+	const trx_t*	trx,
+	int64_t&	commit_id,
+	mtr_t*		mtr);
+
+/** Read the offset information about the end of MySQL binlog entry
+from rollback segment header pages.
+@param[in]	rseg_header	rollback segment header
+@param[out]	file_name	MySQL log file name
+@param[out]	offset		position in that log file
+@param[in]	mtr		mini-transaction */
+void
+trx_rseg_read_mysql_binlog_offset(
+	trx_rsegf_t*	rseg_hdr,
+	char*		file_name,
+	int64_t&	offset,
+	mtr_t*		mtr);
+
+/** Structure used to store the binlog and WSREP xid information from
+rollback segment header page. */
+struct trx_rseg_log_commit_info {
+
+	/** Identifier of the binlog commit information. It is used to
+	identify the last commit info. */
+	ib_int64_t	id;
+
+#ifdef WITH_WSREP
+	/** wsrep_xid. */
+	XID		wsrep_xid;
+#endif /* WSREP */
+
+	/** Binlog offset stored in RSEG_HEADER */
+	int64_t		offset;
+
+	/** Binlog name stored in RSEG_HEADER */
+	char		filename[TRX_SYS_MYSQL_LOG_NAME_LEN];
+
+	/** Intialize all the members in the structure. */
+	void init() {
+		id = 0;
+
+#ifdef WITH_WSREP
+		memset(&wsrep_xid, 0, sizeof(wsrep_xid));
+		long long seqno= -1;
+		memcpy(wsrep_xid.data + 24, &seqno, sizeof(long long));
+		wsrep_xid.formatID = -1;
+#endif
+		offset = -1;
+	}
+};
 
 #include "trx0rseg.ic"
 

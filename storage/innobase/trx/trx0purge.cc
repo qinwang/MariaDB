@@ -44,6 +44,7 @@ Created 3/26/1996 Heikki Tuuri
 #include "trx0roll.h"
 #include "trx0rseg.h"
 #include "trx0trx.h"
+#include <mysql/service_wsrep.h>
 
 /** Maximum allowable purge history length.  <=0 means 'infinite'. */
 ulong		srv_max_purge_lag = 0;
@@ -248,6 +249,7 @@ trx_purge_add_undo_to_history(const trx_t* trx, trx_undo_t*& undo, mtr_t* mtr)
 	page_t*		undo_page	= trx_undo_set_state_at_finish(
 		undo, mtr);
 	trx_ulogf_t*	undo_header	= undo_page + undo->hdr_offset;
+	int64_t		commit_id	= 0;
 
 	ut_ad(mach_read_from_2(undo_header + TRX_UNDO_NEEDS_PURGE) <= 1);
 
@@ -319,6 +321,29 @@ trx_purge_add_undo_to_history(const trx_t* trx, trx_undo_t*& undo, mtr_t* mtr)
 	      || ((trx->undo_no == 0 || trx->in_mysql_trx_list
 		   || trx->internal)
 		  && srv_fast_shutdown));
+
+#ifdef WITH_WSREP
+	const bool update_wsrep = wsrep_is_wsrep_xid(trx->xid);
+#endif
+	const bool update_binlog_pos = trx->mysql_log_file_name
+		&& *trx->mysql_log_file_name;
+
+#ifdef	WITH_WSREP
+	if (update_wsrep) {
+		/** trx_rseg_update_mysql_binlog_offset can avoid to insert
+		commit information identifier if trx_rseg_update_wsrep_checkpoint
+		already does it. */
+		trx_rseg_update_wsrep_checkpoint(rseg_header, trx->xid,
+						 commit_id, mtr);
+	}
+#endif
+
+	if (update_binlog_pos) {
+		/* Update the latest MySQL binlog name and offset info
+		in rollback segment header if MySQL binlogging is on
+		or the database server is a MySQL replication save. */
+		trx_rseg_update_mysql_binlog_offset(trx, commit_id, mtr);
+	}
 
 	/* Add the log as the first in the history list */
 	flst_add_first(rseg_header + TRX_RSEG_HISTORY,
