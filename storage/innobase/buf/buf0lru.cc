@@ -1912,7 +1912,6 @@ buf_LRU_block_free_non_file_page(
 	memset(block->frame + FIL_PAGE_OFFSET, 0xfe, 4);
 	memset(block->frame + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID, 0xfe, 4);
 #endif /* UNIV_DEBUG */
-	UNIV_MEM_ASSERT_AND_FREE(block->frame, UNIV_PAGE_SIZE);
 	data = block->page.zip.data;
 
 	if (data != NULL) {
