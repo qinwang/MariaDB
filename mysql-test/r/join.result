@@ -50,8 +50,8 @@ insert into t1 values (107);
 insert into t2 values (107),(75),(1000);
 select t1.id, t2.id from t1, t2 where t2.id = t1.id;
 id	id
-107	107
 75	75
+107	107
 select t1.id, count(t2.id) from t1,t2 where t2.id = t1.id group by t1.id;
 id	count(t2.id)
 75	1
@@ -408,8 +408,8 @@ EXPLAIN
 SELECT STRAIGHT_JOIN t2.e FROM t1,t2 WHERE t2.d=1 AND t1.b=t2.e
 ORDER BY t1.b, t1.c;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	32	Using temporary; Using filesort
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	16	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	32	Using where; Using temporary; Using filesort
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	5	test.t1.b	16	Using where; Using join buffer (flat, BNLH join)
 SELECT STRAIGHT_JOIN t2.e FROM t1,t2 WHERE t2.d=1 AND t1.b=t2.e
 ORDER BY t1.b, t1.c;
 e
@@ -856,8 +856,8 @@ a	b	a	a
 explain select * from t1, t2, t3 where t3.a=t1.a and t2.a=t1.b;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	4	Using where
-1	SIMPLE	t2	eq_ref	PRIMARY	PRIMARY	4	test.t1.b	1	Using index
-1	SIMPLE	t3	eq_ref	PRIMARY	PRIMARY	4	test.t1.a	1	Using index
+1	SIMPLE	t2	hash_index	PRIMARY	#hash#PRIMARY:PRIMARY	4:4	test.t1.b	10	Using index; Using join buffer (flat, BNLH join)
+1	SIMPLE	t3	hash_index	PRIMARY	#hash#PRIMARY:PRIMARY	4:4	test.t1.a	10	Using index; Using join buffer (incremental, BNLH join)
 We expect rnd_next=5, and read_key must be 0 because of short-cutting:
 show status like 'Handler_read%';
 Variable_name	Value
@@ -881,7 +881,7 @@ insert into t3 select * from t2 where a < 800;
 explain select * from t2,t3 where t2.a < 200 and t2.b=t3.b;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t2	ALL	a,b	NULL	NULL	NULL	1000	Using where
-1	SIMPLE	t3	ref	b	b	5	test.t2.b	1	
+1	SIMPLE	t3	hash_ALL	b	#hash#b	5	test.t2.b	800	Using join buffer (flat, BNLH join)
 drop table t1, t2, t3;
 create table t1 (a int);
 insert into t1 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
@@ -902,8 +902,8 @@ vv: Following query must use ALL(t1), eq_ref(A), eq_ref(B): vv
 explain select * from t1, t2 A, t2 B where A.a = t1.a and B.a=A.b;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	10	Using where
-1	SIMPLE	A	eq_ref	PRIMARY	PRIMARY	4	test.t1.a	1	Using where
-1	SIMPLE	B	eq_ref	PRIMARY	PRIMARY	4	test.A.b	1	
+1	SIMPLE	A	hash_ALL	PRIMARY	#hash#PRIMARY	4	test.t1.a	100	Using where; Using join buffer (flat, BNLH join)
+1	SIMPLE	B	hash_ALL	PRIMARY	#hash#PRIMARY	4	test.A.b	100	Using join buffer (incremental, BNLH join)
 show status like '%cost%';
 Variable_name	Value
 Last_query_cost	28.016090
@@ -922,12 +922,12 @@ INSERT INTO t1 SELECT a + 64, b FROM t1;
 INSERT INTO t2 SELECT a, b FROM t1;
 EXPLAIN SELECT * FROM t1 JOIN t2 ON b=c ORDER BY a LIMIT 2;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	index	NULL	PRIMARY	4	NULL	2	Using where
-1	SIMPLE	t2	eq_ref	PRIMARY	PRIMARY	4	test.t1.b	1	
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	128	Using where; Using temporary; Using filesort
+1	SIMPLE	t2	hash_ALL	PRIMARY	#hash#PRIMARY	4	test.t1.b	128	Using join buffer (flat, BNLH join)
 EXPLAIN SELECT * FROM t1 JOIN t2 ON a=c ORDER BY a LIMIT 2;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	index	PRIMARY	PRIMARY	4	NULL	2	
-1	SIMPLE	t2	eq_ref	PRIMARY	PRIMARY	4	test.t1.a	1	
+1	SIMPLE	t1	ALL	PRIMARY	NULL	NULL	NULL	128	Using temporary; Using filesort
+1	SIMPLE	t2	hash_ALL	PRIMARY	#hash#PRIMARY	4	test.t1.a	128	Using join buffer (flat, BNLH join)
 SELECT * FROM t1 JOIN t2 ON b=c ORDER BY a LIMIT 2;
 a	b	c	d
 SELECT * FROM t1 JOIN t2 ON a=c ORDER BY a LIMIT 2;
@@ -936,12 +936,12 @@ a	b	c	d
 2	NULL	2	NULL
 EXPLAIN SELECT * FROM t1 JOIN t2 ON b=c ORDER BY a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	128	Using where; Using filesort
-1	SIMPLE	t2	eq_ref	PRIMARY	PRIMARY	4	test.t1.b	1	
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	128	Using where; Using temporary; Using filesort
+1	SIMPLE	t2	hash_ALL	PRIMARY	#hash#PRIMARY	4	test.t1.b	128	Using join buffer (flat, BNLH join)
 EXPLAIN SELECT * FROM t1 JOIN t2 ON a=c ORDER BY a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	ALL	PRIMARY	NULL	NULL	NULL	128	Using filesort
-1	SIMPLE	t2	eq_ref	PRIMARY	PRIMARY	4	test.t1.a	1	
+1	SIMPLE	t1	ALL	PRIMARY	NULL	NULL	NULL	128	Using temporary; Using filesort
+1	SIMPLE	t2	hash_ALL	PRIMARY	#hash#PRIMARY	4	test.t1.a	128	Using join buffer (flat, BNLH join)
 SELECT * FROM t1 JOIN t2 ON b=c ORDER BY a;
 a	b	c	d
 SELECT * FROM t1 JOIN t2 ON a=c ORDER BY a;
@@ -1106,12 +1106,12 @@ ON t4.a = t5.a
 ) 
 ON t1.a = t3.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	3	
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	3	Using where
 1	SIMPLE	t3	ref	a	a	5	test.t1.a	2	Using where; Using index
 1	SIMPLE	t4	ALL	NULL	NULL	NULL	NULL	0	Using where
 1	SIMPLE	t5	ALL	NULL	NULL	NULL	NULL	0	Using where
 1	SIMPLE	t6	ALL	NULL	NULL	NULL	NULL	0	Using where
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	10	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	5	test.t1.a	10	Using where; Using join buffer (flat, BNLH join)
 SELECT * 
 FROM 
 t1 JOIN t2 ON t1.a = t2.a 
@@ -1310,17 +1310,17 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t2	system	NULL	NULL	NULL	NULL	1	
 1	SIMPLE	t1	const	PRIMARY	PRIMARY	4	const	1	
 1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	2	Using where
-1	SIMPLE	t4	ALL	NULL	NULL	NULL	NULL	4	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t4	hash_ALL	NULL	#hash#$hj	5	const	4	Using where; Using join buffer (flat, BNLH join)
 EXPLAIN
 SELECT STRAIGHT_JOIN * 
 FROM t4 JOIN
 (t1 JOIN t3 ON t3.ref_t1=t1.c1 JOIN t2 ON t2.ref_t1=t1.c1)
 ON t4.ref_t1=t1.c1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t4	ALL	NULL	NULL	NULL	NULL	4	
+1	SIMPLE	t4	ALL	NULL	NULL	NULL	NULL	4	Using where
 1	SIMPLE	t1	ALL	PRIMARY	NULL	NULL	NULL	3	Using where; Using join buffer (flat, BNL join)
-1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	2	Using where; Using join buffer (incremental, BNL join)
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	1	Using where; Using join buffer (incremental, BNL join)
+1	SIMPLE	t3	hash_ALL	NULL	#hash#$hj	5	test.t4.ref_t1	2	Using where; Using join buffer (incremental, BNLH join)
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	5	test.t4.ref_t1	1	Using where; Using join buffer (incremental, BNLH join)
 EXPLAIN
 SELECT * 
 FROM t4 STRAIGHT_JOIN
@@ -1328,9 +1328,9 @@ FROM t4 STRAIGHT_JOIN
 ON t4.ref_t1=t1.c1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t4	ALL	NULL	NULL	NULL	NULL	4	Using where
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	1	Using where; Using join buffer (flat, BNL join)
-1	SIMPLE	t1	eq_ref	PRIMARY	PRIMARY	4	test.t4.ref_t1	1	
-1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	2	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	5	test.t4.ref_t1	1	Using where; Using join buffer (flat, BNLH join)
+1	SIMPLE	t1	hash_ALL	PRIMARY	#hash#PRIMARY	4	test.t4.ref_t1	3	Using join buffer (incremental, BNLH join)
+1	SIMPLE	t3	hash_ALL	NULL	#hash#$hj	5	test.t4.ref_t1	2	Using where; Using join buffer (incremental, BNLH join)
 drop table t1,t2,t3,t4;
 End of 5.2 tests
 #
@@ -1380,7 +1380,7 @@ SELECT * FROM t1 STRAIGHT_JOIN t2 ON t2.f1 = t1.f1
 WHERE t1.f1<>0 OR t1.f2<>0 AND t1.f1 = t2.f2;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	2	Using where
-1	SIMPLE	t2	ALL	f2	NULL	NULL	NULL	2	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	hash_ALL	f2	#hash#$hj	5	test.t1.f1	2	Using where; Using join buffer (flat, BNLH join)
 SELECT * FROM t1 STRAIGHT_JOIN t2 ON t2.f1 = t1.f1
 WHERE t1.f1<>0 OR t1.f2<>0 AND t1.f1 = t2.f2;
 f1	f2	f1	f2
@@ -1395,7 +1395,7 @@ SELECT STRAIGHT_JOIN * FROM t1 JOIN t2 ON t2.f2 = t1.f1
 WHERE t1.f1 IN (SELECT f1 FROM t1) AND t1.f1 = t2.f1 OR t1.f1 = 9;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t1	ALL	PRIMARY	NULL	NULL	NULL	2	Using where
-1	PRIMARY	t2	ALL	PRIMARY	NULL	NULL	NULL	2	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	t2	hash_ALL	PRIMARY	#hash#$hj	5	test.t1.f1	2	Using where; Using join buffer (flat, BNLH join)
 2	DEPENDENT SUBQUERY	t1	unique_subquery	PRIMARY	PRIMARY	4	func	1	Using index
 SELECT STRAIGHT_JOIN * FROM t1 JOIN t2 ON t2.f2 = t1.f1
 WHERE t1.f1 IN (SELECT f1 FROM t1) AND t1.f1 = t2.f1 OR t1.f1 = 9;
@@ -1468,7 +1468,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	D	system	PRIMARY	NULL	NULL	NULL	1	
 1	SIMPLE	DSAR	system	NULL	NULL	NULL	NULL	1	
 1	SIMPLE	DT	range	t_id	t_id	2	NULL	2	Using where
-1	SIMPLE	DSA	ref	PRIMARY	PRIMARY	8	const,test.DT.t_id,func	1	Using index
+1	SIMPLE	DSA	hash_range	PRIMARY	#hash#PRIMARY:PRIMARY	8:4	const,test.DT.t_id,func	3	Using where; Using index; Using join buffer (flat, BNLH join)
 SELECT * FROM t5 DU, t1 D, t4 DT, t2 DSA, t3 DSAR
 WHERE DU.dog_id=D.dog_id AND D.dog_id=DT.dog_id AND D.birthday=DT.birthday AND
 DT.t_id=DSA.t_id AND DT.birthday=DSA.birthday AND DSA.dog_id=DSAR.dog_id;
@@ -1515,8 +1515,8 @@ INSERT INTO t2 (a) VALUES (1),(2),(3),(4);
 EXPLAIN
 SELECT t1.a FROM t1 NATURAL INNER JOIN t2 ORDER BY t1.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using temporary; Using filesort
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using where; Using temporary; Using filesort
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.a	8	Using where; Using join buffer (flat, BNLH join)
 SELECT t1.a FROM t1 NATURAL INNER JOIN t2 ORDER BY t1.a;
 a
 1
@@ -1526,8 +1526,8 @@ a
 EXPLAIN
 SELECT t1.a FROM t1 STRAIGHT_JOIN t2 USING(a) ORDER BY t1.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using temporary; Using filesort
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary; Using filesort
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	5	test.t1.a	4	Using where; Using join buffer (flat, BNLH join)
 SELECT t1.a FROM t1 STRAIGHT_JOIN t2 USING(a) ORDER BY t1.a;
 a
 1
@@ -1537,8 +1537,8 @@ a
 EXPLAIN
 SELECT t1.a FROM t1 NATURAL STRAIGHT_JOIN t2 ORDER BY t1.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using temporary; Using filesort
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary; Using filesort
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	5	test.t1.a	4	Using where; Using join buffer (flat, BNLH join)
 SELECT t1.a FROM t1 NATURAL STRAIGHT_JOIN t2 ORDER BY t1.a;
 a
 1

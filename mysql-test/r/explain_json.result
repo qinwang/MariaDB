@@ -58,16 +58,21 @@ EXPLAIN
       "filtered": 100,
       "attached_condition": "t0.a is not null"
     },
-    "table": {
-      "table_name": "t1",
-      "access_type": "ref",
-      "possible_keys": ["a"],
-      "key": "a",
-      "key_length": "5",
-      "used_key_parts": ["a"],
-      "ref": ["test.t0.a"],
-      "rows": 1,
-      "filtered": 100
+    "block-nl-join": {
+      "table": {
+        "table_name": "t1",
+        "access_type": "hash_ALL",
+        "possible_keys": ["a"],
+        "key": "#hash#a",
+        "key_length": "5",
+        "used_key_parts": ["a"],
+        "ref": ["test.t0.a"],
+        "rows": 1000,
+        "filtered": 0.1
+      },
+      "buffer_type": "flat",
+      "buffer_size": "256Kb",
+      "join_type": "BNLH"
     }
   }
 }
@@ -190,16 +195,22 @@ EXPLAIN
       "filtered": 100,
       "attached_condition": "t0.a is not null"
     },
-    "table": {
-      "table_name": "t2",
-      "access_type": "ref",
-      "possible_keys": ["b1"],
-      "key": "b1",
-      "key_length": "10",
-      "used_key_parts": ["b1", "b2"],
-      "ref": ["test.t0.a", "const"],
-      "rows": 1,
-      "filtered": 100
+    "block-nl-join": {
+      "table": {
+        "table_name": "t2",
+        "access_type": "hash_ALL",
+        "possible_keys": ["b1"],
+        "key": "#hash#b1",
+        "key_length": "10",
+        "used_key_parts": ["b1", "b2"],
+        "ref": ["test.t0.a", "const"],
+        "rows": 1000,
+        "filtered": 0.1,
+        "attached_condition": "t2.b2 = 4"
+      },
+      "buffer_type": "flat",
+      "buffer_size": "256Kb",
+      "join_type": "BNLH"
     }
   }
 }
@@ -362,19 +373,23 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 100,
       "filtered": 100,
-      "attached_condition": "tbl1.b < 3"
+      "attached_condition": "tbl1.b < 3 and tbl1.a is not null"
     },
     "block-nl-join": {
       "table": {
         "table_name": "tbl2",
-        "access_type": "ALL",
+        "access_type": "hash_ALL",
+        "key": "#hash#$hj",
+        "key_length": "5",
+        "used_key_parts": ["a"],
+        "ref": ["test.tbl1.a"],
         "rows": 100,
         "filtered": 100,
         "attached_condition": "tbl2.b < 5"
       },
       "buffer_type": "flat",
       "buffer_size": "256Kb",
-      "join_type": "BNL",
+      "join_type": "BNLH",
       "attached_condition": "tbl2.a = tbl1.a"
     }
   }
@@ -518,16 +533,21 @@ EXPLAIN
       "filtered": 100,
       "attached_condition": "tbl2.a is not null"
     },
-    "table": {
-      "table_name": "<derived2>",
-      "access_type": "ref",
-      "possible_keys": ["key0"],
-      "key": "key0",
-      "key_length": "8",
-      "used_key_parts": ["cnt"],
-      "ref": ["test.tbl2.a"],
-      "rows": 2,
-      "filtered": 100,
+    "block-nl-join": {
+      "table": {
+        "table_name": "<derived2>",
+        "access_type": "hash_ALL",
+        "possible_keys": ["key0"],
+        "key": "#hash#key0",
+        "key_length": "8",
+        "used_key_parts": ["cnt"],
+        "ref": ["test.tbl2.a"],
+        "rows": 10,
+        "filtered": 20
+      },
+      "buffer_type": "flat",
+      "buffer_size": "256Kb",
+      "join_type": "BNLH",
       "attached_condition": "tbl1.cnt = tbl2.a",
       "materialized": {
         "query_block": {
@@ -564,16 +584,21 @@ EXPLAIN
       "filtered": 100,
       "attached_condition": "t1.a is not null"
     },
-    "table": {
-      "table_name": "<subquery2>",
-      "access_type": "eq_ref",
-      "possible_keys": ["distinct_key"],
-      "key": "distinct_key",
-      "key_length": "4",
-      "used_key_parts": ["max(a)"],
-      "ref": ["test.t1.a"],
-      "rows": 1,
-      "filtered": 100,
+    "block-nl-join": {
+      "table": {
+        "table_name": "<subquery2>",
+        "access_type": "hash_ALL",
+        "possible_keys": ["distinct_key"],
+        "key": "#hash#distinct_key",
+        "key_length": "4",
+        "used_key_parts": ["max(a)"],
+        "ref": ["test.t1.a"],
+        "rows": 10,
+        "filtered": 10
+      },
+      "buffer_type": "flat",
+      "buffer_size": "256Kb",
+      "join_type": "BNLH",
       "materialized": {
         "unique": 1,
         "query_block": {
@@ -688,8 +713,8 @@ set optimizer_switch='firstmatch=off';
 explain
 select * from t2 where t2.a in ( select a from t1 where t1.b=t2.b);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	10	
-1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	10	Using where; Start temporary; End temporary; Using join buffer (flat, BNL join)
+1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	10	Using where
+1	PRIMARY	t1	hash_ALL	NULL	#hash#$hj	10	test.t2.a,test.t2.b	10	Using where; Start temporary; End temporary; Using join buffer (flat, BNLH join)
 explain format=json
 select * from t2 where t2.a in ( select a from t1 where t1.b=t2.b);
 EXPLAIN
@@ -700,19 +725,24 @@ EXPLAIN
       "table_name": "t2",
       "access_type": "ALL",
       "rows": 10,
-      "filtered": 100
+      "filtered": 100,
+      "attached_condition": "t2.a is not null and t2.b is not null"
     },
     "duplicates_removal": {
       "block-nl-join": {
         "table": {
           "table_name": "t1",
-          "access_type": "ALL",
+          "access_type": "hash_ALL",
+          "key": "#hash#$hj",
+          "key_length": "10",
+          "used_key_parts": ["a", "b"],
+          "ref": ["test.t2.a", "test.t2.b"],
           "rows": 10,
           "filtered": 100
         },
         "buffer_type": "flat",
         "buffer_size": "256Kb",
-        "join_type": "BNL",
+        "join_type": "BNLH",
         "attached_condition": "t1.b = t2.b and t1.a = t2.a"
       }
     }
@@ -866,18 +896,23 @@ EXPLAIN
             "table_name": "tbl1",
             "access_type": "ALL",
             "rows": 100,
-            "filtered": 100
+            "filtered": 100,
+            "attached_condition": "tbl1.b is not null"
           },
           "block-nl-join": {
             "table": {
               "table_name": "tbl2",
-              "access_type": "ALL",
+              "access_type": "hash_ALL",
+              "key": "#hash#$hj",
+              "key_length": "5",
+              "used_key_parts": ["b"],
+              "ref": ["test.tbl1.b"],
               "rows": 100,
               "filtered": 100
             },
             "buffer_type": "flat",
             "buffer_size": "256Kb",
-            "join_type": "BNL",
+            "join_type": "BNLH",
             "attached_condition": "tbl2.b = tbl1.b"
           }
         }
@@ -1302,7 +1337,7 @@ explain
 select * from t1 left join t2 on t2.pk=t1.a where  t2.pk is null;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	2	
-1	SIMPLE	t2	eq_ref	PRIMARY	PRIMARY	4	test.t1.a	1	Using where; Using index; Not exists
+1	SIMPLE	t2	hash_index	PRIMARY	#hash#PRIMARY:PRIMARY	4:4	test.t1.a	2	Using where; Using index; Not exists; Using join buffer (flat, BNLH join)
 explain format=json
 select * from t1 left join t2 on t2.pk=t1.a where  t2.pk is null;
 EXPLAIN
@@ -1315,19 +1350,24 @@ EXPLAIN
       "rows": 2,
       "filtered": 100
     },
-    "table": {
-      "table_name": "t2",
-      "access_type": "eq_ref",
-      "possible_keys": ["PRIMARY"],
-      "key": "PRIMARY",
-      "key_length": "4",
-      "used_key_parts": ["pk"],
-      "ref": ["test.t1.a"],
-      "rows": 1,
-      "filtered": 100,
-      "attached_condition": "trigcond(t2.pk is null) and trigcond(trigcond(t1.a is not null))",
-      "using_index": true,
-      "not_exists": true
+    "block-nl-join": {
+      "table": {
+        "table_name": "t2",
+        "access_type": "hash_index",
+        "possible_keys": ["PRIMARY"],
+        "key": "#hash#PRIMARY:PRIMARY",
+        "key_length": "4:4",
+        "used_key_parts": ["pk"],
+        "ref": ["test.t1.a"],
+        "rows": 2,
+        "filtered": 50,
+        "using_index": true,
+        "not_exists": true
+      },
+      "buffer_type": "flat",
+      "buffer_size": "256Kb",
+      "join_type": "BNLH",
+      "attached_condition": "trigcond(t2.pk is null) and trigcond(trigcond(t1.a is not null))"
     }
   }
 }
@@ -1349,23 +1389,29 @@ ANALYZE
       "filtered": 100,
       "r_filtered": 100
     },
-    "table": {
-      "table_name": "t2",
-      "access_type": "eq_ref",
-      "possible_keys": ["PRIMARY"],
-      "key": "PRIMARY",
-      "key_length": "4",
-      "used_key_parts": ["pk"],
-      "ref": ["test.t1.a"],
-      "r_loops": 2,
-      "rows": 1,
-      "r_rows": 1,
-      "r_total_time_ms": "REPLACED",
-      "filtered": 100,
-      "r_filtered": 100,
+    "block-nl-join": {
+      "table": {
+        "table_name": "t2",
+        "access_type": "hash_index",
+        "possible_keys": ["PRIMARY"],
+        "key": "#hash#PRIMARY:PRIMARY",
+        "key_length": "4:4",
+        "used_key_parts": ["pk"],
+        "ref": ["test.t1.a"],
+        "r_loops": 1,
+        "rows": 2,
+        "r_rows": 2,
+        "r_total_time_ms": "REPLACED",
+        "filtered": 50,
+        "r_filtered": 100,
+        "using_index": true,
+        "not_exists": true
+      },
+      "buffer_type": "flat",
+      "buffer_size": "256Kb",
+      "join_type": "BNLH",
       "attached_condition": "trigcond(t2.pk is null) and trigcond(trigcond(t1.a is not null))",
-      "using_index": true,
-      "not_exists": true
+      "r_filtered": 100
     }
   }
 }
@@ -1374,7 +1420,7 @@ explain
 select distinct t1.a from t1 join t2 on t2.pk=t1.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	2	Using where; Using temporary
-1	SIMPLE	t2	eq_ref	PRIMARY	PRIMARY	4	test.t1.a	1	Using index; Distinct
+1	SIMPLE	t2	hash_index	PRIMARY	#hash#PRIMARY:PRIMARY	4:4	test.t1.a	2	Using index; Using join buffer (flat, BNLH join)
 explain format=json
 select distinct t1.a from t1 join t2 on t2.pk=t1.a;
 EXPLAIN
@@ -1389,18 +1435,22 @@ EXPLAIN
         "filtered": 100,
         "attached_condition": "t1.a is not null"
       },
-      "table": {
-        "table_name": "t2",
-        "access_type": "eq_ref",
-        "possible_keys": ["PRIMARY"],
-        "key": "PRIMARY",
-        "key_length": "4",
-        "used_key_parts": ["pk"],
-        "ref": ["test.t1.a"],
-        "rows": 1,
-        "filtered": 100,
-        "using_index": true,
-        "distinct": true
+      "block-nl-join": {
+        "table": {
+          "table_name": "t2",
+          "access_type": "hash_index",
+          "possible_keys": ["PRIMARY"],
+          "key": "#hash#PRIMARY:PRIMARY",
+          "key_length": "4:4",
+          "used_key_parts": ["pk"],
+          "ref": ["test.t1.a"],
+          "rows": 2,
+          "filtered": 50,
+          "using_index": true
+        },
+        "buffer_type": "flat",
+        "buffer_size": "256Kb",
+        "join_type": "BNLH"
       }
     }
   }
@@ -1425,22 +1475,27 @@ ANALYZE
         "r_filtered": 100,
         "attached_condition": "t1.a is not null"
       },
-      "table": {
-        "table_name": "t2",
-        "access_type": "eq_ref",
-        "possible_keys": ["PRIMARY"],
-        "key": "PRIMARY",
-        "key_length": "4",
-        "used_key_parts": ["pk"],
-        "ref": ["test.t1.a"],
-        "r_loops": 2,
-        "rows": 1,
-        "r_rows": 1,
-        "r_total_time_ms": "REPLACED",
-        "filtered": 100,
-        "r_filtered": 100,
-        "using_index": true,
-        "distinct": true
+      "block-nl-join": {
+        "table": {
+          "table_name": "t2",
+          "access_type": "hash_index",
+          "possible_keys": ["PRIMARY"],
+          "key": "#hash#PRIMARY:PRIMARY",
+          "key_length": "4:4",
+          "used_key_parts": ["pk"],
+          "ref": ["test.t1.a"],
+          "r_loops": 1,
+          "rows": 2,
+          "r_rows": 2,
+          "r_total_time_ms": "REPLACED",
+          "filtered": 50,
+          "r_filtered": 100,
+          "using_index": true
+        },
+        "buffer_type": "flat",
+        "buffer_size": "256Kb",
+        "join_type": "BNLH",
+        "r_filtered": 100
       }
     }
   }

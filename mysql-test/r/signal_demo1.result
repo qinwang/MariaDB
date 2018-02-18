@@ -250,9 +250,9 @@ left join ab_physical_person pp on po.cust_id = pp.person_id
 left join ab_moral_person mp on po.cust_id = company_id
 ;
 PO#	Sold to
+3	Local school
 1	John A Doe
 2	Marry B Smith
-3	Local school
 select po_id as "PO#",
 ol.line_no as "Line",
 ol.item_id as "Item",

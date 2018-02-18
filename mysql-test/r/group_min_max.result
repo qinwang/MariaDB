@@ -2439,7 +2439,7 @@ EXPLAIN SELECT 1 FROM t1 AS t1_outer WHERE
 a IN (SELECT max(b) FROM t1 GROUP BY a HAVING a < 2);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	<subquery2>	ALL	distinct_key	NULL	NULL	NULL	8	
-1	PRIMARY	t1_outer	ref	a	a	5	<subquery2>.max(b)	2	Using index
+1	PRIMARY	t1_outer	hash_index	a	#hash#a:a	5:10	<subquery2>.max(b)	15	Using index; Using join buffer (flat, BNLH join)
 2	MATERIALIZED	t1	range	NULL	a	5	NULL	8	Using index for group-by
 EXPLAIN SELECT 1 FROM t1 AS t1_outer GROUP BY a HAVING 
 a > (SELECT max(b) FROM t1 GROUP BY a HAVING a < 2);
@@ -2451,7 +2451,7 @@ ON t1_outer1.a = (SELECT max(b) FROM t1 GROUP BY a HAVING a < 2)
 AND t1_outer1.b = t1_outer2.b;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t1_outer1	ref	a	a	5	const	1	Using where; Using index
-1	PRIMARY	t1_outer2	index	NULL	a	10	NULL	15	Using where; Using index; Using join buffer (flat, BNL join)
+1	PRIMARY	t1_outer2	hash_index	NULL	#hash#$hj:a	5:10	test.t1_outer1.b	15	Using where; Using index; Using join buffer (flat, BNLH join)
 2	SUBQUERY	t1	range	NULL	a	5	NULL	8	Using index for group-by
 EXPLAIN SELECT (SELECT (SELECT max(b) FROM t1 GROUP BY a HAVING a < 2) x
 FROM t1 AS t1_outer) x2 FROM t1 AS t1_outer2;
@@ -2634,7 +2634,7 @@ a	b
 3	13
 explain extended select sql_buffer_result a, max(b)+1 from t1 where a = 0 group by a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t1	ref	a,index	a	5	const	15	100.00	Using index; Using temporary
+1	SIMPLE	t1	ref	a,index	a	5	const	15	100.00	Using where; Using index; Using temporary
 Warnings:
 Note	1003	select sql_buffer_result `test`.`t1`.`a` AS `a`,max(`test`.`t1`.`b`) + 1 AS `max(b)+1` from `test`.`t1` where `test`.`t1`.`a` = 0 group by `test`.`t1`.`a`
 drop table t1;

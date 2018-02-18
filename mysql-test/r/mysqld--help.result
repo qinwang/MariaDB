@@ -1426,7 +1426,7 @@ init-slave
 interactive-timeout 28800
 join-buffer-size 262144
 join-buffer-space-limit 2097152
-join-cache-level 2
+join-cache-level 4
 keep-files-on-create FALSE
 key-buffer-size 134217728
 key-cache-age-threshold 300

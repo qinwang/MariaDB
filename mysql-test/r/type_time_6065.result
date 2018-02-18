@@ -9,8 +9,8 @@ STRAIGHT_JOIN
 t2 ignore INDEX (col_datetime_key)
 WHERE col_time_key = col_datetime_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	5	100.00	
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	6	test.t1.col_time_key	5	100.00	Using where; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t1`.`col_time_key` AS `col_time_key`,`test`.`t2`.`col_datetime_key` AS `col_datetime_key` from `test`.`t1` IGNORE INDEX (`col_time_key`) straight_join `test`.`t2` IGNORE INDEX (`col_datetime_key`) where `test`.`t1`.`col_time_key` = `test`.`t2`.`col_datetime_key`
 SELECT * FROM
@@ -30,8 +30,8 @@ STRAIGHT_JOIN
 t2 ignore INDEX (col_datetime_key)
 WHERE col_datetime_key = col_time_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	5	100.00	
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	6	test.t1.col_time_key	5	100.00	Using where; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t1`.`col_time_key` AS `col_time_key`,`test`.`t2`.`col_datetime_key` AS `col_datetime_key` from `test`.`t1` IGNORE INDEX (`col_time_key`) straight_join `test`.`t2` IGNORE INDEX (`col_datetime_key`) where `test`.`t2`.`col_datetime_key` = `test`.`t1`.`col_time_key`
 SELECT * FROM
@@ -52,7 +52,7 @@ t2 force INDEX (col_datetime_key)
 WHERE col_time_key = col_datetime_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where
-1	SIMPLE	t2	ref	col_datetime_key	col_datetime_key	6	test.t1.col_time_key	1	100.00	Using where; Using index
+1	SIMPLE	t2	hash_index	col_datetime_key	#hash#col_datetime_key:col_datetime_key	6:6	test.t1.col_time_key	5	20.00	Using where; Using index; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t1`.`col_time_key` AS `col_time_key`,`test`.`t2`.`col_datetime_key` AS `col_datetime_key` from `test`.`t1` IGNORE INDEX (`col_time_key`) straight_join `test`.`t2` FORCE INDEX (`col_datetime_key`) where `test`.`t1`.`col_time_key` = `test`.`t2`.`col_datetime_key`
 SELECT * FROM
@@ -73,7 +73,7 @@ t2 force INDEX (col_datetime_key)
 WHERE col_datetime_key = col_time_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where
-1	SIMPLE	t2	ref	col_datetime_key	col_datetime_key	6	test.t1.col_time_key	1	100.00	Using where; Using index
+1	SIMPLE	t2	hash_index	col_datetime_key	#hash#col_datetime_key:col_datetime_key	6:6	test.t1.col_time_key	5	20.00	Using where; Using index; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t1`.`col_time_key` AS `col_time_key`,`test`.`t2`.`col_datetime_key` AS `col_datetime_key` from `test`.`t1` IGNORE INDEX (`col_time_key`) straight_join `test`.`t2` FORCE INDEX (`col_datetime_key`) where `test`.`t2`.`col_datetime_key` = `test`.`t1`.`col_time_key`
 SELECT * FROM
@@ -93,8 +93,8 @@ STRAIGHT_JOIN
 t2 ignore INDEX (col_datetime_key)
 WHERE col_time_key = col_datetime_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t1	index	col_time_key	col_time_key	4	NULL	5	100.00	Using index
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	index	col_time_key	col_time_key	4	NULL	5	100.00	Using where; Using index
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	6	test.t1.col_time_key	5	100.00	Using where; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t1`.`col_time_key` AS `col_time_key`,`test`.`t2`.`col_datetime_key` AS `col_datetime_key` from `test`.`t1` FORCE INDEX (`col_time_key`) straight_join `test`.`t2` IGNORE INDEX (`col_datetime_key`) where `test`.`t1`.`col_time_key` = `test`.`t2`.`col_datetime_key`
 SELECT * FROM
@@ -114,8 +114,8 @@ STRAIGHT_JOIN
 t2 ignore INDEX (col_datetime_key)
 WHERE col_datetime_key = col_time_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t1	index	col_time_key	col_time_key	4	NULL	5	100.00	Using index
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	index	col_time_key	col_time_key	4	NULL	5	100.00	Using where; Using index
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	6	test.t1.col_time_key	5	100.00	Using where; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t1`.`col_time_key` AS `col_time_key`,`test`.`t2`.`col_datetime_key` AS `col_datetime_key` from `test`.`t1` FORCE INDEX (`col_time_key`) straight_join `test`.`t2` IGNORE INDEX (`col_datetime_key`) where `test`.`t2`.`col_datetime_key` = `test`.`t1`.`col_time_key`
 SELECT * FROM
@@ -136,7 +136,7 @@ t2 force INDEX (col_datetime_key)
 WHERE col_time_key = col_datetime_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t1	index	col_time_key	col_time_key	4	NULL	5	100.00	Using where; Using index
-1	SIMPLE	t2	ref	col_datetime_key	col_datetime_key	6	test.t1.col_time_key	1	100.00	Using where; Using index
+1	SIMPLE	t2	hash_index	col_datetime_key	#hash#col_datetime_key:col_datetime_key	6:6	test.t1.col_time_key	5	20.00	Using where; Using index; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t1`.`col_time_key` AS `col_time_key`,`test`.`t2`.`col_datetime_key` AS `col_datetime_key` from `test`.`t1` FORCE INDEX (`col_time_key`) straight_join `test`.`t2` FORCE INDEX (`col_datetime_key`) where `test`.`t1`.`col_time_key` = `test`.`t2`.`col_datetime_key`
 SELECT * FROM
@@ -157,7 +157,7 @@ t2 force INDEX (col_datetime_key)
 WHERE col_datetime_key = col_time_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t1	index	col_time_key	col_time_key	4	NULL	5	100.00	Using where; Using index
-1	SIMPLE	t2	ref	col_datetime_key	col_datetime_key	6	test.t1.col_time_key	1	100.00	Using where; Using index
+1	SIMPLE	t2	hash_index	col_datetime_key	#hash#col_datetime_key:col_datetime_key	6:6	test.t1.col_time_key	5	20.00	Using where; Using index; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t1`.`col_time_key` AS `col_time_key`,`test`.`t2`.`col_datetime_key` AS `col_datetime_key` from `test`.`t1` FORCE INDEX (`col_time_key`) straight_join `test`.`t2` FORCE INDEX (`col_datetime_key`) where `test`.`t2`.`col_datetime_key` = `test`.`t1`.`col_time_key`
 SELECT * FROM
@@ -177,8 +177,8 @@ STRAIGHT_JOIN
 t1 ignore INDEX (col_time_key)
 WHERE col_time_key = col_datetime_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	5	100.00	
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	4	test.t2.col_datetime_key	5	100.00	Using where; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t2`.`col_datetime_key` AS `col_datetime_key`,`test`.`t1`.`col_time_key` AS `col_time_key` from `test`.`t2` IGNORE INDEX (`col_datetime_key`) straight_join `test`.`t1` IGNORE INDEX (`col_time_key`) where `test`.`t1`.`col_time_key` = `test`.`t2`.`col_datetime_key`
 SELECT * FROM
@@ -198,8 +198,8 @@ STRAIGHT_JOIN
 t1 ignore INDEX (col_time_key)
 WHERE col_datetime_key = col_time_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	5	100.00	
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	4	test.t2.col_datetime_key	5	100.00	Using where; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t2`.`col_datetime_key` AS `col_datetime_key`,`test`.`t1`.`col_time_key` AS `col_time_key` from `test`.`t2` IGNORE INDEX (`col_datetime_key`) straight_join `test`.`t1` IGNORE INDEX (`col_time_key`) where `test`.`t2`.`col_datetime_key` = `test`.`t1`.`col_time_key`
 SELECT * FROM
@@ -220,7 +220,7 @@ t1 force INDEX (col_time_key)
 WHERE col_time_key = col_datetime_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where
-1	SIMPLE	t1	ref	col_time_key	col_time_key	4	test.t2.col_datetime_key	2	100.00	Using where; Using index
+1	SIMPLE	t1	hash_index	col_time_key	#hash#col_time_key:col_time_key	4:4	test.t2.col_datetime_key	5	40.00	Using where; Using index; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t2`.`col_datetime_key` AS `col_datetime_key`,`test`.`t1`.`col_time_key` AS `col_time_key` from `test`.`t2` IGNORE INDEX (`col_datetime_key`) straight_join `test`.`t1` FORCE INDEX (`col_time_key`) where `test`.`t1`.`col_time_key` = `test`.`t2`.`col_datetime_key`
 SELECT * FROM
@@ -241,7 +241,7 @@ t1 force INDEX (col_time_key)
 WHERE col_datetime_key = col_time_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where
-1	SIMPLE	t1	ref	col_time_key	col_time_key	4	test.t2.col_datetime_key	2	100.00	Using where; Using index
+1	SIMPLE	t1	hash_index	col_time_key	#hash#col_time_key:col_time_key	4:4	test.t2.col_datetime_key	5	40.00	Using where; Using index; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t2`.`col_datetime_key` AS `col_datetime_key`,`test`.`t1`.`col_time_key` AS `col_time_key` from `test`.`t2` IGNORE INDEX (`col_datetime_key`) straight_join `test`.`t1` FORCE INDEX (`col_time_key`) where `test`.`t2`.`col_datetime_key` = `test`.`t1`.`col_time_key`
 SELECT * FROM
@@ -261,8 +261,8 @@ STRAIGHT_JOIN
 t1 ignore INDEX (col_time_key)
 WHERE col_time_key = col_datetime_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t2	index	col_datetime_key	col_datetime_key	6	NULL	5	100.00	Using index
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	index	col_datetime_key	col_datetime_key	6	NULL	5	100.00	Using where; Using index
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	4	test.t2.col_datetime_key	5	100.00	Using where; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t2`.`col_datetime_key` AS `col_datetime_key`,`test`.`t1`.`col_time_key` AS `col_time_key` from `test`.`t2` FORCE INDEX (`col_datetime_key`) straight_join `test`.`t1` IGNORE INDEX (`col_time_key`) where `test`.`t1`.`col_time_key` = `test`.`t2`.`col_datetime_key`
 SELECT * FROM
@@ -282,8 +282,8 @@ STRAIGHT_JOIN
 t1 ignore INDEX (col_time_key)
 WHERE col_datetime_key = col_time_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
-1	SIMPLE	t2	index	col_datetime_key	col_datetime_key	6	NULL	5	100.00	Using index
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	5	100.00	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	index	col_datetime_key	col_datetime_key	6	NULL	5	100.00	Using where; Using index
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	4	test.t2.col_datetime_key	5	100.00	Using where; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t2`.`col_datetime_key` AS `col_datetime_key`,`test`.`t1`.`col_time_key` AS `col_time_key` from `test`.`t2` FORCE INDEX (`col_datetime_key`) straight_join `test`.`t1` IGNORE INDEX (`col_time_key`) where `test`.`t2`.`col_datetime_key` = `test`.`t1`.`col_time_key`
 SELECT * FROM
@@ -304,7 +304,7 @@ t1 force INDEX (col_time_key)
 WHERE col_time_key = col_datetime_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t2	index	col_datetime_key	col_datetime_key	6	NULL	5	100.00	Using where; Using index
-1	SIMPLE	t1	ref	col_time_key	col_time_key	4	test.t2.col_datetime_key	2	100.00	Using where; Using index
+1	SIMPLE	t1	hash_index	col_time_key	#hash#col_time_key:col_time_key	4:4	test.t2.col_datetime_key	5	40.00	Using where; Using index; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t2`.`col_datetime_key` AS `col_datetime_key`,`test`.`t1`.`col_time_key` AS `col_time_key` from `test`.`t2` FORCE INDEX (`col_datetime_key`) straight_join `test`.`t1` FORCE INDEX (`col_time_key`) where `test`.`t1`.`col_time_key` = `test`.`t2`.`col_datetime_key`
 SELECT * FROM
@@ -325,7 +325,7 @@ t1 force INDEX (col_time_key)
 WHERE col_datetime_key = col_time_key;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t2	index	col_datetime_key	col_datetime_key	6	NULL	5	100.00	Using where; Using index
-1	SIMPLE	t1	ref	col_time_key	col_time_key	4	test.t2.col_datetime_key	2	100.00	Using where; Using index
+1	SIMPLE	t1	hash_index	col_time_key	#hash#col_time_key:col_time_key	4:4	test.t2.col_datetime_key	5	40.00	Using where; Using index; Using join buffer (flat, BNLH join)
 Warnings:
 Note	1003	select `test`.`t2`.`col_datetime_key` AS `col_datetime_key`,`test`.`t1`.`col_time_key` AS `col_time_key` from `test`.`t2` FORCE INDEX (`col_datetime_key`) straight_join `test`.`t1` FORCE INDEX (`col_time_key`) where `test`.`t2`.`col_datetime_key` = `test`.`t1`.`col_time_key`
 SELECT * FROM
@@ -2344,11 +2344,11 @@ col_datetime_key	col_time_key
 2012-03-05 22:59:59	838:59:59
 SELECT * FROM t2 STRAIGHT_JOIN t1 FORCE INDEX (col_time_key) WHERE col_time_key = col_datetime_key;
 col_datetime_key	col_time_key
+2011-12-27 01:00:01	-838:59:59
 2011-12-29 22:00:00	-770:00:00
 2011-12-30 08:00:00	-760:00:00
 2012-03-02 16:00:00	760:00:00
 2012-03-03 02:00:00	770:00:00
-2011-12-27 01:00:01	-838:59:59
 2012-03-05 22:59:59	838:59:59
 DROP TABLE t1, t2;
 SET TIMESTAMP=DEFAULT;

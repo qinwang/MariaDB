@@ -33,21 +33,26 @@ EXPLAIN
             "filtered": 100,
             "attached_condition": "tbl_alias1.column_name_2 is not null and tbl_alias1.column_name_1 is not null"
           },
-          "table": {
-            "table_name": "tbl_alias2",
-            "access_type": "eq_ref",
-            "possible_keys": ["PRIMARY"],
-            "key": "PRIMARY",
-            "key_length": "9",
-            "used_key_parts": ["c", "b"],
-            "ref": [
-              "test.tbl_alias1.column_name_2",
-              "test.tbl_alias1.column_name_1"
-            ],
-            "rows": 1,
-            "filtered": 100,
-            "attached_condition": "tbl_alias2.c = tbl_alias1.column_name_2",
-            "using_index": true
+          "block-nl-join": {
+            "table": {
+              "table_name": "tbl_alias2",
+              "access_type": "hash_index",
+              "possible_keys": ["PRIMARY"],
+              "key": "#hash#PRIMARY:PRIMARY",
+              "key_length": "9:9",
+              "used_key_parts": ["c", "b"],
+              "ref": [
+                "test.tbl_alias1.column_name_2",
+                "test.tbl_alias1.column_name_1"
+              ],
+              "rows": 2,
+              "filtered": 50,
+              "using_index": true
+            },
+            "buffer_type": "flat",
+            "buffer_size": "256Kb",
+            "join_type": "BNLH",
+            "attached_condition": "tbl_alias2.c = tbl_alias1.column_name_2"
           }
         }
       }

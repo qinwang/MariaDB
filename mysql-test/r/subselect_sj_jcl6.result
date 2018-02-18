@@ -3416,7 +3416,7 @@ DROP TABLE t1,t2;
 set join_cache_level=default;
 show variables like 'join_cache_level';
 Variable_name	Value
-join_cache_level	2
+join_cache_level	4
 set @@optimizer_switch=@save_optimizer_switch_jcl6;
 set @optimizer_switch_for_subselect_sj_test=NULL;
 set @join_cache_level_subselect_sj_test=NULL;

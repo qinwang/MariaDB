@@ -1558,6 +1558,6 @@ set @@optimizer_switch=@subselect3_tmp;
 set join_cache_level=default;
 show variables like 'join_cache_level';
 Variable_name	Value
-join_cache_level	2
+join_cache_level	4
 set @@optimizer_switch=@save_optimizer_switch;
 set @join_cache_level_for_subselect3_test=NULL;

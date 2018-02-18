@@ -133,7 +133,7 @@ Country.SurfaceArea < 3000 AND Country.SurfaceArea > 10 AND
 City.name LIKE '%Island%');
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	ALL	PRIMARY,SurfaceArea	NULL	NULL	NULL	239	Using where
-1	PRIMARY	City	ref	Country	Country	3	world.Country.Code	18	Using where
+1	PRIMARY	City	hash_ALL	Country	#hash#Country	3	world.Country.Code	4080	Using where; Using join buffer (flat, BNLH join)
 2	MATERIALIZED	CountryLanguage	ALL	Percentage,Language	NULL	NULL	NULL	984	Using where
 SELECT *
 FROM Country, City
@@ -158,7 +158,7 @@ Country.SurfaceArea < 3000 AND Country.SurfaceArea > 10 AND
 Country.name LIKE '%Island%');
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	ALL	PRIMARY,SurfaceArea	NULL	NULL	NULL	239	Using where
-1	PRIMARY	City	ref	Country	Country	3	world.Country.Code	18	
+1	PRIMARY	City	hash_ALL	Country	#hash#Country	3	world.Country.Code	4080	Using join buffer (flat, BNLH join)
 2	DEPENDENT SUBQUERY	CountryLanguage	index_subquery	Percentage,Language	Language	30	func	2	Using where
 SELECT *
 FROM Country, City
@@ -203,7 +203,7 @@ OR
 (select Country, Language from CountryLanguage));
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	ALL	PRIMARY,SurfaceArea	NULL	NULL	NULL	239	Using where
-1	PRIMARY	City	ref	Country	Country	3	world.Country.Code	18	Using where
+1	PRIMARY	City	hash_ALL	Country	#hash#Country	3	world.Country.Code	4080	Using where; Using join buffer (flat, BNLH join)
 3	MATERIALIZED	CountryLanguage	index	PRIMARY,Language	PRIMARY	33	NULL	984	Using index
 2	DEPENDENT SUBQUERY	CountryLanguage	unique_subquery	PRIMARY,Percentage,Language	PRIMARY	33	func,func	1	Using where
 SELECT City.Name, Country.Name
@@ -247,33 +247,33 @@ AND CountryLanguage.Language = 'French'
   AND Code = Country;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	CountryLanguage	ref	PRIMARY,Language	Language	30	const	20	Using index condition
-1	PRIMARY	Country	eq_ref	PRIMARY	PRIMARY	3	world.CountryLanguage.Country	1	Using where
-2	DEPENDENT SUBQUERY	CountryLanguage	unique_subquery	PRIMARY,Language	PRIMARY	33	func,const	1	Using index; Using where
+1	PRIMARY	Country	hash_ALL	PRIMARY	#hash#PRIMARY	3	world.CountryLanguage.Country	239	Using where; Using join buffer (flat, BNLH join)
+2	DEPENDENT SUBQUERY	CountryLanguage	unique_subquery	PRIMARY,Language	PRIMARYLanguage	3330	func,const	47	Using index; Using where
 SELECT Country.Name
 FROM Country, CountryLanguage 
 WHERE Code NOT IN (SELECT Country FROM CountryLanguage WHERE Language = 'English')
 AND CountryLanguage.Language = 'French'
   AND Code = Country;
 Name
-France
-Saint Pierre and Miquelon
+Andorra
 Belgium
 Burundi
 Guadeloupe
 Haiti
+Italy
+Lebanon
+Luxembourg
 Madagascar
 Martinique
+Mauritius
 Mayotte
+France
 French Polynesia
 Rwanda
+Saint Pierre and Miquelon
 Sao Tome and Principe
 Switzerland
 New Caledonia
-Lebanon
-Mauritius
-Andorra
-Italy
-Luxembourg
 Q2.2m:
 Countries that speak French OR Spanish, but do not speak English
 MATERIALIZATION because the outer query filters less rows than Q5-a,
@@ -286,7 +286,7 @@ AND (CountryLanguage.Language = 'French' OR CountryLanguage.Language = 'Spanish'
 AND Code = Country;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	CountryLanguage	range	PRIMARY,Language	Language	30	NULL	45	Using index condition; Using where; Rowid-ordered scan
-1	PRIMARY	Country	eq_ref	PRIMARY	PRIMARY	3	world.CountryLanguage.Country	1	Using where
+1	PRIMARY	Country	hash_ALL	PRIMARY	#hash#PRIMARY	3	world.CountryLanguage.Country	239	Using where; Using join buffer (flat, BNLH join)
 2	MATERIALIZED	CountryLanguage	ref	PRIMARY,Language	Language	30	const	47	Using index condition
 SELECT Country.Name
 FROM Country, CountryLanguage 
@@ -295,46 +295,46 @@ AND (CountryLanguage.Language = 'French' OR CountryLanguage.Language = 'Spanish'
 AND Code = Country;
 Name
 Andorra
+Andorra
 Argentina
+Belgium
 Bolivia
+Burundi
 Chile
 Costa Rica
 Dominican Republic
 Ecuador
 El Salvador
 Spain
+Guadeloupe
 Guatemala
+Haiti
 Honduras
+Italy
 Colombia
 Cuba
+Lebanon
+Luxembourg
+Madagascar
+Martinique
+Mauritius
+Mayotte
 Mexico
 Nicaragua
 Panama
 Paraguay
 Peru
 France
-Saint Pierre and Miquelon
-Uruguay
-Venezuela
-Belgium
-Burundi
-Guadeloupe
-Haiti
-Madagascar
-Martinique
-Mayotte
+France
 French Polynesia
 Rwanda
+Sweden
+Saint Pierre and Miquelon
 Sao Tome and Principe
 Switzerland
+Uruguay
 New Caledonia
-Lebanon
-Mauritius
-Andorra
-Italy
-Luxembourg
-France
-Sweden
+Venezuela
 
 Q2.3e:
 Not a very meaningful query that tests NOT IN.
@@ -349,7 +349,7 @@ AND Language IN ('English','Spanish');
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	CountryLanguage	range	Language	Language	30	NULL	72	Using index condition; Using where; Rowid-ordered scan
 2	DEPENDENT SUBQUERY	City	ref	CityName	CityName	35	func	1	Using index condition
-2	DEPENDENT SUBQUERY	Country	eq_ref	PRIMARY	PRIMARY	3	world.City.Country	1	Using where; Using index
+2	DEPENDENT SUBQUERY	Country	hash_index	PRIMARY	#hash#PRIMARY:PRIMARY	3:3	world.City.Country	239	Using where; Using index; Using join buffer (flat, BNLH join)
 select count(*)
 from CountryLanguage
 where (Language, Country) NOT IN
@@ -372,7 +372,7 @@ HAVING City.Name LIKE "Santa%");
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	CountryLanguage	index	NULL	PRIMARY	33	NULL	984	Using where; Using index
 2	MATERIALIZED	City	ALL	NULL	NULL	NULL	NULL	4080	
-2	MATERIALIZED	Country	eq_ref	PRIMARY	PRIMARY	3	world.City.Country	1	Using index
+2	MATERIALIZED	Country	hash_index	PRIMARY	#hash#PRIMARY:PRIMARY	3:3	world.City.Country	239	Using index; Using join buffer (flat, BNLH join)
 select count(*)
 from CountryLanguage
 where (Language, Country) NOT IN
@@ -399,10 +399,10 @@ WHERE Code = Country GROUP BY Code)
 order by Country;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	CountryLanguage	index	NULL	PRIMARY	33	NULL	984	Using where; Using index
-3	MATERIALIZED	Country	index	PRIMARY	PRIMARY	3	NULL	239	Using index
-3	MATERIALIZED	CountryLanguage	ref	PRIMARY	PRIMARY	3	world.Country.Code	4	Using index
-2	MATERIALIZED	Country	index	PRIMARY	PRIMARY	3	NULL	239	Using index
-2	MATERIALIZED	CountryLanguage	ref	PRIMARY	PRIMARY	3	world.Country.Code	4	Using index
+3	MATERIALIZED	Country	index	PRIMARY	PRIMARY	3	NULL	239	Using index; Using temporary
+3	MATERIALIZED	CountryLanguage	hash_index	PRIMARY	#hash#PRIMARY:PRIMARY	3:33	world.Country.Code	984	Using index; Using join buffer (flat, BNLH join)
+2	MATERIALIZED	Country	index	PRIMARY	PRIMARY	3	NULL	239	Using index; Using temporary
+2	MATERIALIZED	CountryLanguage	hash_index	PRIMARY	#hash#PRIMARY:PRIMARY	3:33	world.Country.Code	984	Using index; Using join buffer (flat, BNLH join)
 select count(*)
 from CountryLanguage
 where
@@ -428,7 +428,7 @@ GROUP BY name HAVING Count(*) > 2) OR
 capital is null);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	ALL	NULL	NULL	NULL	NULL	239	Using where
-1	PRIMARY	City	eq_ref	PRIMARY	PRIMARY	4	world.Country.Capital	1	Using where
+1	PRIMARY	City	hash_ALL	PRIMARY	#hash#PRIMARY	4	world.Country.Capital	4080	Using where; Using join buffer (flat, BNLH join)
 2	MATERIALIZED	City	index	NULL	CityName	35	NULL	4080	Using index
 select * from Country, City
 where capital = id and
@@ -513,7 +513,7 @@ GROUP BY City.Name
 HAVING City.Name IN (select Name from Country where population < 1000000);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	Country	index	PRIMARY	PRIMARY	3	NULL	239	Using index; Using temporary; Using filesort
-1	PRIMARY	City	ref	Country	Country	3	world.Country.Code	18	
+1	PRIMARY	City	hash_ALL	Country	#hash#Country	3	world.Country.Code	4080	Using join buffer (flat, BNLH join)
 2	MATERIALIZED	Country	ALL	Name	NULL	NULL	NULL	239	Using where
 SELECT City.Name, City.Population
 FROM City JOIN Country ON City.Country = Country.Code

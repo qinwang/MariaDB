@@ -777,7 +777,7 @@ Variable_name	Value
 join_buffer_size	262144
 show variables like 'join_cache_level';
 Variable_name	Value
-join_cache_level	2
+join_cache_level	4
 DROP DATABASE world;
 CREATE DATABASE world;
 use world;
@@ -2691,7 +2691,7 @@ Variable_name	Value
 join_buffer_size	262144
 show variables like 'join_cache_level';
 Variable_name	Value
-join_cache_level	2
+join_cache_level	4
 set join_cache_level=1;
 SELECT City.Name, Country.Name FROM City,Country
 WHERE City.Country=Country.Code AND City.Population > 3000000;
@@ -3184,7 +3184,7 @@ EXPLAIN
 SELECT * FROM t1 LEFT JOIN t2 ON t1.a=t2.a WHERE t2.b IS NULL;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	5	
-1	SIMPLE	t2	ref	i_a	i_a	4	test.t1.a	2	Using where; Not exists
+1	SIMPLE	t2	hash_ALL	i_a	#hash#i_a	4	test.t1.a	10	Using where; Not exists; Using join buffer (flat, BNLH join)
 SELECT * FROM t1 LEFT JOIN t2 ON t1.a=t2.a WHERE t2.b IS NULL;
 a	a	b
 3	NULL	NULL
@@ -4440,7 +4440,7 @@ EXPLAIN
 SELECT t2.i FROM t1,t2 WHERE t1.cu = t2.cl ;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	6	
-1	SIMPLE	t1	ref	cu	cu	33	func	2	Using where; Using index
+1	SIMPLE	t1	hash_index	cu	#hash#cu:cu	33:33	func	10	Using where; Using index; Using join buffer (flat, BNLH join)
 SELECT t2.i FROM t1,t2 WHERE t1.cu = t2.cl ;
 i
 6
@@ -4514,17 +4514,17 @@ EXPLAIN
 SELECT t1.v,t2.i FROM t1,t2 WHERE t2.v = t1.v;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	7	Using where
-1	SIMPLE	t2	ref	idx	idx	13	test.t1.v	3	
+1	SIMPLE	t2	hash_ALL	idx	#hash#idx	13	test.t1.v	36	Using join buffer (flat, BNLH join)
 SELECT t1.v,t2.i FROM t1,t2 WHERE t2.v = t1.v;
 v	i
+f	4
+f	4
 abcdefjh	4
-f	4
-f	4
 EXPLAIN
 SELECT t1.v,t2.i FROM t1,t2 WHERE t2.v = concat(t1.v, t1.v);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	7	
-1	SIMPLE	t2	ref	idx	idx	13	func	3	Using index condition
+1	SIMPLE	t2	hash_ALL	idx	#hash#idx	13	func	36	Using where; Using join buffer (flat, BNLH join)
 SELECT t1.v,t2.i FROM t1,t2 WHERE t2.v = concat(t1.v, t1.v);
 v	i
 f	5
@@ -4646,15 +4646,15 @@ INSERT INTO t2 VALUES
 SELECT * FROM t1,t2 WHERE t2.a=t1.a;
 pk	a	pk	a
 2	aa	30	aa
+3	bb	4	bb
 2	aa	31	aa
+3	bb	32	bb
 2	aa	42	aa
 2	aa	130	aa
-2	aa	131	aa
-2	aa	142	aa
-3	bb	4	bb
-3	bb	32	bb
 3	bb	14	bb
+2	aa	131	aa
 3	bb	132	bb
+2	aa	142	aa
 SET SESSION join_cache_level = 4;
 EXPLAIN
 SELECT * FROM t1,t2 WHERE t2.a=t1.a;
@@ -5062,8 +5062,8 @@ SET SESSION optimizer_switch = 'index_condition_pushdown=off';
 EXPLAIN SELECT * FROM t1,t2 
 WHERE t2.f3 = t1.f2 AND t1.f1 IN (9, 0, 100) ORDER BY t1.f2 LIMIT 1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	range	f1,f2	f2	13	NULL	10	Using where
-1	SIMPLE	t2	ref	f3	f3	67	test.t1.f2	2	Using where; Using index
+1	SIMPLE	t1	range	f1,f2	f1	5	NULL	3	Using where; Rowid-ordered scan; Using temporary; Using filesort
+1	SIMPLE	t2	hash_index	f3	#hash#f3:f3	67:67	test.t1.f2	19	Using where; Using index; Using join buffer (flat, BNLH join)
 SELECT * FROM t1,t2 
 WHERE t2.f3 = t1.f2 AND t1.f1 IN (9, 0 ,100) ORDER BY t1.f2 LIMIT 1;
 f1	f2	f3
@@ -5072,8 +5072,8 @@ SET SESSION optimizer_switch = 'index_condition_pushdown=on';
 EXPLAIN SELECT * FROM t1,t2 
 WHERE t2.f3 = t1.f2 AND t1.f1 IN (9, 0 ,100) ORDER BY t1.f2 LIMIT 1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	range	f1,f2	f2	13	NULL	10	Using where
-1	SIMPLE	t2	ref	f3	f3	67	test.t1.f2	2	Using where; Using index
+1	SIMPLE	t1	range	f1,f2	f1	5	NULL	3	Using index condition; Using where; Rowid-ordered scan; Using temporary; Using filesort
+1	SIMPLE	t2	hash_index	f3	#hash#f3:f3	67:67	test.t1.f2	19	Using where; Using index; Using join buffer (flat, BNLH join)
 SELECT * FROM t1,t2 
 WHERE t2.f3 = t1.f2 AND t1.f1 IN (9, 0 ,100) ORDER BY t1.f2 LIMIT 1;
 f1	f2	f3
@@ -5708,7 +5708,7 @@ explain select * from t0,t1 left join t2 on t1.b=t2.b order by t0.a, t1.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t0	system	NULL	NULL	NULL	NULL	1	Using temporary; Using filesort
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	10	
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	10	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	5	test.t1.b	10	Using where; Using join buffer (flat, BNLH join)
 drop table t0,t1,t2;
 # MDEV-6292: huge performance degradation for a sequence
 #            of LEFT JOIN operations when using join buffer
@@ -5979,8 +5979,8 @@ insert into t1 values
 (7), (9), (1), (4), (2), (3), (5), (8), (11), (6), (10);
 explain select count(*) from t1, t1 t2 where t1.a=t2.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	11	
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	11	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	11	Using where
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	5	test.t1.a	11	Using where; Using join buffer (flat, BNLH join)
 set join_buffer_space_limit=1024*8;
 select @@join_buffer_space_limit;
 @@join_buffer_space_limit
@@ -5990,8 +5990,8 @@ select @@join_buffer_size;
 262144
 explain select count(*) from t1, t1 t2 where t1.a=t2.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	11	
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	11	Using where
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	11	Using where
+1	SIMPLE	t2	hash_ALL	NULL	#hash#$hj	5	test.t1.a	11	Using where
 set join_buffer_space_limit=default;
 drop table t1;
 #
