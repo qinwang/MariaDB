@@ -1848,7 +1848,7 @@ struct buf_block_t{
 } while (0)
 #  define assert_block_ahi_valid(block)					\
 	ut_a((block)->index						\
-	     || my_atomic_addlint(&(block)->n_pointers, 0) == 0)
+	     || my_atomic_loadlint(&(block)->n_pointers) == 0)
 # else /* UNIV_AHI_DEBUG || UNIV_DEBUG */
 #  define assert_block_ahi_empty(block) /* nothing */
 #  define assert_block_ahi_empty_on_init(block) /* nothing */
@@ -2380,8 +2380,12 @@ Use these instead of accessing buffer pool mutexes directly. */
 
 
 /** Get appropriate page_hash_lock. */
-# define buf_page_hash_lock_get(buf_pool, page_id)	\
-	hash_get_lock((buf_pool)->page_hash, (page_id).fold())
+UNIV_INLINE
+rw_lock_t*
+buf_page_hash_lock_get(const buf_pool_t* buf_pool, const page_id_t& page_id)
+{
+	return hash_get_lock(buf_pool->page_hash, page_id.fold());
+}
 
 /** If not appropriate page_hash_lock, relock until appropriate. */
 # define buf_page_hash_lock_s_confirm(hash_lock, buf_pool, page_id)\
