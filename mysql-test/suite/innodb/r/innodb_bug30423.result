@@ -49,8 +49,8 @@ LEFT JOIN bug30243_2 contacts
 ON orgs.org_id=contacts.org_id ;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	orgs	index	NULL	org_id	4	NULL	ROWS	Using index
-1	SIMPLE	sa_opportunities	ref	org_id	org_id	5	test.orgs.org_id	ROWS	Using index
-1	SIMPLE	contacts	ref	contacts$org_id	contacts$org_id	5	test.orgs.org_id	ROWS	Using index
+1	SIMPLE	sa_opportunities	hash_index	org_id	#hash#org_id:org_id	5:5	test.orgs.org_id	ROWS	Using index; Using join buffer (flat, BNLH join)
+1	SIMPLE	contacts	hash_index	contacts$org_id	#hash#contacts$org_id:contacts$org_id	5:5	test.orgs.org_id	ROWS	Using index; Using join buffer (incremental, BNLH join)
 select @@innodb_stats_method;
 @@innodb_stats_method
 nulls_ignored
@@ -75,8 +75,8 @@ LEFT JOIN bug30243_2 contacts
 ON orgs.org_id=contacts.org_id;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	orgs	index	NULL	org_id	4	NULL	ROWS	Using index
-1	SIMPLE	sa_opportunities	ref	org_id	org_id	5	test.orgs.org_id	ROWS	Using index
-1	SIMPLE	contacts	ref	contacts$org_id	contacts$org_id	5	test.orgs.org_id	ROWS	Using index
+1	SIMPLE	sa_opportunities	hash_index	org_id	#hash#org_id:org_id	5:5	test.orgs.org_id	ROWS	Using index; Using join buffer (flat, BNLH join)
+1	SIMPLE	contacts	hash_index	contacts$org_id	#hash#contacts$org_id:contacts$org_id	5:5	test.orgs.org_id	ROWS	Using index; Using join buffer (incremental, BNLH join)
 SELECT COUNT(*) FROM table_bug30423 WHERE org_id IS NULL;
 COUNT(*)
 1024

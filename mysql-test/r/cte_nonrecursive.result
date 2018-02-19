@@ -23,14 +23,14 @@ explain
 with t as (select a from t1 where b >= 'c') 
 select * from t2,t where t2.c=t.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 explain
 select * from t2, (select a from t1 where b >= 'c') as t
 where t2.c=t.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 # select '*' in the specification of t
 with t as (select * from t1 where b >= 'c') 
 select * from t2,t where t2.c=t.a;
@@ -48,14 +48,14 @@ explain
 with t as (select * from t1 where b >= 'c') 
 select * from t2,t where t2.c=t.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 explain
 select * from t2, (select * from t1 where b >= 'c') as t
 where t2.c=t.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 # rename fields returned by the specication when defining t
 with t(f1,f2) as (select * from t1 where b >= 'c') 
 select * from t2,t where t2.c=t.f1;
@@ -67,32 +67,32 @@ explain
 with t(f1,f2) as (select * from t1 where b >= 'c') 
 select * from t2,t where t2.c=t.f1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 # materialized query specifying t
 with t as (select a, count(*) from t1 where b >= 'c' group by a) 
 select * from t2,t where t2.c=t.a;
 c	a	count(*)
-4	4	2
 3	3	1
+4	4	2
 select * from t2, (select a, count(*) from t1 where b >= 'c' group by a) as t 
 where t2.c=t.a;
 c	a	count(*)
-4	4	2
 3	3	1
+4	4	2
 explain
 with t as (select a, count(*) from t1 where b >= 'c' group by a) 
 select * from t2,t where t2.c=t.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-1	PRIMARY	<derived2>	ref	key0	key0	5	test.t2.c	2	
+1	PRIMARY	<derived2>	hash_ALL	key0	#hash#key0	5	test.t2.c	8	Using join buffer (flat, BNLH join)
 2	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary; Using filesort
 explain
 select * from t2, (select a, count(*) from t1 where b >= 'c' group by a) as t 
 where t2.c=t.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-1	PRIMARY	<derived2>	ref	key0	key0	5	test.t2.c	2	
+1	PRIMARY	<derived2>	hash_ALL	key0	#hash#key0	5	test.t2.c	8	Using join buffer (flat, BNLH join)
 2	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary; Using filesort
 # specivication of t contains having
 with t as (select a, count(*) from t1 where b >= 'c'
@@ -175,7 +175,7 @@ with t as (select count(*) as c from t1 where b >= 'c' group by a)
 select * from t2 where c in (select c from t);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-1	PRIMARY	<derived2>	ref	key0	key0	8	test.t2.c	2	Using where; FirstMatch(t2)
+1	PRIMARY	<derived2>	hash_ALL	key0	#hash#key0	8	test.t2.c	8	Using where; FirstMatch(t2); Using join buffer (flat, BNLH join)
 2	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary; Using filesort
 explain
 select * from t2
@@ -183,7 +183,7 @@ where c in (select c from (select count(*) as c from t1
 where b >= 'c' group by a) as t);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-1	PRIMARY	<derived3>	ref	key0	key0	8	test.t2.c	2	Using where; FirstMatch(t2)
+1	PRIMARY	<derived3>	hash_ALL	key0	#hash#key0	8	test.t2.c	8	Using where; FirstMatch(t2); Using join buffer (flat, BNLH join)
 3	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary; Using filesort
 # two references to t specified by a query
 # selecting a field:  both in main query
@@ -217,14 +217,14 @@ with t as (select a from t1 where b >= 'c')
 select * from t as r1, t as r2 where r1.a=r2.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t1.a	8	Using where; Using join buffer (flat, BNLH join)
 explain
 select * from (select a from t1 where b >= 'c') as r1,
 (select a from t1 where b >= 'c') as r2 
 where r1.a=r2.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t1.a	8	Using where; Using join buffer (flat, BNLH join)
 # two references to materialized t: both in main query
 with t as (select distinct a from t1 where b >= 'c')
 select * from t as r1, t as r2 where r1.a=r2.a;
@@ -244,7 +244,7 @@ with t as (select distinct a from t1 where b >= 'c')
 select * from t as r1, t as r2 where r1.a=r2.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	<derived2>	ALL	NULL	NULL	NULL	NULL	8	Using where
-1	PRIMARY	<derived3>	ref	key0	key0	5	r1.a	2	
+1	PRIMARY	<derived3>	hash_ALL	key0	#hash#key0	5	r1.a	8	Using join buffer (flat, BNLH join)
 3	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary
 2	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary
 explain
@@ -253,7 +253,7 @@ select * from (select distinct a from t1 where b >= 'c') as r1,
 where r1.a=r2.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	<derived2>	ALL	NULL	NULL	NULL	NULL	8	Using where
-1	PRIMARY	<derived3>	ref	key0	key0	5	r1.a	2	
+1	PRIMARY	<derived3>	hash_ALL	key0	#hash#key0	5	r1.a	8	Using join buffer (flat, BNLH join)
 3	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary
 2	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary
 # two references to t specified by a query
@@ -288,14 +288,14 @@ with t as (select * from t1 where b >= 'c')
 select * from t as r1, t as r2 where r1.a=r2.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t1.a	8	Using where; Using join buffer (flat, BNLH join)
 explain
 select * from (select * from t1 where b >= 'c') as r1,
 (select * from t1 where b >= 'c') as r2
 where r1.a=r2.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t1.a	8	Using where; Using join buffer (flat, BNLH join)
 # two references to t specifying explicitly column names
 with t(c) as (select a from t1 where b >= 'c')
 select * from t r1, t r2 where r1.c=r2.c;
@@ -350,8 +350,8 @@ union
 select c as a from t2 where c < 4) 
 select * from t2,t where t2.c=t.a;
 c	a
-2	2
 4	4
+2	2
 3	3
 select * from t2, 
 (select a from t1 where b >= 'f' 
@@ -359,8 +359,8 @@ union
 select c as a from t2 where c < 4) as t 
 where t2.c=t.a;
 c	a
-2	2
 4	4
+2	2
 3	3
 explain
 with t as (select a from t1 where b >= 'f' 
@@ -369,7 +369,7 @@ select c as a from t2 where c < 4)
 select * from t2,t where t2.c=t.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-1	PRIMARY	<derived2>	ref	key0	key0	5	test.t2.c	2	
+1	PRIMARY	<derived2>	hash_ALL	key0	#hash#key0	5	test.t2.c	12	Using join buffer (flat, BNLH join)
 2	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where
 3	UNION	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
 NULL	UNION RESULT	<union2,3>	ALL	NULL	NULL	NULL	NULL	NULL	
@@ -381,7 +381,7 @@ select c as a from t2 where c < 4) as t
 where t2.c=t.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-1	PRIMARY	<derived2>	ref	key0	key0	5	test.t2.c	2	
+1	PRIMARY	<derived2>	hash_ALL	key0	#hash#key0	5	test.t2.c	12	Using join buffer (flat, BNLH join)
 2	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where
 3	UNION	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
 NULL	UNION RESULT	<union2,3>	ALL	NULL	NULL	NULL	NULL	NULL	
@@ -421,7 +421,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	<subquery2>	eq_ref	distinct_key	distinct_key	4	func	1	
 1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
 2	MATERIALIZED	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-2	MATERIALIZED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+2	MATERIALIZED	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 explain
 select t1.a,t1.b from t1,t2
 where t1.a>t2.c and
@@ -433,7 +433,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	<subquery2>	eq_ref	distinct_key	distinct_key	4	func	1	
 1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
 2	MATERIALIZED	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-2	MATERIALIZED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+2	MATERIALIZED	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 # two different definitions of t: one in the with clause of the main query,
 # the other in the with clause of a subquery 
 with t as (select c from t2 where c >= 4)
@@ -462,9 +462,9 @@ select t2.c from t2,t where t2.c=t.a);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
 1	PRIMARY	<subquery3>	eq_ref	distinct_key	distinct_key	4	func	1	
-1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 3	MATERIALIZED	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-3	MATERIALIZED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+3	MATERIALIZED	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 explain
 select t1.a,t1.b from t1, (select c from t2 where c >= 4) as t
 where t1.a=t.c and
@@ -473,9 +473,9 @@ where t2.c=t.a);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
 1	PRIMARY	<subquery3>	eq_ref	distinct_key	distinct_key	4	func	1	
-1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 3	MATERIALIZED	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-3	MATERIALIZED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+3	MATERIALIZED	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 # another with table tt is defined in the with clause of a subquery
 # from the specification of t
 with t as (select * from t1
@@ -506,10 +506,10 @@ select t1.b from t1,tt where t1.a=tt.c))
 select t.a, count(*) from t1,t where t1.a=t.a  group by t.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary; Using filesort
-1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	t1	hash_ALL	NULL	#hash#$hj	5	test.t1.a	8	Using where; Using join buffer (flat, BNLH join)
 1	PRIMARY	<subquery3>	eq_ref	distinct_key	distinct_key	35	func	1	
 3	MATERIALIZED	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-3	MATERIALIZED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+3	MATERIALIZED	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 explain
 select t.a, count(*)
 from t1,
@@ -522,10 +522,10 @@ where t1.a=tt.c)) as t
 where t1.a=t.a  group by t.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary; Using filesort
-1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	t1	hash_ALL	NULL	#hash#$hj	5	test.t1.a	8	Using where; Using join buffer (flat, BNLH join)
 1	PRIMARY	<subquery3>	eq_ref	distinct_key	distinct_key	35	func	1	
 3	MATERIALIZED	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-3	MATERIALIZED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+3	MATERIALIZED	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 # with clause in the specification of a derived table
 select *
 from t1, 
@@ -551,9 +551,9 @@ from t1,
 select * from t2,t where t2.c=t.a) as tt
 where t1.b > 'f' and tt.a=t1.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (incremental, BNL join)
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (incremental, BNLH join)
 explain
 select *
 from t1, 
@@ -562,9 +562,9 @@ from t1,
 where t2.c=t.a) as tt
 where t1.b > 'f' and tt.a=t1.a;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (incremental, BNL join)
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (incremental, BNLH join)
 # with claused in the specification of a view
 create view v1 as 
 with t as (select a from t1 where b >= 'c') 
@@ -580,8 +580,8 @@ c	a
 explain
 select * from v1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	
-1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
+1	SIMPLE	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 # with claused in the specification of a materialized view
 create view v2 as 
 with t as (select a, count(*) from t1 where b >= 'c' group by a) 
@@ -591,13 +591,13 @@ View	Create View	character_set_client	collation_connection
 v2	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v2` AS with t as (select `t1`.`a` AS `a`,count(0) AS `count(*)` from `t1` where `t1`.`b` >= 'c' group by `t1`.`a`)select `t2`.`c` AS `c`,`t`.`a` AS `a`,`t`.`count(*)` AS `count(*)` from (`t2` join `t`) where `t2`.`c` = `t`.`a`	latin1	latin1_swedish_ci
 select * from v2;
 c	a	count(*)
-4	4	2
 3	3	1
+4	4	2
 explain
 select * from v2;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
-1	PRIMARY	<derived3>	ref	key0	key0	5	test.t2.c	2	
+1	PRIMARY	<derived3>	hash_ALL	key0	#hash#key0	5	test.t2.c	8	Using join buffer (flat, BNLH join)
 3	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using temporary; Using filesort
 # with clause in the specification of a view that whose definition
 # table alias for a with table
@@ -661,12 +661,12 @@ with t as (select a, count(*) from t1 where b >= 'c' group by a)
 ";
 execute stmt1;
 c	a	count(*)
-4	4	2
 3	3	1
+4	4	2
 execute stmt1;
 c	a	count(*)
-4	4	2
 3	3	1
+4	4	2
 deallocate prepare stmt1;
 # prepare of a query containing two references to with table t
 prepare stmt1 from "
@@ -788,14 +788,14 @@ explain
 with t as (select a from t1 where b >= 'c') 
 select t1.b from t2,t1 where t1.a = t2.c;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	
-1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
+1	PRIMARY	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 explain 
 with t as (select a, count(*) from t1 where b >= 'c' group by a)
 select t1.b from t2,t1 where t1.a = t2.c;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	
-1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	8	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	4	Using where
+1	PRIMARY	t1	hash_ALL	NULL	#hash#$hj	5	test.t2.c	8	Using where; Using join buffer (flat, BNLH join)
 # too many with elements in with clause
 with s65 as (select * from t1), s64 as (select * from t1) , s63 as (select * from t1) , s62 as (select * from t1) , s61 as (select * from t1) , s60 as (select * from t1) , s59 as (select * from t1) , s58 as (select * from t1) , s57 as (select * from t1) , s56 as (select * from t1) , s55 as (select * from t1) , s54 as (select * from t1) , s53 as (select * from t1) , s52 as (select * from t1) , s51 as (select * from t1) , s50 as (select * from t1) , s49 as (select * from t1) , s48 as (select * from t1) , s47 as (select * from t1) , s46 as (select * from t1) , s45 as (select * from t1) , s44 as (select * from t1) , s43 as (select * from t1) , s42 as (select * from t1) , s41 as (select * from t1) , s40 as (select * from t1) , s39 as (select * from t1) , s38 as (select * from t1) , s37 as (select * from t1) , s36 as (select * from t1) , s35 as (select * from t1) , s34 as (select * from t1) , s33 as (select * from t1) , s32 as (select * from t1) , s31 as (select * from t1) , s30 as (select * from t1) , s29 as (select * from t1) , s28 as (select * from t1) , s27 as (select * from t1) , s26 as (select * from t1) , s25 as (select * from t1) , s24 as (select * from t1) , s23 as (select * from t1) , s22 as (select * from t1) , s21 as (select * from t1) , s20 as (select * from t1) , s19 as (select * from t1) , s18 as (select * from t1) , s17 as (select * from t1) , s16 as (select * from t1) , s15 as (select * from t1) , s14 as (select * from t1) , s13 as (select * from t1) , s12 as (select * from t1) , s11 as (select * from t1) , s10 as (select * from t1) , s9 as (select * from t1) , s8 as (select * from t1) , s7 as (select * from t1) , s6 as (select * from t1) , s5 as (select * from t1) , s4 as (select * from t1) , s3 as (select * from t1) , s2 as (select * from t1) , s1 as (select * from t1)  select * from s65;
 ERROR HY000: Too many WITH elements in WITH clause
@@ -879,8 +879,8 @@ EXPLAIN SELECT * FROM (WITH a AS (SELECT * FROM t1) (t2 NATURAL JOIN t3));
 ERROR 42000: You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 't2 NATURAL JOIN t3))' at line 1
 explain SELECT * FROM (WITH a AS (SELECT * FROM t1) SELECT * FROM t2 NATURAL JOIN t3) AS d1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	3	
-1	PRIMARY	t3	ALL	NULL	NULL	NULL	NULL	3	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	3	Using where
+1	PRIMARY	t3	hash_ALL	NULL	#hash#$hj	5	test.t2.a	3	Using where; Using join buffer (flat, BNLH join)
 DROP TABLE t1,t2,t3;
 #
 # MDEV-10729: Server crashes in st_select_lex::set_explain_type
@@ -1072,11 +1072,11 @@ d2 AS (SELECT SUM(k) FROM t1, t2 as t2 WHERE t1.id = t2.id)
 SELECT * FROM d1 UNION  SELECT * FROM d2;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	<derived2>	ALL	NULL	NULL	NULL	NULL	9	
-2	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	3	
-2	DERIVED	t2	ALL	NULL	NULL	NULL	NULL	3	Using where; Using join buffer (flat, BNL join)
+2	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	3	Using where
+2	DERIVED	t2	hash_ALL	NULL	#hash#$hj	5	test.t1.id	3	Using where; Using join buffer (flat, BNLH join)
 4	UNION	<derived3>	ALL	NULL	NULL	NULL	NULL	9	
-3	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	3	
-3	DERIVED	t2	ALL	NULL	NULL	NULL	NULL	3	Using where; Using join buffer (flat, BNL join)
+3	DERIVED	t1	ALL	NULL	NULL	NULL	NULL	3	Using where
+3	DERIVED	t2	hash_ALL	NULL	#hash#$hj	5	test.t1.id	3	Using where; Using join buffer (flat, BNLH join)
 NULL	UNION RESULT	<union1,4>	ALL	NULL	NULL	NULL	NULL	NULL	
 DROP TABLE t1,t2;
 #
@@ -1159,9 +1159,9 @@ with cte as
 union
 (select a from t1 where a < 2);
 a
-7
-5
 4
+5
+7
 1
 prepare stmt from "with cte as
 (select a from t1 where a between 4 and 7 group by a)
@@ -1170,15 +1170,15 @@ union
 (select a from t1 where a < 2)";
 execute stmt;
 a
-7
-5
 4
+5
+7
 1
 execute stmt;
 a
-7
-5
 4
+5
+7
 1
 deallocate prepare stmt;
 with cte as
@@ -1188,9 +1188,9 @@ union
 (select a from cte where exists( select a from t1 where cte.a=t1.a ));
 a
 1
-7
-5
 4
+5
+7
 prepare stmt from "with cte as
 (select a from t1 where a between 4 and 7 group by a)
 (select a from t1 where a < 2)
@@ -1199,15 +1199,15 @@ union
 execute stmt;
 a
 1
-7
-5
 4
+5
+7
 execute stmt;
 a
 1
-7
-5
 4
+5
+7
 deallocate prepare stmt;
 with cte as
 (select a from t1 where a between 4 and 7)
@@ -1327,20 +1327,20 @@ r.r_regionkey in
 select r_regionkey from t where r_name <> "ASIA");
 n_nationkey	n_name	n_regionkey	r_regionkey	r_name
 0	ALGERIA	0	0	AFRICA
-5	ETHIOPIA	0	0	AFRICA
-14	KENYA	0	0	AFRICA
-15	MOROCCO	0	0	AFRICA
-16	MOZAMBIQUE	0	0	AFRICA
 1	ARGENTINA	1	1	AMERICA
 2	BRAZIL	1	1	AMERICA
 3	CANADA	1	1	AMERICA
-17	PERU	1	1	AMERICA
-24	UNITED STATES	1	1	AMERICA
+5	ETHIOPIA	0	0	AFRICA
 6	FRANCE	3	3	EUROPE
 7	GERMANY	3	3	EUROPE
+14	KENYA	0	0	AFRICA
+15	MOROCCO	0	0	AFRICA
+16	MOZAMBIQUE	0	0	AFRICA
+17	PERU	1	1	AMERICA
 19	ROMANIA	3	3	EUROPE
 22	RUSSIA	3	3	EUROPE
 23	UNITED KINGDOM	3	3	EUROPE
+24	UNITED STATES	1	1	AMERICA
 create view v as
 select * from nation n ,region r
 where n.n_regionkey = r.r_regionkey and
@@ -1353,20 +1353,20 @@ v	CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIE
 select * from v;
 n_nationkey	n_name	n_regionkey	r_regionkey	r_name
 0	ALGERIA	0	0	AFRICA
-5	ETHIOPIA	0	0	AFRICA
-14	KENYA	0	0	AFRICA
-15	MOROCCO	0	0	AFRICA
-16	MOZAMBIQUE	0	0	AFRICA
 1	ARGENTINA	1	1	AMERICA
 2	BRAZIL	1	1	AMERICA
 3	CANADA	1	1	AMERICA
-17	PERU	1	1	AMERICA
-24	UNITED STATES	1	1	AMERICA
+5	ETHIOPIA	0	0	AFRICA
 6	FRANCE	3	3	EUROPE
 7	GERMANY	3	3	EUROPE
+14	KENYA	0	0	AFRICA
+15	MOROCCO	0	0	AFRICA
+16	MOZAMBIQUE	0	0	AFRICA
+17	PERU	1	1	AMERICA
 19	ROMANIA	3	3	EUROPE
 22	RUSSIA	3	3	EUROPE
 23	UNITED KINGDOM	3	3	EUROPE
+24	UNITED STATES	1	1	AMERICA
 drop view v;
 drop table region, nation;
 #

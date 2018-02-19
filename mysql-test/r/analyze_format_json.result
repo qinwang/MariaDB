@@ -28,7 +28,7 @@ analyze
 select * from t0, t1 where t1.a=t0.a and t0.a > 9;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	r_rows	filtered	r_filtered	Extra
 1	SIMPLE	t0	ALL	NULL	NULL	NULL	NULL	10	10.00	100.00	0.00	Using where
-1	SIMPLE	t1	ref	a	a	5	test.t0.a	1	NULL	100.00	NULL	
+1	SIMPLE	t1	hash_ALL	a	#hash#a	5	test.t0.a	100	NULL	1.00	NULL	Using join buffer (flat, BNLH join)
 analyze format=json 
 select * from t0, t1 where t1.a=t0.a and t0.a > 9;
 ANALYZE
@@ -48,18 +48,24 @@ ANALYZE
       "r_filtered": 0,
       "attached_condition": "t0.a > 9 and t0.a is not null"
     },
-    "table": {
-      "table_name": "t1",
-      "access_type": "ref",
-      "possible_keys": ["a"],
-      "key": "a",
-      "key_length": "5",
-      "used_key_parts": ["a"],
-      "ref": ["test.t0.a"],
-      "r_loops": 0,
-      "rows": 1,
-      "r_rows": null,
-      "filtered": 100,
+    "block-nl-join": {
+      "table": {
+        "table_name": "t1",
+        "access_type": "hash_ALL",
+        "possible_keys": ["a"],
+        "key": "#hash#a",
+        "key_length": "5",
+        "used_key_parts": ["a"],
+        "ref": ["test.t0.a"],
+        "r_loops": 0,
+        "rows": 100,
+        "r_rows": null,
+        "filtered": 1,
+        "r_filtered": null
+      },
+      "buffer_type": "flat",
+      "buffer_size": "256Kb",
+      "join_type": "BNLH",
       "r_filtered": null
     }
   }
@@ -68,7 +74,7 @@ analyze
 select * from t0, t1 where t1.a=t0.a and t1.b<4;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	r_rows	filtered	r_filtered	Extra
 1	SIMPLE	t0	ALL	NULL	NULL	NULL	NULL	10	10.00	100.00	100.00	Using where
-1	SIMPLE	t1	ref	a	a	5	test.t0.a	1	1.00	100.00	40.00	Using where
+1	SIMPLE	t1	hash_ALL	a	#hash#a	5	test.t0.a	100	100.00	1.00	4.00	Using where; Using join buffer (flat, BNLH join)
 analyze format=json
 select * from t0, t1 where t1.a=t0.a and t1.b<4;
 ANALYZE
@@ -88,21 +94,27 @@ ANALYZE
       "r_filtered": 100,
       "attached_condition": "t0.a is not null"
     },
-    "table": {
-      "table_name": "t1",
-      "access_type": "ref",
-      "possible_keys": ["a"],
-      "key": "a",
-      "key_length": "5",
-      "used_key_parts": ["a"],
-      "ref": ["test.t0.a"],
-      "r_loops": 10,
-      "rows": 1,
-      "r_rows": 1,
-      "r_total_time_ms": "REPLACED",
-      "filtered": 100,
-      "r_filtered": 40,
-      "attached_condition": "t1.b < 4"
+    "block-nl-join": {
+      "table": {
+        "table_name": "t1",
+        "access_type": "hash_ALL",
+        "possible_keys": ["a"],
+        "key": "#hash#a",
+        "key_length": "5",
+        "used_key_parts": ["a"],
+        "ref": ["test.t0.a"],
+        "r_loops": 1,
+        "rows": 100,
+        "r_rows": 100,
+        "r_total_time_ms": "REPLACED",
+        "filtered": 1,
+        "r_filtered": 4,
+        "attached_condition": "t1.b < 4"
+      },
+      "buffer_type": "flat",
+      "buffer_size": "256Kb",
+      "join_type": "BNLH",
+      "r_filtered": 100
     }
   }
 }
@@ -215,21 +227,27 @@ ANALYZE
       "r_filtered": 100,
       "attached_condition": "t1.a is not null"
     },
-    "table": {
-      "table_name": "t2",
-      "access_type": "ref",
-      "possible_keys": ["a"],
-      "key": "a",
-      "key_length": "5",
-      "used_key_parts": ["a"],
-      "ref": ["test.t1.a"],
-      "r_loops": 10,
-      "rows": 2,
-      "r_rows": 0.2,
-      "r_total_time_ms": "REPLACED",
-      "filtered": 100,
-      "r_filtered": 100,
-      "using_index": true
+    "block-nl-join": {
+      "table": {
+        "table_name": "t2",
+        "access_type": "hash_index",
+        "possible_keys": ["a"],
+        "key": "#hash#a:a",
+        "key_length": "5:5",
+        "used_key_parts": ["a"],
+        "ref": ["test.t1.a"],
+        "r_loops": 1,
+        "rows": 2,
+        "r_rows": 2,
+        "r_total_time_ms": "REPLACED",
+        "filtered": 100,
+        "r_filtered": 100,
+        "using_index": true
+      },
+      "buffer_type": "flat",
+      "buffer_size": "256Kb",
+      "join_type": "BNLH",
+      "r_filtered": 100
     }
   }
 }
@@ -722,6 +740,7 @@ ANALYZE
                   "r_loops": 0,
                   "query_block": {
                     "select_id": 2,
+                    "outer_ref_condition": "t3.f3 is not null",
                     "table": {
                       "table_name": "t1",
                       "access_type": "ALL",
@@ -734,7 +753,11 @@ ANALYZE
                     "block-nl-join": {
                       "table": {
                         "table_name": "t2",
-                        "access_type": "ALL",
+                        "access_type": "hash_ALL",
+                        "key": "#hash#$hj",
+                        "key_length": "5",
+                        "used_key_parts": ["f2"],
+                        "ref": ["test.t3.f3"],
                         "r_loops": 0,
                         "rows": 2,
                         "r_rows": null,
@@ -743,7 +766,7 @@ ANALYZE
                       },
                       "buffer_type": "flat",
                       "buffer_size": "256Kb",
-                      "join_type": "BNL",
+                      "join_type": "BNLH",
                       "attached_condition": "t2.f2 = t3.f3",
                       "r_filtered": null
                     }
