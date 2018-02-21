@@ -10537,11 +10537,10 @@ make_join_select(JOIN *join,SQL_SELECT *select,COND *cond)
           add_cond_and_fix(thd, &tmp, tab->select_cond);
       }
 
-      is_hj= (tab->type == JT_REF || tab->type == JT_EQ_REF) &&
+      is_hj= (is_hash_join_key_no(tab->ref.key)) &&
+             (tab->type == JT_REF || tab->type == JT_EQ_REF) &&
              (join->allowed_join_cache_types & JOIN_CACHE_HASHED_BIT) &&
-	     ((join->max_allowed_join_cache_level+1)/2 == 2 ||
-              ((join->max_allowed_join_cache_level+1)/2 > 2 &&
-	       is_hash_join_key_no(tab->ref.key))) &&
+	           ((join->max_allowed_join_cache_level+1)/2 >= 2) &&
               (!tab->emb_sj_nest ||                     
                join->allowed_semijoin_with_cache) && 
               (!(tab->table->map & join->outer_join) ||
