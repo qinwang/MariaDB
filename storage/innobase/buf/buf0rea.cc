@@ -621,8 +621,9 @@ buf_read_ahead_linear(
 		return(0);
 	}
 
-	if (buf_pool->n_pend_reads
-	    > buf_pool->curr_size / BUF_READ_AHEAD_PEND_LIMIT) {
+	if (my_atomic_loadlint(&buf_pool->n_pend_reads)
+	    > (my_atomic_loadlint(&buf_pool->curr_size)
+	       / BUF_READ_AHEAD_PEND_LIMIT)) {
 
 		return(0);
 	}
@@ -871,8 +872,9 @@ tablespace_deleted:
 
 		buf_pool_t*	buf_pool = buf_pool_get(page_id);
 
-		while (buf_pool->n_pend_reads
-		       > buf_pool->curr_size / BUF_READ_AHEAD_PEND_LIMIT) {
+		while (my_atomic_loadlint(&buf_pool->n_pend_reads)
+		       > ((my_atomic_loadlint(&buf_pool->curr_size)
+			   / BUF_READ_AHEAD_PEND_LIMIT))) {
 			os_thread_sleep(500000);
 		}
 
@@ -942,7 +944,9 @@ buf_read_recv_pages(
 		ulint			count = 0;
 
 		buf_pool = buf_pool_get(cur_page_id);
-		while (buf_pool->n_pend_reads >= recv_n_pool_free_frames / 2) {
+
+		while (my_atomic_loadlint(&buf_pool->n_pend_reads)
+		       >= (lint) recv_n_pool_free_frames / 2) {
 
 			os_aio_simulated_wake_handler_threads();
 			os_thread_sleep(10000);

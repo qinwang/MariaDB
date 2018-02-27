@@ -409,6 +409,10 @@ btr_search_disable(
 void
 btr_search_enable()
 {
+	my_atomic_loadlint_explicit(&srv_buf_pool_old_size,
+				  MY_MEMORY_ORDER_ACQUIRE);
+	my_atomic_loadlint_explicit(&srv_buf_pool_size,
+				  MY_MEMORY_ORDER_RELAXED);
 	if (srv_buf_pool_old_size != srv_buf_pool_size) {
 		return;
 	}

@@ -1182,14 +1182,28 @@ static inline lint my_atomic_loadlint(const lint *A)
   return lint(my_atomic_load64((volatile int64*)A));
 }
 
+static inline lint my_atomic_loadlint_explicit(const lint *A, int O)
+{
+  return lint(my_atomic_load64_explicit((volatile int64*)A, O));
+}
+
 static inline void my_atomic_storelint(ulint *A, ulint B)
 {
   my_atomic_store64((volatile int64*)A, B);
 }
+
+static inline void my_atomic_storelint_explicit(ulint *A, ulint B, int O)
+{
+  my_atomic_store64_explicit((volatile int64*)A, B, O);
+}
+
 #else
 #define my_atomic_addlint my_atomic_addlong
 #define my_atomic_loadlint my_atomic_loadlong
+#define my_atomic_loadlint_explicit my_atomic_loadlong_explicit
 #define my_atomic_storelint my_atomic_storelong
+#define my_atomic_storelint_explicit my_atomic_storelong_explicit
+
 #endif
 
 /** Simple counter aligned to CACHE_LINE_SIZE

@@ -38,6 +38,7 @@
 
 #define my_atomic_add32_explicit(P, A, O) __atomic_fetch_add((P), (A), (O))
 #define my_atomic_add64_explicit(P, A, O) __atomic_fetch_add((P), (A), (O))
+#define my_atomic_addptr_explicit(P, A, O) __atomic_fetch_add((P), (A), (O))
 
 #define my_atomic_cas32_weak_explicit(P, E, D, S, F) \
   __atomic_compare_exchange_n((P), (E), (D), 1, (S), (F))

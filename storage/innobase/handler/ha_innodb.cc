@@ -21916,6 +21916,10 @@ innodb_buffer_pool_size_validate(
 	}
 #endif /* UNIV_DEBUG */
 
+	my_atomic_loadlint_explicit(&srv_buf_pool_old_size,
+				  MY_MEMORY_ORDER_ACQUIRE);
+	my_atomic_loadlint_explicit(&srv_buf_pool_size,
+				  MY_MEMORY_ORDER_RELAXED);
 
 	if (srv_buf_pool_old_size != srv_buf_pool_size) {
 		my_printf_error(ER_WRONG_ARGUMENTS,
@@ -21953,7 +21957,8 @@ innodb_buffer_pool_size_validate(
 		return(0);
 	}
 
-	srv_buf_pool_size = requested_buf_pool_size;
+	my_atomic_storelint_explicit(&srv_buf_pool_size, requested_buf_pool_size,
+				   MY_MEMORY_ORDER_RELEASE);
 
 	if (intbuf != static_cast<longlong>(requested_buf_pool_size)) {
 		char	buf[64];

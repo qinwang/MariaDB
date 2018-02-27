@@ -1733,9 +1733,12 @@ buf_pool_set_sizes(void)
 		curr_size += buf_pool->curr_pool_size;
 	}
 
-	srv_buf_pool_curr_size = curr_size;
-	srv_buf_pool_old_size = srv_buf_pool_size;
-	srv_buf_pool_base_size = srv_buf_pool_size;
+	my_atomic_storelint_explicit(&srv_buf_pool_curr_size, curr_size,
+				   MY_MEMORY_ORDER_RELAXED);
+	my_atomic_storelint_explicit(&srv_buf_pool_old_size, srv_buf_pool_size,
+				   MY_MEMORY_ORDER_RELAXED);
+	my_atomic_storelint_explicit(&srv_buf_pool_base_size, srv_buf_pool_size,
+				   MY_MEMORY_ORDER_RELAXED);
 }
 
 /** Initialize a buffer pool instance.
@@ -2645,10 +2648,13 @@ buf_pool_resize()
 		buf_flush_list_mutex_exit(buf_pool);
 #endif
 
-		buf_pool->curr_size = new_instance_size;
-
-		buf_pool->n_chunks_new = new_instance_size * UNIV_PAGE_SIZE
-			/ srv_buf_pool_chunk_unit;
+		my_atomic_storelint_explicit(&buf_pool->curr_size,
+					     new_instance_size,
+					     MY_MEMORY_ORDER_RELAXED);
+		my_atomic_storelint_explicit(&buf_pool->n_chunks_new,
+					     (new_instance_size * UNIV_PAGE_SIZE
+					      / srv_buf_pool_chunk_unit),
+					     MY_MEMORY_ORDER_RELEASE);
 
 	}
 #ifdef BTR_CUR_HASH_ADAPT
@@ -3080,7 +3086,9 @@ calc_buf_pool_size:
 		ib::info() << "Completed to resize buffer pool from "
 			<< srv_buf_pool_old_size
 			<< " to " << srv_buf_pool_size << ".";
-		srv_buf_pool_old_size = srv_buf_pool_size;
+		my_atomic_storelint_explicit(&srv_buf_pool_old_size,
+					     srv_buf_pool_size,
+					     MY_MEMORY_ORDER_RELEASE);
 	}
 
 #ifdef BTR_CUR_HASH_ADAPT
@@ -3126,6 +3134,11 @@ DECLARE_THREAD(buf_resize_thread)(void*)
 		if (srv_shutdown_state != SRV_SHUTDOWN_NONE) {
 			break;
 		}
+
+		my_atomic_loadlint_explicit(&srv_buf_pool_old_size,
+					  MY_MEMORY_ORDER_ACQUIRE);
+		my_atomic_loadlint_explicit(&srv_buf_pool_size,
+					  MY_MEMORY_ORDER_RELAXED);
 
 		if (srv_buf_pool_old_size == srv_buf_pool_size) {
 			std::ostringstream sout;
@@ -6799,7 +6812,8 @@ buf_get_n_pending_read_ios(void)
 	ulint	pend_ios = 0;
 
 	for (ulint i = 0; i < srv_buf_pool_instances; i++) {
-		pend_ios += buf_pool_from_array(i)->n_pend_reads;
+		pend_ios += my_atomic_loadlint(
+			&buf_pool_from_array(i)->n_pend_reads);
 	}
 
 	return(pend_ios);

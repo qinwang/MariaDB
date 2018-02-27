@@ -1176,7 +1176,10 @@ loop:
 
 	MONITOR_INC( MONITOR_LRU_GET_FREE_LOOPS );
 	freed = false;
-	if (buf_pool->try_LRU_scan || n_iterations > 0) {
+
+	if (my_atomic_loadptr_explicit(&buf_pool->try_LRU_scan,
+				       MY_MEMORY_ORDER_ACQUIRE)
+	    || n_iterations > 0) {
 		/* If no block was in the free list, search from the
 		end of the LRU list and try to free a block there.
 		If we are doing for the first time we'll scan only
@@ -1190,8 +1193,9 @@ loop:
 			in scanning the LRU list. This flag is set to
 			TRUE again when we flush a batch from this
 			buffer pool. */
-			buf_pool->try_LRU_scan = FALSE;
-
+			my_atomic_storeptr_explicit(
+					&buf_pool->try_LRU_scan,
+					FALSE, MY_MEMORY_ORDER_RELEASE);
 			/* Also tell the page_cleaner thread that
 			there is work for it to do. */
 			os_event_set(buf_flush_event);
@@ -2361,6 +2365,8 @@ buf_LRU_stat_update(void)
 
 	/* Update the index. */
 	item = &buf_LRU_stat_arr[buf_LRU_stat_arr_ind];
+	my_atomic_addptr_explicit(&buf_LRU_stat_arr_ind, 1,
+				  MY_MEMORY_ORDER_RELEASE);
 	buf_LRU_stat_arr_ind++;
 	buf_LRU_stat_arr_ind %= BUF_LRU_STAT_N_INTERVAL;
 
@@ -2380,7 +2386,10 @@ buf_LRU_stat_update(void)
 
 func_exit:
 	/* Clear the current entry. */
-	memset(&buf_LRU_stat_cur, 0, sizeof buf_LRU_stat_cur);
+	my_atomic_storelint_explicit(&(buf_LRU_stat_cur.io), 0,
+				     MY_MEMORY_ORDER_RELAXED);
+	my_atomic_storelint_explicit(&(buf_LRU_stat_cur.unzip), 0,
+				     MY_MEMORY_ORDER_RELEASE);
 }
 
 #if defined UNIV_DEBUG || defined UNIV_BUF_DEBUG

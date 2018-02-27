@@ -121,6 +121,7 @@
 #define my_atomic_loadlong(A) my_atomic_load32((int32*) (A))
 #define my_atomic_loadlong_explicit(A,O) my_atomic_load32_explicit((int32*) (A), (O))
 #define my_atomic_storelong(A,B) my_atomic_store32((int32*) (A), (B))
+#define my_atomic_storelong_explicit(A,B,O) my_atomic_store32_explicit((int32*) (A), (B), (O))
 #define my_atomic_faslong(A,B) my_atomic_fas32((int32*) (A), (B))
 #define my_atomic_caslong(A,B,C) my_atomic_cas32((int32*) (A), (int32*) (B), (C))
 #else
@@ -128,6 +129,7 @@
 #define my_atomic_loadlong(A) my_atomic_load64((int64*) (A))
 #define my_atomic_loadlong_explicit(A,O) my_atomic_load64_explicit((int64*) (A), (O))
 #define my_atomic_storelong(A,B) my_atomic_store64((int64*) (A), (B))
+#define my_atomic_storelong_explicit(A,B,O) my_atomic_store64_explicit((int64*) (A),(B), (O))
 #define my_atomic_faslong(A,B) my_atomic_fas64((int64*) (A), (B))
 #define my_atomic_caslong(A,B,C) my_atomic_cas64((int64*) (A), (int64*) (B), (C))
 #endif
