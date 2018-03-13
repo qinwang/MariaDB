@@ -230,12 +230,16 @@ const char *my_addr_resolve_init()
   if (!initialized)
   {
     pid_t pid;
+    char to[512];
+    size_t result;
 
 #if defined(HAVE_LINK_H) && defined(HAVE_DLOPEN)
     struct link_map *lm = (struct link_map*) dlopen(0, RTLD_NOW);
     if (lm)
       offset= lm->l_addr;
 #endif
+    result= my_snprintf(to, sizeof(to), "mysqld binary loaded at offset: %p\n", (void *)offset);
+    my_write_stderr(to, result);
 
     if (pipe(in) < 0)
       return "pipe(in)";

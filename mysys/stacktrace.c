@@ -267,6 +267,13 @@ void my_print_stacktrace(uchar* stack_bottom, ulong thread_stack)
   int n = backtrace(addrs, array_elements(addrs));
   my_safe_printf_stderr("stack_bottom = %p thread_stack 0x%lx\n",
                         stack_bottom, thread_stack);
+  int i;
+  my_safe_printf_stderr("frame addresses: ");
+  for (i = 0; i < n; i++)
+  {
+    my_safe_printf_stderr("%p ", addrs[i]);
+  }
+  my_safe_printf_stderr("\n");
 #if HAVE_MY_ADDR_RESOLVE
   if (print_with_addr_resolve(addrs, n))
     return;
