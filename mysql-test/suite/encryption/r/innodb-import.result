@@ -1,0 +1,32 @@
+call mtr.add_suppression("InnoDB: Table \'\"test\".\"t[1-2]_[l|b]e\"\' tablespace is set as discarded.");
+SET GLOBAL innodb_file_format = `Barracuda`;
+create table t1_le(a int) engine=innodb encrypted=yes;
+create table t2_le(a int) engine=innodb row_format=compressed encrypted=yes;
+create table t1_be(a int) engine=innodb encrypted=yes;
+create table t2_be(a int) engine=innodb row_format=compressed encrypted=yes;
+ALTER TABLE t1_le DISCARD TABLESPACE;
+ALTER TABLE t2_le DISCARD TABLESPACE;
+ALTER TABLE t1_be DISCARD TABLESPACE;
+ALTER TABLE t2_be DISCARD TABLESPACE;
+ALTER TABLE t1_le IMPORT TABLESPACE;
+Warnings:
+Warning	1810	IO Read error: (2, No such file or directory) Error opening './test/t1_le.cfg', will attempt to import without schema verification
+ALTER TABLE t1_be IMPORT TABLESPACE;
+Warnings:
+Warning	1810	IO Read error: (2, No such file or directory) Error opening './test/t1_be.cfg', will attempt to import without schema verification
+ALTER TABLE t2_le IMPORT TABLESPACE;
+Warnings:
+Warning	1810	IO Read error: (2, No such file or directory) Error opening './test/t2_le.cfg', will attempt to import without schema verification
+ALTER TABLE t2_be IMPORT TABLESPACE;
+Warnings:
+Warning	1810	IO Read error: (2, No such file or directory) Error opening './test/t2_be.cfg', will attempt to import without schema verification
+select * from t1_le;
+a
+select * from t1_be;
+a
+select * from t2_le;
+a
+select * from t2_be;
+a
+drop table t1_le, t1_be, t2_le, t2_be;
+SET GLOBAL innodb_file_format = Default;

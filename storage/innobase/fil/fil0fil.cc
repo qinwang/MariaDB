@@ -6449,7 +6449,6 @@ fil_iterate(
 		bool		updated = false;
 		os_offset_t	page_off = offset;
 		ulint		n_pages_read = (ulint) n_bytes / iter.page_size;
-		bool		decrypted = false;
 
 		for (ulint i = 0; i < n_pages_read; ++i) {
 			ulint 	size = iter.page_size;
@@ -6457,8 +6456,10 @@ fil_iterate(
 			byte*	src = readptr + (i * size);
 			byte*	dst = io_buffer + (i * size);
 			bool frame_changed = false;
+			bool decrypted = false;
 
 			ulint page_type = mach_read_from_2(src+FIL_PAGE_TYPE);
+			uint key_version = mach_read_from_4(src+FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION);
 
 			const bool page_compressed
 				= page_type == FIL_PAGE_PAGE_COMPRESSED_ENCRYPTED
@@ -6468,12 +6469,33 @@ fil_iterate(
 			the page. Note that tablespaces are not in
 			fil_system during import. */
 			if (encrypted) {
-				decrypted = fil_space_decrypt(
+				if (key_version) {
+					/* Verify post encryption checksum before
+					actual decrypt. */
+					if (fil_space_verify_crypt_checksum(src,
+							callback.get_zip_size(),
+							NULL,
+							page_no)) {
+						decrypted = fil_space_decrypt(
 							iter.crypt_data,
-							dst, //dst
+							dst,
 							iter.page_size,
-							src, // src
-							&err); // src
+							src,
+							&err);
+					} else {
+						ib_logf(IB_LOG_LEVEL_ERROR,
+							"Imported page [page id: space=" ULINTPF
+							", page number=" ULINTPF "]"
+							" is corrupted. Post encryption"
+							" checksum " ULINTPF
+							" does not match calculated " ULINTPF ".",
+							space_id, page_no,
+							mach_read_from_4(src + FIL_PAGE_FILE_FLUSH_LSN_OR_KEY_VERSION + 4),
+							fil_crypt_calculate_checksum(callback.get_zip_size(), src));
+
+						err = DB_CORRUPTION;
+					}
+				}
 
 				if (err != DB_SUCCESS) {
 					return(err);

@@ -1,0 +1,54 @@
+--source include/have_innodb.inc
+--source include/have_file_key_management_plugin.inc
+
+#
+# MDEV-15032 Encrypted database created on big endian machine cannot be used on little endian machine
+#
+
+call mtr.add_suppression("InnoDB: Table \'\"test\".\"t[1-2]_[l|b]e\"\' tablespace is set as discarded.");
+
+--disable_warnings
+SET GLOBAL innodb_file_format = `Barracuda`;
+--enable_warnings
+
+create table t1_le(a int) engine=innodb encrypted=yes;
+create table t2_le(a int) engine=innodb row_format=compressed encrypted=yes;
+create table t1_be(a int) engine=innodb encrypted=yes;
+create table t2_be(a int) engine=innodb row_format=compressed encrypted=yes;
+
+#
+# TODO: In MDEV-13103 InnoDB crash recovery fails to decompress a page in buf_dblwr_process()
+# add page compressed tables.
+#
+
+ALTER TABLE t1_le DISCARD TABLESPACE;
+ALTER TABLE t2_le DISCARD TABLESPACE;
+ALTER TABLE t1_be DISCARD TABLESPACE;
+ALTER TABLE t2_be DISCARD TABLESPACE;
+
+let $MYSQLD_DATADIR =`SELECT @@datadir`;
+
+#
+# Copy exported datafiles
+#
+
+--copy_file std_data/t1_le.ibd $MYSQLD_DATADIR/test/t1_le.ibd
+--copy_file std_data/t1_be.ibd $MYSQLD_DATADIR/test/t1_be.ibd
+--copy_file std_data/t2_le.ibd $MYSQLD_DATADIR/test/t2_le.ibd
+--copy_file std_data/t2_be.ibd $MYSQLD_DATADIR/test/t2_be.ibd
+
+ALTER TABLE t1_le IMPORT TABLESPACE;
+ALTER TABLE t1_be IMPORT TABLESPACE;
+ALTER TABLE t2_le IMPORT TABLESPACE;
+ALTER TABLE t2_be IMPORT TABLESPACE;
+
+select * from t1_le;
+select * from t1_be;
+select * from t2_le;
+select * from t2_be;
+
+drop table t1_le, t1_be, t2_le, t2_be;
+
+--disable_warnings
+SET GLOBAL innodb_file_format = Default;
+--enable_warnings
