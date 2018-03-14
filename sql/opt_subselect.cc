@@ -2316,6 +2316,8 @@ bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
           DBUG_RETURN(TRUE); /* purecov: inspected */
         sjm->tables= n_tables;
         sjm->is_used= FALSE;
+
+        sjm->table_marker_before= sjm->table_marker_after= SJM_TMP_TABLE_EMPTY;
         double subjoin_out_rows, subjoin_read_time;
 
         /*
@@ -3726,6 +3728,14 @@ bool setup_sj_materialization_part1(JOIN_TAB *sjm_tab)
   sjm->sjm_table_param.field_count= subq_select->item_list.elements;
   sjm->sjm_table_param.force_not_null_cols= TRUE;
 
+  if (check_sjmat_markers(sjm, SJM_TMP_TABLE_EMPTY,
+                          "setup_sj_materialization"))
+  {
+    sql_print_error("CHECK_SJMAT_MARKERS2: query_id=%llu\n", ulonglong(thd->query_id));
+    sql_print_error("CHECK_SJMAT_MARKERS3: select_id=%llu\n", 
+                     ulonglong(tab->join->select_lex->select_number));
+  }
+
   if (!(sjm->table= create_tmp_table(thd, &sjm->sjm_table_param, 
                                      sjm->sjm_table_cols, (ORDER*) 0, 
                                      TRUE /* distinct */, 
@@ -3734,6 +3744,8 @@ bool setup_sj_materialization_part1(JOIN_TAB *sjm_tab)
                                      HA_POS_ERROR /*rows_limit */, 
                                      (char*)"sj-materialize")))
     DBUG_RETURN(TRUE); /* purecov: inspected */
+  sjm->table_marker_before= sjm->table_marker_after= SJM_TMP_TABLE_CREATED;
+
   sjm->table->map=  emb_sj_nest->nested_join->used_tables;
   sjm->table->file->extra(HA_EXTRA_WRITE_CACHE);
   sjm->table->file->extra(HA_EXTRA_IGNORE_DUP_KEY);
@@ -4866,6 +4878,23 @@ void destroy_sj_tmp_tables(JOIN *join)
     table->file->ha_index_or_rnd_end();
     free_tmp_table(join->thd, table);
   }
+ 
+  {
+    List_iterator<SJ_MATERIALIZATION_INFO> it2(join->sjm_info_list);
+    SJ_MATERIALIZATION_INFO *sjm;
+    while ((sjm= it2++))
+    {
+      if (check_sjmat_markers(sjm, SJM_TMP_TABLE_CREATED,
+        "destroy_sj_tmp_tables"))
+      {
+        sql_print_error("CHECK_SJMAT_MARKERS2: query_id=%llu\n", ulonglong(join->thd->query_id));
+        sql_print_error("CHECK_SJMAT_MARKERS3: select_id=%llu\n", 
+                         ulonglong(join->select_lex->select_number));
+      }
+      sjm->table_marker_before= sjm->table_marker_after= SJM_TMP_TABLE_FREED;
+    }
+  }
+
   join->sj_tmp_tables.empty();
   join->sjm_info_list.empty();
 }

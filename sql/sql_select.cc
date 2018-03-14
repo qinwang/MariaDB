@@ -11147,6 +11147,13 @@ end_sj_materialize(JOIN *join, JOIN_TAB *join_tab, bool end_of_records)
   if (!end_of_records)
   {
     TABLE *table= sjm->table;
+    if (check_sjmat_markers(sjm, SJM_TMP_TABLE_CREATED,
+      "destroy_sj_tmp_tables"))
+    {
+        sql_print_error("CHECK_SJMAT_MARKERS2: query_id=%llu\n", ulonglong(join->thd->query_id));
+        sql_print_error("CHECK_SJMAT_MARKERS3: select_id=%llu\n", 
+                         ulonglong(join->select_lex->select_number));
+    }
 
     List_iterator<Item> it(sjm->sjm_table_cols);
     Item *item;

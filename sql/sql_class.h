@@ -5437,6 +5437,9 @@ public:
 };
 
 
+const int SJM_TMP_TABLE_EMPTY=   0x12345678;
+const int SJM_TMP_TABLE_CREATED= 0x13572468;
+const int SJM_TMP_TABLE_FREED=   0x159CE359;
 
 
 /*
@@ -5486,7 +5489,9 @@ public:
   /* The temptable and its related info */
   TMP_TABLE_PARAM sjm_table_param;
   List<Item> sjm_table_cols;
+  int table_marker_before;
   TABLE *table;
+  int table_marker_after;
 
   /* Structure used to make index lookups */
   struct st_table_ref *tab_ref;
@@ -5495,6 +5500,30 @@ public:
   Item *join_cond; /* See comments in make_join_select() */
   Copy_field *copy_field; /* Needed for SJ_Materialization scan */
 };
+
+inline bool 
+check_sjmat_markers(SJ_MATERIALIZATION_INFO *sjm, int value, const char *context)
+{
+  if (sjm->table_marker_before != sjm->table_marker_after)
+  {
+    sql_print_error("CHECK_SJMAT_MARKERS: %s: marker values dont match, got %x, %x\n",
+                    context,
+                    sjm->table_marker_before,
+                    sjm->table_marker_after);
+    return true;
+  }
+
+  if (sjm->table_marker_before != value)
+  {
+    sql_print_error("CHECK_SJMAT_MARKERS: %s: wrong marker value, expected %x, got %x\n",
+                    context,
+                    value,
+                    sjm->table_marker_before);
+    return true;
+  }
+  return false;
+}
+
 
 
 /* Structs used when sorting */
