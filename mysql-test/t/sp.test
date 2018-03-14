@@ -9932,3 +9932,13 @@ DROP FUNCTION f1;
 DROP FUNCTION f2;
 DROP FUNCTION f3;
 DROP TABLE t1;
+
+--echo #
+--echo # MDEV-15328: MariaDB 10.2.13 Crashes upon CALL PROCEDURE PARAM
+--echo # LAST_INSERT_ID ()
+--echo # (part 1, part 2 is in query_cache.test)
+--echo #
+
+CREATE PROCEDURE foo ( IN i INT UNSIGNED ) BEGIN END;
+CALL foo( LAST_INSERT_ID() );
+DROP PROCEDURE foo;
