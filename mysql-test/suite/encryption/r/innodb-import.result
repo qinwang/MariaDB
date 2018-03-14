@@ -1,25 +1,37 @@
-call mtr.add_suppression("InnoDB: Table \'\"test\".\"t[1-2]_[l|b]e\"\' tablespace is set as discarded.");
+call mtr.add_suppression("InnoDB: Table \'\"test\".\"t[1-4]_[l|b]e\"\' tablespace is set as discarded.");
 SET GLOBAL innodb_file_format = `Barracuda`;
 create table t1_le(a int) engine=innodb encrypted=yes;
 create table t2_le(a int) engine=innodb row_format=compressed encrypted=yes;
+create table t3_le(a int) engine=innodb page_compressed=yes;
+create table t4_le(a int) engine=innodb page_compressed=yes encrypted=yes;
 create table t1_be(a int) engine=innodb encrypted=yes;
 create table t2_be(a int) engine=innodb row_format=compressed encrypted=yes;
+create table t3_be(a int) engine=innodb page_compressed=yes;
+create table t4_be(a int) engine=innodb page_compressed=yes encrypted=yes;
 ALTER TABLE t1_le DISCARD TABLESPACE;
 ALTER TABLE t2_le DISCARD TABLESPACE;
+ALTER TABLE t3_le DISCARD TABLESPACE;
+ALTER TABLE t4_le DISCARD TABLESPACE;
 ALTER TABLE t1_be DISCARD TABLESPACE;
 ALTER TABLE t2_be DISCARD TABLESPACE;
+ALTER TABLE t3_be DISCARD TABLESPACE;
+ALTER TABLE t4_be DISCARD TABLESPACE;
+# innochecksum t1_le
+# innochecksum t2_le
+# innochecksum t3_le
+# innochecksum t4_le
+# innochecksum t1_be
+# innochecksum t2_be
+# innochecksum t3_be
+# innochecksum t3_be
 ALTER TABLE t1_le IMPORT TABLESPACE;
-Warnings:
-Warning	1810	IO Read error: (2, No such file or directory) Error opening './test/t1_le.cfg', will attempt to import without schema verification
 ALTER TABLE t1_be IMPORT TABLESPACE;
-Warnings:
-Warning	1810	IO Read error: (2, No such file or directory) Error opening './test/t1_be.cfg', will attempt to import without schema verification
 ALTER TABLE t2_le IMPORT TABLESPACE;
-Warnings:
-Warning	1810	IO Read error: (2, No such file or directory) Error opening './test/t2_le.cfg', will attempt to import without schema verification
 ALTER TABLE t2_be IMPORT TABLESPACE;
-Warnings:
-Warning	1810	IO Read error: (2, No such file or directory) Error opening './test/t2_be.cfg', will attempt to import without schema verification
+ALTER TABLE t3_le IMPORT TABLESPACE;
+ALTER TABLE t3_be IMPORT TABLESPACE;
+ALTER TABLE t4_le IMPORT TABLESPACE;
+ALTER TABLE t4_be IMPORT TABLESPACE;
 select * from t1_le;
 a
 select * from t1_be;
@@ -28,5 +40,14 @@ select * from t2_le;
 a
 select * from t2_be;
 a
+select * from t3_le;
+a
+select * from t3_be;
+a
+select * from t4_le;
+a
+select * from t4_be;
+a
 drop table t1_le, t1_be, t2_le, t2_be;
+drop table t3_le, t3_be, t4_le, t4_be;
 SET GLOBAL innodb_file_format = Default;

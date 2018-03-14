@@ -1,10 +1,13 @@
 --source include/have_innodb.inc
 --source include/not_embedded.inc
 
-# lz4
 set global innodb_compression_algorithm = zlib;
+select @@innodb_compression_algorithm;
 
-# All page compression test use the same
+# All page compression tests use the same
 --source include/innodb-page-compression.inc
 
--- echo #done
+# reset system
+--disable_query_log
+set global innodb_compression_algorithm=default;
+--enable_query_log

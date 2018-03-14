@@ -6516,8 +6516,32 @@ fil_iterate(
 			/* If the original page is page_compressed, we need
 			to decompress page before we can update it. */
 			if (page_compressed) {
-				fil_decompress_page(NULL, dst, ulong(size),
-						    NULL);
+				/* Check post compression checksum before
+				doing actual decompression. */
+				if (fil_verify_compression_checksum(dst,
+						space_id, page_no)) {
+					if (!fil_decompress_page(NULL, dst, ulong(size),
+							NULL)) {
+						err = DB_CORRUPTION;
+					}
+				} else {
+					err = DB_CORRUPTION;
+				}
+
+				if (err != DB_SUCCESS) {
+					ib_logf(IB_LOG_LEVEL_ERROR,
+						"Imported page [page id: space=" ULINTPF
+						", page number=" ULINTPF "]"
+						" is corrupted. Post compression"
+						" checksum " ULINTPF
+						" does not match calculated %u.",
+						space_id, page_no,
+						mach_read_from_4(dst+FIL_PAGE_SPACE_OR_CHKSUM),
+						buf_calc_compressed_crc32(dst));
+
+					return(err);
+				}
+
 				updated = true;
 			}
 

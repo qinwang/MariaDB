@@ -8,7 +8,10 @@ set global innodb_file_format = `Barracuda`;
 set global innodb_file_per_table = on;
 --enable_warnings
 
-call mtr.add_suppression("InnoDB: Database page corruption on disk or a failed file read of tablespace test/t[0-9]+ page \\[page id: space=[0-9]+, page number=[0-9]+\\]. You may have to recover from a backup.");
+call mtr.add_suppression("InnoDB: Database page corruption on disk or a failed file read of tablespace test/t1 page \\[page id: space=[0-9]+, page number=[0-9]+\\]. You may have to recover from a backup.");
+call mtr.add_suppression("InnoDB: Database page corruption on disk or a failed file read of tablespace test/t2 page \\[page id: space=[0-9]+, page number=[0-9]+\\]. You may have to recover from a backup.");
+call mtr.add_suppression("InnoDB: Database page corruption on disk or a failed file read of tablespace test/t3 page \\[page id: space=[0-9]+, page number=[0-9]+\\]. You may have to recover from a backup.");
+call mtr.add_suppression("InnoDB: Database page corruption on disk or a failed file read of tablespace test/t4 page \\[page id: space=[0-9]+, page number=[0-9]+\\]. You may have to recover from a backup.");
 call mtr.add_suppression("InnoDB: Page \\[page id: space=[0-9]+, page number= [0-9]+\\] in file ./test/t[0-9]+.ibd may be corrupted. Post compression checksum [0-9]+ stored [0-9]+ compression_method [ZLIB|SNAPPY|LZ4|LZO|LZMA|BZIP2]");
 call mtr.add_suppression("InnoDB: Background Page read failed to read or decrypt \\[page id: space=[0-9]+, page number=[0-9]+\\]");
 call mtr.add_suppression("mysqld: Index for table 't[0-9]+' is corrupt; try to repair it");
@@ -26,7 +29,7 @@ create table t9 (c1 int not null auto_increment primary key, b char(200)) engine
 
 --disable_query_log
 begin;
-let $i = 100;
+let $i = 10;
 while ($i)
 {
     insert into t0(b) values(REPEAT('Aa',50));
@@ -185,11 +188,12 @@ open($fh, "+<", $file) or die "$0: open $file : $!";
 binmode $fh;
 
 # Find out the page type, compression method location is based on that
+# Note that FIL_HEADER is not encrypted
 my($ptype) = unpack("n", ib_read_value($fh, $file, $pos+24, 2));
 if ($ptype == 34354) {
    $pos += 32; # FLUSH_LSN_OR_KEY_VERSION + 6
 } else {
-   $pos += 40; # FIL_PAGE_DATA + 2
+   $pos += 42; # FIL_PAGE_DATA + 2
 }
 
 # Corrupt compression method by decreasing it by one, if zero set 6
@@ -205,7 +209,7 @@ close $fh or die $!;
 
 # (2) corrupt payload size by decreasing size by 50 and if 0 set it to 20
 # note that payload size is not encrypted
-my($pos) = $ENV{'INNODB_PAGE_SIZE'} * 3 + 38;
+my($pos) = $ENV{'INNODB_PAGE_SIZE'} * 3 + 40;
 my($file) = "$ENV{MYSQLD_DATADIR}/test/t2.ibd";
 open($fh, "+<", $file) or die "$0: open $file : $!";
 my($size) = unpack("n", ib_read_value($fh, $file, $pos, 2));
@@ -227,22 +231,31 @@ my($file) = "$ENV{MYSQLD_DATADIR}/test/t4.ibd";
 open($fh, "+<", $file) or die "$0: open $file : $!";
 
 # Find out the page type, checksum location is based on that
+# Note that FIL_HEADER is not encrypted
 my($ptype) = unpack("n", ib_read_value($fh, $file, $pos + 24, 2));
 if ($ptype == 37401) {
    $pos += 30;
 }
-ib_write_value($fh, $file, $pos, 4, pack("N", 1020102010));
 close $fh or die $!;
+ib_corrupt_table($file, $pos, pack("n", 0xdead), 2);
 EOF
 
 --echo # Corruption done
 
 #
 # Run innochecksum to page compressed (and maybe encrypted) tables
-# now we should detect corruptions
+# now we should detect corruptions on compressed cases.
+# In compressed and  encrypted cases innochecksum can't decrypt
+# or decompress so we do not detect all corruptions e.g. corruption on
+# compression method.
 #
+--echo # Run innochecksum on t$i
+let t_IBD = $MYSQLD_DATADIR/test/t$i.ibd;
+--error 0,1
+--exec $INNOCHECKSUM $t_IBD
+
 let $i=4;
-while $($i > 0) {
+while $($i > 1) {
 --echo # Run innochecksum on t$i
 let t_IBD = $MYSQLD_DATADIR/test/t$i.ibd;
 --error 1
@@ -256,13 +269,13 @@ dec $i;
 #
 # Server should not crash on corrupted tables
 #
---error ER_NOT_KEYFILE
+--error ER_NOT_KEYFILE, ER_GET_ERRMSG
 select * from t1;
---error ER_NOT_KEYFILE
+--error ER_NOT_KEYFILE, ER_GET_ERRMSG
 select * from t2;
---error ER_NOT_KEYFILE
+--error ER_NOT_KEYFILE, ER_GET_ERRMSG
 select * from t3;
---error ER_NOT_KEYFILE
+--error ER_NOT_KEYFILE, ER_GET_ERRMSG
 select * from t4;
 select count(*) from t5;
 select count(*) from t6;

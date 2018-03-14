@@ -1,6 +1,6 @@
-call mtr.add_suppression("InnoDB: The page \[page id: space=[0-9]+, page number=[0-9]+\] in file test/t1 cannot be decrypted.");
-call mtr.add_suppression("InnoDB: The page \[page id: space=[0-9]+, page number=[0-9]+\] in file test/t2 cannot be decrypted.");
-call mtr.add_suppression("InnoDB: The page \[page id: space=[0-9]+, page number=[0-9]+\] in file test/t3 cannot be decrypted.");
+call mtr.add_suppression("InnoDB: Database page corruption on disk or a failed file read of tablespace test/t1 page \\[page id: space=[0-9]+, page number=[0-9]+\\]. You may have to recover from a backup.");
+call mtr.add_suppression("InnoDB: Table \"test\".\"t1\" is corrupted. Please drop the table and recreate.");
+call mtr.add_suppression("InnoDB: Cannot open table test/t1 from the internal data dictionary of InnoDB though the .frm file for the table exists. See http://dev.mysql.com/doc/refman/5.6/en/innodb-troubleshooting.html for how you can resolve the problem.");
 
 # Start server with keys2.txt
 CREATE TABLE t1(a int not null primary key auto_increment, b varchar(128)) engine=innodb ENCRYPTED=YES ENCRYPTION_KEY_ID=19;
@@ -37,9 +37,9 @@ COUNT(1)
 SELECT COUNT(1) FROM t2,t1 where t2.a = t1.a;
 ERROR HY000: Got error 192 'Table encrypted but decryption failed. This could be because correct encryption management plugin is not loaded, used encryption key is not available or encryption method does not match.' from InnoDB
 SELECT COUNT(1) FROM t1 where b = 'ab';
-ERROR HY000: Got error 192 'Table encrypted but decryption failed. This could be because correct encryption management plugin is not loaded, used encryption key is not available or encryption method does not match.' from InnoDB
+Got one of the listed errors
 SELECT COUNT(1) FROM t1;
-ERROR HY000: Got error 192 'Table encrypted but decryption failed. This could be because correct encryption management plugin is not loaded, used encryption key is not available or encryption method does not match.' from InnoDB
+Got one of the listed errors
 
 # Start server with keys2.txt
 SELECT COUNT(1) FROM t1;

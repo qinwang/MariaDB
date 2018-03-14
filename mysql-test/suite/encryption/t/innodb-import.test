@@ -1,11 +1,17 @@
 --source include/have_innodb.inc
 --source include/have_file_key_management_plugin.inc
 
+if (!$INNOCHECKSUM) {
+  --echo Need innochecksum binary
+  --die Need innochecksum binary
+}
+
 #
-# MDEV-15032 Encrypted database created on big endian machine cannot be used on little endian machine
+# MDEV-15032: Encrypted database created on big endian machine cannot be used on little endian machine
+# MDEV-13103: InnoDB crash recovery fails to decompress a page in buf_dblwr_process()	
 #
 
-call mtr.add_suppression("InnoDB: Table \'\"test\".\"t[1-2]_[l|b]e\"\' tablespace is set as discarded.");
+call mtr.add_suppression("InnoDB: Table \'\"test\".\"t[1-4]_[l|b]e\"\' tablespace is set as discarded.");
 
 --disable_warnings
 SET GLOBAL innodb_file_format = `Barracuda`;
@@ -13,41 +19,87 @@ SET GLOBAL innodb_file_format = `Barracuda`;
 
 create table t1_le(a int) engine=innodb encrypted=yes;
 create table t2_le(a int) engine=innodb row_format=compressed encrypted=yes;
+create table t3_le(a int) engine=innodb page_compressed=yes;
+create table t4_le(a int) engine=innodb page_compressed=yes encrypted=yes;
 create table t1_be(a int) engine=innodb encrypted=yes;
 create table t2_be(a int) engine=innodb row_format=compressed encrypted=yes;
-
-#
-# TODO: In MDEV-13103 InnoDB crash recovery fails to decompress a page in buf_dblwr_process()
-# add page compressed tables.
-#
+create table t3_be(a int) engine=innodb page_compressed=yes;
+create table t4_be(a int) engine=innodb page_compressed=yes encrypted=yes;
 
 ALTER TABLE t1_le DISCARD TABLESPACE;
 ALTER TABLE t2_le DISCARD TABLESPACE;
+ALTER TABLE t3_le DISCARD TABLESPACE;
+ALTER TABLE t4_le DISCARD TABLESPACE;
 ALTER TABLE t1_be DISCARD TABLESPACE;
 ALTER TABLE t2_be DISCARD TABLESPACE;
+ALTER TABLE t3_be DISCARD TABLESPACE;
+ALTER TABLE t4_be DISCARD TABLESPACE;
 
 let $MYSQLD_DATADIR =`SELECT @@datadir`;
+
+#
+# Test innochecksum
+#
+
+--disable_result_log
+
+--echo # innochecksum t1_le
+--exec $INNOCHECKSUM $MYSQL_TEST_DIR/std_data/t1_le.ibd
+--echo # innochecksum t2_le
+--exec $INNOCHECKSUM $MYSQL_TEST_DIR/std_data/t2_le.ibd
+--echo # innochecksum t3_le
+--exec $INNOCHECKSUM $MYSQL_TEST_DIR/std_data/t3_le.ibd
+--echo # innochecksum t4_le
+--exec $INNOCHECKSUM $MYSQL_TEST_DIR/std_data/t4_le.ibd
+--echo # innochecksum t1_be
+--exec $INNOCHECKSUM $MYSQL_TEST_DIR/std_data/t1_be.ibd
+--echo # innochecksum t2_be
+--exec $INNOCHECKSUM $MYSQL_TEST_DIR/std_data/t2_be.ibd
+--echo # innochecksum t3_be
+--exec $INNOCHECKSUM $MYSQL_TEST_DIR/std_data/t3_be.ibd
+--echo # innochecksum t3_be
+--exec $INNOCHECKSUM $MYSQL_TEST_DIR/std_data/t4_be.ibd
+
+--enable_result_log
 
 #
 # Copy exported datafiles
 #
 
---copy_file std_data/t1_le.ibd $MYSQLD_DATADIR/test/t1_le.ibd
---copy_file std_data/t1_be.ibd $MYSQLD_DATADIR/test/t1_be.ibd
---copy_file std_data/t2_le.ibd $MYSQLD_DATADIR/test/t2_le.ibd
---copy_file std_data/t2_be.ibd $MYSQLD_DATADIR/test/t2_be.ibd
+--copy_file $MYSQL_TEST_DIR/std_data/t1_le.ibd $MYSQLD_DATADIR/test/t1_le.ibd
+--copy_file $MYSQL_TEST_DIR/std_data/t1_be.ibd $MYSQLD_DATADIR/test/t1_be.ibd
+--copy_file $MYSQL_TEST_DIR/std_data/t2_le.ibd $MYSQLD_DATADIR/test/t2_le.ibd
+--copy_file $MYSQL_TEST_DIR/std_data/t2_be.ibd $MYSQLD_DATADIR/test/t2_be.ibd
+--copy_file $MYSQL_TEST_DIR/std_data/t3_le.ibd $MYSQLD_DATADIR/test/t3_le.ibd
+--copy_file $MYSQL_TEST_DIR/std_data/t3_be.ibd $MYSQLD_DATADIR/test/t3_be.ibd
+--copy_file $MYSQL_TEST_DIR/std_data/t4_le.ibd $MYSQLD_DATADIR/test/t4_le.ibd
+--copy_file $MYSQL_TEST_DIR/std_data/t4_be.ibd $MYSQLD_DATADIR/test/t4_be.ibd
 
+#
+# We do not use .cfg so disable warnings
+#
+--disable_warnings
 ALTER TABLE t1_le IMPORT TABLESPACE;
 ALTER TABLE t1_be IMPORT TABLESPACE;
 ALTER TABLE t2_le IMPORT TABLESPACE;
 ALTER TABLE t2_be IMPORT TABLESPACE;
+ALTER TABLE t3_le IMPORT TABLESPACE;
+ALTER TABLE t3_be IMPORT TABLESPACE;
+ALTER TABLE t4_le IMPORT TABLESPACE;
+ALTER TABLE t4_be IMPORT TABLESPACE;
+--enable_warnings
 
 select * from t1_le;
 select * from t1_be;
 select * from t2_le;
 select * from t2_be;
+select * from t3_le;
+select * from t3_be;
+select * from t4_le;
+select * from t4_be;
 
 drop table t1_le, t1_be, t2_le, t2_be;
+drop table t3_le, t3_be, t4_le, t4_be;
 
 --disable_warnings
 SET GLOBAL innodb_file_format = Default;

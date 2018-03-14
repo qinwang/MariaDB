@@ -6113,6 +6113,12 @@ dict_set_corrupted_by_space(
 	table = dict_find_table_by_space(space_id);
 
 	if (!table) {
+#ifdef UNIV_DEBUG
+		ib_logf(IB_LOG_LEVEL_INFO,
+			"Can't set space " ULINTPF
+			" corrupted as table is not found dict_sys->table_LRU.", space_id);
+
+#endif
 		return(FALSE);
 	}
 
