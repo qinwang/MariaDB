@@ -1,0 +1,14 @@
+include/rpl_init.inc [topology=1->2]
+CREATE TABLE t1 (a INT);
+include/rpl_sync.inc
+SET @save_debug= @@GLOBAL.debug_dbug;
+SET @@GLOBAL.debug_dbug="+d,dump_thread_wait_around_read";
+INSERT INTO t1 SET a=1;
+SET debug_sync="at_after_write_to_binlog SIGNAL dump_go_on_reading";
+INSERT INTO t1 SET a=1;
+include/rpl_sync.inc
+SET debug_sync='reset';
+*** Clean up ***
+SET @@GLOBAL.debug_dbug= @save_debug;
+DROP TABLE t1;
+include/rpl_end.inc

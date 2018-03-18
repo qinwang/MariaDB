@@ -2541,11 +2541,14 @@ static int send_events(binlog_send_info *info, IO_CACHE* log, LOG_INFO* linfo,
 {
   int error;
   ulong ev_offset;
-
+#ifndef DBUG_OFF
+  ulonglong dbug_events= 0;
+#endif
   String *packet= info->packet;
   linfo->pos= my_b_tell(log);
   info->last_pos= my_b_tell(log);
 
+  log->end_of_file= end_pos;
   while (linfo->pos < end_pos)
   {
     if (should_stop(info))
@@ -2556,12 +2559,37 @@ static int send_events(binlog_send_info *info, IO_CACHE* log, LOG_INFO* linfo,
     if (reset_transmit_packet(info, info->flags, &ev_offset, &info->errmsg))
       return 1;
 
+#ifdef ENABLED_DEBUG_SYNC
+    DBUG_EXECUTE_IF("dump_thread_wait_around_read",
+                    if (dbug_events++ == 0)
+                    {
+                      const char act[]=
+                        "now "
+                        "WAIT_FOR dump_go_on_reading";
+                      DBUG_ASSERT(debug_sync_service);
+                      DBUG_ASSERT(!debug_sync_set_action(
+                        info->thd,
+                        STRING_WITH_LEN(act)));
+                    }
+                    );
+#endif
+
     info->last_pos= linfo->pos;
     error= Log_event::read_log_event(log, packet, info->fdev,
                        opt_master_verify_checksum ? info->current_checksum_alg
                                                   : BINLOG_CHECKSUM_ALG_OFF);
     linfo->pos= my_b_tell(log);
 
+#ifdef ENABLED_DEBUG_SYNC
+    DBUG_EXECUTE_IF("dump_thread_wait_around_read",
+                    if (dbug_events == 1)
+                    {
+                      DBUG_ASSERT(log->pos_in_file +
+                                  (size_t) (log->read_end - log->buffer)
+                                  <= end_pos);
+                    }
+                    );
+#endif
     if (error)
     {
       set_read_error(info, error);

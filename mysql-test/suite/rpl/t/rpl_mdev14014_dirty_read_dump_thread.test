@@ -1,0 +1,44 @@
+# ==== Purpose ====
+#
+# Check out if there are any dirty read by dump threads of the master (server_1)
+#
+# ==== Related worklogs ====
+#
+# MDEV-14014
+# MDEV-7257
+
+--source include/have_debug_sync.inc
+--source include/have_debug.inc
+
+--let $rpl_topology= 1->2
+--source include/rpl_init.inc
+
+--connection server_1
+CREATE TABLE t1 (a INT);
+--source include/rpl_sync.inc
+
+
+--connection server_1
+SET @save_debug= @@GLOBAL.debug_dbug;
+SET @@GLOBAL.debug_dbug="+d,dump_thread_wait_around_read";
+
+--connect(con1, localhost, root)
+INSERT INTO t1 SET a=1; # incr BEP and breaks waiting to reading
+#SET debug_sync="at_after_write_to_binlog SIGNAL dump_go_on_reading WAIT_FOR user_thread_go";
+SET debug_sync="at_after_write_to_binlog SIGNAL dump_go_on_reading";
+INSERT INTO t1 SET a=1; # the 2nd group is the extra, it must not be seen by the dump thread
+
+--source include/rpl_sync.inc
+
+--connection con1
+SET debug_sync='reset';
+
+
+#
+--echo *** Clean up ***
+#
+--connection server_1
+SET @@GLOBAL.debug_dbug= @save_debug;
+DROP TABLE t1;
+
+--source include/rpl_end.inc

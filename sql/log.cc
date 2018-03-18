@@ -7857,6 +7857,8 @@ MYSQL_BIN_LOG::trx_group_commit_leader(group_commit_entry *leader)
       bool any_error= false;
       bool all_error= true;
 
+      DEBUG_SYNC(leader->thd, "at_after_write_to_binlog");
+
       mysql_mutex_assert_not_owner(&LOCK_prepare_ordered);
       mysql_mutex_assert_owner(&LOCK_log);
       mysql_mutex_assert_not_owner(&LOCK_after_binlog_sync);
