@@ -1960,3 +1960,40 @@ void st_select_lex_unit::set_unique_exclude()
     }
   }
 }
+
+/*
+  Check if the selects in the derived table can give distinct rows irrespective
+  of the data given for the tables.
+
+  for example:
+  select * from
+  ((select t1.a from t1) op (select t2.a from t2) op (select t3.a from t3));
+  the op here being UNION/INTERSECT/EXCEPT
+
+  so this function would check if the derived table like the case above
+  can give distinct rows or not irrespecitive of the data in the tables.
+
+  @retval false Distinct rows are not guaranteed
+  @retval true  Distinct rows are guanranteed
+
+*/
+
+bool st_select_lex_unit::check_distinct_in_union()
+{
+  bool is_intersect_present=FALSE;
+  st_select_lex* first= first_select();
+  for(st_select_lex *sl=first; sl ; sl=sl->next_select())
+    is_intersect_present|= (sl->linkage == INTERSECT_TYPE);
+
+  if (!union_all)
+    return true;
+  else
+  {
+    if (union_distinct)
+    {
+      if (!is_intersect_present && !union_distinct->next_select())
+        return true;
+    }
+  }
+  return false;
+}

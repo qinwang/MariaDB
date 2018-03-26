@@ -7113,6 +7113,25 @@ bool TABLE::add_tmp_key(uint key, uint key_parts,
   if (!keyinfo->rec_per_key)
     return TRUE;
   bzero(keyinfo->rec_per_key, sizeof(ulong)*key_parts);
+  /*
+    For the case when there is a derived table that would give distinct rows,
+    the index statistics are passed to the join optimizer to tell that
+    a ref access to the derived table will produce only one row.
+  */
+
+  st_select_lex_unit* derived= pos_in_table_list ? pos_in_table_list->derived: NULL;
+  if (derived)
+  {
+    /*
+      This handles the case when we have a single select in the derived table
+    */
+    st_select_lex* first= derived->first_select();
+    if ((first && !first->is_part_of_union() && 
+        first->options & SELECT_DISTINCT) ||
+        derived->check_distinct_in_union())
+        keyinfo->rec_per_key[key_parts-1]=1;
+  }
+
   keyinfo->read_stats= NULL;
   keyinfo->collected_stats= NULL;
 

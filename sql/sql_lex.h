@@ -761,6 +761,7 @@ public:
   Procedure *last_procedure;	 /* Pointer to procedure, if such exists */
 
   bool columns_are_renamed;
+  bool union_all;           /* TRUE if we have UNION ALL operation */
 
   void init_query();
   st_select_lex* outer_select();
@@ -800,6 +801,7 @@ public:
   bool union_needs_tmp_table();
 
   void set_unique_exclude();
+  bool check_distinct_in_union();
 
   friend struct LEX;
   friend int subselect_union_engine::exec();

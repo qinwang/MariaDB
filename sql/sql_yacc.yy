@@ -571,7 +571,10 @@ bool LEX::add_select_to_union_list(bool is_union_distinct,
       current_select;
   }
   else
+  {
     DBUG_ASSERT(type == UNION_TYPE);
+    current_select->master_unit()->union_all= true;
+  }
   return FALSE;
 }
 
