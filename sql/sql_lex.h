@@ -1274,6 +1274,7 @@ public:
 
   bool cond_pushdown_is_allowed() const
   { return !olap && !explicit_limit && !tvc; }
+  bool select_items_in_group_by();
   
 private:
   bool m_non_agg_field_used;

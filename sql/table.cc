@@ -7126,10 +7126,17 @@ bool TABLE::add_tmp_key(uint key, uint key_parts,
       This handles the case when we have a single select in the derived table
     */
     st_select_lex* first= derived->first_select();
-    if ((first && !first->is_part_of_union() && 
-        first->options & SELECT_DISTINCT) ||
-        derived->check_distinct_in_union())
+    if (first)
+    {
+      if (!first->is_part_of_union() && first->options & SELECT_DISTINCT)
         keyinfo->rec_per_key[key_parts-1]=1;
+      else
+      {
+        if (derived->check_distinct_in_union() || 
+           (first->select_items_in_group_by()))
+          keyinfo->rec_per_key[key_parts-1]=1;
+      }
+    }
   }
 
   keyinfo->read_stats= NULL;

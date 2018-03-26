@@ -7459,6 +7459,23 @@ Item *st_select_lex::build_cond_for_grouping_fields(THD *thd, Item *cond,
   return 0;
 }
 
+bool st_select_lex::select_items_in_group_by()
+{
+  if (!group_list.elements)
+    return false;
+  for (ORDER *order= group_list.first; order; order= order->next)
+  {
+    List_iterator_fast<Item> it(item_list);
+    Item *item;
+    while ((item= it++))
+    {
+      if (item->eq(*order->item,false))
+        return true;
+    }
+  }
+  return false;
+}
+
 
 int set_statement_var_if_exists(THD *thd, const char *var_name,
                                 size_t var_name_length, ulonglong value)
