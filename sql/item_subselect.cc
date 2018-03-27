@@ -673,11 +673,17 @@ bool Item_subselect::walk(Item_processor processor, bool walk_subquery,
 
       if (lex->where && (lex->where)->walk(processor, walk_subquery, argument))
         return 1;
+      for (TABLE_LIST *table= lex->table_list.first;
+           table;
+           table= table->next_local)
+      {
+        if (table->on_expr)
+          table->on_expr->walk(processor, walk_subquery, argument);
+            return 1;
+      }
       if (lex->having && (lex->having)->walk(processor, walk_subquery,
                                              argument))
         return 1;
-      /* TODO: why does this walk WHERE/HAVING but not ON expressions of outer joins? */
-
       while ((item=li++))
       {
         if (item->walk(processor, walk_subquery, argument))
