@@ -700,6 +700,14 @@ UNIV_INTERN
 fil_space_t*
 fil_space_acquire_for_io(ulint id);
 
+/** Prepare a tablespace for reading or writing a block,
+when it could be dropped concurrently.
+@param[in]	space	tablespace
+*/
+UNIV_INTERN
+void
+fil_space_prepare_for_io(fil_space_t* space);
+
 /** Release a tablespace acquired with fil_space_acquire_for_io().
 @param[in,out]	space	tablespace to release  */
 UNIV_INTERN

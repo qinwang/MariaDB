@@ -7054,6 +7054,19 @@ fil_space_acquire_for_io(ulint id)
 	return(space);
 }
 
+/** Prepare a tablespace for reading or writing a block,
+when it could be dropped concurrently.
+@param[in]	space	tablespace
+*/
+UNIV_INTERN
+void
+fil_space_prepare_for_io(fil_space_t* space)
+{
+	mutex_enter(&fil_system->mutex);
+	space->n_pending_ios++;
+	mutex_exit(&fil_system->mutex);
+}
+
 /** Release a tablespace acquired with fil_space_acquire_for_io().
 @param[in,out]	space	tablespace to release  */
 UNIV_INTERN
