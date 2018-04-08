@@ -561,7 +561,7 @@ disconnect con4a;
 disconnect con4b;
 disconnect con4c;
 set global max_user_connections = 0;
-set global max_connections = 3;
+set global max_connections = 10;
 flush user_resources;
 connect  con5a,"127.0.0.1",quota,,test,$MASTER_MYPORT,;
 select "Con4a is alive";
