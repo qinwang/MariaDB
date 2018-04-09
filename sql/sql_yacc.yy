@@ -15176,7 +15176,7 @@ option_value_no_option_type:
             struct sys_var_with_base tmp= $4;
             if (tmp.var == trg_new_row_fake_var)
             {
-              my_error(ER_UNKNOWN_SYSTEM_VARIABLE, MYF(0), "NEW");
+              my_error(ER_UNKNOWN_SYSTEM_VARIABLE, MYF(0), 3, "NEW");
               MYSQL_YYABORT;
             }
             /* Lookup if necessary: must be a system variable. */
