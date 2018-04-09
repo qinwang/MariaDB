@@ -11,9 +11,9 @@ SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_
 NAME
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
 NAME
-mysql/innodb_table_stats
+innodb_system
 mysql/innodb_index_stats
-./ibdata1
+mysql/innodb_table_stats
 # Success!
 SELECT * from t1;
 a	b
@@ -21,9 +21,9 @@ a	b
 SET GLOBAL innodb_encrypt_tables = off;
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
 NAME
-mysql/innodb_table_stats
+innodb_system
 mysql/innodb_index_stats
-./ibdata1
+mysql/innodb_table_stats
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
 NAME
 # Success!
@@ -31,9 +31,9 @@ NAME
 # Restart server with no encryption setup, there should be no crashes
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
 NAME
-mysql/innodb_table_stats
+innodb_system
 mysql/innodb_index_stats
-./ibdata1
+mysql/innodb_table_stats
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
 NAME
 SELECT * from t1;
