@@ -10,6 +10,9 @@ SELECT COUNT(*) from mysql.general_log;
 COUNT(*)
 1
 connection node_1;
+SELECT COUNT(*) from mysql.general_log;
+COUNT(*)
+1
 SET SESSION wsrep_osu_method=TOI;
 CREATE TABLE t1 (f1 INTEGER) ENGINE=InnoDB;
 SET SESSION wsrep_osu_method=RSU;

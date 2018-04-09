@@ -33,4 +33,5 @@ RESET SLAVE ALL;
 reset master;
 connection node_3;
 reset master;
+connection node_1;
 reset master;
