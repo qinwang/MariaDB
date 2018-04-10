@@ -25,7 +25,7 @@ Created 3/26/1996 Heikki Tuuri
 *******************************************************/
 
 #include "my_config.h"
-#include <my_systemd.h>
+#include <my_service_manager.h>
 
 #include "ha_prototypes.h"
 #include "trx0roll.h"
@@ -727,7 +727,6 @@ trx_roll_must_shutdown()
 	const trx_t* trx = trx_roll_crash_recv_trx;
 	ut_ad(trx);
 	ut_ad(trx_state_eq(trx, TRX_STATE_ACTIVE));
-	ut_ad(trx->in_rollback);
 
 	if (trx_get_dict_operation(trx) == TRX_DICT_OP_NONE
 	    && !srv_is_being_started
@@ -749,10 +748,17 @@ trx_roll_must_shutdown()
 		trx_sys.rw_trx_hash.iterate_no_dups(
 			reinterpret_cast<my_hash_walk_action>
 			(trx_roll_count_callback), &arg);
+
+		if (arg.n_rows > 0) {
+			service_manager_extend_timeout(
+				INNODB_EXTEND_TIMEOUT_INTERVAL,
+				"To roll back: " UINT32PF " transactions, "
+				UINT64PF " rows", arg.n_trx, arg.n_rows);
+		}
+
 		ib::info() << "To roll back: " << arg.n_trx
 			   << " transactions, " << arg.n_rows << " rows";
-		sd_notifyf(0, "STATUS=To roll back: " UINT32PF " transactions,"
-			   " " UINT64PF " rows", arg.n_trx, arg.n_rows);
+
 	}
 	return false;
 }
