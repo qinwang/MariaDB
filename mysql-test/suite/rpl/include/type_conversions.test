@@ -1043,7 +1043,7 @@ let $can_convert = $if_is_lossy;
 source suite/rpl/include/check_type.inc;
 
 SET column_compression_threshold=DEFAULT;
---echo # End of MDEV-15833
+--echo # End of MDEV-15821
 
 
 --echo #
@@ -1057,28 +1057,28 @@ let $target_type= BLOB;
 let $source_value= REPEAT('a',250);
 let $target_value= REPEAT('a',250);
 let $can_convert = $if_is_non_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 let $source_type= TINYBLOB;
 let $target_type= MEDIUMBLOB;
 let $source_value= REPEAT('a',250);
 let $target_value= REPEAT('a',250);
 let $can_convert = $if_is_non_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 let $source_type= TINYBLOB;
 let $target_type= LONGBLOB;
 let $source_value= REPEAT('a',250);
 let $target_value= REPEAT('a',250);
 let $can_convert = $if_is_non_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 let $source_type= TINYBLOB;
 let $target_type= VARBINARY(255);
 let $source_value= REPEAT('a',250);
 let $target_value= REPEAT('a',250);
 let $can_convert = $if_is_non_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 
 # BLOB
@@ -1088,28 +1088,28 @@ let $target_type= TINYBLOB;
 let $source_value= REPEAT('a',64000);
 let $target_value= REPEAT('a',255);
 let $can_convert = $if_is_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 let $source_type= BLOB;
 let $target_type= MEDIUMBLOB;
 let $source_value= REPEAT('a',64000);
 let $target_value= REPEAT('a',64000);
 let $can_convert = $if_is_non_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 let $source_type= BLOB;
 let $target_type= LONGBLOB;
 let $source_value= REPEAT('a',64000);
 let $target_value= REPEAT('a',64000);
 let $can_convert = $if_is_non_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 let $source_type= BLOB;
 let $target_type= VARBINARY(65500);
 let $source_value= REPEAT('a',65535);
 let $target_value= REPEAT('a',65500);
 let $can_convert = $if_is_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 
 # MEDIUMBLOB
@@ -1119,14 +1119,14 @@ let $target_type= TINYBLOB;
 let $source_value= REPEAT('a',66000);
 let $target_value= REPEAT('a',255);
 let $can_convert = $if_is_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 let $source_type= MEDIUMBLOB;
 let $target_type= BLOB;
 let $source_value= REPEAT('a',66000);
 let $target_value= REPEAT('a',65535);
 let $can_convert = $if_is_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 # This failed before the fix
 let $source_type= MEDIUMBLOB;
@@ -1134,14 +1134,14 @@ let $target_type= LONGBLOB;
 let $source_value= REPEAT('a',66000);
 let $target_value= REPEAT('a',66000);
 let $can_convert = $if_is_non_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 let $source_type= MEDIUMBLOB;
 let $target_type= VARBINARY(65500);
 let $source_value= REPEAT('a',66000);
 let $target_value= REPEAT('a',65500);
 let $can_convert = $if_is_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 
 # LONGBLOB
@@ -1151,14 +1151,14 @@ let $target_type= TINYBLOB;
 let $source_value= REPEAT('a',66000);
 let $target_value= REPEAT('a',255);
 let $can_convert = $if_is_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 let $source_type= LONGBLOB;
 let $target_type= BLOB;
 let $source_value= REPEAT('a',66000);
 let $target_value= REPEAT('a',65535);
 let $can_convert = $if_is_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 # This failed before the fix
 let $source_type= LONGBLOB;
@@ -1166,14 +1166,14 @@ let $target_type= MEDIUMBLOB;
 let $source_value= REPEAT('a',66000);
 let $target_value= REPEAT('a',66000);
 let $can_convert = $if_is_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 let $source_type= LONGBLOB;
 let $target_type= VARBINARY(65500);
 let $source_value= REPEAT('a',66000);
 let $target_value= REPEAT('a',65500);
 let $can_convert = $if_is_lossy;
-source extra/rpl_tests/check_type.inc;
+source suite/rpl/include/check_type.inc;
 
 --echo # End of MDEV-15833
 
