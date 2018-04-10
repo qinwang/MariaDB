@@ -1083,8 +1083,6 @@ public:
     case Item_sum::CUME_DIST_FUNC:
     case Item_sum::PERCENTILE_CONT_FUNC:
     case Item_sum::PERCENTILE_DISC_FUNC:
-    case Item_sum::LAG_FUNC:
-    case Item_sum::LEAD_FUNC:
       return true;
     default: 
       return false;
