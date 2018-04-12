@@ -46,6 +46,7 @@ START TRANSACTION;
 
 --connection default
 # Restart the server
+SET GLOBAL innodb_fast_shutdown=3;
 -- source include/restart_mysqld.inc
 SELECT COUNT(*) FROM worklog5743;
 SELECT col_1_text = REPEAT("a", 3500) , col_2_text  = REPEAT("o", 3500) FROM
@@ -66,6 +67,7 @@ worklog5743;
 
 --connection default
 # Restart the server
+SET GLOBAL innodb_fast_shutdown=3;
 -- source include/restart_mysqld.inc
 SELECT COUNT(*) FROM worklog5743;
 SELECT col_1_text = REPEAT("a", 3500) , col_2_text  = REPEAT("o", 3500) FROM
@@ -84,6 +86,7 @@ worklog5743;
 
 --connection default
 # Restart the server
+SET GLOBAL innodb_fast_shutdown=3;
 -- source include/restart_mysqld.inc
 SELECT COUNT(*) FROM worklog5743;
 SELECT col_1_text = REPEAT("a", 3500) , col_2_text  = REPEAT("o", 3500) FROM
