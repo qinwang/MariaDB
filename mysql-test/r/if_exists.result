@@ -1,0 +1,43 @@
+CREATE TABLE t1 (a INT, b INT) ENGINE=InnoDB;
+ALTER TABLE t1 DROP FOREIGN KEY IF EXISTS fk, DROP COLUMN b;
+Warnings:
+Note	1091	Can't DROP 'fk'; check that column/key exists
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+DROP TABLE t1;
+CREATE TABLE t1 (a INT, b INT) ENGINE=InnoDB;
+ALTER TABLE t1 DROP INDEX IF EXISTS fk, DROP COLUMN b;
+Warnings:
+Note	1091	Can't DROP 'fk'; check that column/key exists
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+DROP TABLE t1;
+CREATE TABLE t1 (a INT, b INT, c INT, KEY(c)) ENGINE=InnoDB;
+ALTER TABLE t1 DROP FOREIGN KEY IF EXISTS fk, DROP COLUMN c;
+Warnings:
+Note	1091	Can't DROP 'fk'; check that column/key exists
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL,
+  `b` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+DROP TABLE t1;
+CREATE TABLE t1 (a INT, b INT, c INT, KEY c1(c)) ENGINE=InnoDB;
+ALTER TABLE t1 DROP FOREIGN KEY IF EXISTS fk, DROP INDEX c1;
+Warnings:
+Note	1091	Can't DROP 'fk'; check that column/key exists
+SHOW CREATE TABLE t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL,
+  `b` int(11) DEFAULT NULL,
+  `c` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+DROP TABLE t1;

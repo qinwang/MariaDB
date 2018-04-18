@@ -7430,6 +7430,9 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
       if (table->s->tmp_table == NO_TMP_TABLE)
         (void) delete_statistics_for_column(thd, table, field);
       drop_it.remove();
+      if (alter_info->drop_list.is_empty())
+        alter_info->flags&= ~(Alter_info::ALTER_DROP_INDEX  |
+                              Alter_info::DROP_FOREIGN_KEY);
       continue;
     }
     /* Check if field is changed */
@@ -7654,8 +7657,11 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
                                                  TRUE);
 	  }
 	}
-      }  
+      }
       drop_it.remove();
+      if (alter_info->drop_list.is_empty())
+        alter_info->flags&= ~(Alter_info::ALTER_DROP_INDEX  |
+                              Alter_info::DROP_FOREIGN_KEY);
       continue;
     }
 
