@@ -1356,6 +1356,12 @@ public:
   SplM_opt_info *spl_opt_info;
   key_map keys_usable_for_splitting;
 
+  /*
+   Null rejecting conds added for all tables so we can do range analysis
+   on these conditions
+  */
+  Item* null_rejecting_conds;
+
   void init(THD *thd, TABLE_LIST *tl);
   bool fill_item_list(List<Item> *item_list) const;
   void reset_item_list(List<Item> *item_list, uint skip) const;

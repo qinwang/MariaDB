@@ -1,0 +1,455 @@
+# Test added to check that null filtering is used by range optimizer
+create table ten(a int);
+insert into ten values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table one_k(a int);
+insert into one_k select A.a + B.a* 10 + C.a * 100 from ten A, ten B, ten C;
+create table one_m(a int);
+insert into one_m select A.a + B.a* 1000  from one_k A, one_k B;
+delete from one_m where a=0 limit 1;
+create table t1 (
+id int(10) unsigned NOT NULL AUTO_INCREMENT,
+filler varchar(100),
+subset_id int(11) DEFAULT NULL,
+PRIMARY KEY (id),
+KEY t1_subset_id (subset_id)
+);
+create table t1_subsets (
+id int(10) unsigned NOT NULL AUTO_INCREMENT,
+filler1 varchar(100),
+filler2 varchar(100),
+filler3 varchar(100),
+PRIMARY KEY (id)
+);
+insert into t1 select a,a, NULL from one_m where a < 50*1000;
+insert into t1_subsets select a,a,a,a from one_m where a < 500*1000 limit 499000;
+analyze format=json
+SELECT * FROM   t1 WHERE t1.subset_id IN (SELECT t1_subsets.id FROM t1_subsets);
+ANALYZE
+{
+  "query_block": {
+    "select_id": 1,
+    "r_loops": 1,
+    "r_total_time_ms": "REPLACED",
+    "table": {
+      "table_name": "t1",
+      "access_type": "range",
+      "possible_keys": ["t1_subset_id"],
+      "key": "t1_subset_id",
+      "key_length": "5",
+      "used_key_parts": ["subset_id"],
+      "r_loops": 1,
+      "rows": 3,
+      "r_rows": 0,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 100,
+      "index_condition": "t1.subset_id is not null"
+    },
+    "table": {
+      "table_name": "t1_subsets",
+      "access_type": "eq_ref",
+      "possible_keys": ["PRIMARY"],
+      "key": "PRIMARY",
+      "key_length": "4",
+      "used_key_parts": ["id"],
+      "ref": ["test.t1.subset_id"],
+      "r_loops": 0,
+      "rows": 1,
+      "r_rows": null,
+      "filtered": 100,
+      "r_filtered": null,
+      "attached_condition": "t1.subset_id = t1_subsets.`id`",
+      "using_index": true
+    }
+  }
+}
+drop table t1,t1_subsets,ten,one_k,one_m;
+create table t0(a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1(a int);
+insert into t1 select A.a + B.a* 10 + C.a * 100 from t0 A, t0 B, t0 C;
+create table t2 (
+pk int primary key, 
+a int, b int, 
+filler char(200), 
+key(a)
+);
+insert into t2 select a, 1000-a, 1000-a, repeat('abc-',50) from t1 where a<200 limit 200;
+create table t3 (
+pk int primary key, 
+a int, b int, 
+filler char(200), 
+key(a)
+);
+insert into t3 select a,      1000-a, 1000-a, repeat('abc-',50) from t1;
+insert into t3 select a+1000, 1000+a, 1000+a, repeat('abc-',50) from t1;
+analyze format=json
+select t2.pk,t2.a,t2.b,t3.pk,t3.a,t3.b 
+from t2, t3 where t2.a=t3.a order by t2.a limit 5;
+ANALYZE
+{
+  "query_block": {
+    "select_id": 1,
+    "r_loops": 1,
+    "r_total_time_ms": "REPLACED",
+    "table": {
+      "table_name": "t2",
+      "access_type": "range",
+      "possible_keys": ["a"],
+      "key": "a",
+      "key_length": "5",
+      "used_key_parts": ["a"],
+      "r_loops": 1,
+      "rows": 200,
+      "r_rows": 5,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 100,
+      "index_condition": "t2.a is not null"
+    },
+    "table": {
+      "table_name": "t3",
+      "access_type": "ref",
+      "possible_keys": ["a"],
+      "key": "a",
+      "key_length": "5",
+      "used_key_parts": ["a"],
+      "ref": ["test.t2.a"],
+      "r_loops": 5,
+      "rows": 1,
+      "r_rows": 1,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 100
+    }
+  }
+}
+drop table t1,t2,t3,t0;
+CREATE TABLE t1 ( a varchar(1)) ;
+INSERT INTO t1 VALUES ('c'),('b');
+CREATE TABLE t3 ( a int NOT NULL , b varchar(1)) ;
+INSERT INTO t3 VALUES (29,'c');
+INSERT INTO t3 VALUES (2,'c');
+alter table t1 add index aa (a);
+alter table t3 add index bb (b);
+SELECT * FROM t1 WHERE EXISTS ( SELECT a FROM t3 WHERE t3.b = t1.a);
+a
+c
+explain extended
+SELECT * FROM t1 WHERE EXISTS ( SELECT a FROM t3 WHERE t3.b = t1.a);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	PRIMARY	t3	range	bb	bb	4	NULL	2	100.00	Using index condition; LooseScan
+1	PRIMARY	t1	ref	aa	aa	4	test.t3.b	2	100.00	Using index
+Warnings:
+Note	1276	Field or reference 'test.t1.a' of SELECT #2 was resolved in SELECT #1
+Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` semi join (`test`.`t3`) where `test`.`t1`.`a` = `test`.`t3`.`b`
+analyze format=json
+SELECT * FROM t1 WHERE EXISTS ( SELECT a FROM t3 WHERE t3.b = t1.a);
+ANALYZE
+{
+  "query_block": {
+    "select_id": 1,
+    "r_loops": 1,
+    "r_total_time_ms": "REPLACED",
+    "table": {
+      "table_name": "t3",
+      "access_type": "range",
+      "possible_keys": ["bb"],
+      "key": "bb",
+      "key_length": "4",
+      "used_key_parts": ["b"],
+      "r_loops": 1,
+      "rows": 2,
+      "r_rows": 1,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 100,
+      "index_condition": "t3.b is not null",
+      "loose_scan": true
+    },
+    "table": {
+      "table_name": "t1",
+      "access_type": "ref",
+      "possible_keys": ["aa"],
+      "key": "aa",
+      "key_length": "4",
+      "used_key_parts": ["a"],
+      "ref": ["test.t3.b"],
+      "r_loops": 1,
+      "rows": 2,
+      "r_rows": 1,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 100,
+      "using_index": true
+    }
+  }
+}
+drop table t1,t3;
+create table t1 (d int, id1 int, index idx1 (d, id1));
+insert into t1 values
+(3, 20), (2, 40), (3, 10), (1, 10), (3, 20), (1, 40), (2, 30), (3, 30);
+create table t2 (id1 int, id2 int, index idx2 (id1));
+insert into t2 values 
+(20, 100), (30, 400), (20, 400), (30, 200), (10, 300), (10, 200), (40, 100),
+(40, 200), (30, 300), (10, 400), (20, 200), (20, 300);
+insert into t2 values 
+(21, 10), (31, 400), (21, 400), (31, 200), (11, 300), (11, 200), (41, 100),
+(41, 200), (31, 300), (11, 400), (21, 200), (21, 300);
+set join_cache_level=6;
+explain
+select t1.id1, sum(t2.id2) from t1 join t2 on t1.id1=t2.id1 
+where t1.d=3 group by t1.id1;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	idx1	idx1	10	NULL	4	Using where; Using index
+1	SIMPLE	t2	ref	idx2	idx2	5	test.t1.id1	2	
+analyze format=json
+select t1.id1, sum(t2.id2) from t1 join t2 on t1.id1=t2.id1 
+where t1.d=3 group by t1.id1;
+ANALYZE
+{
+  "query_block": {
+    "select_id": 1,
+    "r_loops": 1,
+    "r_total_time_ms": "REPLACED",
+    "table": {
+      "table_name": "t1",
+      "access_type": "range",
+      "possible_keys": ["idx1"],
+      "key": "idx1",
+      "key_length": "10",
+      "used_key_parts": ["d", "id1"],
+      "r_loops": 1,
+      "rows": 4,
+      "r_rows": 4,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 25,
+      "r_filtered": 100,
+      "attached_condition": "t1.d = 3 and t1.id1 is not null",
+      "using_index": true
+    },
+    "table": {
+      "table_name": "t2",
+      "access_type": "ref",
+      "possible_keys": ["idx2"],
+      "key": "idx2",
+      "key_length": "5",
+      "used_key_parts": ["id1"],
+      "ref": ["test.t1.id1"],
+      "r_loops": 4,
+      "rows": 2,
+      "r_rows": 3.5,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 100
+    }
+  }
+}
+drop table t1,t2;
+set @save_optimizer_switch= @@optimizer_switch;
+set @@optimizer_switch= 'materialization=off';
+CREATE TABLE t1 (a CHAR(1), b VARCHAR(10), key(a) , key(b));
+INSERT INTO t1 VALUES ('a', 'aa');
+INSERT INTO t1 VALUES ('a', 'aaa');
+analyze format=json SELECT a,b FROM t1 WHERE b IN (SELECT a FROM t1);
+ANALYZE
+{
+  "query_block": {
+    "select_id": 1,
+    "r_loops": 1,
+    "r_total_time_ms": "REPLACED",
+    "table": {
+      "table_name": "t1",
+      "access_type": "range",
+      "possible_keys": ["b"],
+      "key": "b",
+      "key_length": "13",
+      "used_key_parts": ["b"],
+      "r_loops": 1,
+      "rows": 2,
+      "r_rows": 2,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 100,
+      "index_condition": "t1.b is not null"
+    },
+    "table": {
+      "table_name": "t1",
+      "access_type": "ref",
+      "possible_keys": ["a"],
+      "key": "a",
+      "key_length": "2",
+      "used_key_parts": ["a"],
+      "ref": ["test.t1.b"],
+      "r_loops": 2,
+      "rows": 2,
+      "r_rows": 2,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 0,
+      "attached_condition": "t1.b = t1.a",
+      "using_index": true,
+      "first_match": "t1"
+    }
+  }
+}
+SELECT a,b FROM t1 WHERE b IN (SELECT a FROM t1);
+a	b
+CREATE TABLE t2 (a VARCHAR(1), b VARCHAR(10), key(a), key(b));
+INSERT INTO t2 SELECT * FROM t1;
+analyze format=json SELECT a,b FROM t2 WHERE b IN (SELECT a FROM t2);
+ANALYZE
+{
+  "query_block": {
+    "select_id": 1,
+    "r_loops": 1,
+    "r_total_time_ms": "REPLACED",
+    "table": {
+      "table_name": "t2",
+      "access_type": "index",
+      "possible_keys": ["a"],
+      "key": "a",
+      "key_length": "4",
+      "used_key_parts": ["a"],
+      "r_loops": 1,
+      "rows": 2,
+      "r_rows": 1,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 50,
+      "r_filtered": 100,
+      "attached_condition": "t2.a is not null",
+      "using_index": true,
+      "loose_scan": true
+    },
+    "table": {
+      "table_name": "t2",
+      "access_type": "ref",
+      "possible_keys": ["b"],
+      "key": "b",
+      "key_length": "13",
+      "used_key_parts": ["b"],
+      "ref": ["test.t2.a"],
+      "r_loops": 1,
+      "rows": 1,
+      "r_rows": 0,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 100,
+      "index_condition": "t2.b = t2.a"
+    }
+  }
+}
+SELECT a,b FROM t2 WHERE b IN (SELECT a FROM t2);
+a	b
+analyze format=json SELECT a,b FROM t1 WHERE b IN (SELECT a FROM t1 WHERE LENGTH(a)<500);
+ANALYZE
+{
+  "query_block": {
+    "select_id": 1,
+    "r_loops": 1,
+    "r_total_time_ms": "REPLACED",
+    "table": {
+      "table_name": "t1",
+      "access_type": "range",
+      "possible_keys": ["b"],
+      "key": "b",
+      "key_length": "13",
+      "used_key_parts": ["b"],
+      "r_loops": 1,
+      "rows": 2,
+      "r_rows": 2,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 100,
+      "index_condition": "t1.b is not null"
+    },
+    "table": {
+      "table_name": "t1",
+      "access_type": "ref",
+      "possible_keys": ["a"],
+      "key": "a",
+      "key_length": "2",
+      "used_key_parts": ["a"],
+      "ref": ["test.t1.b"],
+      "r_loops": 2,
+      "rows": 2,
+      "r_rows": 2,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 0,
+      "attached_condition": "octet_length(t1.a) < 500 and t1.b = t1.a",
+      "using_index": true,
+      "first_match": "t1"
+    }
+  }
+}
+SELECT a,b FROM t1 WHERE b IN (SELECT a FROM t1 WHERE LENGTH(a)<500);
+a	b
+DROP TABLE t1,t2;
+set @@optimizer_switch= @save_optimizer_switch;
+set @save_optimizer_switch= @@optimizer_switch;
+set optimizer_switch='exists_to_in=on';
+set optimizer_switch='exists_to_in=on,in_to_exists=on,semijoin=on,materialization=off,subquery_cache=off';
+CREATE TABLE t1 ( a varchar(1)) ;
+INSERT INTO t1 VALUES ('c'),('b');
+CREATE TABLE t2 ( b varchar(1)) ;
+INSERT INTO t2 VALUES ('v'),('v'),('c'),(NULL),('x'),('i'),('e'),('p'),('s'),('j'),('z'),('c'),('a'),('q'),('y'),(NULL),('r'),('v'),(NULL),('r');
+CREATE TABLE t3 ( a int NOT NULL , b varchar(1)) ;
+INSERT INTO t3 VALUES (29,'c');
+INSERT INTO t3 VALUES (2,'c');
+alter table t1 add index aa (a);
+alter table t3 add index bb (b);
+SELECT * FROM t1 WHERE EXISTS ( SELECT a FROM t3 WHERE t3.b = t1.a);
+a
+c
+explain extended
+SELECT * FROM t1 WHERE EXISTS ( SELECT a FROM t3 WHERE t3.b = t1.a);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	PRIMARY	t3	range	bb	bb	4	NULL	2	100.00	Using index condition; LooseScan
+1	PRIMARY	t1	ref	aa	aa	4	test.t3.b	2	100.00	Using index
+Warnings:
+Note	1276	Field or reference 'test.t1.a' of SELECT #2 was resolved in SELECT #1
+Note	1003	select `test`.`t1`.`a` AS `a` from `test`.`t1` semi join (`test`.`t3`) where `test`.`t1`.`a` = `test`.`t3`.`b`
+analyze format=json SELECT * FROM t1 WHERE EXISTS ( SELECT a FROM t3 WHERE t3.b = t1.a);
+ANALYZE
+{
+  "query_block": {
+    "select_id": 1,
+    "r_loops": 1,
+    "r_total_time_ms": "REPLACED",
+    "table": {
+      "table_name": "t3",
+      "access_type": "range",
+      "possible_keys": ["bb"],
+      "key": "bb",
+      "key_length": "4",
+      "used_key_parts": ["b"],
+      "r_loops": 1,
+      "rows": 2,
+      "r_rows": 1,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 100,
+      "index_condition": "t3.b is not null",
+      "loose_scan": true
+    },
+    "table": {
+      "table_name": "t1",
+      "access_type": "ref",
+      "possible_keys": ["aa"],
+      "key": "aa",
+      "key_length": "4",
+      "used_key_parts": ["a"],
+      "ref": ["test.t3.b"],
+      "r_loops": 1,
+      "rows": 2,
+      "r_rows": 1,
+      "r_total_time_ms": "REPLACED",
+      "filtered": 100,
+      "r_filtered": 100,
+      "using_index": true
+    }
+  }
+}
+drop table t1,t2,t3;
+set @@optimizer_switch= @save_optimizer_switch;

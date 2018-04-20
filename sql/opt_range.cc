@@ -155,6 +155,7 @@ class SEL_IMERGE;
 #define CLONE_KEY1_MAYBE 1
 #define CLONE_KEY2_MAYBE 2
 #define swap_clone_flag(A) ((A & 1) << 1) | ((A & 2) >> 1)
+#define FT_KEYPART   (MAX_FIELDS+10)
 
 
 /*
@@ -2400,6 +2401,7 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
 {
   uint idx;
   double scan_time;
+  Item *null_rejecting_conds= NULL;
   DBUG_ENTER("SQL_SELECT::test_quick_select");
   DBUG_PRINT("enter",("keys_to_use: %lu  prev_tables: %lu  const_tables: %lu",
 		      (ulong) keys_to_use.to_ulonglong(), (ulong) prev_tables,
@@ -2423,6 +2425,7 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
     read_time= (double) records + scan_time + 1; // Force to use index
   
   possible_keys.clear_all();
+  null_rejecting_conds= head->null_rejecting_conds;
 
   DBUG_PRINT("info",("Time to scan table: %g", read_time));
 
@@ -2431,7 +2434,7 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
   {
     uchar buff[STACK_BUFF_ALLOC];
     MEM_ROOT alloc;
-    SEL_TREE *tree= NULL;
+    SEL_TREE *tree= NULL, *not_null_cond_tree= NULL;
     KEY_PART *key_parts;
     KEY *key_info;
     PARAM param;
@@ -2540,6 +2543,12 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
     TRP_GROUP_MIN_MAX *group_trp;
     double best_read_time= read_time;
 
+    if (null_rejecting_conds)
+    {
+      not_null_cond_tree= null_rejecting_conds->get_mm_tree(&param, 
+                                          &null_rejecting_conds);
+    }
+
     if (cond)
     {
       if ((tree= cond->get_mm_tree(&param, &cond)))
@@ -2557,6 +2566,13 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
         if (tree->type != SEL_TREE::KEY && tree->type != SEL_TREE::KEY_SMALLER)
           tree= NULL;
       }
+    }
+    if (not_null_cond_tree)
+    {
+      if (!tree)
+        tree= not_null_cond_tree;
+      else
+        tree= tree_and(&param, tree, not_null_cond_tree);
     }
 
     /*
@@ -14641,6 +14657,113 @@ void QUICK_GROUP_MIN_MAX_SELECT::add_keys_and_lengths(String *key_names,
   bool first= TRUE;
 
   add_key_and_length(key_names, used_lengths, &first);
+}
+
+inline void add_cond(THD *thd, Item **e1, Item *e2)
+{
+  if (*e1)
+  {
+    if (!e2)
+      return;
+    Item *res;
+    if ((res= new (thd->mem_root) Item_cond_and(thd, *e1, e2)))
+    {
+      res->fix_fields(thd, 0);
+      res->update_used_tables();
+      *e1= res;
+    }
+  }
+  else
+    *e1= e2;
+}
+
+/*
+  Create null rejecting conditions for a table, for all the equalites
+  present in the WHERE clause of a query.
+
+  SYNOPSIS
+    make_null_rejecting_conds()
+    @param TABLE        - Keys of this table will participate in null
+                          rejecting conditions
+    @param keyuse_array - array that has all the equalites of the
+                          WHERE clasuse
+
+  DESCRIPTION
+    This function creates null rejecting conditions for a table. These
+    conditions are created to do range analysis on them , the conditions
+    are of the form tbl.key.keypart IS NOT NULL.
+
+  IMPLEMENTATION
+    Lookup in the keyuse array to check if it has equalites that belong
+    to the given table. If yes then find out if the conditions are null
+    rejecting and accordingly create all the condition for the keys of a
+    given table and AND them.
+
+
+  RETURN
+    NOT NULL - Found null rejecting conditions for the given table
+    NULL - No null rejecting conditions for the given table
+*/
+
+void make_null_rejecting_conds(THD *thd, TABLE *table,
+                        DYNAMIC_ARRAY *keyuse_array, key_map *const_keys)
+{
+  KEY *keyinfo;
+  Item *cond= NULL;
+  KEYUSE* keyuse;
+
+  /*
+    The null rejecting conds added will be on the keypart of a key, so for
+    that we need the table to atleast have a key.
+  */
+  if (!table->s->keys)
+    return ;
+  if (table->null_rejecting_conds)
+    return;
+
+  for(uint i=0; i < keyuse_array->elements; i++)
+  {
+    keyuse= (KEYUSE*)dynamic_array_ptr(keyuse_array, i);
+    if (keyuse->table == table)
+    {
+      /*
+        No null rejecting conds for a hash key orr full-text keys
+      */
+      if (keyuse->key == MAX_KEY || keyuse->keypart == FT_KEYPART)
+        continue;
+      keyinfo= keyuse->table->key_info+keyuse->key;
+      Field *field= keyinfo->key_part[keyuse->keypart].field;
+
+      /*
+        No need to add null-rejecting condition if we have a
+        keyuse element as
+          - table.key.keypart= const
+          - (table.key.keypart= tbl.otherfield or table.key.keypart IS NULL)
+          - table.key.keypart IS NOT NULLABLE
+      */
+
+      if (keyuse->val->const_item()
+          || !(keyuse->null_rejecting && field->maybe_null())
+          || keyuse->optimize & KEY_OPTIMIZE_REF_OR_NULL)
+        continue;
+
+      Item_field *field_item= new (thd->mem_root)Item_field(thd, field);
+      Item* not_null_item= new (thd->mem_root)Item_func_isnotnull(thd,
+                                                             field_item);
+
+      /*
+        adding the key to const keys as we have the condition
+        as key.keypart IS NOT NULL
+      */
+
+      const_keys->set_bit(keyuse->key);
+      not_null_item->fix_fields(thd, 0);
+      not_null_item->update_used_tables();
+      add_cond(thd, &cond, not_null_item);
+    }
+  }
+  table->null_rejecting_conds= cond;
+  return;
 }
 
 
