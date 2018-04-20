@@ -7919,3 +7919,5 @@ ER_VERS_QUERY_IN_PARTITION
         eng "SYSTEM_TIME partitions in table %`s does not support historical query"
 ER_KEY_DOESNT_SUPPORT
         eng "%s index %`s does not support this operation"
+ER_FIELD_CONSTRAINT_FAILED
+        eng "FIELD CONSTRAINT %`s failed for %`-.192s.%`-.192s"

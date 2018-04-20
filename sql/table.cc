@@ -5243,7 +5243,11 @@ int TABLE::verify_constraints(bool ignore_failure)
       if (((*chk)->expr->val_int() == 0 && !(*chk)->expr->null_value) ||
           in_use->is_error())
       {
-        my_error(ER_CONSTRAINT_FAILED,
+        enum_vcol_info_type vcol_type= (*chk)->get_vcol_type();
+        DBUG_ASSERT(vcol_type == VCOL_CHECK_TABLE ||
+                    vcol_type == VCOL_CHECK_FIELD);
+        my_error(vcol_type == VCOL_CHECK_TABLE ? ER_CONSTRAINT_FAILED :
+                                                 ER_FIELD_CONSTRAINT_FAILED,
                  MYF(ignore_failure ? ME_JUST_WARNING : 0), (*chk)->name.str,
                  s->db.str, s->table_name.str);
         return ignore_failure ? VIEW_CHECK_SKIP : VIEW_CHECK_ERROR;

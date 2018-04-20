@@ -6,9 +6,9 @@ set @save_check_constraint=@@check_constraint_checks;
 create table t1 (a int check(a>10), b int check (b > 20), constraint `min` check (a+b > 100), constraint `max` check (a+b <500)) engine=myisam;
 show create table t1;
 insert into t1 values (100,100);
---error ER_CONSTRAINT_FAILED
+--error ER_FIELD_CONSTRAINT_FAILED
 insert into t1 values (1,1);
---error ER_CONSTRAINT_FAILED
+--error ER_FIELD_CONSTRAINT_FAILED
 insert into t1 values (20,1);
 --error ER_CONSTRAINT_FAILED
 insert into t1 values (20,30);
@@ -37,7 +37,7 @@ alter table t1 add check (a+b+c < 500);
 set check_constraint_checks=@save_check_constraint;
 
 show create table t1;
---error ER_CONSTRAINT_FAILED
+--error ER_FIELD_CONSTRAINT_FAILED
 insert into t1 values(105,105,105);
 --error ER_CONSTRAINT_FAILED
 insert into t1 values(249,249,9);
@@ -98,7 +98,7 @@ create table t1 (a int check (a > @b));
 #
 create table t1 (a int check (a = 1));
 insert t1 values (1);
---error ER_CONSTRAINT_FAILED
+--error ER_FIELD_CONSTRAINT_FAILED
 insert t1 values (2);
 insert t1 values (NULL);
 select * from t1;
@@ -135,3 +135,45 @@ INSERT INTO t1 VALUES (NULL, 'Ken'),(NULL, 'Brian');
 set sql_mode=default;
 select * from t1;
 drop table t1;
+#
+# There should be difference between errors when using the same name for field
+# and table check constraints.
+#
+--echo #
+--echo # Test same name for field/table check constraints
+--echo #
+# There is a field  constraint called 'b'
+# Table constraint called 'a' and 'b' and 2 constraints called 'x'
+# An error will be generated because of the duplicating 'x' constraint
+--error ER_DUP_CONSTRAINT_NAME
+create table t(a int, b int check(b>0),
+                       constraint b check(a<b), constraint a check(a>0),
+                       constraint x check(a>10), constraint x check(a>10));
+
+create table t(a int, b int check(b>0),
+                       constraint b check(a<b), constraint a check(a>0),
+                       constraint x check(a>10));
+
+show create table t;
+
+# Generate error when field constraint 'b' is violated
+--echo # Field constraint 'b' will fail
+--error ER_FIELD_CONSTRAINT_FAILED
+insert into t values (-1, 0);
+
+# Generate error when table constraint 'b' is violated.
+# From example below it can be seen also that 'x' constraint will be violated
+# as well but first one is 'b' constraint.
+--echo # Table constraint 'b' will fail
+--error ER_CONSTRAINT_FAILED
+insert into t values (1,1);
+
+# In order to test thesis from above
+alter table t drop constraint b; # table contraint will be dropped
+alter table t add constraint b check(a<b);
+show create table t;
+
+--echo # Table constraint 'x' will fail
+--error ER_CONSTRAINT_FAILED
+insert into t values (1,1);
+drop table t;
