@@ -1,0 +1,10 @@
+--source include/have_partition.inc
+ 
+CREATE TABLE t1 (t TEXT DEFAULT '') CHARSET=latin1;
+ALTER TABLE t1 COLLATE utf8_bin;
+--error ER_BAD_FIELD_ERROR
+ALTER TABLE t1 PARTITION BY HASH(f);
+ALTER TABLE t1 ADD COLUMN i INT;
+ 
+# Cleanup
+DROP TABLE t1;
