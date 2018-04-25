@@ -4003,8 +4003,8 @@ sub run_testcase ($$) {
       else
       {
          $proc= My::SafeProcess->wait_any_timeout($test_timeout);
-         $keep_waiting_proc{$proc} = 1;
       }
+      $keep_waiting_proc{$proc} = 1;
     }
 
     if (scalar(keys(%keep_waiting_proc)) == 0)
@@ -4015,11 +4015,11 @@ sub run_testcase ($$) {
 
     mark_time_used('test');
     my $expected_exit = 1;
-    foreach $proc (keys(%keep_waiting_proc)) {
+    foreach my $wait_for_proc (keys(%keep_waiting_proc)) {
       # ----------------------------------------------------
       # Was it the test program that exited
       # ----------------------------------------------------
-      if ($proc eq $test)
+      if ($wait_for_proc eq $test)
       {
         my $res= $test->exit_status();
 
@@ -4128,15 +4128,15 @@ sub run_testcase ($$) {
       # ----------------------------------------------------
       # Check if it was an expected crash
       # ----------------------------------------------------
-      my $check_crash = check_expected_crash_and_restart($proc);
-      if ($check_crash == 0) # unexpected exit/crash of $proc
+      my $check_crash = check_expected_crash_and_restart($wait_for_proc);
+      if ($check_crash == 0) # unexpected exit/crash of $wait_for_proc
       {
         $expected_exit = 0;
         last;
       }
-      elsif ($check_crash == 1) # $proc was started again by check_expected_crash_and_restart()
+      elsif ($check_crash == 1) # $wait_for_proc was started again by check_expected_crash_and_restart()
       {
-        delete $keep_waiting_proc{$proc};
+        delete $keep_waiting_proc{$wait_for_proc};
       }
       elsif ($check_crash == 2) # we must keep waiting
       {
