@@ -123,7 +123,7 @@ public:
     return error;
   }
   void position(const uchar *record)
-  { return file->position(record); }
+  { }
   const char *table_type() const
   { return file->table_type(); }
   ulong index_flags(uint inx, uint part, bool all_parts) const

@@ -184,3 +184,12 @@ ERROR HY000: Function or expression 'setval()' cannot be used in the CHECK claus
 CREATE TABLE t1 (a int, b int as (next value for s1 > 0));
 ERROR HY000: Function or expression 'nextval()' cannot be used in the GENERATED ALWAYS AS clause of `b`
 drop sequence s1;
+#
+# MDEV-13024: Server crashes in my_store_ptr upon DELETE from
+# sequence in multi-table format
+#
+CREATE SEQUENCE s;
+DELETE s FROM s;
+ERROR HY000: Storage engine SEQUENCE of the table `test`.`s` doesn't have this option
+DROP SEQUENCE s;
+# End of 10.3 tests
