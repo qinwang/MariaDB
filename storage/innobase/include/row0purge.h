@@ -127,6 +127,8 @@ struct purge_node_t{
 	the ref member.*/
 	bool	validate_pcur();
 #endif
+	/** meta-data lock for the table name */
+	MDL_ticket*	mdl_ticket;
 };
 
 #endif

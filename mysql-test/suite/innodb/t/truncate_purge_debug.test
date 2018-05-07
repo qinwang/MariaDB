@@ -33,10 +33,7 @@ COMMIT;
 disconnect con2;
 
 connection default;
---source include/wait_all_purged.inc
-
 SET GLOBAL innodb_purge_rseg_truncate_frequency = @saved_frequency;
-
 SET DEBUG_SYNC = 'now SIGNAL finish_scan';
 
 connection con1;
@@ -44,6 +41,7 @@ reap;
 disconnect con1;
 
 connection default;
+--source include/wait_all_purged.inc
 SET DEBUG_SYNC = 'RESET';
 drop table t1;
 --source include/wait_until_count_sessions.inc

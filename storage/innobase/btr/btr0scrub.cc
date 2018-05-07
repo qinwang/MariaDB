@@ -629,7 +629,10 @@ btr_scrub_get_table_and_index(
 	/* argument to dict_table_open_on_index_id */
 	bool dict_locked = true;
 
-	/* open table based on index_id */
+	// FIXME: remove this function, and rewrite this code!
+	// We do not want to have a global index_id, nor do we want
+	// to scan all tables in the dict_sys cache to find a table
+	// by index_id. Can we really not lookup by table id here? */
 	dict_table_t* table = dict_table_open_on_index_id(
 		index_id,
 		dict_locked);
