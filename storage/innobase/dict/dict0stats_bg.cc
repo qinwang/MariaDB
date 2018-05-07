@@ -32,6 +32,7 @@ Created Apr 25, 2012 Vasil Dimov
 #include "srv0start.h"
 #include "ut0new.h"
 #include "fil0fil.h"
+#include "mysqld.h"
 
 #include <vector>
 
@@ -244,27 +245,6 @@ dict_stats_recalc_pool_del(
 }
 
 /*****************************************************************//**
-Wait until background stats thread has stopped using the specified table.
-The caller must have locked the data dictionary using
-row_mysql_lock_data_dictionary() and this function may unlock it temporarily
-and restore the lock before it exits.
-The background stats thread is guaranteed not to start using the specified
-table after this function returns and before the caller unlocks the data
-dictionary because it sets the BG_STAT_IN_PROGRESS bit in table->stats_bg_flag
-under dict_sys->mutex. */
-void
-dict_stats_wait_bg_to_stop_using_table(
-/*===================================*/
-	dict_table_t*	table,	/*!< in/out: table */
-	trx_t*		trx)	/*!< in/out: transaction to use for
-				unlocking/locking the data dict */
-{
-	while (!dict_stats_stop_bg(table)) {
-		DICT_BG_YIELD(trx);
-	}
-}
-
-/*****************************************************************//**
 Initialize global variables needed for the operation of dict_stats_thread()
 Must be called before dict_stats_thread() is started. */
 void
@@ -342,10 +322,13 @@ dict_stats_process_entry_from_recalc_pool()
 	}
 
 	dict_table_t*	table;
+	THD*		stats_thd = current_thd;
+	MDL_ticket*	mdl = NULL;
 
 	mutex_enter(&dict_sys->mutex);
 
-	table = dict_table_open_on_id(table_id, TRUE, DICT_TABLE_OP_NORMAL);
+	table = dict_table_open_on_id(table_id, TRUE, DICT_TABLE_OP_NORMAL,
+				      stats_thd, &mdl);
 
 	if (table == NULL) {
 		/* table does not exist, must have been DROPped
@@ -357,12 +340,10 @@ dict_stats_process_entry_from_recalc_pool()
 	ut_ad(!dict_table_is_temporary(table));
 
 	if (!fil_table_accessible(table)) {
-		dict_table_close(table, TRUE, FALSE);
+		dict_table_close(table, TRUE, FALSE, stats_thd, mdl);
 		mutex_exit(&dict_sys->mutex);
 		return;
 	}
-
-	table->stats_bg_flag |= BG_STAT_IN_PROGRESS;
 
 	mutex_exit(&dict_sys->mutex);
 
@@ -389,9 +370,7 @@ dict_stats_process_entry_from_recalc_pool()
 
 	mutex_enter(&dict_sys->mutex);
 
-	table->stats_bg_flag = BG_STAT_NONE;
-
-	dict_table_close(table, TRUE, FALSE);
+	dict_table_close(table, TRUE, FALSE, stats_thd, mdl);
 
 	mutex_exit(&dict_sys->mutex);
 }
@@ -430,6 +409,7 @@ os_thread_ret_t
 DECLARE_THREAD(dict_stats_thread)(void*)
 {
 	my_thread_init();
+	THD*	thd = innobase_create_background_thd("InnoDB statistics thread");
 	ut_a(!srv_read_only_mode);
 
 #ifdef UNIV_PFS_THREAD
@@ -472,6 +452,9 @@ DECLARE_THREAD(dict_stats_thread)(void*)
 	srv_dict_stats_thread_active = false;
 
 	os_event_set(dict_stats_shutdown_event);
+
+	innobase_destroy_background_thd(thd);
+
 	my_thread_end();
 
 	/* We count the number of threads in os_thread_exit(). A created

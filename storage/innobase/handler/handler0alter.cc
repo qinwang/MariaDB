@@ -4979,14 +4979,6 @@ prepare_inplace_alter_table_dict(
 	row_mysql_lock_data_dictionary(ctx->trx);
 	dict_locked = true;
 
-	/* Wait for background stats processing to stop using the table that
-	we are going to alter. We know bg stats will not start using it again
-	until we are holding the data dict locked and we are holding it here
-	at least until checking ut_ad(user_table->n_ref_count == 1) below.
-	XXX what may happen if bg stats opens the table after we
-	have unlocked data dictionary below? */
-	dict_stats_wait_bg_to_stop_using_table(user_table, ctx->trx);
-
 	online_retry_drop_indexes_low(ctx->new_table, ctx->trx);
 
 	ut_d(dict_table_check_for_dup_indexes(
@@ -9263,35 +9255,6 @@ ha_innobase::commit_inplace_alter_table(
 	row_mysql_lock_data_dictionary(trx);
 
 	ut_ad(log_append_on_checkpoint(NULL) == NULL);
-
-	/* Prevent the background statistics collection from accessing
-	the tables. */
-	for (;;) {
-		bool	retry = false;
-
-		for (inplace_alter_handler_ctx** pctx = ctx_array;
-		     *pctx; pctx++) {
-			ha_innobase_inplace_ctx*	ctx
-				= static_cast<ha_innobase_inplace_ctx*>(*pctx);
-
-			DBUG_ASSERT(new_clustered == ctx->need_rebuild());
-
-			if (new_clustered
-			    && !dict_stats_stop_bg(ctx->old_table)) {
-				retry = true;
-			}
-
-			if (!dict_stats_stop_bg(ctx->new_table)) {
-				retry = true;
-			}
-		}
-
-		if (!retry) {
-			break;
-		}
-
-		DICT_BG_YIELD(trx);
-	}
 
 	/* Make a concurrent Drop fts Index to wait until sync of that
 	fts index is happening in the background */

@@ -999,8 +999,6 @@ dict_index_get_nth_field_pos(
 @param[in]	tbl_name	InnoDB table name
 @param[in,out]	mysql_db_name	database name buffer
 @param[in,out]	mysql_tbl_name	table name buffer
-@param[in,out]	is_temp		true if it is a temporary table
-				which starts with #sql.
 @return true if the table name is parsed properly. */
 static bool dict_parse_tbl_name(
 	const char*	tbl_name,

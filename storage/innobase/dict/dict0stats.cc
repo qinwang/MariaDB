@@ -645,9 +645,6 @@ dict_stats_assert_initialized(
 	UNIV_MEM_ASSERT_RW_ABORT(&table->stat_modified_counter,
 			   sizeof(table->stat_modified_counter));
 
-	UNIV_MEM_ASSERT_RW_ABORT(&table->stats_bg_flag,
-			   sizeof(table->stats_bg_flag));
-
 	for (dict_index_t* index = dict_table_get_first_index(table);
 	     index != NULL;
 	     index = dict_table_get_next_index(index)) {
@@ -808,7 +805,6 @@ dict_stats_snapshot_create(
 	t->stat_persistent = table->stat_persistent;
 	t->stats_auto_recalc = table->stats_auto_recalc;
 	t->stats_sample_pages = table->stats_sample_pages;
-	t->stats_bg_flag = table->stats_bg_flag;
 
 	dict_table_stats_unlock(table, RW_S_LATCH);
 
@@ -2269,9 +2265,7 @@ dict_stats_update_persistent(
 			continue;
 		}
 
-		if (!(table->stats_bg_flag & BG_STAT_SHOULD_QUIT)) {
-			dict_stats_analyze_index(index);
-		}
+		dict_stats_analyze_index(index);
 
 		table->stat_sum_of_other_index_sizes
 			+= index->stat_index_size;

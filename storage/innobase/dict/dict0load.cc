@@ -3762,8 +3762,10 @@ UNIV_INTERN
 dict_table_t*
 dict_table_open_on_index_id(
 /*========================*/
-	index_id_t index_id,	/*!< in: index id */
-	bool dict_locked)	/*!< in: dict locked */
+	index_id_t	index_id,	/*!< in: index id */
+	bool		dict_locked,	/*!< in: dict locked */
+	THD*		thd,
+	MDL_ticket**	mdl)
 {
 	if (!dict_locked) {
 		mutex_enter(&dict_sys->mutex);
@@ -3776,7 +3778,8 @@ dict_table_open_on_index_id(
 		bool local_dict_locked = true;
 		table = dict_table_open_on_id(table_id,
 					      local_dict_locked,
-					      DICT_TABLE_OP_LOAD_TABLESPACE);
+					      DICT_TABLE_OP_LOAD_TABLESPACE,
+					      thd, mdl);
 	}
 
 	if (!dict_locked) {

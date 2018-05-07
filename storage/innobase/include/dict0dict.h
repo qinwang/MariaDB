@@ -144,7 +144,9 @@ UNIV_INTERN
 dict_table_t*
 dict_table_open_on_index_id(
 	index_id_t	index_id,
-	bool		dict_locked)
+	bool		dict_locked,
+	THD*		thd,
+	MDL_ticket**	mdl)
 	__attribute__((warn_unused_result));
 
 /** Decrements the count of open handles to a table.

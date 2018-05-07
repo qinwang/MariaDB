@@ -14,6 +14,7 @@ Scrubbing of btree pages
 #include "fsp0fsp.h"
 #include "dict0dict.h"
 #include "mtr0mtr.h"
+#include "mysqld.h"
 
 /* used when trying to acquire dict-lock */
 UNIV_INTERN bool fil_crypt_is_closing(ulint space);
@@ -173,19 +174,20 @@ btr_scrub_unlock_dict()
 	dict_mutex_exit_for_mysql();
 }
 
-/****************************************************************
-Release reference to table
-*/
+/** Release reference to table
+@param[in]	table	table to scrub
+@param[in]	thd	data scrub thread
+@param[in,out]	mdl	meta data locking */
 static
 void
 btr_scrub_table_close(
-/*==================*/
-	dict_table_t* table)  /*!< in: table */
+	dict_table_t*	table,
+	THD*		thd = NULL,
+	MDL_ticket*	mdl = NULL)
 {
 	bool dict_locked = true;
 	bool try_drop = false;
-	table->stats_bg_flag &= ~BG_SCRUB_IN_PROGRESS;
-	dict_table_close(table, dict_locked, try_drop);
+	dict_table_close(table, dict_locked, try_drop, thd, mdl);
 }
 
 /****************************************************************
@@ -558,10 +560,6 @@ btr_scrub_table_needs_scrubbing(
 	if (table == NULL)
 		return false;
 
-	if (table->stats_bg_flag & BG_STAT_SHOULD_QUIT) {
-		return false;
-	}
-
 	if (table->to_be_dropped) {
 		return false;
 	}
@@ -628,17 +626,17 @@ btr_scrub_get_table_and_index(
 
 	/* argument to dict_table_open_on_index_id */
 	bool dict_locked = true;
+	MDL_ticket *mdl = NULL;
+	THD* scrub_thd = current_thd;
 
 	/* open table based on index_id */
 	dict_table_t* table = dict_table_open_on_index_id(
-		index_id, dict_locked);
+		index_id, dict_locked, scrub_thd, &mdl);
 
 	if (table != NULL) {
-		/* mark table as being scrubbed */
-		table->stats_bg_flag |= BG_SCRUB_IN_PROGRESS;
 
 		if (!btr_scrub_table_needs_scrubbing(table)) {
-			btr_scrub_table_close(table);
+			btr_scrub_table_close(table, scrub_thd, mdl);
 			btr_scrub_unlock_dict();
 			return;
 		}

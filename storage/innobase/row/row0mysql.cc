@@ -2999,7 +2999,6 @@ row_discard_tablespace_begin(
 		name, TRUE, FALSE, DICT_ERR_IGNORE_NONE);
 
 	if (table) {
-		dict_stats_wait_bg_to_stop_using_table(table, trx);
 		ut_a(!is_system_tablespace(table->space_id));
 		ut_ad(!table->n_foreign_key_checks_running);
 	}
@@ -3529,12 +3528,7 @@ row_drop_table_for_mysql(
 			fts_optimize_remove_table(table);
 			row_mysql_lock_data_dictionary(trx);
 		}
-
-		dict_stats_wait_bg_to_stop_using_table(table, trx);
 	}
-
-	/* make sure background stats thread is not running on the table */
-	ut_ad(!(table->stats_bg_flag & BG_STAT_IN_PROGRESS));
 
 	/* Delete the link file if used. */
 	if (DICT_TF_HAS_DATA_DIR(table->flags)) {
@@ -4101,17 +4095,6 @@ loop:
 		dict_table_open() or after dict_table_close(). But this is OK
 		if we are holding, the dict_sys->mutex. */
 		ut_ad(mutex_own(&dict_sys->mutex));
-
-		/* Disable statistics on the found table. */
-		if (!dict_stats_stop_bg(table)) {
-			row_mysql_unlock_data_dictionary(trx);
-
-			os_thread_sleep(250000);
-
-			ut_free(table_name);
-
-			goto loop;
-		}
 
 		/* Wait until MySQL does not have any queries running on
 		the table */
