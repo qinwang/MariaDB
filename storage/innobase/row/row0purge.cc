@@ -922,13 +922,18 @@ row_purge_parse_undo_rec(
 		break;
 	}
 
-	/* Prevent DROP TABLE etc. from running when we are doing the purge
-	for this row */
+	table_id_t* unaccessible_ids = node->unaccessible_ids;
 
 try_again:
 
 	ut_ad(!sync_check_iterate(sync_check()));
 	THD* purge_thd = current_thd;
+
+	if (std::find(unaccessible_ids,
+		      unaccessible_ids + node->num_ids, table_id)
+	    != unaccessible_ids + node->num_ids) {
+		goto err_exit;
+	}
 
 	node->table = dict_table_open_on_id(
 		table_id, FALSE, DICT_TABLE_OP_NORMAL, purge_thd,
@@ -937,6 +942,11 @@ try_again:
 	if (node->table == NULL) {
 		/* The table has been dropped: no need to do purge and
 		release mdl happened as a part of open process itself */
+		if (node->num_ids >= MAX_IDS_SIZE) {
+			node->num_ids = 0;
+		}
+
+		unaccessible_ids[node->num_ids++] = table_id;
 		goto err_exit;
 	}
 

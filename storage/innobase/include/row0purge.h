@@ -37,6 +37,8 @@ Created 3/14/1997 Heikki Tuuri
 #include "row0types.h"
 #include "ut0vec.h"
 
+const ulint	MAX_IDS_SIZE = 20;
+
 /** Create a purge node to a query graph.
 @param[in]	parent	parent node, i.e., a thr node
 @param[in]	heap	memory heap where created
@@ -129,6 +131,12 @@ struct purge_node_t{
 #endif
 	/* MDL ticket for the table name */
 	MDL_ticket*	mdl_ticket;
+
+	/* List of un-accessible table ids */
+	table_id_t	unaccessible_ids[MAX_IDS_SIZE];
+
+	/* Number of dropped table ids */
+	ulint		num_ids;
 };
 
 #endif
