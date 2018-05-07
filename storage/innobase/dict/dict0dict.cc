@@ -85,6 +85,7 @@ ib_warn_row_too_big(const dict_table_t*	table);
 
 #include <vector>
 #include <algorithm>
+#include "sql_table.h"
 
 /** the dictionary system */
 dict_sys_t*	dict_sys	= NULL;
@@ -250,8 +251,11 @@ dict_get_db_name_len(
 {
 	const char*	s;
 	s = strchr(name, '/');
-	ut_a(s);
-	return ulint(s - name);
+	if (s == NULL) {
+		return 0;
+	}
+
+	return(s - name);
 }
 
 /** Reserve the dictionary system mutex. */
@@ -478,16 +482,21 @@ dict_table_try_drop_aborted_and_mutex_exit(
 	}
 }
 
-/********************************************************************//**
-Decrements the count of open handles to a table. */
+/** Decrements the count of open handles to a table.
+@param[in,out]	table		table
+@param[in]	dict_locked	data dictionary locked
+@param[in]	try_drop	try to drop any orphan indexes after
+				an aborted online index creation
+@param[in]	thd		thread to release mdl lock
+@param[in]	mdl		metadata lock or NULL if the thread
+				is a foreground one. */
 void
 dict_table_close(
-/*=============*/
-	dict_table_t*	table,		/*!< in/out: table */
-	ibool		dict_locked,	/*!< in: TRUE=data dictionary locked */
-	ibool		try_drop)	/*!< in: TRUE=try to drop any orphan
-					indexes after an aborted online
-					index creation */
+	dict_table_t*	table,
+	bool		dict_locked,
+	bool		try_drop,
+	THD*		thd,
+	MDL_ticket*	mdl)
 {
 	if (!dict_locked) {
 		mutex_enter(&dict_sys->mutex);
@@ -532,6 +541,10 @@ dict_table_close(
 		if (drop_aborted) {
 			dict_table_try_drop_aborted(NULL, table_id, 0);
 		}
+	}
+
+	if (thd && mdl) {
+		release_mdl(thd, mdl);
 	}
 }
 
@@ -982,15 +995,171 @@ dict_index_get_nth_field_pos(
 	return(ULINT_UNDEFINED);
 }
 
-/**********************************************************************//**
-Returns a table object based on table id.
+/** Parse the table file name into table name and database name.
+@param[in]	tbl_name	InnoDB table name
+@param[in,out]	mysql_db_name	database name buffer
+@param[in,out]	mysql_tbl_name	table name buffer
+@param[in,out]	is_temp		true if it is a temporary table
+				which starts with #sql.
+@return true if the table name is parsed properly. */
+static bool dict_parse_tbl_name(
+	const char*	tbl_name,
+	char		(&mysql_db_name)[NAME_LEN + 1],
+	char		(&mysql_tbl_name)[NAME_LEN + 1])
+{
+	ulint db_len = dict_get_db_name_len(tbl_name);
+	char db_buf[MAX_DATABASE_NAME_LEN  + 1];
+	char tbl_buf[MAX_TABLE_NAME_LEN + 1];
+
+	ut_ad(db_len > 0);
+	ut_ad(db_len <= MAX_DATABASE_NAME_LEN);
+
+	memcpy(db_buf, tbl_name, db_len);
+	db_buf[db_len] = 0;
+
+	size_t tbl_len = strlen(tbl_name) - db_len - 1;
+
+	memcpy(tbl_buf, tbl_name + db_len + 1, tbl_len);
+	tbl_buf[tbl_len] = 0;
+
+	filename_to_tablename(db_buf, mysql_db_name,
+			      MAX_DATABASE_NAME_LEN + 1, true);
+
+	if (tbl_len > TEMP_FILE_PREFIX_LENGTH
+	    && (strncmp(tbl_buf, TEMP_FILE_PREFIX, TEMP_FILE_PREFIX_LENGTH)
+			== 0)) {
+		return false;
+	}
+
+	const char* is_part = strstr(tbl_buf, "#");
+
+	if (char* is_part = strchr(tbl_buf, '#')) {
+		is_part = '\0';
+	}
+
+	filename_to_tablename(tbl_buf, mysql_tbl_name, MAX_TABLE_NAME_LEN + 1,
+			      true);
+	return true;
+}
+
+/** Acquire MDL shared lock for the table name.
+@param[in]	table		table object
+@param[in]	dict_locked	data dictionary locked
+@param[in]	table_op	operation to perform
+@param[in]	thd		background thread
+@param[in]	mdl		mdl ticket
+@return table object after locking mdl shared. */
+static dict_table_t* dict_acquire_mdl_shared(
+	dict_table_t*	table,
+	bool		dict_locked,
+	dict_table_op_t	table_op,
+	THD*		thd,
+	MDL_ticket**	mdl)
+{
+	if (table == NULL || mdl == NULL) {
+		return table;
+	}
+
+	table_id_t table_id = table->id;
+	
+	ulint db_len = dict_get_db_name_len(table->name.m_name);
+
+	if (db_len == 0) {
+	/* InnoDB System table */
+		return table;
+	}
+
+	char  db_buf[NAME_LEN + 1], db_buf1[NAME_LEN + 1];
+	char  tbl_buf[NAME_LEN + 1], tbl_buf1[NAME_LEN + 1];
+	bool		mdl_acquire = false;
+	bool		unaccessible = false;
+
+	if (!dict_parse_tbl_name(table->name.m_name, db_buf, tbl_buf)) {
+		/* Intermediate table starts with #sql */
+		return table;
+	}
+
+retry_mdl:
+	if (!unaccessible && (!table->is_readable() || table->corrupted)) {
+		if (mdl_acquire) {
+			release_mdl(thd, *mdl);
+		}
+		unaccessible = true;
+	}
+
+	if (!dict_locked) {
+		mutex_enter(&dict_sys->mutex);
+	}
+
+	table->release();
+
+	if (!dict_locked) {
+		mutex_exit(&dict_sys->mutex);
+	}
+
+	if (unaccessible) {
+		return NULL;
+	}
+
+	if (!acquire_shared_table_mdl(thd, db_buf, tbl_buf, mdl)) {
+		mdl_acquire = true;
+	}
+
+	table = dict_table_open_on_id(table_id, dict_locked, table_op,
+				      NULL, NULL);
+
+	if (table == NULL) {
+		/* Table is dropped. */
+
+		if (mdl_acquire) {
+			release_mdl(thd, *mdl);
+		}
+		return NULL;
+	}
+
+	if (!fil_table_accessible(table)) {
+		if (mdl_acquire) {
+			release_mdl(thd, *mdl);
+		}
+
+		unaccessible = true;
+		goto retry_mdl;
+	}
+
+	dict_parse_tbl_name(table->name.m_name, db_buf1, tbl_buf1);
+
+	if (mdl_acquire && strcmp(db_buf, db_buf1) == 0
+	    && strcmp(tbl_buf, tbl_buf1) == 0) {
+		return table;
+	}
+
+	/* Table is renamed. So release mdl lock for old name and
+	try to acquire the mdl for new table name. */
+	if (mdl_acquire) {
+		release_mdl(thd, *mdl);
+	}
+
+	strcpy(tbl_buf, tbl_buf1);
+	strcpy(db_buf, db_buf1);
+	goto retry_mdl;
+}
+
+/** Returns a table object based on table id and it does MDL locking
+depends on the parameter MDL_ticket.
+@param[in]	table_id	table identifier
+@param[in]	dict_locked	data dictionary locked
+@param[in]	table_op	operation to perform
+@param[in,out]	thd		background thread or NULL if
+				the current thread is foreground
+@param[in,out]	mdl		meta data lock
 @return table, NULL if does not exist */
 dict_table_t*
 dict_table_open_on_id(
-/*==================*/
-	table_id_t	table_id,	/*!< in: table id */
-	ibool		dict_locked,	/*!< in: TRUE=data dictionary locked */
-	dict_table_op_t	table_op)	/*!< in: operation to perform */
+	table_id_t	table_id,
+	bool		dict_locked,
+	dict_table_op_t	table_op,
+	THD*		thd,
+	MDL_ticket**	mdl)
 {
 	dict_table_t*	table;
 
@@ -1023,7 +1192,8 @@ dict_table_open_on_id(
 			table, table_op == DICT_TABLE_OP_DROP_ORPHAN);
 	}
 
-	return(table);
+	return(dict_acquire_mdl_shared(table, dict_locked, table_op,
+				       thd, mdl));
 }
 
 /********************************************************************//**
@@ -1139,7 +1309,6 @@ is usually the appropriate function.
 @return table, NULL if does not exist */
 dict_table_t*
 dict_table_open_on_name(
-/*====================*/
 	const char*	table_name,	/*!< in: table name */
 	ibool		dict_locked,	/*!< in: TRUE=data dictionary locked */
 	ibool		try_drop,	/*!< in: TRUE=try to drop any orphan

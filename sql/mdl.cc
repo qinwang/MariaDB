@@ -3014,6 +3014,29 @@ bool MDL_context::has_explicit_locks()
   return false;
 }
 
+bool acquire_shared_table_mdl(THD *thd, const char *db_name,
+                              const char *table_name,
+                              MDL_ticket **out_mdl_ticket)
+{
+
+  MDL_request mdl_request;
+  mdl_request.init(MDL_key::TABLE, db_name, table_name,
+		   MDL_SHARED, MDL_EXPLICIT);
+
+  if (thd->mdl_context.acquire_lock(&mdl_request,
+				    thd->variables.lock_wait_timeout))
+    return true;
+
+  if (out_mdl_ticket) *out_mdl_ticket = mdl_request.ticket;
+
+  return false;
+}
+
+void release_mdl(THD *thd, MDL_ticket *mdl_ticket)
+{
+  thd->mdl_context.release_lock(mdl_ticket);
+}
+
 #ifdef WITH_WSREP
 static
 const char *wsrep_get_mdl_type_name(enum_mdl_type type)
@@ -3066,4 +3089,5 @@ void MDL_ticket::wsrep_report(bool debug)
               m_lock->key.name(),
               psi_stage->m_name);
 }
+
 #endif /* WITH_WSREP */

@@ -136,8 +136,7 @@ row_purge_remove_clust_if_poss_low(
 	ulint			offsets_[REC_OFFS_NORMAL_SIZE];
 	rec_offs_init(offsets_);
 
-	ut_ad(rw_lock_own(dict_operation_lock, RW_LOCK_S));
-
+	ut_ad(!sync_check_iterate(sync_check()));
 	index = dict_table_get_first_index(node->table);
 
 	log_free_check();
@@ -671,7 +670,7 @@ static
 void
 row_purge_reset_trx_id(purge_node_t* node, mtr_t* mtr)
 {
-	ut_ad(rw_lock_own(dict_operation_lock, RW_LOCK_S));
+	ut_ad(!sync_check_iterate(sync_check()));
 	/* Reset DB_TRX_ID, DB_ROLL_PTR for old records. */
 	mtr->start();
 
@@ -746,7 +745,7 @@ row_purge_upd_exist_or_extern_func(
 {
 	mem_heap_t*	heap;
 
-	ut_ad(rw_lock_own(dict_operation_lock, RW_LOCK_S));
+	ut_ad(!sync_check_iterate(sync_check()));
 	ut_ad(!node->table->skip_alter_undo);
 
 	if (node->rec_type == TRX_UNDO_UPD_DEL_REC
@@ -927,23 +926,21 @@ row_purge_parse_undo_rec(
 	for this row */
 
 try_again:
-	rw_lock_s_lock_inline(dict_operation_lock, 0, __FILE__, __LINE__);
+
+	ut_ad(!sync_check_iterate(sync_check()));
+	THD* purge_thd = current_thd;
 
 	node->table = dict_table_open_on_id(
-		table_id, FALSE, DICT_TABLE_OP_NORMAL);
+		table_id, FALSE, DICT_TABLE_OP_NORMAL, purge_thd,
+		&node->mdl_ticket);
 
 	if (node->table == NULL) {
-		/* The table has been dropped: no need to do purge */
+		/* The table has been dropped: no need to do purge and
+		release mdl happened as a part of open process itself */
 		goto err_exit;
 	}
 
 	ut_ad(!dict_table_is_temporary(node->table));
-
-	if (!fil_table_accessible(node->table)) {
-		dict_table_close(node->table, FALSE, FALSE);
-		node->table = NULL;
-		goto err_exit;
-	}
 
 	switch (type) {
 	case TRX_UNDO_INSERT_DEFAULT:
@@ -957,8 +954,9 @@ try_again:
 		/* Need server fully up for virtual column computation */
 		if (!mysqld_server_started) {
 
-			dict_table_close(node->table, FALSE, FALSE);
-			rw_lock_s_unlock(dict_operation_lock);
+			dict_table_close(node->table, FALSE, FALSE,
+					 purge_thd, node->mdl_ticket);
+			ut_ad(!sync_check_iterate(sync_check()));
 			if (srv_shutdown_state != SRV_SHUTDOWN_NONE) {
 				return(false);
 			}
@@ -976,9 +974,11 @@ try_again:
 		/* The table was corrupt in the data dictionary.
 		dict_set_corrupted() works on an index, and
 		we do not have an index to call it with. */
-		dict_table_close(node->table, FALSE, FALSE);
+		dict_table_close(node->table, FALSE, FALSE, purge_thd,
+				 node->mdl_ticket);
 err_exit:
-		rw_lock_s_unlock(dict_operation_lock);
+		ut_ad(!sync_check_iterate(sync_check()));
+		node->mdl_ticket = NULL;
 		return(false);
 	}
 
@@ -1071,8 +1071,10 @@ row_purge_record_func(
 	}
 
 	if (node->table != NULL) {
-		dict_table_close(node->table, FALSE, FALSE);
+		dict_table_close(node->table, FALSE, FALSE, current_thd,
+				 node->mdl_ticket);
 		node->table = NULL;
+		node->mdl_ticket = NULL;
 	}
 
 	return(purged);
@@ -1106,8 +1108,6 @@ row_purge(
 
 			bool purged = row_purge_record(
 				node, undo_rec, thr, updated_extern);
-
-			rw_lock_s_unlock(dict_operation_lock);
 
 			if (purged
 			    || srv_shutdown_state != SRV_SHUTDOWN_NONE) {

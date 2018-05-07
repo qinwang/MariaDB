@@ -631,8 +631,7 @@ btr_scrub_get_table_and_index(
 
 	/* open table based on index_id */
 	dict_table_t* table = dict_table_open_on_index_id(
-		index_id,
-		dict_locked);
+		index_id, dict_locked);
 
 	if (table != NULL) {
 		/* mark table as being scrubbed */

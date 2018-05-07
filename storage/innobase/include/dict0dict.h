@@ -47,6 +47,7 @@ Created 1/8/1996 Heikki Tuuri
 #include <deque>
 #include "fsp0fsp.h"
 #include "dict0pagecompress.h"
+#include "mdl.h"
 
 extern bool innodb_table_stats_not_found;
 extern bool innodb_index_stats_not_found;
@@ -115,38 +116,53 @@ enum dict_table_op_t {
 	DICT_TABLE_OP_OPEN_ONLY_IF_CACHED
 };
 
-/**********************************************************************//**
-Returns a table object based on table id.
+/** Returns a table object based on table id and it does MDL locking
+depends on the parameter MDL_ticket.
+@param[in]	table_id	table identifier
+@param[in]	dict_lock	data dictionary locked
+@param[in]	table_op	operation to perform
+@param[in,out]	thd		background thread or NULL if
+				the current thread is foreground
+@param[in,out]	mdl		meta data lock
 @return table, NULL if does not exist */
 dict_table_t*
 dict_table_open_on_id(
-/*==================*/
-	table_id_t	table_id,	/*!< in: table id */
-	ibool		dict_locked,	/*!< in: TRUE=data dictionary locked */
-	dict_table_op_t	table_op)	/*!< in: operation to perform */
+	table_id_t	table_id,
+	bool		dict_locked,
+	dict_table_op_t	table_op,
+	THD*		thd = NULL,
+	MDL_ticket**	mdl = NULL)
 	MY_ATTRIBUTE((warn_unused_result));
 
-/**********************************************************************//**
-Returns a table object based on table id.
-@return	table, NULL if does not exist */
+/** Open the table based on index id.
+@param[in]	index_id	index identifier
+@param[in]	dict_locked	dictionary locked
+@param[in]	thd		background thread
+@param[in]	mdl		metadata lock
+@return table or NULL if it doesn't exist. */
 UNIV_INTERN
 dict_table_t*
 dict_table_open_on_index_id(
-/*==================*/
-	table_id_t	table_id,	/*!< in: table id */
-	bool		dict_locked)	/*!< in: TRUE=data dictionary locked */
+	index_id_t	index_id,
+	bool		dict_locked)
 	__attribute__((warn_unused_result));
-/********************************************************************//**
-Decrements the count of open handles to a table. */
+
+/** Decrements the count of open handles to a table.
+@param[in,out]	table		table
+@param[in]	dict_locked	data dictionary locked
+@param[in]	try_drop	try to drop any orphan indexes after
+				an aborted online index creation
+@param[in]	thd		thread to release mdl lock
+@param[in]	mdl		metadaata lock or NULL if the thread
+				is a foreground one. */
 void
 dict_table_close(
-/*=============*/
-	dict_table_t*	table,		/*!< in/out: table */
-	ibool		dict_locked,	/*!< in: TRUE=data dictionary locked */
-	ibool		try_drop)	/*!< in: TRUE=try to drop any orphan
-					indexes after an aborted online
-					index creation */
-	MY_ATTRIBUTE((nonnull));
+	dict_table_t*	table,
+	bool		dict_locked,
+	bool		try_drop,
+	THD*		thd = NULL,
+	MDL_ticket*	mdl = NULL);
+
 /*********************************************************************//**
 Closes the only open handle to a table and drops a table while assuring
 that dict_sys->mutex is held the whole time.  This assures that the table

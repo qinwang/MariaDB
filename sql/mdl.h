@@ -1003,4 +1003,28 @@ extern "C" ulong max_write_lock_count;
 
 extern MYSQL_PLUGIN_IMPORT
 int mdl_iterate(int (*callback)(MDL_ticket *ticket, void *arg), void *arg);
+
+/*
+  Acquire shared metadata lock on the given table name with
+  explicit duration.
+
+  @param thd               Thread to which mdl lock belongs to
+  @param db_name           database name
+  @param table_name        table name
+  @param out_mdl_ticket    Pointer to MDL_ticket upon successful lock
+			   attempt
+*/
+bool acquire_shared_table_mdl(THD *thd, const char *db_name,
+			      const char *table_name,
+			      MDL_ticket **out_mdl_ticket);
+
+/*
+  Release MDL_EXPLICIT lock held by a ticket
+
+  @param thd          THD to which lock belongs to
+  @param mdl_ticket   Lock ticket.
+
+*/
+void release_mdl(THD *thd, MDL_ticket *mdl_ticket);
+
 #endif
