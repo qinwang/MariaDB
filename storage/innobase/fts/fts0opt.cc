@@ -2955,15 +2955,18 @@ fts_optimize_sync_table(
 	table_id_t	table_id)
 {
 	dict_table_t*   table = NULL;
+	MDL_ticket*	mdl = NULL;
+	THD*		fts_optimize_thd = current_thd;
 
-	table = dict_table_open_on_id(table_id, FALSE, DICT_TABLE_OP_NORMAL);
+	table = dict_table_open_on_id(table_id, FALSE, DICT_TABLE_OP_NORMAL,
+				      fts_optimize_thd, &mdl);
 
 	if (table) {
 		if (dict_table_has_fts_index(table) && table->fts->cache) {
 			fts_sync_table(table, true, false, true);
 		}
 
-		dict_table_close(table, FALSE, FALSE);
+		dict_table_close(table, FALSE, FALSE, fts_optimize_thd, mdl);
 	}
 }
 
@@ -2987,6 +2990,8 @@ DECLARE_THREAD(fts_optimize_thread)(
 
 	ut_ad(!srv_read_only_mode);
 	my_thread_init();
+	THD*		thd = innobase_create_background_thd(
+				"InnoDB fts optimize thread");
 
 	heap = mem_heap_create(sizeof(dict_table_t*) * 64);
 	heap_alloc = ib_heap_allocator_create(heap);
@@ -3127,6 +3132,9 @@ DECLARE_THREAD(fts_optimize_thread)(
 	ib::info() << "FTS optimize thread exiting.";
 
 	os_event_set(fts_opt_shutdown_event);
+	
+	innobase_destroy_background_thd(thd);
+
 	my_thread_end();
 
 	/* We count the number of threads in os_thread_exit(). A created

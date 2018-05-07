@@ -317,7 +317,7 @@ thd_destructor_proxy(void *)
 
 	while (srv_fast_shutdown == 0 &&
 	       (trx_sys.any_active_transactions() ||
-		(uint)thread_count > srv_n_purge_threads + 2)) {
+		(uint)thread_count > srv_n_purge_threads + 3)) {
 		thd_proc_info(thd, "InnoDB slow shutdown wait");
 		os_thread_sleep(1000);
 	}
