@@ -6704,7 +6704,7 @@ check_if_can_drop_indexes:
 		for (dict_index_t* index = dict_table_get_first_index(indexed_table);
 		     index != NULL; index = dict_table_get_next_index(index)) {
 
-			if (!index->to_be_dropped && dict_index_is_corrupted(index)
+			if (!index->to_be_dropped && index->is_corrupted()
 			    && index->is_committed()) {
 				my_error(ER_INDEX_CORRUPT, MYF(0), index->name());
 				goto err_exit;

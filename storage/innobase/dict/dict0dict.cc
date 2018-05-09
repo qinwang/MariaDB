@@ -1029,8 +1029,6 @@ static bool dict_parse_tbl_name(
 		return false;
 	}
 
-	const char* is_part = strstr(tbl_buf, "#");
-
 	if (char* is_part = strchr(tbl_buf, '#')) {
 		is_part = '\0';
 	}
