@@ -1197,7 +1197,10 @@ bool Sql_cmd_analyze_table::execute(THD *thd)
                          "analyze", lock_type, 1, 0, 0, 0,
                          &handler::ha_analyze, 0);
   /* ! we write after unlocking the table */
-  if (!res && !m_lex->no_write_to_binlog)
+  if (!res && !m_lex->no_write_to_binlog &&
+          !(thd->is_current_stmt_binlog_format_row() &&
+              first_table->table &&
+              first_table->table->s->tmp_table != NO_TMP_TABLE ))
   {
     /*
       Presumably, ANALYZE and binlog writing doesn't require synchronization
@@ -1254,7 +1257,10 @@ bool Sql_cmd_optimize_table::execute(THD *thd)
                       "optimize", TL_WRITE, 1, 0, 0, 0,
                       &handler::ha_optimize, 0);
   /* ! we write after unlocking the table */
-  if (!res && !m_lex->no_write_to_binlog)
+  if (!res && !m_lex->no_write_to_binlog &&
+          !(thd->is_current_stmt_binlog_format_row() &&
+              first_table->table &&
+              first_table->table->s->tmp_table != NO_TMP_TABLE ))
   {
     /*
       Presumably, OPTIMIZE and binlog writing doesn't require synchronization
@@ -1287,7 +1293,10 @@ bool Sql_cmd_repair_table::execute(THD *thd)
                          &handler::ha_repair, &view_repair);
 
   /* ! we write after unlocking the table */
-  if (!res && !m_lex->no_write_to_binlog)
+  if (!res && !m_lex->no_write_to_binlog &&
+          !(thd->is_current_stmt_binlog_format_row() &&
+              first_table->table &&
+              first_table->table->s->tmp_table != NO_TMP_TABLE ))
   {
     /*
       Presumably, REPAIR and binlog writing doesn't require synchronization

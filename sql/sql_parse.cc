@@ -448,6 +448,16 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_EXECUTE]=   CF_CAN_GENERATE_ROW_EVENTS;
 
   /*
+    The following admin table operations are allowed
+    on log tables.
+  */
+  sql_command_flags[SQLCOM_REPAIR]=    CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS | CF_REPORT_PROGRESS;
+  sql_command_flags[SQLCOM_OPTIMIZE]|= CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS | CF_REPORT_PROGRESS;
+  sql_command_flags[SQLCOM_ANALYZE]=   CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS | CF_REPORT_PROGRESS;
+  sql_command_flags[SQLCOM_CHECK]=     CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS | CF_REPORT_PROGRESS;
+  sql_command_flags[SQLCOM_CHECKSUM]=  CF_REPORT_PROGRESS;
+
+  /*
     We don't want to change to statement based replication for these commands
   */
   sql_command_flags[SQLCOM_ROLLBACK]|= CF_FORCE_ORIGINAL_BINLOG_FORMAT;
@@ -457,18 +467,23 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_TRUNCATE]|= CF_FORCE_ORIGINAL_BINLOG_FORMAT;
   /* We don't want to replicate DROP for temp tables in row format */
   sql_command_flags[SQLCOM_DROP_TABLE]|= CF_FORCE_ORIGINAL_BINLOG_FORMAT;
+  /* We don't want to replicate CREATE/DROP INDEX for temp tables in row format */
+  sql_command_flags[SQLCOM_CREATE_INDEX]|= CF_FORCE_ORIGINAL_BINLOG_FORMAT;
+  sql_command_flags[SQLCOM_DROP_INDEX]|= CF_FORCE_ORIGINAL_BINLOG_FORMAT;
+  /* We don't want to replicate OPTIMIZE TABLE for temp tables in row format */
+  sql_command_flags[SQLCOM_OPTIMIZE]|= CF_FORCE_ORIGINAL_BINLOG_FORMAT;
+  /* We don't want to replicate ANALYZE TABLE for temp tables in row format */
+  sql_command_flags[SQLCOM_ANALYZE]|= CF_FORCE_ORIGINAL_BINLOG_FORMAT;
+  /* We don't want to replicate REPAIR TABLE for temp tables in row format */
+  sql_command_flags[SQLCOM_REPAIR]|= CF_FORCE_ORIGINAL_BINLOG_FORMAT;
+  /* We don't want to replicate CHECK TABLE for temp tables in row format */
+  sql_command_flags[SQLCOM_CHECK]|= CF_FORCE_ORIGINAL_BINLOG_FORMAT;
+  /* We don't want to replicate CHECKSUM TABLE for temp tables in row format */
+  sql_command_flags[SQLCOM_CHECKSUM]|= CF_FORCE_ORIGINAL_BINLOG_FORMAT;
+
   /* One can change replication mode with SET */
   sql_command_flags[SQLCOM_SET_OPTION]|= CF_FORCE_ORIGINAL_BINLOG_FORMAT;
 
-  /*
-    The following admin table operations are allowed
-    on log tables.
-  */
-  sql_command_flags[SQLCOM_REPAIR]=    CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS | CF_REPORT_PROGRESS;
-  sql_command_flags[SQLCOM_OPTIMIZE]|= CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS | CF_REPORT_PROGRESS;
-  sql_command_flags[SQLCOM_ANALYZE]=   CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS | CF_REPORT_PROGRESS;
-  sql_command_flags[SQLCOM_CHECK]=     CF_WRITE_LOGS_COMMAND | CF_AUTO_COMMIT_TRANS | CF_REPORT_PROGRESS;
-  sql_command_flags[SQLCOM_CHECKSUM]=  CF_REPORT_PROGRESS;
 
   sql_command_flags[SQLCOM_CREATE_USER]|=       CF_AUTO_COMMIT_TRANS;
   sql_command_flags[SQLCOM_DROP_USER]|=         CF_AUTO_COMMIT_TRANS;

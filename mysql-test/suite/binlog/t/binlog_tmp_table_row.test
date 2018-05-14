@@ -1,0 +1,85 @@
+# ==== Purpose ====
+#
+# Test if statements used temporary tables are not binlogged in the case of
+# binlog_format=row
+#
+# ==== Method ====
+#
+# We will see if binlog file size is increased or not, It should be constant for the
+# entire period of test.
+#
+# ==== Related bugs ====
+#
+# Mdev-9266
+#
+source include/have_log_bin.inc;
+source include/have_binlog_format_row.inc;
+
+RESET MASTER;
+
+--let $binlog_size= query_get_value(show binary logs, File_size, 1)
+create temporary table t1(a int, b int);
+
+--echo #Add index test
+create index index_a on t1(a);
+alter table t1 add index index_b(b);
+insert into t1 values(1,2);
+
+--let $current_size= query_get_value(show binary logs, File_size, 1)
+if ($binlog_size != $current_size) {
+  die "Temp table written into binlog";
+}
+
+--echo #drop index test
+drop index index_a on t1;
+drop index index_b on t1;
+
+--let $current_size= query_get_value(show binary logs, File_size, 1)
+if ($binlog_size != $current_size) {
+  die "Temp table written into binlog";
+}
+
+--echo #Analyze test
+analyze table t1;
+
+--let $current_size= query_get_value(show binary logs, File_size, 1)
+if ($binlog_size != $current_size) {
+  die "Temp table written into binlog";
+}
+
+--echo #Optimize test
+optimize table t1;
+
+--let $current_size= query_get_value(show binary logs, File_size, 1)
+if ($binlog_size != $current_size) {
+  die "Temp table written into binlog";
+}
+
+--echo #Repair test
+repair table t1;
+
+--let $current_size= query_get_value(show binary logs, File_size, 1)
+if ($binlog_size != $current_size) {
+  die "Temp table written into binlog";
+}
+
+--echo #Check test
+check table t1;
+
+--let $current_size= query_get_value(show binary logs, File_size, 1)
+if ($binlog_size != $current_size) {
+  die "Temp table written into binlog";
+}
+--echo #Checksum test
+checksum table t1;
+
+--let $current_size= query_get_value(show binary logs, File_size, 1)
+if ($binlog_size != $current_size) {
+  die "Temp table written into binlog";
+}
+
+
+#should not crash the server
+analyze table non_existing;
+optimize table non_existing;
+repair table non_existing;
