@@ -129,6 +129,12 @@ struct purge_node_t{
 #endif
 	/** meta-data lock for the table name */
 	MDL_ticket*	mdl_ticket;
+
+	/** Unaccessible table ids (for avoiding futile lookup) */
+	table_id_t	unaccessible_ids[20];
+
+	/** Actual size of unaccessible_ids */
+	ulint		num_ids;
 };
 
 #endif
