@@ -2143,6 +2143,7 @@ DECLARE_THREAD(fil_crypt_thread)(
 					     * by os_thread_create */
 {
 	UT_NOT_USED(arg);
+	my_thread_init();
 
 	mutex_enter(&fil_crypt_threads_mutex);
 	uint thread_no = srv_n_fil_crypt_threads_started;
@@ -2253,6 +2254,8 @@ DECLARE_THREAD(fil_crypt_thread)(
 
 	/* We count the number of threads in os_thread_exit(). A created
 	thread should always use that to exit and not use return() to exit. */
+
+	my_thread_end();
 
 	os_thread_exit();
 

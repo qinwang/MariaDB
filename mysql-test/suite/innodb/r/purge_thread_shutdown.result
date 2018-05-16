@@ -11,6 +11,7 @@ system user	InnoDB purge worker
 system user	InnoDB purge worker
 system user	InnoDB purge worker
 system user	InnoDB shutdown handler
+system user	InnoDB statistics thread
 set global debug_dbug='+d,only_kill_system_threads';
 set global innodb_fast_shutdown=0;
 shutdown;
@@ -24,6 +25,7 @@ system user	InnoDB purge worker
 system user	InnoDB purge worker
 system user	InnoDB purge worker
 system user	InnoDB slow shutdown wait
+system user	InnoDB statistics thread
 set global innodb_fast_shutdown=1;
 select user,state from information_schema.processlist order by 2;
 user	state
@@ -32,5 +34,5 @@ delete from t1 where a=3;
 set global innodb_fast_shutdown=0;
 ERROR 42000: Variable 'innodb_fast_shutdown' can't be set to the value of '0'
 kill ID;
-ERROR 70100: Connection was killed
+ERROR 70ID0: Connection was killed
 drop table t1;

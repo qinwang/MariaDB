@@ -30,6 +30,7 @@ Created 25/08/2016 Jan Lindström
 #include "row0mysql.h"
 #include "srv0start.h"
 #include "ut0new.h"
+#include "mysqld.h"
 
 #include <vector>
 
@@ -220,13 +221,14 @@ dict_stats_process_entry_from_defrag_pool()
 	}
 
 	dict_table_t*	table;
-
-	mutex_enter(&dict_sys->mutex);
+	MDL_ticket*	mdl = NULL;
+	THD*		stats_thd = current_thd;
 
 	/* If the table is no longer cached, we've already lost the in
 	memory stats so there's nothing really to write to disk. */
-	table = dict_table_open_on_id(table_id, TRUE,
-				      DICT_TABLE_OP_OPEN_ONLY_IF_CACHED);
+	table = dict_table_open_on_id(table_id, false,
+				      DICT_TABLE_OP_OPEN_ONLY_IF_CACHED,
+				      stats_thd, &mdl);
 
 	dict_index_t* index = table && !table->corrupted
 		? dict_table_find_index_on_id(table, index_id)
@@ -234,15 +236,13 @@ dict_stats_process_entry_from_defrag_pool()
 
 	if (!index || index->is_corrupted()) {
 		if (table) {
-			dict_table_close(table, TRUE, FALSE);
+			dict_table_close(table, false, false, stats_thd, mdl);
 		}
-		mutex_exit(&dict_sys->mutex);
 		return;
 	}
 
-	mutex_exit(&dict_sys->mutex);
 	dict_stats_save_defrag_stats(index);
-	dict_table_close(table, FALSE, FALSE);
+	dict_table_close(table, false, false, stats_thd, mdl);
 }
 
 /*****************************************************************//**
