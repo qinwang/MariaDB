@@ -179,6 +179,7 @@ set(ROCKSDB_SOURCES
         db/internal_stats.cc
         db/log_reader.cc
         db/log_writer.cc
+        db/logs_with_prep_tracker.cc
         db/malloc_stats.cc
         db/managed_iterator.cc
         db/memtable.cc
@@ -295,6 +296,7 @@ set(ROCKSDB_SOURCES
         util/status_message.cc
         util/string_util.cc
         util/sync_point.cc
+        util/sync_point_impl.cc
         util/testutil.cc
         util/thread_local.cc
         util/threadpool_imp.cc
