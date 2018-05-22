@@ -571,11 +571,9 @@ bool LEX::add_select_to_union_list(bool is_union_distinct,
     return TRUE;
   mysql_init_select(this);
   current_select->linkage= type;
+  current_select->with_all_modifier= !is_union_distinct;
   if (is_union_distinct) /* UNION DISTINCT - remember position */
-  {
-    current_select->master_unit()->union_distinct=
-      current_select;
-  }
+    current_select->master_unit()->union_distinct= current_select;
   else
     DBUG_ASSERT(type == UNION_TYPE);
   return FALSE;
@@ -890,10 +888,10 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
 %parse-param { THD *thd }
 %lex-param { THD *thd }
 /*
-  Currently there are 72 shift/reduce conflicts.
+  Currently there are 68 shift/reduce conflicts.
   We should not introduce new conflicts any more.
 */
-%expect 72
+%expect 68
 
 /*
    Comments for TOKENS.
@@ -1731,7 +1729,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
    and until NEXT_SYM / PREVIOUS_SYM.
 */
 %left   PREC_BELOW_IDENTIFIER_OPT_SPECIAL_CASE
-%left   TRANSACTION_SYM TIMESTAMP PERIOD SYSTEM
+%left   TRANSACTION_SYM TIMESTAMP PERIOD_SYM SYSTEM
 
 
 /*
