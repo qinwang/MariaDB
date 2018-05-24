@@ -18,6 +18,7 @@
 #pragma implementation // gcc: Class implementation
 #endif
 
+// another buildbot pass
 #define MYSQL_SERVER 1
 
 /* For use of 'PRIu64': */
