@@ -19,6 +19,7 @@
 #endif
 
 // another buildbot pass
+// and another (pass #3)
 #define MYSQL_SERVER 1
 
 /* For use of 'PRIu64': */
