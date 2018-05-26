@@ -58,6 +58,10 @@ Place, Suite 330, Boston, MA 02111-1307 USA
 #include "backup_mysql.h"
 #include <btr0btr.h>
 
+#ifdef _WIN32
+#include <direct.h> //rmdir
+#endif
+
 /* list of files to sync for --rsync mode */
 static std::set<std::string> rsync_list;
 /* locations of tablespaces read from .isl files */
@@ -65,6 +69,22 @@ static std::map<std::string, std::string> tablespace_locations;
 
 /* Whether LOCK BINLOG FOR BACKUP has been issued during backup */
 bool binlog_locked;
+
+static void rocksdb_create_checkpoint(const char *checkpoint_dir);
+static void rocksdb_create_checkpoint();
+static bool has_rocksdb_plugin();
+static void copy_or_move_dir(const char *from, const char *to, bool copy = true);
+static void rocksdb_backup_checkpoint();
+static void rocksdb_copy_back();
+
+static bool is_abs_path(const char *path)
+{
+#ifdef _WIN32
+	return path[0] && path[1] == ':' && (path[2] == '/' || path[2] == '\\');
+#else
+	return path[0] == '/';
+#endif
+}
 
 /************************************************************************
 Struct represents file or directory. */
@@ -1138,7 +1158,8 @@ bool
 copy_or_move_file(const char *src_file_path,
 		  const char *dst_file_path,
 		  const char *dst_dir,
-		  uint thread_n)
+		  uint thread_n,
+		 bool copy = xtrabackup_copy_back)
 {
 	ds_ctxt_t *datasink = ds_data;		/* copy to datadir by default */
 	char filedir[FN_REFLEN];
@@ -1186,7 +1207,7 @@ copy_or_move_file(const char *src_file_path,
 		free(link_filepath);
 	}
 
-	ret = (xtrabackup_copy_back ?
+	ret = (copy ?
 		copy_file(datasink, src_file_path, dst_file_path, thread_n) :
 		move_file(datasink, src_file_path, dst_file_path,
 			  dst_dir, thread_n));
@@ -1369,7 +1390,9 @@ bool backup_start()
 	if (!backup_files_from_datadir(fil_path_to_mysql_datadir)) {
 		return false;
 	}
-
+	if (has_rocksdb_plugin()) {
+		rocksdb_create_checkpoint();
+	}
 	// There is no need to stop slave thread before coping non-Innodb data when
 	// --no-lock option is used because --no-lock option requires that no DDL or
 	// DML to non-transaction tables can occur.
@@ -1455,6 +1478,10 @@ bool backup_finish()
 		}
 	}
 
+	if (has_rocksdb_plugin()) {
+		rocksdb_backup_checkpoint();
+	}
+
 	msg_ts("Backup created in directory '%s'\n", xtrabackup_target_dir);
 	if (mysql_binlog_position != NULL) {
 		msg("MySQL binlog position: %s\n", mysql_binlog_position);
@@ -1463,6 +1490,7 @@ bool backup_finish()
 		msg("MySQL slave binlog position: %s\n",
 			mysql_slave_position);
 	}
+
 
 	if (!write_backup_config_file()) {
 		return(false);
@@ -1770,6 +1798,16 @@ copy_back()
 		int i_tmp;
 		bool is_ibdata_file;
 
+		if (strstr(node.filepath,"/#rockdsb/")
+#ifdef _WIN32
+			|| strstr(node.filepath,"\\#rocksdb\\")
+#endif
+		)
+		{
+			// copied at later step
+			continue;
+		}
+
 		/* create empty directories */
 		if (node.is_empty_dir) {
 			char path[FN_REFLEN];
@@ -1833,10 +1871,10 @@ copy_back()
 	}
 
 	/* copy buffer pool dump */
-
+	char path[FN_REFLEN];
 	if (innobase_buffer_pool_filename) {
 		const char *src_name;
-		char path[FN_REFLEN];
+
 
 		src_name = trim_dotslash(innobase_buffer_pool_filename);
 
@@ -1853,6 +1891,8 @@ copy_back()
 					  mysql_data_home, 0);
 		}
 	}
+
+	rocksdb_copy_back();
 
 cleanup:
 	if (it != NULL) {
@@ -2029,4 +2069,128 @@ static bool backup_files_from_datadir(const char *dir_path)
 	}
 	os_file_closedir(dir);
 	return ret;
+}
+
+
+/* Create rocksdb checkpoint in given directory.
+Dies on error.
+*/
+static void rocksdb_create_checkpoint(const char *checkpoint_dir)
+{
+	char query[FN_REFLEN + 32];
+	snprintf(query, sizeof(query), "SET GLOBAL rocksdb_create_checkpoint='%s'", checkpoint_dir);
+	xb_mysql_query(mysql_connection, query, false, true);
+}
+
+
+static bool has_rocksdb_plugin()
+{
+	static bool first_time = true;
+	static bool has_plugin;
+	if (!first_time)
+		return has_plugin;
+
+	const char *query = "SELECT COUNT(*) FROM information_schema.plugins WHERE plugin_name='rocksdb'";
+	MYSQL_RES* result = xb_mysql_query(mysql_connection, query, true);
+	bool ret = false;
+	MYSQL_ROW row = mysql_fetch_row(result);
+	if (row)
+		has_plugin = !strcmp(row[0], "1");
+	mysql_free_result(result);
+	first_time = false;
+	return has_plugin;
+}
+
+
+static char *trim_trailing_dir_sep(char *path)
+{
+	size_t path_len = strlen(path);
+	while (path_len)
+	{
+		char c = path[path_len - 1];
+		if (c == '/' IF_WIN(|| c == '\\', ))
+			path_len--;
+		else
+			break;
+	}
+	path[path_len] = 0;
+	return path;
+}
+
+static void copy_or_move_dir(const char *from, const char *to, bool do_copy)
+{
+	datadir_node_t node;
+	datadir_node_init(&node);
+	datadir_iter_t *it = datadir_iter_new(from, false);
+
+	while (datadir_iter_next(it, &node))
+	{
+		char to_path[FN_REFLEN];
+		const char *from_path = node.filepath;
+		snprintf(to_path, sizeof(to_path), "%s/%s", to, base_name(from_path));
+		if (!copy_file(ds_data,from_path, to_path,1))
+			exit(EXIT_FAILURE);
+		if (!do_copy)
+			unlink(from_path);
+	}
+	datadir_iter_free(it);
+	datadir_node_free(&node);
+	if (!do_copy)
+		rmdir(from);
+}
+
+char rocksdb_dir_checkpoint_dir[FN_REFLEN];
+
+
+static void rocksdb_create_checkpoint()
+{
+	MYSQL_RES *result = xb_mysql_query(mysql_connection, "SELECT @@rocksdb_datadir,@@datadir", true, true);
+	MYSQL_ROW row = mysql_fetch_row(result);
+
+	DBUG_ASSERT(row && row[0] && row[1]);
+
+	char *rocksdbdir = row[0];
+	char *datadir = row[1];
+
+	if (is_abs_path(rocksdbdir))
+	{
+		snprintf(rocksdb_dir_checkpoint_dir, sizeof(rocksdb_dir_checkpoint_dir),
+			"%s/rocksdb_backup_checkpoint.tmp", trim_trailing_dir_sep(rocksdbdir));
+	}
+	else 
+	{
+		snprintf(rocksdb_dir_checkpoint_dir, sizeof(rocksdb_dir_checkpoint_dir),
+			"%s/%s/rocksdb_backup_checkpoint.tmp", trim_trailing_dir_sep(datadir), 
+			trim_dotslash(rocksdbdir));
+	}
+	mysql_free_result(result);
+
+#ifdef _WIN32
+	for (char *p = rocksdb_dir_checkpoint_dir; *p; p++)
+		if (*p == '\\') *p = '/';
+#endif
+
+	rocksdb_create_checkpoint(rocksdb_dir_checkpoint_dir);
+}
+
+static void rocksdb_backup_checkpoint()
+{
+	if (xtrabackup_backup && xtrabackup_stream_fmt == XB_STREAM_FMT_NONE) {
+		char rocksdb_backup_dir[FN_REFLEN];
+		snprintf(rocksdb_backup_dir, sizeof(rocksdb_backup_dir), "%s/%s", xtrabackup_target_dir, "#rocksdb");
+		if (my_mkdir(rocksdb_backup_dir, 0777, MYF(0))){
+			msg_ts("Can't create rocksdb backup directory %s", rocksdb_backup_dir);
+			exit(EXIT_FAILURE);
+		}
+	}
+	copy_or_move_dir(rocksdb_dir_checkpoint_dir, "#rocksdb", false);
+}
+
+static void rocksdb_copy_back() {
+	if (access("#rocksdb", 0))
+		return;
+	char rocksdb_home_dir[FN_REFLEN];
+	snprintf(rocksdb_home_dir, sizeof(rocksdb_home_dir), "%s/%s", mysql_data_home, "#rocksdb");
+	mkdirp(rocksdb_home_dir, 0777, MYF(0));
+	copy_or_move_dir("#rocksdb", rocksdb_home_dir, xtrabackup_copy_back);
 }
