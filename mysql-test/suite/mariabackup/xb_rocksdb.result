@@ -10,4 +10,14 @@ INSERT INTO t VALUES(2);
 SELECT * FROM t;
 i
 1
+# xtrabackup backup to stream
+# xbstream extract
+# xtrabackup prepare
+# shutdown server
+# remove datadir
+# xtrabackup move back
+# restart server
+SELECT * FROM t;
+i
+1
 DROP TABLE t;

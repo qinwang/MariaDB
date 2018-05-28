@@ -146,6 +146,7 @@ char *xtrabackup_tmpdir;
 char *xtrabackup_tables;
 char *xtrabackup_tables_file;
 char *xtrabackup_tables_exclude;
+char *xb_rocksdb_datadir;
 
 typedef std::list<regex_t> regex_list_t;
 static regex_list_t regex_include_list;
@@ -684,7 +685,8 @@ enum options_xtrabackup
   OPT_XTRA_TABLES_EXCLUDE,
   OPT_XTRA_DATABASES_EXCLUDE,
   OPT_PROTOCOL,
-  OPT_LOCK_DDL_PER_TABLE
+  OPT_LOCK_DDL_PER_TABLE,
+  OPT_ROCKSDB_DATADIR
 };
 
 struct my_option xb_client_options[] =
@@ -1227,6 +1229,11 @@ struct my_option xb_server_options[] =
    "before xtrabackup starts to copy it and until the backup is completed.",
    (uchar*) &opt_lock_ddl_per_table, (uchar*) &opt_lock_ddl_per_table, 0,
    GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+
+  {"rocksdb-datadir", OPT_ROCKSDB_DATADIR, "RocksDB data directory."
+   "This option is only  used with --copy-back or --move-back option",
+  &xb_rocksdb_datadir, &xb_rocksdb_datadir,
+  0, GET_STR, REQUIRED_ARG, 0, 0, 0, 0, 0, 0 },
 
   { 0, 0, 0, 0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0}
 };

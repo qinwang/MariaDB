@@ -1798,7 +1798,7 @@ copy_back()
 		int i_tmp;
 		bool is_ibdata_file;
 
-		if (strstr(node.filepath,"/#rockdsb/")
+		if (strstr(node.filepath,"/#rocksdb/")
 #ifdef _WIN32
 			|| strstr(node.filepath,"\\#rocksdb\\")
 #endif
@@ -2092,7 +2092,6 @@ static bool has_rocksdb_plugin()
 
 	const char *query = "SELECT COUNT(*) FROM information_schema.plugins WHERE plugin_name='rocksdb'";
 	MYSQL_RES* result = xb_mysql_query(mysql_connection, query, true);
-	bool ret = false;
 	MYSQL_ROW row = mysql_fetch_row(result);
 	if (row)
 		has_plugin = !strcmp(row[0], "1");
@@ -2190,7 +2189,12 @@ static void rocksdb_copy_back() {
 	if (access("#rocksdb", 0))
 		return;
 	char rocksdb_home_dir[FN_REFLEN];
-	snprintf(rocksdb_home_dir, sizeof(rocksdb_home_dir), "%s/%s", mysql_data_home, "#rocksdb");
+        if (xb_rocksdb_datadir && is_abs_path(xb_rocksdb_datadir)) {
+		strncpy(rocksdb_home_dir, xb_rocksdb_datadir, sizeof(rocksdb_home_dir));
+	} else {
+	   snprintf(rocksdb_home_dir, sizeof(rocksdb_home_dir), "%s/%s", mysql_data_home, 
+		xb_rocksdb_datadir?trim_dotslash(xb_rocksdb_datadir):"#rocksdb");
+	}
 	mkdirp(rocksdb_home_dir, 0777, MYF(0));
 	copy_or_move_dir("#rocksdb", rocksdb_home_dir, xtrabackup_copy_back);
 }
