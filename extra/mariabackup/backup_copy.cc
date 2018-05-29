@@ -2116,6 +2116,32 @@ static char *trim_trailing_dir_sep(char *path)
 	return path;
 }
 
+static bool rmdir_force(const char *dir)
+{
+	if (access(dir, 0))
+		return true;
+	datadir_node_t node;
+	datadir_node_init(&node);
+	datadir_iter_t *it = datadir_iter_new(dir, false);
+
+	while (datadir_iter_next(it, &node))
+	{
+		if (unlink(node.filepath))
+		{
+			msg_ts("Cannot remove %s, errno %d (%s)", node.filepath, errno, strerror(errno));
+			return false;
+		}
+	}
+	datadir_iter_free(it);
+	datadir_node_free(&node);
+	if (rmdir(dir))
+	{
+		msg_ts("Cannot remove directory %s, errno %d (%s)", node.filepath, errno, strerror(errno));
+		return false;
+	}
+	return true;
+}
+
 static void copy_or_move_dir(const char *from, const char *to, bool do_copy)
 {
 	datadir_node_t node;
@@ -2127,19 +2153,20 @@ static void copy_or_move_dir(const char *from, const char *to, bool do_copy)
 		char to_path[FN_REFLEN];
 		const char *from_path = node.filepath;
 		snprintf(to_path, sizeof(to_path), "%s/%s", to, base_name(from_path));
-		if (!copy_file(ds_data,from_path, to_path,1))
+		bool rc = (do_copy ?
+				copy_file(ds_data, from_path, to_path, 1) :
+				move_file(ds_data, from_path, node.filepath_rel,
+					to, 1));
+		if (!rc)
 			exit(EXIT_FAILURE);
-		if (!do_copy)
-			unlink(from_path);
 	}
 	datadir_iter_free(it);
 	datadir_node_free(&node);
 	if (!do_copy)
-		rmdir(from);
+		rmdir_force(from);
 }
 
-char rocksdb_dir_checkpoint_dir[FN_REFLEN];
-
+char rocksdb_checkpoint_dir[FN_REFLEN];
 
 static void rocksdb_create_checkpoint()
 {
@@ -2153,36 +2180,43 @@ static void rocksdb_create_checkpoint()
 
 	if (is_abs_path(rocksdbdir))
 	{
-		snprintf(rocksdb_dir_checkpoint_dir, sizeof(rocksdb_dir_checkpoint_dir),
+		snprintf(rocksdb_checkpoint_dir, sizeof(rocksdb_checkpoint_dir),
 			"%s/rocksdb_backup_checkpoint.tmp", trim_trailing_dir_sep(rocksdbdir));
 	}
 	else 
 	{
-		snprintf(rocksdb_dir_checkpoint_dir, sizeof(rocksdb_dir_checkpoint_dir),
+		snprintf(rocksdb_checkpoint_dir, sizeof(rocksdb_checkpoint_dir),
 			"%s/%s/rocksdb_backup_checkpoint.tmp", trim_trailing_dir_sep(datadir), 
 			trim_dotslash(rocksdbdir));
 	}
 	mysql_free_result(result);
 
 #ifdef _WIN32
-	for (char *p = rocksdb_dir_checkpoint_dir; *p; p++)
+	for (char *p = rocksdb_checkpoint_dir; *p; p++)
 		if (*p == '\\') *p = '/';
 #endif
 
-	rocksdb_create_checkpoint(rocksdb_dir_checkpoint_dir);
+	rocksdb_create_checkpoint(rocksdb_checkpoint_dir);
 }
+
+static int cleanup_rocksdb_checkpoint_dir()
+{
+	return rmdir_force(rocksdb_checkpoint_dir);
+}
+
 
 static void rocksdb_backup_checkpoint()
 {
+	char rocksdb_backup_dir[FN_REFLEN];
+	snprintf(rocksdb_backup_dir, sizeof(rocksdb_backup_dir), "%s/%s", xtrabackup_target_dir, "#rocksdb");
 	if (xtrabackup_backup && xtrabackup_stream_fmt == XB_STREAM_FMT_NONE) {
-		char rocksdb_backup_dir[FN_REFLEN];
-		snprintf(rocksdb_backup_dir, sizeof(rocksdb_backup_dir), "%s/%s", xtrabackup_target_dir, "#rocksdb");
 		if (my_mkdir(rocksdb_backup_dir, 0777, MYF(0))){
 			msg_ts("Can't create rocksdb backup directory %s", rocksdb_backup_dir);
 			exit(EXIT_FAILURE);
 		}
 	}
-	copy_or_move_dir(rocksdb_dir_checkpoint_dir, "#rocksdb", false);
+	copy_or_move_dir(rocksdb_checkpoint_dir, "#rocksdb", true);
+	cleanup_rocksdb_checkpoint_dir();
 }
 
 static void rocksdb_copy_back() {

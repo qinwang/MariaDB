@@ -39,7 +39,16 @@ echo # xtrabackup prepare;
 --disable_result_log
 exec $XTRABACKUP --prepare --target-dir=$targetdir;
 
--- source include/restart_and_restore.inc
+let $_datadir= `SELECT @@datadir`;
+echo # shutdown server;
+--source include/shutdown_mysqld.inc
+echo # remove datadir;
+rmdir $_datadir;
+echo # xtrabackup move back;
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf --move-back --datadir=$_datadir --target-dir=$targetdir;
+echo # restart server;
+--source include/start_mysqld.inc
+
 --enable_result_log
 SELECT * FROM t;
 
