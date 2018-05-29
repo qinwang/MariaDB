@@ -161,13 +161,10 @@
 #cmakedefine gmtime_r @gmtime_r@
 #cmakedefine HAVE_IN_ADDR_T 1
 #cmakedefine HAVE_INITGROUPS 1
-#cmakedefine HAVE_ISNAN 1
-#cmakedefine HAVE_ISINF 1
 #cmakedefine HAVE_LARGE_PAGE_OPTION 1
 #cmakedefine HAVE_LDIV 1
 #cmakedefine HAVE_LRAND48 1
 #cmakedefine HAVE_LOCALTIME_R 1
-#cmakedefine HAVE_LOG2 1
 #cmakedefine HAVE_LSTAT 1
 #cmakedefine HAVE_MEMALIGN 1
 /* #cmakedefine HAVE_MLOCK 1 see Bug#54662 */
@@ -212,7 +209,6 @@
 #cmakedefine HAVE_READLINK 1
 #cmakedefine HAVE_REALPATH 1
 #cmakedefine HAVE_RENAME 1
-#cmakedefine HAVE_RINT 1
 #cmakedefine HAVE_RWLOCK_INIT 1
 #cmakedefine HAVE_SCHED_YIELD 1
 #cmakedefine HAVE_SELECT 1
@@ -420,7 +416,6 @@
 #cmakedefine mode_t @mode_t@
 #cmakedefine SIGQUIT @SIGQUIT@
 #cmakedefine SIGPIPE @SIGPIPE@
-#cmakedefine isnan @isnan@
 #cmakedefine popen @popen@
 #cmakedefine pclose @pclose@
 #cmakedefine ssize_t @ssize_t@

@@ -828,26 +828,6 @@ inline unsigned long long my_double2ulonglong(double d)
 #define SIZE_T_MAX      (~((size_t) 0))
 #endif
 
-#ifndef HAVE_ISNAN
-#define isnan(x) ((x) != (x))
-#endif
-#define my_isnan(x) isnan(x)
-
-#ifndef HAVE_ISINF
-#define isinf(X) (!isfinite(X) && !isnan(X))
-#endif
-#define my_isinf(X) isinf(X)
-
-#ifdef __cplusplus
-#include <cmath>
-#ifndef isnan
-#define isnan(X) std::isnan(X)
-#endif
-#ifndef isinf
-#define isinf(X) std::isinf(X)
-#endif
-#endif
-
 /* Define missing math constants. */
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -857,17 +837,6 @@ inline unsigned long long my_double2ulonglong(double d)
 #endif
 #ifndef M_LN2
 #define M_LN2 0.69314718055994530942
-#endif
-
-#ifndef HAVE_LOG2
-/*
-  This will be slightly slower and perhaps a tiny bit less accurate than
-  doing it the IEEE754 way but log2() should be available on C99 systems.
-*/
-static inline double log2(double x)
-{
-  return (log(x) / M_LN2);
-}
 #endif
 
 /*
@@ -1194,41 +1163,6 @@ typedef struct { const char *dli_fname, dli_fbase; } Dl_info;
 #  define __func__ "<unknown>"
 #endif
 #endif /* !defined(__func__) */
-
-#ifndef HAVE_RINT
-/**
-   All integers up to this number can be represented exactly as double precision
-   values (DBL_MANT_DIG == 53 for IEEE 754 hardware).
-*/
-#define MAX_EXACT_INTEGER ((1LL << DBL_MANT_DIG) - 1)
-
-/**
-   rint(3) implementation for platforms that do not have it.
-   Always rounds to the nearest integer with ties being rounded to the nearest
-   even integer to mimic glibc's rint() behavior in the "round-to-nearest"
-   FPU mode. Hardware-specific optimizations are possible (frndint on x86).
-   Unlike this implementation, hardware will also honor the FPU rounding mode.
-*/
-
-static inline double rint(double x)
-{
-  double f, i;
-  f = modf(x, &i);
-  /*
-    All doubles with absolute values > MAX_EXACT_INTEGER are even anyway,
-    no need to check it.
-  */
-  if (x > 0.0)
-    i += (double) ((f > 0.5) || (f == 0.5 &&
-                                 i <= (double) MAX_EXACT_INTEGER &&
-                                 (longlong) i % 2));
-  else
-    i -= (double) ((f < -0.5) || (f == -0.5 &&
-                                  i >= (double) -MAX_EXACT_INTEGER &&
-                                  (longlong) i % 2));
-  return i;
-}
-#endif /* HAVE_RINT */
 
 /* 
   MYSQL_PLUGIN_IMPORT macro is used to export mysqld data

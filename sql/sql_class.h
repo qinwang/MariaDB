@@ -3043,10 +3043,14 @@ public:
   } *killed_err;
 
   /* See also thd_killed() */
-  inline bool check_killed()
+  inline bool check_killed(bool dont_send_error_message= 0)
   {
     if (unlikely(killed))
+    {
+      if (!dont_send_error_message)
+        send_kill_message();
       return TRUE;
+    }
     if (apc_target.have_apc_requests())
       apc_target.process_apc_requests(); 
     return FALSE;
@@ -4076,6 +4080,16 @@ public:
       set_current_stmt_binlog_format_row();
 
     DBUG_VOID_RETURN;
+  }
+
+  inline enum_binlog_format get_current_stmt_binlog_format()
+  {
+    return current_stmt_binlog_format;
+  }
+
+  inline void set_current_stmt_binlog_format(enum_binlog_format format)
+  {
+    current_stmt_binlog_format= format;
   }
 
   inline void set_current_stmt_binlog_format_row()
