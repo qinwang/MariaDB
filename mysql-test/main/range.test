@@ -1916,9 +1916,7 @@ insert into t2 values
   (6,5,'f'), (6,3,'g'), (6,7,'h'), (3,3,'i'), (6,2,'j'),
   (9,5,'aa'), (9,8,'ba'), (9,3,'ca'), (2,2,'da'), (9,1,'ea'),
   (6,5,'fa'), (6,3,'ga'), (6,7,'ha'), (9,3,'ia'), (6,2,'ja');
-   
---echo # join order: (t2,t1) with ref access of t1
---echo # range access to t1 by keys for index idx1
+
 let $q4=
 select * from t1,t2
   where a = d and (a,e) in ((3,3),(7,7),(2,2));
