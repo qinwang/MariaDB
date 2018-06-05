@@ -158,6 +158,42 @@ static void test_debug_example()
   myquery(rc);
 }
 
+#ifndef EMBEDDED_LIBRARY
+static void ssl_params()
+{
+  MYSQL *mysql_local;
+  MYSQL_RES *result;
+  int rc;
+  MYSQL_ROW row;
+
+  myheader("ssl_params");
+ 
+  if (!(mysql_local = mysql_client_init(NULL)))
+  {
+    fprintf(stderr, "\n mysql_client_init() failed");
+    DIE_UNLESS(0);
+  }
+
+  mysql_options(mysql_local, MYSQL_OPT_SSL_CIPHER, "AES256-SHA");
+  if (!(mysql_real_connect(mysql_local, opt_host, opt_user,
+        opt_password, current_db, opt_port,
+        opt_unix_socket, 0)))
+  {
+    printf("connection failed");
+    mysql_close(mysql_local);
+    DIE_UNLESS(0);
+  }
+  rc= mysql_query(mysql_local,"SHOW STATUS LIKE 'Ssl_cipher'");
+  myquery(rc);
+  result= mysql_store_result(mysql_local);
+  DIE_UNLESS(result);
+  row= mysql_fetch_row(result);
+  DIE_UNLESS(row && row[0] && row[1]);
+  DIE_UNLESS(!strcmp(row[1], "AES256-SHA"));
+  mysql_free_result(result);
+  mysql_close(mysql_local);
+}
+#endif
 
 /* Test autocommit feature for BDB tables */
 
@@ -19360,6 +19396,7 @@ static void test_compressed_protocol()
   mysql_close(mysql_local);
 }
 
+
 /*
   Check big packets
 */
@@ -19694,6 +19731,9 @@ static struct my_tests_st my_tests[]= {
 #endif
   { "test_compressed_protocol", test_compressed_protocol },
   { "test_big_packet", test_big_packet },
+#ifndef EMBEDDED_LIBRARY
+  { "ssl_params", ssl_params},
+#endif
   { 0, 0 }
 };
 

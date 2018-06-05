@@ -1062,9 +1062,12 @@ static int add_init_command(struct st_mysql_options *options, const char *cmd)
 #if defined(HAVE_OPENSSL) && !defined(EMBEDDED_LIBRARY)
 #define SET_SSL_OPTION_X(OPTS, opt_var, arg, dup)                \
   my_free((OPTS)->opt_var);                                      \
-  (OPTS)->opt_var= arg ? dup(arg, MYF(MY_WME)) : NULL;
+  (OPTS)->opt_var= arg ? dup(arg, MYF(MY_WME)) : NULL; \
+  (OPTS)->use_ssl= 1;
+
 #define EXTENSION_SET_SSL_STRING_X(OPTS, X, STR, dup)            \
-  EXTENSION_SET_STRING_X((OPTS), X, (STR), dup);
+  EXTENSION_SET_STRING_X((OPTS), X, (STR), dup); \
+  (OPTS)->use_ssl= 1;
 
 static char *set_ssl_option_unpack_path(const char *arg, myf flags)
 {
