@@ -524,9 +524,13 @@ std::atomic<uint64_t> rocksdb_wal_group_syncs(0);
 */
 #ifdef _WIN32
 #include <direct.h> /* unlink*/
+#ifndef F_OK
+#define F_OK 0
 #endif
+#endif
+
 static int rmdir_force(const char *dir) {
-  if (access(dir, 0))
+  if (access(dir, F_OK))
     return true;
 
   char path[FN_REFLEN];
@@ -539,9 +543,6 @@ static int rmdir_force(const char *dir) {
 
   for (uint i = 0; i < dir_info->number_of_files; i++) {
     FILEINFO *file = dir_info->dir_entry + i;
-    /* Skip "." and ".." */
-    if (!strcmp(file->name, ".") || !strcmp(file->name, ".."))
-      continue;
 
     strxnmov(path, sizeof(path), dir, sep, file->name, NULL);
 
@@ -571,6 +572,24 @@ static void rocksdb_remove_mariabackup_checkpoint(
   std::string mariabackup_checkpoint_dir(rocksdb_datadir);
 
   mariabackup_checkpoint_dir.append("/mariabackup-checkpoint");
+
+#ifndef _WIN32
+  /*
+   my_delete(NO_SYMLINKS) only works with normalized full paths.
+  */
+  if (mariabackup_checkpoint_dir[0] != '/')
+    mariabackup_checkpoint_dir = std::string(mysql_real_data_home)
+     .append("/").append(mariabackup_checkpoint_dir);
+
+  /* replace multiple slashes with single one */
+  mariabackup_checkpoint_dir = std::regex_replace(mariabackup_checkpoint_dir,
+     std::regex("/+"),std::string("/"));
+
+  /* replace ./ with empty string */
+  mariabackup_checkpoint_dir = std::regex_replace(mariabackup_checkpoint_dir,
+     std::regex("\\./"),std::string(""));
+#endif
+
   rmdir_force(mariabackup_checkpoint_dir.c_str());
 }
 
