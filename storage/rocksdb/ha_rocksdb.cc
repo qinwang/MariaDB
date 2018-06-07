@@ -546,8 +546,7 @@ static int rmdir_force(const char *dir) {
 
     strxnmov(path, sizeof(path), dir, sep, file->name, NULL);
 
-    if (!MY_S_ISREG(file->mystat->st_mode))
-      err = my_delete(path, 0);
+    err = my_delete(path, 0);
 
     if (err) {
       break;
