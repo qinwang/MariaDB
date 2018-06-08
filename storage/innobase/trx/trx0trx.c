@@ -2046,6 +2046,30 @@ trx_prepare_for_mysql(
 	return(0);
 }
 
+/** This function is used to find number of prepared transactions
+@return number of prepared transactions */
+UNIV_INTERN int trx_prepare_count_mysql()
+{
+	trx_t*	trx;
+	int	count = 0;
+
+	mutex_enter(&kernel_mutex);
+
+	trx = UT_LIST_GET_FIRST(trx_sys->trx_list);
+
+	while (trx) {
+		if (trx->conc_state == TRX_PREPARED) {
+			count++;
+		}
+
+		trx = UT_LIST_GET_NEXT(trx_list, trx);
+	}
+
+	mutex_exit(&kernel_mutex);
+
+	return count;
+}
+
 /**********************************************************************//**
 This function is used to find number of prepared transactions and
 their transaction objects for a recovery.

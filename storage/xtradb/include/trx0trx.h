@@ -214,6 +214,11 @@ ulint
 trx_prepare_for_mysql(
 /*==================*/
 	trx_t*	trx);	/*!< in: trx handle */
+
+/** This function is used to find number of prepared transactions
+@return number of prepared transactions */
+UNIV_INTERN int trx_prepare_count_mysql();
+
 /**********************************************************************//**
 This function is used to find number of prepared transactions and
 their transaction objects for a recovery.

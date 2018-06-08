@@ -983,6 +983,7 @@ struct handlerton
      transaction), neither prepare() nor prepare_ordered() is called.
    */
    void (*prepare_ordered)(handlerton *hton, THD *thd, bool all);
+   int  (*prepare_count)(handlerton *hton);
    int  (*recover)(handlerton *hton, XID *xid_list, uint len);
    int  (*commit_by_xid)(handlerton *hton, XID *xid);
    int  (*rollback_by_xid)(handlerton *hton, XID *xid);

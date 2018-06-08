@@ -1658,6 +1658,20 @@ struct xarecover_st
   bool dry_run;
 };
 
+static my_bool xaprepare_count_handlerton(THD *unused, plugin_ref plugin,
+					  void *arg)
+{
+  handlerton *hton= plugin_data(plugin, handlerton *);
+  struct xarecover_st *info= (struct xarecover_st *) arg;
+
+  if (hton->state == SHOW_OPTION_YES && hton->recover)
+  {
+    info->len=hton->prepare_count(hton);
+  }
+
+  return FALSE;
+}
+
 static my_bool xarecover_handlerton(THD *unused, plugin_ref plugin,
                                     void *arg)
 {
@@ -1710,7 +1724,7 @@ static my_bool xarecover_handlerton(THD *unused, plugin_ref plugin,
           hton->rollback_by_xid(hton, info->list+i);
         }
       }
-      if (got < info->len)
+      if (got <= info->len)
         break;
     }
   }
@@ -1737,11 +1751,14 @@ int ha_recover(HASH *commit_list)
   if (info.commit_list)
     sql_print_information("Starting crash recovery...");
 
-  for (info.len= MAX_XID_LIST_SIZE ; 
-       info.list==0 && info.len > MIN_XID_LIST_SIZE; info.len/=2)
-  {
-    info.list=(XID *)my_malloc(info.len*sizeof(XID), MYF(0));
-  }
+  plugin_foreach(NULL, xaprepare_count_handlerton,
+                 MYSQL_STORAGE_ENGINE_PLUGIN, &info);
+
+  if (info.len == 0)
+    DBUG_RETURN(0);
+
+  info.list=(XID *)my_malloc(info.len*sizeof(XID), MYF(0));
+
   if (!info.list)
   {
     sql_print_error(ER(ER_OUTOFMEMORY),

@@ -481,6 +481,12 @@ innobase_xa_prepare(
 	bool		all);	/*!< in: TRUE - commit transaction
 				FALSE - the current SQL statement
 				ended */
+
+/** This function is used to return the number of prepare transactions.
+@param[in]	hton	InnoDB handlerton
+@return number of prepared transactions. */
+static int innobase_xa_prepare_count(handlerton* hton);
+
 /*******************************************************************//**
 This function is used to recover X/Open XA distributed transactions.
 @return	number of prepared transactions stored in xid_list */
@@ -2249,6 +2255,7 @@ innobase_init(
         innobase_hton->commit=innobase_commit;
         innobase_hton->rollback=innobase_rollback;
         innobase_hton->prepare=innobase_xa_prepare;
+        innobase_hton->prepare_count=innobase_xa_prepare_count;
         innobase_hton->recover=innobase_xa_recover;
         innobase_hton->commit_by_xid=innobase_commit_by_xid;
         innobase_hton->rollback_by_xid=innobase_rollback_by_xid;
@@ -10847,6 +10854,16 @@ innobase_xa_prepare(
 	srv_active_wake_master_thread();
 
 	return(error);
+}
+
+/** This function is used to return the number of prepare transactions.
+@param[in]	hton	InnoDB handlerton
+@return number of prepared transactions. */
+static int innobase_xa_prepare_count(handlerton* hton)
+{
+	DBUG_ASSERT(hton == innodb_hton_ptr);
+
+	return trx_prepare_count_mysql();
 }
 
 /*******************************************************************//**
