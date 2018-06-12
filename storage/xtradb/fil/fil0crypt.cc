@@ -1175,6 +1175,8 @@ struct rotate_thread_t {
 		thread_no = no;
 		first = true;
 		estimated_max_iops = 20;
+		last_space_id = 0;
+		old_encrypt_tables = srv_encrypt_tables;
 	}
 
 	uint thread_no;
@@ -1194,6 +1196,9 @@ struct rotate_thread_t {
 
 	btr_scrub_t scrub_data;      /* thread local data used by btr_scrub-functions
 				     * when iterating pages of tablespace */
+	ulint last_space_id;	/*!< lastly used space id. */
+
+	ulong old_encrypt_tables; /*!< value of innodb_encrypt_tables variable. */
 
 	/** @return whether this thread should terminate */
 	bool should_shutdown() const {
@@ -1542,13 +1547,27 @@ fil_crypt_find_space_to_rotate(
 		state->space = NULL;
 	}
 
-	/* If key rotation is enabled (default) we iterate all tablespaces.
-	If key rotation is not enabled we iterate only the tablespaces
-	added to keyrotation list. */
-	if (srv_fil_crypt_rotate_key_age) {
+	/* If innodb_encrypt_tables value changed at runtime then
+	start the processing from system tablespace again. */
+	if (state->old_encrypt_tables != srv_encrypt_tables) {
+		state->last_space_id = 0;
+		state->old_encrypt_tables = srv_encrypt_tables;
+		state->space = NULL;
+	}
+
+	/* If innodb-encryption-rotate-key-age value is zero then traverse
+	from last used space id in the list. If the lastly used space is
+	dropped or not found then traverse from system tablespace. */
+	if (srv_fil_crypt_rotate_key_age == 0 && state->last_space_id != 0
+	    && (state->space == NULL || state->space->id != state->last_space_id)) {
+		state->space = fil_space_acquire_silent(state->last_space_id);
 		state->space = fil_space_next(state->space);
+
+		if (state->space) {
+			state->last_space_id = state->space->id;
+		}
 	} else {
-		state->space = fil_space_keyrotate_next(state->space);
+		state->space = fil_space_next(state->space);
 	}
 
 	while (!state->should_shutdown() && state->space) {
@@ -1562,11 +1581,8 @@ fil_crypt_find_space_to_rotate(
 			return true;
 		}
 
-		if (srv_fil_crypt_rotate_key_age) {
-			state->space = fil_space_next(state->space);
-		} else {
-			state->space = fil_space_keyrotate_next(state->space);
-		}
+		state->last_space_id = state->space->id;
+		state->space = fil_space_next(state->space);
 	}
 
 	/* if we didn't find any space return iops */

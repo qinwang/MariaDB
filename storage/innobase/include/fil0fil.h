@@ -353,15 +353,6 @@ struct fil_space_t {
 	UT_LIST_NODE_T(fil_space_t) space_list;
 				/*!< list of all spaces */
 
-	/*!< Protected by fil_system */
-	UT_LIST_NODE_T(fil_space_t) rotation_list;
-				/*!< list of spaces needing
-				key rotation */
-
-	bool		is_in_rotation_list;
-				/*!< true if this space is
-				currently in key rotation list */
-
 	ulint		magic_n;/*!< FIL_SPACE_MAGIC_N */
 
 	/** @return whether the tablespace is about to be dropped or truncated */
