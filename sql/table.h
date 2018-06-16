@@ -1377,7 +1377,7 @@ public:
   bool check_virtual_columns_marked_for_read();
   bool check_virtual_columns_marked_for_write();
   void mark_default_fields_for_write(bool insert_fl);
-  void mark_columns_used_by_check_constraints(void);
+  void mark_columns_used_by_virtual_fields(void);
   void mark_check_constraint_columns_for_read(void);
   int verify_constraints(bool ignore_failure);
   inline void column_bitmaps_set(MY_BITMAP *read_set_arg)
