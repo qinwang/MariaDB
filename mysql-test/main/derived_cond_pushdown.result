@@ -7738,7 +7738,7 @@ EXPLAIN
               {
                 "query_block": {
                   "select_id": 2,
-                  "having_condition": "c < 300 and (t1.a > 3 and c > 110 or c < 110 and t1.a = 1)",
+                  "having_condition": "c < 300 and (t1.a > 3 and c > 110 or t1.a = 1 and c < 110)",
                   "filesort": {
                     "sort_key": "t1.a, t1.b",
                     "temporary_table": {
@@ -7757,7 +7757,7 @@ EXPLAIN
                 "query_block": {
                   "select_id": 3,
                   "operation": "INTERSECT",
-                  "having_condition": "c > 100 and (t1.a > 3 and c > 110 or c < 110 and t1.a = 1)",
+                  "having_condition": "c > 100 and (t1.a > 3 and c > 110 or t1.a = 1 and c < 110)",
                   "filesort": {
                     "sort_key": "t1.a, t1.b",
                     "temporary_table": {
@@ -8663,7 +8663,7 @@ EXPLAIN
               {
                 "query_block": {
                   "select_id": 2,
-                  "having_condition": "c > 200 and (t1.a > 1 and c < 500 or c > 500 and t1.a = 1)",
+                  "having_condition": "c > 200 and (t1.a > 1 and c < 500 or t1.a = 1 and c > 500)",
                   "filesort": {
                     "sort_key": "t1.a, t1.b",
                     "temporary_table": {
@@ -8682,7 +8682,7 @@ EXPLAIN
                 "query_block": {
                   "select_id": 3,
                   "operation": "EXCEPT",
-                  "having_condition": "c < 300 and (t1.a > 1 and c < 500 or c > 500 and t1.a = 1)",
+                  "having_condition": "c < 300 and (t1.a > 1 and c < 500 or t1.a = 1 and c > 500)",
                   "filesort": {
                     "sort_key": "t1.a, t1.b",
                     "temporary_table": {
@@ -12673,7 +12673,7 @@ EXPLAIN
       "materialized": {
         "query_block": {
           "select_id": 2,
-          "having_condition": "max_c > 37 and max_c > 30 and t1.b = 1",
+          "having_condition": "t1.b = 1 and max_c > 37 and max_c > 30",
           "table": {
             "table_name": "t1",
             "access_type": "ALL",
@@ -12748,7 +12748,7 @@ EXPLAIN
       "materialized": {
         "query_block": {
           "select_id": 2,
-          "having_condition": "max_c > 37 and max_c > 30 and t1.b = 1",
+          "having_condition": "t1.b = 1 and max_c > 37 and max_c > 30",
           "table": {
             "table_name": "t1",
             "access_type": "ALL",

@@ -807,10 +807,11 @@ typedef class st_select_lex_unit SELECT_LEX_UNIT;
 typedef Bounds_checked_array<Item*> Ref_ptr_array;
 
 
-/*
+/**
   Structure which consists of the field and the item that
   corresponds to this field.
 */
+
 class Field_pair :public Sql_alloc
 {
 public:
@@ -819,6 +820,10 @@ public:
   Field_pair(Field *fld, Item *item)
     :field(fld), corresponding_item(item) {}
 };
+
+Field_pair *get_corresponding_field_pair(Item *item,
+                                         List<Field_pair> pair_list);
+Field_pair *find_matching_field_pair(Item *item, List<Field_pair> pair_list);
 
 
 /*
@@ -834,6 +839,7 @@ public:
   Item *prep_having;/* saved HAVING clause for prepared statement processing */
   Item *cond_pushed_into_where;  /* condition pushed into the select's WHERE  */
   Item *cond_pushed_into_having; /* condition pushed into the select's HAVING */
+  List<Item> attach_to_conds;
   /* Saved values of the WHERE and HAVING clauses*/
   Item::cond_result cond_value, having_value;
   /*
@@ -1239,8 +1245,11 @@ public:
   With_element *find_table_def_in_with_clauses(TABLE_LIST *table);
   bool check_unrestricted_recursive(bool only_standard_compliant);
   bool check_subqueries_with_recursive_references();
-  void collect_grouping_fields(THD *thd, ORDER *grouping_list);
-  void check_cond_extraction_for_grouping_fields(Item *cond);
+  void collect_grouping_fields_for_derived(THD *thd, ORDER *grouping_list);
+  bool collect_grouping_fields(THD *thd);
+  bool collect_fields_equal_to_grouping(THD *thd);
+  void check_cond_extraction_for_grouping_fields(THD *thd, Item *cond,
+                                                 Pushdown_checker excl_dep);
   Item *build_cond_for_grouping_fields(THD *thd, Item *cond,
 				       bool no_to_clones);
   
@@ -1266,10 +1275,15 @@ public:
   bool cond_pushdown_is_allowed() const
   { return !olap && !explicit_limit && !tvc; }
   
+  bool build_pushable_cond_for_having_pushdown(THD *thd,
+                                               Item *cond,
+                                               Pushdown_checker checker);
   void pushdown_cond_into_where_clause(THD *thd, Item *extracted_cond,
                                        Item **remaining_cond,
                                        Item_transformer transformer,
                                        uchar *arg);
+  void mark_or_conds_to_avoid_pushdown(Item *cond);
+  Item *pushdown_from_having_into_where(THD *thd, Item *having);
 
 private:
   bool m_non_agg_field_used;

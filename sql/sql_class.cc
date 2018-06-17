@@ -960,6 +960,7 @@ THD::THD(my_thread_id id, bool is_wsrep_applier, bool skip_global_sys_var_lock)
   /* Restore THR_THD */
   set_current_thd(old_THR_THD);
   inc_thread_count();
+  having_pushdown= FALSE;
 }
 
 

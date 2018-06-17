@@ -2473,6 +2473,7 @@ export const char *optimizer_switch_names[]=
   "condition_pushdown_for_derived",
   "split_materialized",
   "condition_pushdown_for_subquery",
+  "condition_pushdown_from_having_into_where",
   "default", 
   NullS
 };

@@ -4755,6 +4755,8 @@ public:
                                LOG_SLOW_DISABLE_ADMIN);
     query_plan_flags|= QPLAN_ADMIN;
   }
+
+  bool having_pushdown;
 };
 
 inline void add_to_active_threads(THD *thd)
