@@ -1,0 +1,30 @@
+connect  con1, localhost, root,,;
+connect  con2, localhost, root,,;
+connection con1;
+connection con2;
+# Test that infinite WITH RECURSIVE can be killed
+connection con1;
+SET DEBUG_SYNC='in_WITH_RECURSIVE SIGNAL with_recursive_has_started';
+with recursive q (num, mark) as (
+select 1, "a"
+ union all select 1+num, "b" from q where mark="a"
+ union all select 1+num, "a" from q where mark="b"
+)
+select num from q;
+connection con2;
+SET DEBUG_SYNC='now WAIT_FOR with_recursive_has_started';
+Warnings:
+Warning	1639	debug sync point wait timed out
+KILL QUERY @id;
+connection con1;
+ERROR 70100: Query execution was interrupted
+SET DEBUG_SYNC= 'RESET';
+SELECT 1;
+1
+1
+connection con2;
+SET DEBUG_SYNC= 'RESET';
+connection con1;
+connection default;
+disconnect con1;
+disconnect con2;
