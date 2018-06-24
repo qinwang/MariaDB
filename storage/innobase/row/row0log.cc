@@ -39,6 +39,7 @@ Created 2011-05-26 Marko Makela
 #include "ut0stage.h"
 #include "trx0rec.h"
 
+#include <sql_class.h>
 #include <algorithm>
 #include <map>
 
@@ -226,9 +227,11 @@ struct row_log_t {
 	table could be emptied, so that table->is_instant() no longer holds,
 	but all log records must be in the "instant" format. */
 	unsigned	n_core_fields;
-	bool		ignore; /*!< Whether the alter ignore is being used;
+	bool		allow_not_null; /*!< Whether the alter ignore is being
+				used or if the sql mode is non-strict mode;
 				if not, NULL values will not be converted to
 				defaults */
+	const TABLE*	old_table; /*< Use old table in case of error. */
 
 	/** Determine whether the log should be in the 'instant ADD' format
 	@param[in]	index	the clustered index of the source table
@@ -1299,7 +1302,7 @@ row_log_table_get_pk(
 				log->error = row_log_table_get_pk_col(
 					ifield, dfield, *heap,
 					rec, offsets, i, page_size, max_len,
-					log->ignore, log->defaults);
+					log->allow_not_null, log->defaults);
 
 				if (log->error != DB_SUCCESS) {
 err_exit:
@@ -1484,7 +1487,9 @@ row_log_table_apply_convert_mrec(
 						reason of failure */
 {
 	dtuple_t*	row;
+	static ulong	n_rows = index->table->stat_n_rows;
 
+	n_rows++;
 	*error = DB_SUCCESS;
 
 	/* This is based on row_build(). */
@@ -1613,8 +1618,12 @@ blob_done:
 
 			const dfield_t& default_field
 				= log->defaults->fields[col_no];
+			Field* field = log->old_table->field[col_no];
 
-			if (!log->ignore || !default_field.data) {
+			field->set_warning(Sql_condition::WARN_LEVEL_WARN,
+					   WARN_DATA_TRUNCATED, 1, n_rows);
+
+			if (!log->allow_not_null) {
 				/* We got a NULL value for a NOT NULL column. */
 				*error = DB_INVALID_NULL;
 				return NULL;
@@ -3109,7 +3118,9 @@ row_log_allocate(
 	const ulint*	col_map,/*!< in: mapping of old column
 				numbers to new ones, or NULL if !table */
 	const char*	path,	/*!< in: where to create temporary file */
-	const bool	ignore) /*!< in: alter ignore issued */
+	const TABLE*	old_table,	/*!< in: table definition before alter */
+	const bool	allow_not_null) /*!< in: allow null to not-null
+					conversion */
 {
 	row_log_t*	log;
 	DBUG_ENTER("row_log_allocate");
@@ -3150,7 +3161,8 @@ row_log_allocate(
 	log->path = path;
 	log->n_core_fields = index->n_core_fields;
 	ut_ad(!table || log->is_instant(index) == index->is_instant());
-	log->ignore=ignore;
+	log->allow_not_null = allow_not_null;
+	log->old_table = old_table;
 
 	dict_index_set_online_status(index, ONLINE_INDEX_CREATION);
 	index->online_log = log;
