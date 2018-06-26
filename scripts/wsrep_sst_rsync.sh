@@ -132,6 +132,12 @@ then
     BINLOG_FILENAME=$(basename $WSREP_SST_OPT_BINLOG)
 fi
 
+if ! [ -z $WSREP_SST_OPT_BINLOG_INDEX ]
+then
+    BINLOG_INDEX_DIRNAME=$(dirname $WSREP_SST_OPT_BINLOG_INDEX)
+    BINLOG_INDEX_FILENAME=$(basename $WSREP_SST_OPT_BINLOG_INDEX)
+fi
+
 WSREP_LOG_DIR=${WSREP_LOG_DIR:-""}
 # if WSREP_LOG_DIR env. variable is not set, try to get it from my.cnf
 if [ -z "$WSREP_LOG_DIR" ]; then
@@ -204,12 +210,20 @@ then
             OLD_PWD="$(pwd)"
             cd $BINLOG_DIRNAME
 
-            binlog_files_full=$(tail -n $BINLOG_N_FILES ${BINLOG_FILENAME}.index)
+            if ! [ -z $WSREP_SST_OPT_BINLOG_INDEX ]
+               binlog_files_full=$(tail -n $BINLOG_N_FILES ${BINLOG_FILENAME}.index)
+            then
+               cd $BINLOG_INDEX_DIRNAME
+               binlog_files_full=$(tail -n $BINLOG_N_FILES ${BINLOG_INDEX_FILENAME}.index)
+            fi
+
+            cd $BINLOG_DIRNAME
             binlog_files=""
             for ii in $binlog_files_full
             do
                 binlog_files="$binlog_files $(basename $ii)"
             done
+
             if ! [ -z "$binlog_files" ]
             then
                 wsrep_log_info "Preparing binlog files for transfer:"
@@ -391,7 +405,11 @@ EOF
             tar -xvf $BINLOG_TAR_FILE >&2
             for ii in $(ls -1 ${BINLOG_FILENAME}.*)
             do
-                echo ${BINLOG_DIRNAME}/${ii} >> ${BINLOG_FILENAME}.index
+                if ! [ -z $WSREP_SST_OPT_BINLOG_INDEX ]
+                  echo ${BINLOG_DIRNAME}/${ii} >> ${BINLOG_FILENAME}.index
+		then
+                  echo ${BINLOG_DIRNAME}/${ii} >> ${BINLOG_INDEX_DIRNAME}/${BINLOG_INDEX_FILENAME}.index
+                fi
             done
         fi
         cd "$OLD_PWD"
