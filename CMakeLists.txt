@@ -321,7 +321,7 @@ IF(NOT HAVE_CXX_NEW)
 ENDIF()
 
 # Find header files from the bundled libraries
-# (yassl, readline, pcre, etc)
+# (yassl, readline, pcre2, etc)
 # before the ones installed in the system
 SET(CMAKE_INCLUDE_DIRECTORIES_PROJECT_BEFORE ON)
 

@@ -377,7 +377,6 @@ public:
     DBUG_VOID_RETURN;
   }
   String *val_str(String *str);
-  bool fix_fields(THD *thd, Item **ref);
   void fix_length_and_dec();
   const char *func_name() const { return "regexp_replace"; }
   Item *get_copy(THD *thd) { return 0;}
@@ -399,7 +398,6 @@ public:
     DBUG_VOID_RETURN;
   }
   String *val_str(String *str);
-  bool fix_fields(THD *thd, Item **ref);
   void fix_length_and_dec();
   const char *func_name() const { return "regexp_substr"; }
   Item *get_copy(THD *thd) { return 0; }

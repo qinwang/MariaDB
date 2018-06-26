@@ -25,7 +25,7 @@
 
 #include "item_func.h"             /* Item_int_func, Item_bool_func */
 #define PCRE_STATIC 1             /* Important on Windows */
-#include "pcre.h"                 /* pcre header file */
+#include "pcre2.h"                /* pcre header file */
 #include "item.h"
 
 extern Item_result item_cmp_type(Item_result a,Item_result b);
@@ -2715,8 +2715,8 @@ public:
 
 class Regexp_processor_pcre
 {
-  pcre *m_pcre;
-  pcre_extra m_pcre_extra;
+  pcre2_code *m_pcre;
+  pcre2_match_data *m_pcre_match_data;
   bool m_conversion_is_needed;
   bool m_is_const;
   int m_library_flags;
@@ -2724,34 +2724,32 @@ class Regexp_processor_pcre
   CHARSET_INFO *m_library_charset;
   String m_prev_pattern;
   int m_pcre_exec_rc;
-  int m_SubStrVec[30];
+  PCRE2_SIZE *m_SubStrVec;
   void pcre_exec_warn(int rc) const;
-  int pcre_exec_with_warn(const pcre *code, const pcre_extra *extra,
+  int pcre_exec_with_warn(const pcre2_code *code,
+                          pcre2_match_data *data,
                           const char *subject, int length, int startoffset,
-                          int options, int *ovector, int ovecsize);
+                          uint options);
 public:
   String *convert_if_needed(String *src, String *converter);
   String subject_converter;
   String pattern_converter;
   String replace_converter;
   Regexp_processor_pcre() :
-    m_pcre(NULL), m_conversion_is_needed(true), m_is_const(0),
+    m_pcre(NULL), m_pcre_match_data(NULL),
+    m_conversion_is_needed(true), m_is_const(0),
     m_library_flags(0),
     m_data_charset(&my_charset_utf8_general_ci),
     m_library_charset(&my_charset_utf8_general_ci)
-  {
-    m_pcre_extra.flags= PCRE_EXTRA_MATCH_LIMIT_RECURSION;
-    m_pcre_extra.match_limit_recursion= 100L;
-  }
+  {}
   int default_regex_flags();
-  void set_recursion_limit(THD *);
   void init(CHARSET_INFO *data_charset, int extra_flags)
   {
     m_library_flags= default_regex_flags() | extra_flags |
                     (data_charset != &my_charset_bin ?
-                     (PCRE_UTF8 | PCRE_UCP) : 0) |
+                     (PCRE2_UTF | PCRE2_UCP) : 0) |
                     ((data_charset->state &
-                     (MY_CS_BINSORT | MY_CS_CSSORT)) ? 0 : PCRE_CASELESS);
+                     (MY_CS_BINSORT | MY_CS_CSSORT)) ? 0 : PCRE2_CASELESS);
 
     // Convert text data to utf-8.
     m_library_charset= data_charset == &my_charset_bin ?
@@ -2787,11 +2785,13 @@ public:
   void reset()
   {
     m_pcre= NULL;
+    m_pcre_match_data= NULL;
     m_prev_pattern.length(0);
   }
   void cleanup()
   {
-    pcre_free(m_pcre);
+    pcre2_match_data_free(m_pcre_match_data);
+    pcre2_code_free(m_pcre);
     reset();
   }
   bool is_compiled() const { return m_pcre != NULL; }
@@ -2816,7 +2816,6 @@ public:
     DBUG_VOID_RETURN;
   }
   longlong val_int();
-  bool fix_fields(THD *thd, Item **ref);
   void fix_length_and_dec();
   const char *func_name() const { return "regexp"; }
   enum precedence precedence() const { return CMP_PRECEDENCE; }
@@ -2866,7 +2865,6 @@ public:
     DBUG_VOID_RETURN;
   }
   longlong val_int();
-  bool fix_fields(THD *thd, Item **ref);
   void fix_length_and_dec();
   const char *func_name() const { return "regexp_instr"; }
   Item *get_copy(THD *thd)

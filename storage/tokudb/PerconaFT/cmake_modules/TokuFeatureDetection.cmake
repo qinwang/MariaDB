@@ -1,6 +1,8 @@
 ## feature detection
 find_package(Threads)
-find_package(ZLIB REQUIRED)
+IF(WITH_EXTERNAL_ZLIB)
+  find_package(ZLIB REQUIRED)
+ENDIF()
 
 option(USE_VALGRIND "Build to run safely under valgrind (often slower)." ON)
 if(USE_VALGRIND)
