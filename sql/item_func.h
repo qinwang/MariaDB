@@ -803,6 +803,16 @@ public:
 };
 
 
+class Item_func_hash: public Item_int_func
+{
+public:
+  Item_func_hash(THD *thd, List<Item> &item): Item_int_func(thd, item)
+  {}
+  longlong val_int();
+  void fix_length_and_dec();
+  const char *func_name() const { return "HASH"; }
+};
+
 class Item_longlong_func: public Item_int_func
 {
 public:

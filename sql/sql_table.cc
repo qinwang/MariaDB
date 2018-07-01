@@ -3343,6 +3343,87 @@ mysql_add_invisible_index(THD *thd, List<Key> *key_list,
   key_list->push_back(key, thd->mem_root);
   return key;
 }
+/**
+  Add hidden level 3 hash field to table in case of long
+  unique column
+  @param  thd           Thread Context.
+  @param  create_list   List of table fields.
+  @param  cs            Field Charset
+  @param  key_info      Whole Keys buffer
+  @param  key_index     Index of current key
+*/
+
+static void add_hash_field(THD * thd, List<Create_field> *create_list,
+                           CHARSET_INFO *cs, KEY *key_info, int key_index)
+{
+  List_iterator<Create_field> it(*create_list);
+  Create_field *dup_field, *sql_field;
+  Create_field *cf= new (thd->mem_root) Create_field();
+  cf->flags|= UNSIGNED_FLAG;
+  cf->length= cf->char_length= HA_HASH_FIELD_LENGTH;
+  cf->charset= cs;
+  cf->decimals= 0;
+  uint num= 1;
+  char *temp_name= (char *)thd->alloc(30);
+  my_snprintf(temp_name, 30, "DB_ROW_HASH_%u", num);
+  /*
+    Check for collusions
+   */
+  while ((dup_field= it++))
+  {
+    if (!my_strcasecmp(system_charset_info, temp_name, dup_field->field_name))
+    {
+      num++;
+      my_snprintf(temp_name, 30, "DB_ROW_HASH_%u", num);
+      it.rewind();
+    }
+  }
+  it.rewind();
+  cf->field_name= temp_name;
+  cf->sql_type= MYSQL_TYPE_LONGLONG;
+  /* hash column should be fully hidden */
+  cf->invisible= INVISIBLE_FULL;
+  cf->long_field_hash= true;
+  cf->create_length_to_internal_length();
+  cf->length= cf->char_length= cf->pack_length;
+  prepare_create_field(cf, NULL, 0);
+  create_list->push_front(cf,thd->mem_root);
+  /*
+    We have added db_row_hash field in starting of
+    fields array , So we have to change key_part
+    field index
+   */
+  for (int i= 0; i <= key_index; i++, key_info++)
+  {
+    KEY_PART_INFO *info= key_info->key_part;
+    for (uint j= 0; j <  key_info->user_defined_key_parts; j++, info++)
+    {
+      info->fieldnr+= 1;
+      info->offset+= HA_HASH_FIELD_LENGTH;
+    }
+  }
+  key_info[-1].flags|= HA_NOSAME;
+  key_info[-1].algorithm= HA_KEY_ALG_LONG_HASH;
+  it.rewind();
+  uint record_offset= 0;
+  while ((sql_field= it++))
+  {
+    sql_field->offset= record_offset;
+    if (sql_field->stored_in_db())
+      record_offset+= sql_field->pack_length;
+  }
+  it.rewind();
+  while ((sql_field= it++))
+  {
+    if (!sql_field->stored_in_db())
+    {
+      sql_field->offset= record_offset;
+      record_offset+= sql_field->pack_length;
+    }
+  }
+}
+
+
 /*
   Preparation for table creation
 

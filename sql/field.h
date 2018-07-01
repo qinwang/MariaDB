@@ -632,6 +632,7 @@ public:
   uchar		*ptr;			// Position to field in record
 
   field_visibility_t invisible;
+  bool long_field_hash;
   /**
      Byte where the @c NULL bit is stored inside a record. If this Field is a
      @c NOT @c NULL field, this member is @c NULL.
@@ -681,7 +682,7 @@ public:
     GEOM_MULTIPOINT = 4, GEOM_MULTILINESTRING = 5, GEOM_MULTIPOLYGON = 6,
     GEOM_GEOMETRYCOLLECTION = 7
   };
-  enum imagetype { itRAW, itMBR};
+  enum imagetype { itRAW, itMBR, itHASH};
 
   utype		unireg_check;
   uint32	field_length;		// Length of field
@@ -4293,6 +4294,7 @@ public:
   };
   Item *on_update;		        // ON UPDATE NOW()
   field_visibility_t invisible;
+  bool long_field_hash;
   /*
     The value of `length' as set by parser: is the number of characters
     for most of the types, or of bytes for BLOBs or numeric types.
@@ -4319,7 +4321,8 @@ public:
    :Type_handler_hybrid_field_type(&type_handler_null),
     compression_method_ptr(0),
     comment(null_clex_str),
-    on_update(NULL), invisible(VISIBLE), decimals(0),
+    on_update(NULL), invisible(VISIBLE),
+    long_field_hash(false), decimals(0),
     flags(0), pack_length(0), key_length(0),
     option_list(NULL),
     vcol_info(0), default_value(0), check_constraint(0),

@@ -347,6 +347,9 @@ enum field_visibility_t {
 };
 
 #define INVISIBLE_MAX_BITS 3
+#define HA_HASH_KEY_LENGTH_WITHOUT_NULL 8
+#define HA_HASH_FIELD_LENGTH            8
+#define HA_HASH_KEY_LENGTH_WITH_NULL    9
 
 
 /**
@@ -2898,6 +2901,7 @@ void append_unescaped(String *res, const char *pos, size_t length);
 void prepare_frm_header(THD *thd, uint reclength, uchar *fileinfo,
                         HA_CREATE_INFO *create_info, uint keys, KEY *key_info);
 const char *fn_frm_ext(const char *name);
+void calc_hash_for_unique(ulong &nr1, ulong &nr2, String *str);
 
 /* Check that the integer is in the internal */
 static inline int set_zone(int nr,int min_zone,int max_zone)
