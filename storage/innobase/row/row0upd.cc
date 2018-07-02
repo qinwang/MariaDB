@@ -2115,10 +2115,11 @@ row_upd_eval_new_vals(
 static
 void
 row_upd_store_v_row(
-	upd_node_t*	node,
-	const upd_t*	update,
-	THD*		thd,
-	TABLE*		mysql_table)
+	upd_node_t*		node,
+	const upd_t*		update,
+	THD*			thd,
+	TABLE*			mysql_table,
+	purge_vcol_info_t*	vcol_info=NULL)
 {
 	mem_heap_t*	heap = NULL;
 	dict_index_t*	index = dict_table_get_first_index(node->table);
@@ -2175,7 +2176,7 @@ row_upd_store_v_row(
 						node->row, col, index,
 						&heap, node->heap, NULL,
 						thd, mysql_table, NULL,
-						NULL, NULL);
+						NULL, NULL, vcol_info);
 				}
 			}
 		}

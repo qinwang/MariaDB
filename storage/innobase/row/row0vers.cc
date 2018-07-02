@@ -428,10 +428,11 @@ row_vers_impl_x_locked(
 static
 void
 row_vers_build_clust_v_col(
-	dtuple_t*	row,
-	dict_index_t*	clust_index,
-	dict_index_t*	index,
-	mem_heap_t*	heap)
+	dtuple_t*		row,
+	dict_index_t*		clust_index,
+	dict_index_t*		index,
+	mem_heap_t*		heap,
+	purge_vcol_info_t*	vcol_info)
 {
 	mem_heap_t*	local_heap = NULL;
 	for (ulint i = 0; i < dict_index_get_n_fields(index); i++) {
@@ -447,7 +448,7 @@ row_vers_build_clust_v_col(
 			innobase_get_computed_value(
 				row, col, clust_index, &local_heap,
 				heap, NULL, current_thd, NULL, NULL,
-				NULL, NULL);
+				NULL, NULL, vcol_info);
 		}
 	}
 
@@ -759,16 +760,17 @@ func_exit:
 static
 const dtuple_t*
 row_vers_build_cur_vrow(
-	bool		in_purge,
-	const rec_t*	rec,
-	dict_index_t*	clust_index,
-	ulint**		clust_offsets,
-	dict_index_t*	index,
-	roll_ptr_t	roll_ptr,
-	trx_id_t	trx_id,
-	mem_heap_t*	heap,
-	mem_heap_t*	v_heap,
-	mtr_t*		mtr)
+	bool			in_purge,
+	const rec_t*		rec,
+	dict_index_t*		clust_index,
+	ulint**			clust_offsets,
+	dict_index_t*		index,
+	roll_ptr_t		roll_ptr,
+	trx_id_t		trx_id,
+	mem_heap_t*		heap,
+	mem_heap_t*		v_heap,
+	mtr_t*			mtr,
+	purge_vcol_info_t*	vcol_info)
 {
 	const dtuple_t*	cur_vrow = NULL;
 
@@ -787,9 +789,21 @@ row_vers_build_cur_vrow(
 		dtuple_t* row = row_build(ROW_COPY_POINTERS, clust_index,
 					  rec, *clust_offsets,
 					  NULL, NULL, NULL, NULL, heap);
+		bool	use_vcol_first = false;
+
+		if (vcol_info == NULL && !vcol_info->use_vcol) {
+			use_vcol_first = true;
+			mtr_commit(mtr);
+		}
 
 		row_vers_build_clust_v_col(
-			row, clust_index, index, heap);
+			row, clust_index, index, heap, vcol_info);
+
+		if (vcol_info != NULL
+		    && (!vcol_info->validate() || use_vcol_first)) {
+			return NULL;
+		}
+
 		cur_vrow = dtuple_copy(row, v_heap);
 		dtuple_dup_v_fld(cur_vrow, v_heap);
 	} else {
@@ -804,27 +818,35 @@ row_vers_build_cur_vrow(
 	return(cur_vrow);
 }
 
-/*****************************************************************//**
-Finds out if a version of the record, where the version >= the current
+/** Finds out if a version of the record, where the version >= the current
 purge view, should have ientry as its secondary index entry. We check
 if there is any not delete marked version of the record where the trx
 id >= purge view, and the secondary index entry and ientry are identified in
 the alphabetical ordering; exactly in this case we return TRUE.
+@param[in]	also_curr	TRUE if also rec is included in the versions
+				to search; otherwise only versions prior
+				to it are searched
+@param[in]	rec		record in the clustered index; the caller
+				must have a latch on the page
+@param[in]	mtr		mtr holding the latch on rec; it will
+				also hold the latch on purge_view
+@param[in]	index		secondary index
+@param[in]	ientry		secondary index entry
+@param[in]	roll_ptr	roll_ptr for the purge record
+@param[in]	trx_id		transaction ID on the purging record
+@param[in]	vcol_info	virtual column information for purge
+				thread.
 @return TRUE if earlier version should have */
 ibool
 row_vers_old_has_index_entry(
-/*=========================*/
-	ibool		also_curr,/*!< in: TRUE if also rec is included in the
-				versions to search; otherwise only versions
-				prior to it are searched */
-	const rec_t*	rec,	/*!< in: record in the clustered index; the
-				caller must have a latch on the page */
-	mtr_t*		mtr,	/*!< in: mtr holding the latch on rec; it will
-				also hold the latch on purge_view */
-	dict_index_t*	index,	/*!< in: the secondary index */
-	const dtuple_t*	ientry,	/*!< in: the secondary index entry */
-	roll_ptr_t	roll_ptr,/*!< in: roll_ptr for the purge record */
-	trx_id_t	trx_id)	/*!< in: transaction ID on the purging record */
+	ibool			also_curr,
+	const rec_t*		rec,
+	mtr_t*			mtr,
+	dict_index_t*		index,
+	const dtuple_t*		ientry,
+	roll_ptr_t		roll_ptr,
+	trx_id_t		trx_id,
+	purge_vcol_info_t*	vcol_info)
 {
 	const rec_t*	version;
 	rec_t*		prev_version;
@@ -838,6 +860,7 @@ row_vers_old_has_index_entry(
 	const dtuple_t*	vrow = NULL;
 	mem_heap_t*	v_heap = NULL;
 	const dtuple_t*	cur_vrow = NULL;
+	bool		use_vcol_first = false;
 
 	ut_ad(mtr_memo_contains_page_flagged(mtr, rec, MTR_MEMO_PAGE_X_FIX
 					     | MTR_MEMO_PAGE_S_FIX));
@@ -892,8 +915,20 @@ row_vers_old_has_index_entry(
 			columns need to be computed */
 			if (trx_undo_roll_ptr_is_insert(t_roll_ptr)
 			    || dbug_v_purge) {
+
+				if (vcol_info != NULL
+				    && !vcol_info->uses_vcol_info()) {
+					use_vcol_first = true;
+					mtr_commit(mtr);
+				}
+
 				row_vers_build_clust_v_col(
-					row, clust_index, index, heap);
+					row, clust_index, index, heap, vcol_info);
+
+				if (use_vcol_first) {
+					ut_ad(vcol_info->uses_vcol_info());
+					return false;
+				}
 
 				entry = row_build_index_entry(
 					row, ext, index, heap);
@@ -966,9 +1001,18 @@ safe_to_purge:
 		deleted, but the previous version of it might not. We will
 		need to get the virtual column data from undo record
 		associated with current cluster index */
+
+		if (vcol_info != NULL && !vcol_info->uses_vcol_info()) {
+			use_vcol_first = true;
+		}
+
 		cur_vrow = row_vers_build_cur_vrow(
 			also_curr, rec, clust_index, &clust_offsets,
-			index, roll_ptr, trx_id, heap, v_heap, mtr);
+			index, roll_ptr, trx_id, heap, v_heap, mtr, vcol_info);
+
+		if (use_vcol_first && !vcol_info->validate()) {
+			return false;
+		}
 	}
 
 	version = rec;

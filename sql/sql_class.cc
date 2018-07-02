@@ -4779,6 +4779,11 @@ TABLE *get_purge_table(THD *thd)
   return thd->open_tables;
 }
 
+/** Close the purge table for purge thread. */
+void close_purge_table(THD* thd)
+{
+	close_thread_tables(thd);
+}
 
 /** Find an open table in the list of prelocked tabled
 

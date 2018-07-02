@@ -36,6 +36,7 @@ Created 1/8/1996 Heikki Tuuri
 #include "fts0fts.h"
 #include "fil0fil.h"
 #include <algorithm>
+#include "sql_table.h"
 
 /** dummy index for ROW_FORMAT=REDUNDANT supremum and infimum records */
 dict_index_t*	dict_ind_redundant;
@@ -1328,7 +1329,7 @@ static
 ibool
 dict_table_can_be_evicted(
 /*======================*/
-	const dict_table_t*	table)		/*!< in: table to test */
+	dict_table_t*	table)		/*!< in: table to test */
 {
 	ut_ad(mutex_own(&dict_sys->mutex));
 	ut_ad(rw_lock_own(dict_operation_lock, RW_LOCK_X));
@@ -7256,4 +7257,46 @@ dict_table_extent_size(
 	}
 
 	return(pages_in_extent);
+}
+
+/** Parse the table file name into table name and database name.
+@param[in]      tbl_name        InnoDB table name
+@param[in,out]  mysql_db_name   database name buffer
+@param[in,out]  mysql_tbl_name  table name buffer
+@return true if the table name is parsed properly. */
+bool dict_parse_tbl_name(
+	const char*	tbl_name,
+	char		(&mysql_db_name)[NAME_LEN + 1],
+	char		(&mysql_tbl_name)[NAME_LEN + 1])
+{
+	ulint db_len = dict_get_db_name_len(tbl_name);
+	char db_buf[MAX_DATABASE_NAME_LEN  + 1];
+	char tbl_buf[MAX_TABLE_NAME_LEN + 1];
+
+	ut_ad(db_len > 0);
+	ut_ad(db_len <= MAX_DATABASE_NAME_LEN);
+
+	memcpy(db_buf, tbl_name, db_len);
+	db_buf[db_len] = 0;
+
+	size_t tbl_len = strlen(tbl_name) - db_len - 1;
+
+	memcpy(tbl_buf, tbl_name + db_len + 1, tbl_len);
+	tbl_buf[tbl_len] = 0;
+
+	filename_to_tablename(db_buf, mysql_db_name,
+			      MAX_DATABASE_NAME_LEN + 1, true);
+
+	if (tbl_len > TEMP_FILE_PREFIX_LENGTH
+	    && !strncmp(tbl_buf, TEMP_FILE_PREFIX, TEMP_FILE_PREFIX_LENGTH)) {
+		return false;
+	}
+
+	if (char *is_part = strchr(tbl_buf, '#')) {
+		*is_part = '\0';
+	}
+
+	filename_to_tablename(tbl_buf, mysql_tbl_name,
+			      MAX_TABLE_NAME_LEN + 1, true);
+	return true;
 }

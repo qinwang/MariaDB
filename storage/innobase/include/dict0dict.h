@@ -47,6 +47,7 @@ Created 1/8/1996 Heikki Tuuri
 #include <deque>
 #include "fsp0fsp.h"
 #include "dict0pagecompress.h"
+#include "mdl.h"
 
 extern bool innodb_table_stats_not_found;
 extern bool innodb_index_stats_not_found;
@@ -1929,6 +1930,16 @@ UNIV_INLINE
 bool
 dict_table_have_virtual_index(
 	dict_table_t*	table);
+
+/** Parse the table file name into table name and database name.
+@param[in]	tbl_name	InnoDB table name
+@param[in,out]	mysql_db_name	database name buffer
+@param[in,out]	mysql_tbl_name	table name buffer
+@return true if the table name is parsed properly. */
+bool dict_parse_tbl_name(
+	const char*	tbl_name,
+	char		(&mysql_db_name)[NAME_LEN + 1],
+	char		(&mysql_tbl_name)[NAME_LEN + 1]);
 
 #include "dict0dict.ic"
 

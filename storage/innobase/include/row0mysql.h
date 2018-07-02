@@ -879,6 +879,38 @@ struct SysIndexCallback {
 	virtual void operator()(mtr_t* mtr, btr_pcur_t* pcur) throw() = 0;
 };
 
+/** Purge virtual column node information. */
+struct purge_vcol_info_t {
+
+	/** Used for virtual column computation. */
+	bool	use_vcol;
+	/** mariadb table opened for virtual column computation. */
+	TABLE*	mariadb_table;
+
+	/** Initialize the virtual column information. */
+	void initialize() {
+		use_vcol = false;
+		mariadb_table = NULL;
+	}
+
+	bool is_table_exists() {
+		return mariadb_table != NULL;
+	}
+
+	bool uses_vcol_info() {
+		return use_vcol == true;
+	}
+
+	/** Validate the virtual column information. */
+	bool validate() {
+		if (!use_vcol) {
+			return true;
+		}
+
+		return mariadb_table != NULL;
+	}
+};
+
 /** Get the computed value by supplying the base column values.
 @param[in,out]	row		the data row
 @param[in]	col		virtual column
@@ -892,6 +924,8 @@ struct SysIndexCallback {
 				or NULL.
 @param[in]	parent_update	update vector for the parent row
 @param[in]	foreign		foreign key information
+@param[in,out]	vcol_info	virtual column information used by
+				purge thread
 @return the field filled with computed value */
 dfield_t*
 innobase_get_computed_value(
@@ -905,7 +939,8 @@ innobase_get_computed_value(
 	TABLE*			mysql_table,
 	const dict_table_t*	old_table,
 	upd_t*			parent_update,
-	dict_foreign_t*		foreign);
+	dict_foreign_t*		foreign,
+	purge_vcol_info_t*	vcol_info=NULL);
 
 /** Get the computed value by supplying the base column values.
 @param[in,out]	table	the table whose virtual column template to be built */

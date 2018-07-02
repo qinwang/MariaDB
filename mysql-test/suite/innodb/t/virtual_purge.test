@@ -1,0 +1,48 @@
+--source include/have_innodb.inc
+--source include/have_debug.inc
+--source include/have_debug_sync.inc
+--source include/have_metadata_lock_info.inc
+
+CREATE TABLE t1 (y YEAR, vy YEAR AS (y) VIRTUAL, pk INT,
+                 PRIMARY KEY(pk), UNIQUE(vy)) ENGINE=InnoDB;
+
+INSERT IGNORE INTO t1 (pk,y) VALUES (1,2022);
+CREATE TABLE t2(f1 INT NOT NULL, PRIMARY KEY(f1))ENGINE=InnoDB;
+BEGIN;
+INSERT INTO t2(f1) VALUES(1);
+
+connect (con1, localhost,root,,);
+# Stop the purge thread
+START TRANSACTION WITH CONSISTENT SNAPSHOT;
+
+connection default;
+# Ensure that the history list length will actually be decremented by purge.
+SET @saved_frequency = @@GLOBAL.innodb_purge_rseg_truncate_frequency;
+SET GLOBAL innodb_purge_rseg_truncate_frequency = 1;
+COMMIT;
+
+connect(con2,localhost,root,,);
+REPLACE INTO t1(pk, y) SELECT pk,y FROM t1;
+SET DEBUG_SYNC='row_trunc_before_dict_lock SIGNAL commit_trx WAIT_FOR release_lock';
+--send TRUNCATE TABLE t1
+
+connection con1;
+SET DEBUG_SYNC='now WAIT_FOR commit_trx';
+commit;
+SET DEBUG_SYNC='now SIGNAL purge_start';
+disconnect con1;
+
+connection default;
+SET DEBUG_SYNC='now WAIT_FOR purge_start';
+--source include/wait_all_purged.inc
+SET DEBUG_SYNC='now SIGNAL release_lock';
+
+connection con2;
+reap;
+disconnect con2;
+
+connection default;
+--source include/wait_all_purged.inc
+drop table t1, t2;
+SET GLOBAL innodb_purge_rseg_truncate_frequency = @saved_frequency;
+SET DEBUG_SYNC='RESET';
