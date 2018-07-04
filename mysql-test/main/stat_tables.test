@@ -54,6 +54,8 @@ order by revenue desc;
 
 eval EXPLAIN $Q5;
 eval $Q5;
+eval ANALYZE FORMAT=json $Q5;
+eval $Q5;
 
 set optimizer_switch=@save_optimizer_switch;
 
