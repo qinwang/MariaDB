@@ -67,6 +67,7 @@
 #include "wsrep_thd.h"
 #include "sql_connect.h"
 #include "my_atomic.h"
+#include "sql_base.h"
 
 #ifdef HAVE_SYS_SYSCALL_H
 #include <sys/syscall.h>
@@ -4410,7 +4411,6 @@ TABLE *get_purge_table(THD *thd)
   DBUG_ASSERT(thd->open_tables == NULL || thd->open_tables->next == NULL);
   return thd->open_tables;
 }
-
 
 /** Find an open table in the list of prelocked tabled
 

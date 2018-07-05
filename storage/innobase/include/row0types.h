@@ -52,4 +52,69 @@ struct row_log_t;
 /* MySQL data types */
 struct TABLE;
 
+/** Purge virtual column node information. */
+struct purge_vcol_info_t {
+
+	/** Used for virtual column computation */
+	bool	use_vcol;
+
+	/** True if it is used for the first time. */
+        bool	use_first;
+
+	/** MariaDB table opened for virtual column computation. */
+	TABLE*	mariadb_table;
+
+	/** constructor to initialize the virtual column info. */
+	purge_vcol_info_t() {
+		use_first = use_vcol = false;
+		mariadb_table = NULL;
+	}
+
+	/** Check whether mariadb table exist
+	@return true if table exist. */
+	bool is_table_exists() const
+	{
+		return mariadb_table != NULL;
+	}
+
+	/** Check whether virtual column information is used
+	@return true if virtual column computation happened. */
+	bool is_vcol_uses() const
+	{
+		return use_vcol;
+	}
+
+	/** Validate the virtual column information.
+	@return true if the mariadb table opened successfully
+	or doesn't try to calculate virtual column. */
+	bool validate() const
+	{
+		if (!use_vcol) {
+			return true;
+		}
+
+		return mariadb_table != NULL;
+	}
+
+	/** Set the variable use_vcol and use_first as true if
+	it is used for the first time. */
+	void set_vcol_use()
+	{
+		if (use_first) {
+			use_first = false;
+			ut_ad(use_vcol);
+			return;
+		}
+
+		use_first = use_vcol = true;
+	}
+
+	/** Check whether it fetches mariadb table for the first time.
+	@return true if first time tries to open mariadb table. */
+	bool is_first_fetch() const
+	{
+		return use_first;
+	}
+};
+
 #endif

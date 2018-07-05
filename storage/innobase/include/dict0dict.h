@@ -2022,6 +2022,20 @@ bool
 dict_table_have_virtual_index(
 	dict_table_t*	table);
 
+/** Parse the table file name into table name and database name.
+@param[in]	tbl_name	InnoDB table name
+@param[out]	mysql_db_name	database name buffer
+@param[out]	mysql_tbl_name	table name buffer
+@param[out]	mysql_db_len	database name length
+@param[out]	mysql_tbl_len	table name length
+@return true if the table name is parsed properly. */
+bool dict_parse_tbl_name(
+	const char*	tbl_name,
+	char*		mysql_db_name,
+	char*		mysql_tbl_name,
+	uint		&mysql_db_len,
+	uint		&mysql_tbl_len);
+
 #include "dict0dict.ic"
 
 #endif

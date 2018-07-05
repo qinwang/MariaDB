@@ -36,6 +36,7 @@ Created 3/14/1997 Heikki Tuuri
 #include "que0types.h"
 #include "row0types.h"
 #include "ut0vec.h"
+#include "row0mysql.h"
 
 /** Create a purge node to a query graph.
 @param[in]	parent	parent node, i.e., a thr node
@@ -47,8 +48,7 @@ row_purge_node_create(
 	mem_heap_t*	heap)
 	MY_ATTRIBUTE((warn_unused_result));
 
-/***********************************************************//**
-Determines if it is possible to remove a secondary index entry.
+/** Determines if it is possible to remove a secondary index entry.
 Removal is possible if the secondary index entry does not refer to any
 not delete marked version of a clustered index record where DB_TRX_ID
 is newer than the purge view.
@@ -61,14 +61,23 @@ inserts a record that the secondary index entry would refer to.
 However, in that case, the user transaction would also re-insert the
 secondary index entry after purge has removed it and released the leaf
 page latch.
+@param[in,out]	node		row purge node
+@param[in]	index		secondary index
+@param[in]	entry		secondary index entry
+@param[in,out]	sec_pcur	secondary index cursor
+@param[in,out]	sec_mtr		mini-transaction which holds
+				secondary index entry
+@param[in]	is_tree		purge checking for tree mode
 @return true if the secondary index record can be purged */
 bool
 row_purge_poss_sec(
-/*===============*/
-	purge_node_t*	node,	/*!< in/out: row purge node */
-	dict_index_t*	index,	/*!< in: secondary index */
-	const dtuple_t*	entry)	/*!< in: secondary index entry */
-	MY_ATTRIBUTE((nonnull, warn_unused_result));
+	purge_node_t*	node,
+	dict_index_t*	index,
+	const dtuple_t*	entry,
+	btr_pcur_t*	sec_pcur=NULL,
+	mtr_t*		sec_mtr=NULL,
+	bool		is_tree=false);
+
 /***************************************************************
 Does the purge operation for a single undo log record. This is a high-level
 function used in an SQL execution graph.
@@ -117,6 +126,14 @@ struct purge_node_t{
 	ibool		done;	/* Debug flag */
 	trx_id_t	trx_id;	/*!< trx id for this purging record */
 
+	/** Heap to store virtual column information. It allocates heap when
+	it encounters first virtual index while processing. */
+	mem_heap_t*	vcol_heap;
+
+	/** Virtual column information about opening of MariaDB table.
+	It resets after processing each undo log record. */
+	purge_vcol_info_t*	vcol_info;
+
 #ifdef UNIV_DEBUG
 	/***********************************************************//**
 	Validate the persisent cursor. The purge node has two references
@@ -127,6 +144,16 @@ struct purge_node_t{
 	the ref member.*/
 	bool	validate_pcur();
 #endif
+
+	/** Check whether the virtual column information exists for
+	the purge node.
+	@return true if virtual column exists */
+	bool	is_vcol_info_exists() const;
+
+	/** Whether purge failed to open the maria table for virtual column
+	computation.
+	@return true if the table failed to open. */
+	bool	is_vcol_op_fail() const;
 };
 
 #endif
